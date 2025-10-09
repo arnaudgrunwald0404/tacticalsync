@@ -11,6 +11,8 @@ import { toast } from "sonner";
 const Auth = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -43,13 +45,13 @@ const Auth = () => {
     }
   };
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const trimmedEmail = email.trim();
     
-    if (!trimmedEmail) {
-      toast.error("Please enter your email");
+    if (!trimmedEmail || !password) {
+      toast.error("Please enter email and password");
       return;
     }
 
@@ -60,22 +62,38 @@ const Auth = () => {
       return;
     }
 
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
 
-    setLoading(false);
-
-    if (error) {
-      console.error("Error sending magic link:", error);
-      toast.error(error.message || "Failed to send magic link");
-    } else {
-      toast.success("Check your email for the magic link!");
-      setEmail("");
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`,
+          },
+        });
+        if (error) throw error;
+        toast.success("Account created! You can now sign in.");
+        setIsSignUp(false);
+        setPassword("");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+        if (error) throw error;
+        toast.success("Signed in successfully!");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Authentication failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -97,7 +115,7 @@ const Auth = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <form onSubmit={handleMagicLink} className="space-y-4">
+            <form onSubmit={handleEmailAuth} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email address</Label>
                 <Input
@@ -108,6 +126,21 @@ const Auth = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
                   className="h-12"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  className="h-12"
+                  required
+                  minLength={6}
                 />
               </div>
               <Button
@@ -115,8 +148,16 @@ const Auth = () => {
                 className="w-full h-12 text-base"
                 disabled={loading}
               >
-                <Mail className="mr-2 h-5 w-5" />
-                {loading ? "Sending..." : "Send magic link"}
+                {loading ? "Loading..." : (isSignUp ? "Sign Up" : "Sign In")}
+              </Button>
+              <Button
+                type="button"
+                variant="link"
+                className="w-full"
+                onClick={() => setIsSignUp(!isSignUp)}
+                disabled={loading}
+              >
+                {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
               </Button>
             </form>
 
