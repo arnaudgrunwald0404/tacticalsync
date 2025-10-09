@@ -29,20 +29,42 @@ const Dashboard = () => {
   };
 
   const fetchTeams = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    
     const { data, error } = await supabase
       .from("team_members")
       .select(`
         *,
-        teams:team_id (*)
+        teams:team_id (
+          id,
+          name,
+          created_at,
+          invite_code
+        )
       `)
-      .eq("user_id", (await supabase.auth.getUser()).data.user?.id);
+      .eq("user_id", userData.user?.id);
 
     if (error) {
       console.error("Error fetching teams:", error);
       return;
     }
 
-    setTeams(data || []);
+    // Fetch member counts for each team
+    const teamsWithCounts = await Promise.all(
+      (data || []).map(async (teamMember) => {
+        const { count } = await supabase
+          .from("team_members")
+          .select("*", { count: "exact", head: true })
+          .eq("team_id", teamMember.teams.id);
+
+        return {
+          ...teamMember,
+          memberCount: count || 0,
+        };
+      })
+    );
+
+    setTeams(teamsWithCounts);
   };
 
   const handleSignOut = async () => {
@@ -103,7 +125,7 @@ const Dashboard = () => {
           {teams.map((teamMember) => (
             <Card
               key={teamMember.id}
-              className="hover:shadow-large transition-all cursor-pointer"
+              className="hover:shadow-large transition-all cursor-pointer group"
               onClick={() => navigate(`/team/${teamMember.teams.id}`)}
             >
               <CardHeader>
@@ -112,12 +134,22 @@ const Dashboard = () => {
                   {teamMember.teams.name}
                 </CardTitle>
                 <CardDescription>
-                  {teamMember.role === "admin" ? "Admin" : "Member"}
+                  {teamMember.role === "admin" ? "Team Admin" : "Team Member"}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Button variant="outline" className="w-full">
-                  View Meeting
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Members:</span>
+                  <span className="font-medium">{teamMember.memberCount}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Created:</span>
+                  <span className="font-medium">
+                    {new Date(teamMember.teams.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <Button variant="default" className="w-full group-hover:bg-primary/90">
+                  View Meeting →
                 </Button>
               </CardContent>
             </Card>
