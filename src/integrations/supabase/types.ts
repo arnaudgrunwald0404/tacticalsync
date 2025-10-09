@@ -127,35 +127,47 @@ export type Database = {
         Row: {
           avatar_url: string | null
           birthday: string | null
+          blue_percentage: number | null
           created_at: string | null
           email: string
           first_name: string | null
           full_name: string
+          green_percentage: number | null
           id: string
           last_name: string | null
+          red_percentage: number | null
           updated_at: string | null
+          yellow_percentage: number | null
         }
         Insert: {
           avatar_url?: string | null
           birthday?: string | null
+          blue_percentage?: number | null
           created_at?: string | null
           email: string
           first_name?: string | null
           full_name: string
+          green_percentage?: number | null
           id: string
           last_name?: string | null
+          red_percentage?: number | null
           updated_at?: string | null
+          yellow_percentage?: number | null
         }
         Update: {
           avatar_url?: string | null
           birthday?: string | null
+          blue_percentage?: number | null
           created_at?: string | null
           email?: string
           first_name?: string | null
           full_name?: string
+          green_percentage?: number | null
           id?: string
           last_name?: string | null
+          red_percentage?: number | null
           updated_at?: string | null
+          yellow_percentage?: number | null
         }
         Relationships: []
       }

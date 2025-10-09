@@ -19,6 +19,10 @@ const Profile = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birthday, setBirthday] = useState("");
+  const [redPercentage, setRedPercentage] = useState(0);
+  const [bluePercentage, setBluePercentage] = useState(0);
+  const [greenPercentage, setGreenPercentage] = useState(0);
+  const [yellowPercentage, setYellowPercentage] = useState(0);
 
   useEffect(() => {
     fetchProfile();
@@ -43,6 +47,10 @@ const Profile = () => {
       setProfile(data);
       setFirstName(data.first_name || "");
       setLastName(data.last_name || "");
+      setRedPercentage(data.red_percentage || 0);
+      setBluePercentage(data.blue_percentage || 0);
+      setGreenPercentage(data.green_percentage || 0);
+      setYellowPercentage(data.yellow_percentage || 0);
       // Format birthday for input (without year if stored)
       if (data.birthday) {
         const date = new Date(data.birthday);
@@ -70,6 +78,18 @@ const Profile = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Validate personality percentages add up to 100
+      const total = redPercentage + bluePercentage + greenPercentage + yellowPercentage;
+      if (total !== 0 && total !== 100) {
+        toast({
+          variant: "destructive",
+          title: "Invalid Insight Assessment",
+          description: "Personality percentages must add up to 100% (or leave all at 0)",
+        });
+        setSaving(false);
+        return;
+      }
+
       // Convert MM-DD to a date (using a fixed year for storage)
       let birthdayDate = null;
       if (birthday) {
@@ -84,6 +104,10 @@ const Profile = () => {
           first_name: firstName,
           last_name: lastName,
           birthday: birthdayDate,
+          red_percentage: redPercentage,
+          blue_percentage: bluePercentage,
+          green_percentage: greenPercentage,
+          yellow_percentage: yellowPercentage,
         })
         .eq("id", user.id);
 
@@ -200,6 +224,71 @@ const Profile = () => {
                 <p className="text-sm text-muted-foreground">
                   We'll celebrate your birthday with the team! (Year not required)
                 </p>
+              </div>
+
+              {/* Insight Personality Assessment */}
+              <div className="space-y-4 pt-4 border-t">
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">Insight Personality Assessment</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your personality percentages. Total must equal 100%.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="red">Red %</Label>
+                    <Input
+                      id="red"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={redPercentage}
+                      onChange={(e) => setRedPercentage(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="blue">Blue %</Label>
+                    <Input
+                      id="blue"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={bluePercentage}
+                      onChange={(e) => setBluePercentage(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="green">Green %</Label>
+                    <Input
+                      id="green"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={greenPercentage}
+                      onChange={(e) => setGreenPercentage(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="yellow">Yellow %</Label>
+                    <Input
+                      id="yellow"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={yellowPercentage}
+                      onChange={(e) => setYellowPercentage(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  Total: {redPercentage + bluePercentage + greenPercentage + yellowPercentage}%
+                  {(redPercentage + bluePercentage + greenPercentage + yellowPercentage) === 100 && " ✓"}
+                </div>
               </div>
 
               <Button type="submit" disabled={saving} className="w-full">
