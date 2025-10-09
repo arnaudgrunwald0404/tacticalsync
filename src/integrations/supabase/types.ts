@@ -264,7 +264,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_team_member_role: {
+        Args: {
+          _required_role: Database["public"]["Enums"]["member_role"]
+          _team_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_team_member: {
+        Args: { _team_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       item_type: "agenda" | "topic"
