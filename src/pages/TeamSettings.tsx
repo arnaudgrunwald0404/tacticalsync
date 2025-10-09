@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Upload, Trash2, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 
 const TeamSettings = () => {
   const { teamId } = useParams();
@@ -41,7 +42,7 @@ const TeamSettings = () => {
         .from("team_members")
         .select(`
           *,
-          profiles:user_id(id, email, full_name, avatar_url)
+          profiles:user_id(id, email, full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
         `)
         .eq("team_id", teamId);
 
@@ -141,28 +142,36 @@ const TeamSettings = () => {
                 className="flex items-center justify-between p-4 rounded-lg border bg-card"
               >
                 <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={member.custom_avatar_url || member.profiles?.avatar_url} />
-                      <AvatarFallback>
-                        {member.profiles?.full_name?.charAt(0) || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <label className="absolute bottom-0 right-0 cursor-pointer">
-                      <div className="h-6 w-6 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90">
-                        <Upload className="h-3 w-3 text-primary-foreground" />
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleAvatarUpload(member.id, file);
-                        }}
-                      />
-                    </label>
-                  </div>
+                  <PersonalityHoverCard
+                    name={member.profiles?.full_name || "Unknown"}
+                    red={member.profiles?.red_percentage}
+                    blue={member.profiles?.blue_percentage}
+                    green={member.profiles?.green_percentage}
+                    yellow={member.profiles?.yellow_percentage}
+                  >
+                    <div className="relative">
+                      <Avatar className="h-12 w-12 cursor-pointer">
+                        <AvatarImage src={member.custom_avatar_url || member.profiles?.avatar_url} />
+                        <AvatarFallback>
+                          {member.profiles?.full_name?.charAt(0) || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <label className="absolute bottom-0 right-0 cursor-pointer">
+                        <div className="h-6 w-6 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90">
+                          <Upload className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleAvatarUpload(member.id, file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </PersonalityHoverCard>
                   <div>
                     <p className="font-semibold">{member.profiles?.full_name}</p>
                     <p className="text-sm text-muted-foreground">

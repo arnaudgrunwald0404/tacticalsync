@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 
 interface MeetingAgendaProps {
   items: any[];
@@ -48,17 +49,25 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
           </div>
           <div className="flex items-center gap-3">
             {item.assigned_to_profile && (
-              <div className="flex items-center gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                  <AvatarFallback>
-                    {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm text-muted-foreground">
-                  {item.assigned_to_profile.full_name}
-                </span>
-              </div>
+              <PersonalityHoverCard
+                name={item.assigned_to_profile.full_name}
+                red={item.assigned_to_profile.red_percentage}
+                blue={item.assigned_to_profile.blue_percentage}
+                green={item.assigned_to_profile.green_percentage}
+                yellow={item.assigned_to_profile.yellow_percentage}
+              >
+                <div className="flex items-center gap-2 cursor-pointer">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                    <AvatarFallback>
+                      {item.assigned_to_profile.full_name?.charAt(0) || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm text-muted-foreground">
+                    {item.assigned_to_profile.full_name}
+                  </span>
+                </div>
+              </PersonalityHoverCard>
             )}
             {item.time_minutes && (
               <span className="text-sm text-muted-foreground">

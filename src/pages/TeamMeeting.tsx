@@ -100,8 +100,8 @@ const TeamMeeting = () => {
       .from("meeting_items")
       .select(`
         *,
-        assigned_to_profile:assigned_to(full_name, avatar_url),
-        created_by_profile:created_by(full_name, avatar_url)
+        assigned_to_profile:assigned_to(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+        created_by_profile:created_by(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
       .eq("meeting_id", meetingId)
       .order("order_index");

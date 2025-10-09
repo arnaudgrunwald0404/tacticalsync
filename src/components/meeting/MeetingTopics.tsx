@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
 import { startOfWeek, endOfWeek, format, getWeek } from "date-fns";
+import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 
 interface MeetingTopicsProps {
   items: any[];
@@ -45,7 +46,7 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
       .select(`
         id,
         user_id,
-        profiles:user_id(id, full_name, avatar_url)
+        profiles:user_id(id, full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
       .eq("team_id", teamId);
     
@@ -266,9 +267,15 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
             <div className="flex items-center gap-3">
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                    {item.assigned_to_profile ? (
-                      <>
+                  {item.assigned_to_profile ? (
+                    <PersonalityHoverCard
+                      name={item.assigned_to_profile.full_name}
+                      red={item.assigned_to_profile.red_percentage}
+                      blue={item.assigned_to_profile.blue_percentage}
+                      green={item.assigned_to_profile.green_percentage}
+                      yellow={item.assigned_to_profile.yellow_percentage}
+                    >
+                      <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={item.assigned_to_profile.avatar_url} />
                           <AvatarFallback>
@@ -278,14 +285,14 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
                         <span className="text-sm text-muted-foreground">
                           {item.assigned_to_profile.full_name}
                         </span>
-                      </>
-                    ) : (
-                      <>
-                        <UserCircle className="h-8 w-8 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Unassigned</span>
-                      </>
-                    )}
-                  </button>
+                      </button>
+                    </PersonalityHoverCard>
+                  ) : (
+                    <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                      <UserCircle className="h-8 w-8 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Unassigned</span>
+                    </button>
+                  )}
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-2" align="end">
                   <div className="space-y-1">
@@ -297,19 +304,27 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
                       <span>Unassigned</span>
                     </button>
                     {members.map((member) => (
-                      <button
+                      <PersonalityHoverCard
                         key={member.user_id}
-                        onClick={() => handleChangeAssignment(item.id, member.user_id)}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
+                        name={member.profiles?.full_name || "Unknown"}
+                        red={member.profiles?.red_percentage}
+                        blue={member.profiles?.blue_percentage}
+                        green={member.profiles?.green_percentage}
+                        yellow={member.profiles?.yellow_percentage}
                       >
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={member.profiles?.avatar_url} />
-                          <AvatarFallback className="text-xs">
-                            {member.profiles?.full_name?.charAt(0) || "?"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{member.profiles?.full_name || "Unknown"}</span>
-                      </button>
+                        <button
+                          onClick={() => handleChangeAssignment(item.id, member.user_id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
+                        >
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={member.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {member.profiles?.full_name?.charAt(0) || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{member.profiles?.full_name || "Unknown"}</span>
+                        </button>
+                      </PersonalityHoverCard>
                     ))}
                   </div>
                 </PopoverContent>
