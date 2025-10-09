@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import CommentsDialog from "./CommentsDialog";
 
 interface MeetingTopicsProps {
   items: any[];
@@ -13,6 +15,7 @@ interface MeetingTopicsProps {
 
 const MeetingTopics = ({ items, meetingId, onUpdate }: MeetingTopicsProps) => {
   const { toast } = useToast();
+  const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
 
   const handleToggleComplete = async (itemId: string, currentStatus: boolean) => {
     const { error } = await supabase
@@ -64,8 +67,9 @@ const MeetingTopics = ({ items, meetingId, onUpdate }: MeetingTopicsProps) => {
   }
 
   return (
-    <div className="space-y-4">
-      {items.map((item) => (
+    <>
+      <div className="space-y-4">
+        {items.map((item) => (
         <div
           key={item.id}
           className="p-4 rounded-lg border bg-card hover:shadow-medium transition-all space-y-3"
@@ -109,7 +113,11 @@ const MeetingTopics = ({ items, meetingId, onUpdate }: MeetingTopicsProps) => {
                   {item.time_minutes} min
                 </span>
               )}
-              <Button variant="ghost" size="icon">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedItem({ id: item.id, title: item.title })}
+              >
                 <MessageSquare className="h-4 w-4" />
               </Button>
               <Button
@@ -122,8 +130,18 @@ const MeetingTopics = ({ items, meetingId, onUpdate }: MeetingTopicsProps) => {
             </div>
           </div>
         </div>
-      ))}
-    </div>
+        ))}
+      </div>
+
+      {selectedItem && (
+        <CommentsDialog
+          itemId={selectedItem.id}
+          itemTitle={selectedItem.title}
+          open={!!selectedItem}
+          onOpenChange={(open) => !open && setSelectedItem(null)}
+        />
+      )}
+    </>
   );
 };
 
