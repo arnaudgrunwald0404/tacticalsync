@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Settings, Plus, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, Settings, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda from "@/components/meeting/MeetingAgenda";
 import MeetingTopics from "@/components/meeting/MeetingTopics";
@@ -173,16 +173,13 @@ const TeamMeeting = () => {
         </Card>
 
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h2 className="text-xl font-semibold">Topics</h2>
-            <Button onClick={() => navigate(`/team/${teamId}/add-topic`)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Topic
-            </Button>
           </div>
           <MeetingTopics
             items={topicItems}
             meetingId={meeting?.id}
+            teamId={teamId}
             onUpdate={() => fetchMeetingItems(meeting?.id)}
           />
         </Card>

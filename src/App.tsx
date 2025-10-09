@@ -9,7 +9,6 @@ import Dashboard from "./pages/Dashboard";
 import CreateTeam from "./pages/CreateTeam";
 import TeamMeeting from "./pages/TeamMeeting";
 import TeamSettings from "./pages/TeamSettings";
-import AddTopic from "./pages/AddTopic";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +26,6 @@ const App = () => (
           <Route path="/create-team" element={<CreateTeam />} />
           <Route path="/team/:teamId" element={<TeamMeeting />} />
           <Route path="/team/:teamId/settings" element={<TeamSettings />} />
-          <Route path="/team/:teamId/add-topic" element={<AddTopic />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
