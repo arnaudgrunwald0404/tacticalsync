@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
+import { startOfWeek, endOfWeek, format, getWeek } from "date-fns";
 
 interface MeetingTopicsProps {
   items: any[];
@@ -194,10 +195,50 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
     }
   };
 
+  // Group items by week
+  const groupedByWeek: Record<string, { weekStart: Date; items: any[] }> = items.reduce((acc, item) => {
+    const createdDate = new Date(item.created_at);
+    const weekStart = startOfWeek(createdDate, { weekStartsOn: 0 }); // Sunday
+    const weekKey = weekStart.toISOString();
+    
+    if (!acc[weekKey]) {
+      acc[weekKey] = {
+        weekStart,
+        items: [],
+      };
+    }
+    
+    acc[weekKey].items.push(item);
+    return acc;
+  }, {} as Record<string, { weekStart: Date; items: any[] }>);
+
+  // Sort weeks descending (newest first)
+  const sortedWeeks = Object.entries(groupedByWeek).sort(
+    ([keyA], [keyB]) => new Date(keyB).getTime() - new Date(keyA).getTime()
+  );
+
+  const getWeekHeader = (weekStart: Date) => {
+    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekNumber = getWeek(weekStart);
+    const startStr = format(weekStart, "MMMM d");
+    const endStr = format(weekEnd, "MMMM d");
+    return `Week ${weekNumber} (${startStr} - ${endStr})`;
+  };
+
   return (
     <>
-      <div className="space-y-4">
-        {items.map((item) => (
+      <div className="space-y-6">
+        {sortedWeeks.map(([weekKey, { weekStart, items: weekItems }]) => (
+          <div key={weekKey} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                {getWeekHeader(weekStart)}
+              </h3>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            {weekItems.map((item) => (
         <div
           key={item.id}
           className="p-4 rounded-lg border bg-card hover:shadow-medium transition-all space-y-3"
@@ -295,6 +336,8 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
             </div>
           </div>
         </div>
+      ))}
+          </div>
         ))}
 
         {/* Inline topic creation row */}
