@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Trash2, Check, X, Plus } from "lucide-react";
+import { MessageSquare, Trash2, Check, X, Plus, UserCircle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
@@ -43,11 +44,20 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
       .select(`
         id,
         user_id,
-        profiles:user_id(id, full_name)
+        profiles:user_id(id, full_name, avatar_url)
       `)
       .eq("team_id", teamId);
     
     setMembers(data || []);
+  };
+
+  const startCreating = async () => {
+    setIsCreating(true);
+    // Default assignedTo to current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      setAssignedTo(user.id);
+    }
   };
 
   const resetForm = () => {
@@ -95,6 +105,29 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
     toast({
       title: "Topic deleted",
       description: "The topic has been removed from the meeting.",
+    });
+
+    onUpdate();
+  };
+
+  const handleChangeAssignment = async (itemId: string, newUserId: string | null) => {
+    const { error } = await supabase
+      .from("meeting_items")
+      .update({ assigned_to: newUserId })
+      .eq("id", itemId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update assignment",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Assignment updated",
+      description: "Topic has been reassigned",
     });
 
     onUpdate();
@@ -190,19 +223,56 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
               )}
             </div>
             <div className="flex items-center gap-3">
-              {item.assigned_to_profile && (
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                    <AvatarFallback>
-                      {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-muted-foreground">
-                    {item.assigned_to_profile.full_name}
-                  </span>
-                </div>
-              )}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    {item.assigned_to_profile ? (
+                      <>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                          <AvatarFallback>
+                            {item.assigned_to_profile.full_name?.charAt(0) || "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm text-muted-foreground">
+                          {item.assigned_to_profile.full_name}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <UserCircle className="h-8 w-8 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Unassigned</span>
+                      </>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2" align="end">
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => handleChangeAssignment(item.id, null)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
+                    >
+                      <UserCircle className="h-4 w-4" />
+                      <span>Unassigned</span>
+                    </button>
+                    {members.map((member) => (
+                      <button
+                        key={member.user_id}
+                        onClick={() => handleChangeAssignment(item.id, member.user_id)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
+                      >
+                        <Avatar className="h-5 w-5">
+                          <AvatarImage src={member.profiles?.avatar_url} />
+                          <AvatarFallback className="text-xs">
+                            {member.profiles?.full_name?.charAt(0) || "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{member.profiles?.full_name || "Unknown"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               {item.time_minutes && (
                 <span className="text-sm text-muted-foreground">
                   {item.time_minutes} min
@@ -295,7 +365,7 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
           </div>
         ) : (
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={startCreating}
             className="w-full p-4 rounded-lg border-2 border-dashed border-muted hover:border-primary hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center gap-2"
           >
             <Plus className="h-4 w-4" />
