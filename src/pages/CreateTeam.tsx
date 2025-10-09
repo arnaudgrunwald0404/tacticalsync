@@ -34,28 +34,50 @@ const CreateTeam = () => {
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      // Get fresh session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) throw sessionError;
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please sign in again",
+          variant: "destructive",
+        });
+        navigate("/auth");
+        return;
+      }
+
+      const userId = session.user.id;
 
       // Create team
       const { data: team, error: teamError } = await supabase
         .from("teams")
-        .insert({ name: teamName, created_by: user.id })
+        .insert({ 
+          name: teamName, 
+          created_by: userId 
+        })
         .select()
         .single();
 
-      if (teamError) throw teamError;
+      if (teamError) {
+        console.error("Team creation error:", teamError);
+        throw new Error(teamError.message);
+      }
 
       // Add creator as admin
       const { error: memberError } = await supabase
         .from("team_members")
         .insert({
           team_id: team.id,
-          user_id: user.id,
+          user_id: userId,
           role: "admin",
         });
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error("Member creation error:", memberError);
+        throw new Error(memberError.message);
+      }
 
       toast({
         title: "Team created!",
@@ -64,9 +86,10 @@ const CreateTeam = () => {
 
       navigate(`/team/${team.id}`);
     } catch (error: any) {
+      console.error("Full error:", error);
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Error creating team",
+        description: error.message || "Please try again",
         variant: "destructive",
       });
     } finally {
