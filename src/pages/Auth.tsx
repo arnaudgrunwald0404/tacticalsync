@@ -46,14 +46,23 @@ const Auth = () => {
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email) {
+    const trimmedEmail = email.trim();
+    
+    if (!trimmedEmail) {
       toast.error("Please enter your email");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error("Please enter a valid email address");
       return;
     }
 
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
-      email,
+      email: trimmedEmail,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
@@ -62,10 +71,11 @@ const Auth = () => {
     setLoading(false);
 
     if (error) {
-      console.error("Error sending magic link:", error.message);
-      toast.error("Failed to send magic link");
+      console.error("Error sending magic link:", error);
+      toast.error(error.message || "Failed to send magic link");
     } else {
       toast.success("Check your email for the magic link!");
+      setEmail("");
     }
   };
 
