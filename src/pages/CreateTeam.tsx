@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,21 @@ const CreateTeam = () => {
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to create a team",
+          variant: "destructive",
+        });
+        navigate("/auth");
+      }
+    };
+    checkAuth();
+  }, [navigate, toast]);
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
