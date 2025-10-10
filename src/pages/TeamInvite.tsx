@@ -235,7 +235,7 @@ const TeamInvite = () => {
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
-              <p className="font-bold">Team Members</p>
+              <Label className="text-sm font-bold">Team Members</Label>
               <p className="text-sm text-muted-foreground">
                 Enter email addresses separated by commas or new lines
               </p>
