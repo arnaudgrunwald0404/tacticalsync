@@ -426,42 +426,16 @@ const Profile = () => {
                   {/* Pie Chart on the right */}
                   {(Number(redPercentage) + Number(yellowPercentage) + Number(greenPercentage) + Number(bluePercentage)) > 0 && (
                     <div className="flex-1 flex flex-col items-center justify-center p-4 bg-muted/30 rounded-lg">
-                      <h4 className="text-sm font-medium mb-4">Your Profile</h4>
+                      <h4 className="text-sm font-medium mb-4">Your Insight Discovery Profile</h4>
                       <div className="w-48 h-48 rounded-full overflow-hidden" style={{
                         background: `conic-gradient(
                           from 0deg,
-                          #ef4444 0deg ${(Number(redPercentage) || 0) * 3.6}deg,
-                          #eab308 ${(Number(redPercentage) || 0) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg,
-                          #22c55e ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg,
-                          #3b82f6 ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg 360deg
+                          rgb(254, 226, 226) 0deg ${(Number(redPercentage) || 0) * 3.6}deg,
+                          rgb(254, 249, 195) ${(Number(redPercentage) || 0) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg,
+                          rgb(220, 252, 231) ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg,
+                          rgb(219, 234, 254) ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg 360deg
                         )`
                       }}>
-                      </div>
-                      <div className="flex flex-col gap-2 mt-4">
-                        {Number(redPercentage) > 0 && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <span className="text-sm">Red: {redPercentage}%</span>
-                          </div>
-                        )}
-                        {Number(yellowPercentage) > 0 && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                            <span className="text-sm">Yellow: {yellowPercentage}%</span>
-                          </div>
-                        )}
-                        {Number(greenPercentage) > 0 && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                            <span className="text-sm">Green: {greenPercentage}%</span>
-                          </div>
-                        )}
-                        {Number(bluePercentage) > 0 && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                            <span className="text-sm">Blue: {bluePercentage}%</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
