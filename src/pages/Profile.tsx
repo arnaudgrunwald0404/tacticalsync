@@ -335,136 +335,137 @@ const Profile = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="red" className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                        Red
-                      </span>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="red"
-                        type="text"
-                        placeholder="0"
-                        value={redPercentage}
-                        onChange={(e) => setRedPercentage(e.target.value)}
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        %
-                      </span>
+                <div className="flex gap-6">
+                  {/* Input fields on the left */}
+                  <div className="flex-1 space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="red" className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                          Red
+                        </span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="red"
+                          type="text"
+                          placeholder="0"
+                          value={redPercentage}
+                          onChange={(e) => setRedPercentage(e.target.value)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          %
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="yellow" className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                          Yellow
+                        </span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="yellow"
+                          type="text"
+                          placeholder="0"
+                          value={yellowPercentage}
+                          onChange={(e) => setYellowPercentage(e.target.value)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          %
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="green" className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          Green
+                        </span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="green"
+                          type="text"
+                          placeholder="0"
+                          value={greenPercentage}
+                          onChange={(e) => setGreenPercentage(e.target.value)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          %
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="blue" className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          Blue
+                        </span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="blue"
+                          type="text"
+                          placeholder="0"
+                          value={bluePercentage}
+                          onChange={(e) => setBluePercentage(e.target.value)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          %
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="blue" className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                        Blue
-                      </span>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="blue"
-                        type="text"
-                        placeholder="0"
-                        value={bluePercentage}
-                        onChange={(e) => setBluePercentage(e.target.value)}
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="green" className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                        Green
-                      </span>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="green"
-                        type="text"
-                        placeholder="0"
-                        value={greenPercentage}
-                        onChange={(e) => setGreenPercentage(e.target.value)}
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="yellow" className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                        Yellow
-                      </span>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="yellow"
-                        type="text"
-                        placeholder="0"
-                        value={yellowPercentage}
-                        onChange={(e) => setYellowPercentage(e.target.value)}
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pie Chart Visualization */}
-                {(Number(redPercentage) + Number(bluePercentage) + Number(greenPercentage) + Number(yellowPercentage)) > 0 && (
-                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                    <h4 className="text-sm font-medium mb-4 text-center">Your Profile Visualization</h4>
-                    <div className="flex justify-center">
+                  {/* Pie Chart on the right */}
+                  {(Number(redPercentage) + Number(yellowPercentage) + Number(greenPercentage) + Number(bluePercentage)) > 0 && (
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 bg-muted/30 rounded-lg">
+                      <h4 className="text-sm font-medium mb-4">Your Profile</h4>
                       <div className="w-48 h-48 rounded-full overflow-hidden" style={{
                         background: `conic-gradient(
                           from 0deg,
                           #ef4444 0deg ${(Number(redPercentage) || 0) * 3.6}deg,
-                          #3b82f6 ${(Number(redPercentage) || 0) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0)) * 3.6}deg,
-                          #22c55e ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0)) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg,
-                          #eab308 ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg 360deg
+                          #eab308 ${(Number(redPercentage) || 0) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg,
+                          #22c55e ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0)) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg,
+                          #3b82f6 ${((Number(redPercentage) || 0) + (Number(yellowPercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg 360deg
                         )`
                       }}>
                       </div>
+                      <div className="flex flex-col gap-2 mt-4">
+                        {Number(redPercentage) > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                            <span className="text-sm">Red: {redPercentage}%</span>
+                          </div>
+                        )}
+                        {Number(yellowPercentage) > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <span className="text-sm">Yellow: {yellowPercentage}%</span>
+                          </div>
+                        )}
+                        {Number(greenPercentage) > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                            <span className="text-sm">Green: {greenPercentage}%</span>
+                          </div>
+                        )}
+                        {Number(bluePercentage) > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                            <span className="text-sm">Blue: {bluePercentage}%</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-center gap-4 mt-4 flex-wrap">
-                      {Number(redPercentage) > 0 && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                          <span className="text-xs">{redPercentage}%</span>
-                        </div>
-                      )}
-                      {Number(bluePercentage) > 0 && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                          <span className="text-xs">{bluePercentage}%</span>
-                        </div>
-                      )}
-                      {Number(greenPercentage) > 0 && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                          <span className="text-xs">{greenPercentage}%</span>
-                        </div>
-                      )}
-                      {Number(yellowPercentage) > 0 && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                          <span className="text-xs">{yellowPercentage}%</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <Button type="submit" disabled={saving} className="w-full">
