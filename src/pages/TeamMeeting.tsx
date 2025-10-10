@@ -12,7 +12,7 @@ import { format, getWeek, addDays } from "date-fns";
 
 const STATIC_AGENDA = [
   "Opening comments",
-  "Review last week's items",
+  "Review last week's item",
   "Calendar Review",
   "Lightning Round",
   "ELT Scorecard",
