@@ -291,14 +291,15 @@ const TeamInvite = () => {
               </div>
             </div>
 
-            <Button 
-              onClick={handleSkip}
-              className="w-full"
-            >
-              Continue to Meeting
-            </Button>
           </CardContent>
         </Card>
+
+        <Button 
+          onClick={handleSkip}
+          className="w-full mt-4"
+        >
+          Continue to Meeting
+        </Button>
       </main>
     </div>
   );
