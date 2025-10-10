@@ -136,7 +136,7 @@ const Auth = () => {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            Weekly Tactical
+            Tactical Mastery
           </h1>
           <p className="text-muted-foreground">Sign in to manage your team meetings</p>
         </div>
@@ -269,7 +269,7 @@ const Auth = () => {
               </div>
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <Calendar className="h-5 w-5 text-primary" />
-                <span>Track weekly tactical meetings</span>
+                <span>Track tactical meetings</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <CheckSquare className="h-5 w-5 text-primary" />

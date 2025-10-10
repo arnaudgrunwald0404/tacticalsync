@@ -2,8 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* ============================================================================
+   DESIGN SYSTEM DOCUMENTATION
+   ============================================================================
+   
+   This file defines all design tokens and standards for the application.
+   All colors MUST be in HSL format for consistent theming.
+   
+   BUTTON DISABLED STATE STANDARD
+   ============================================================================
+   All disabled buttons across the application use a CONSISTENT grayed-out style,
+   regardless of their variant (default, secondary, outline, destructive, ghost, link).
+   
+   Disabled buttons will always display:
+   - Background: var(--disabled-bg) - A muted gray background
+   - Text: var(--disabled-fg) - A muted gray text color
+   - Border: var(--disabled-border) - A muted gray border
+   - Opacity: 100% (no transparency, full opacity for clear visual feedback)
+   - Cursor: not allowed (pointer-events: none)
+   
+   DO NOT change button variants based on disabled state. Simply set the
+   disabled prop and the consistent styling will be applied automatically.
+   
+   Example Usage:
+   ✅ CORRECT:
+     <Button disabled={isDisabled}>Click Me</Button>
+   
+   ❌ INCORRECT:
+     <Button 
+       disabled={isDisabled}
+       variant={isDisabled ? "secondary" : "default"}
+     >
+       Click Me
+     </Button>
+   
+   ============================================================================
 */
 
 @layer base {
@@ -48,6 +81,11 @@ All colors MUST be HSL.
     --shadow-large: 0 10px 15px -3px hsl(222 47% 11% / 0.1);
     
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Disabled Button States - Consistent across all button variants */
+    --disabled-bg: 210 40% 96%;
+    --disabled-fg: 215 16% 47%;
+    --disabled-border: 214 32% 91%;
 
     --sidebar-background: 0 0% 98%;
 
@@ -99,6 +137,12 @@ All colors MUST be HSL.
     
     --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(262 83% 58%));
     --gradient-hero: linear-gradient(180deg, hsl(221 83% 53% / 0.1), transparent);
+    
+    /* Disabled Button States - Consistent across all button variants */
+    --disabled-bg: 217 33% 17%;
+    --disabled-fg: 215 20% 40%;
+    --disabled-border: 217 33% 20%;
+    
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -118,4 +162,58 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Rich Text Editor Styles */
+.ProseMirror {
+  outline: none;
+  min-height: 80px;
+  padding: 12px;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: hsl(var(--muted-foreground));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li {
+  margin: 0.25rem 0;
+}
+
+.ProseMirror a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ProseMirror a:hover {
+  color: hsl(var(--primary-hover));
+}
+
+.ProseMirror strong {
+  font-weight: 600;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
 }

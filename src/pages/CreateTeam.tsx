@@ -12,6 +12,7 @@ const CreateTeam = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
+  const [abbreviatedName, setAbbreviatedName] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -54,7 +55,8 @@ const CreateTeam = () => {
       const { data: team, error: teamError } = await supabase
         .from("teams")
         .insert({ 
-          name: teamName, 
+          name: teamName,
+          abbreviated_name: abbreviatedName || null,
           created_by: userId 
         })
         .select()
@@ -113,7 +115,7 @@ const CreateTeam = () => {
           <CardHeader>
             <CardTitle className="text-2xl">Create New Team</CardTitle>
             <CardDescription>
-              Set up a new team for your weekly tactical meetings
+              Set up a new team for your tactical meetings
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -122,13 +124,27 @@ const CreateTeam = () => {
                 <Label htmlFor="teamName">Team Name</Label>
                 <Input
                   id="teamName"
-                  placeholder="Executive Leadership Team"
+                  placeholder="e.g., Executive Leadership Team"
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   required
                 />
                 <p className="text-sm text-muted-foreground">
-                  This will appear as "{teamName} Weekly Tactical"
+                  Full name of the team
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="abbreviatedName">Abbreviated Name (Optional)</Label>
+                <Input
+                  id="abbreviatedName"
+                  placeholder="e.g., ELT"
+                  value={abbreviatedName}
+                  onChange={(e) => setAbbreviatedName(e.target.value)}
+                  maxLength={10}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Short name for compact displays (10 characters max)
                 </p>
               </div>
 

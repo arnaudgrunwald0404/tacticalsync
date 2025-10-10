@@ -1,16 +1,27 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
+import { useState, useEffect } from "react";
 
 const Index = () => {
   const navigate = useNavigate();
+  const [currentWord, setCurrentWord] = useState(0);
+  const words = ["Weekly", "Monthly", "Quarterly", "Daily"];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentWord((prev) => (prev + 1) % words.length);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10">
       <header className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            Weekly Tactical
+            Tactical Mastery
           </h1>
           <Button onClick={() => navigate("/auth")}>
             Get Started
@@ -24,11 +35,16 @@ const Index = () => {
             <h2 className="text-5xl font-bold tracking-tight">
               Transform Your Team's
               <span className="block bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Weekly Meetings
+                <span 
+                  key={currentWord}
+                  className="inline-block animate-in fade-in-0 duration-500"
+                >
+                  {words[currentWord]}
+                </span> Meetings
               </span>
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Streamline your weekly tactical meetings with collaborative agenda tracking,
+              Streamline your tactical meetings with collaborative agenda tracking,
               action items, and team accountability.
             </p>
           </div>
@@ -88,7 +104,7 @@ const Index = () => {
 
       <footer className="border-t mt-20">
         <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>&copy; 2025 Weekly Tactical. Built for productive teams.</p>
+          <p>&copy; 2025 Wikli Inc. Built for productive teams.</p>
         </div>
       </footer>
     </div>

@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+import { htmlToPlainText } from "@/lib/htmlUtils";
 
 interface CommentsDialogProps {
   itemId: string;
@@ -102,7 +103,7 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
         <DialogHeader>
           <DialogTitle>Discussion</DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {itemTitle}
+            {htmlToPlainText(itemTitle)}
           </DialogDescription>
         </DialogHeader>
 

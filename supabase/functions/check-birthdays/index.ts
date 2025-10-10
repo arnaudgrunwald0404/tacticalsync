@@ -71,9 +71,11 @@ Deno.serve(async (req) => {
       console.log(`Found ${teamMembers?.length || 0} teams for ${profile.first_name}`);
 
       for (const member of teamMembers || []) {
-        // Get or create this week's meeting
+        // Get or create this week's meeting (Monday start)
         const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Days to subtract to get to Monday
+        weekStart.setDate(today.getDate() - daysToMonday);
         const weekStartStr = weekStart.toISOString().split('T')[0];
 
         let { data: meeting, error: meetingError } = await supabase

@@ -10,8 +10,11 @@ import CreateTeam from "./pages/CreateTeam";
 import TeamMeeting from "./pages/TeamMeeting";
 import TeamSettings from "./pages/TeamSettings";
 import TeamInvite from "./pages/TeamInvite";
+import TeamMeetingSetup from "./pages/TeamMeetingSetup";
+import MeetingSettings from "./pages/MeetingSettings";
 import JoinTeam from "./pages/JoinTeam";
 import Profile from "./pages/Profile";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,9 +31,12 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create-team" element={<CreateTeam />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/join/:inviteCode" element={<JoinTeam />} />
           <Route path="/team/:teamId/invite" element={<TeamInvite />} />
-          <Route path="/team/:teamId" element={<TeamMeeting />} />
+          <Route path="/team/:teamId/setup-meeting" element={<TeamMeetingSetup />} />
+          <Route path="/team/:teamId/meeting/:meetingId" element={<TeamMeeting />} />
+          <Route path="/team/:teamId/meeting/:meetingId/settings" element={<MeetingSettings />} />
           <Route path="/team/:teamId/settings" element={<TeamSettings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

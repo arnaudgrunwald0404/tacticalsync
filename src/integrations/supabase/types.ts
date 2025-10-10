@@ -219,8 +219,47 @@ export type Database = {
           },
         ]
       }
+      recurring_meetings: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"]
+          id: string
+          name: string
+          team_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name: string
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name?: string
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_meetings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
+          abbreviated_name: string | null
           created_at: string | null
           created_by: string | null
           frequency: Database["public"]["Enums"]["meeting_frequency"] | null
@@ -230,6 +269,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          abbreviated_name?: string | null
           created_at?: string | null
           created_by?: string | null
           frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
@@ -239,6 +279,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          abbreviated_name?: string | null
           created_at?: string | null
           created_by?: string | null
           frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
@@ -253,27 +294,147 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          recurring_meeting_id: string | null
           team_id: string | null
           week_start_date: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          recurring_meeting_id?: string | null
           team_id?: string | null
           week_start_date: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          recurring_meeting_id?: string | null
           team_id?: string | null
           week_start_date?: string
         }
         Relationships: [
           {
+            foreignKeyName: "weekly_meetings_recurring_meeting_id_fkey"
+            columns: ["recurring_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_meetings"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "weekly_meetings_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invitations: {
+        Row: {
+          created_at: string | null
+          email: string
+          expires_at: string | null
+          id: string
+          invited_by: string | null
+          status: Database["public"]["Enums"]["invitation_status"]
+          team_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          status?: Database["public"]["Enums"]["invitation_status"]
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          status?: Database["public"]["Enums"]["invitation_status"]
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agenda_templates: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      agenda_template_items: {
+        Row: {
+          id: string
+          template_id: string
+          title: string
+          duration_minutes: number
+          order_index: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          template_id: string
+          title: string
+          duration_minutes?: number
+          order_index: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          template_id?: string
+          title?: string
+          duration_minutes?: number
+          order_index?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -427,6 +588,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      invitation_status: ["pending", "accepted", "expired", "declined"],
       item_type: ["agenda", "topic"],
       meeting_frequency: ["daily", "weekly", "bi-weekly", "monthly"],
       member_role: ["admin", "member"],
