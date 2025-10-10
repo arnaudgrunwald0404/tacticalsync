@@ -160,7 +160,12 @@ const MeetingAgenda = ({ items, meetingId, teamId, onUpdate }: MeetingAgendaProp
                             </AvatarFallback>
                           </Avatar>
                           <span className="text-sm">
-                            {item.assigned_to_profile.full_name}
+                            {(() => {
+                              const names = item.assigned_to_profile.full_name?.split(" ") || [];
+                              const firstName = names[0] || "";
+                              const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
+                              return `${firstName} ${lastInitial}`.trim();
+                            })()}
                           </span>
                         </div>
                       ) : (
@@ -168,21 +173,28 @@ const MeetingAgenda = ({ items, meetingId, teamId, onUpdate }: MeetingAgendaProp
                       )}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50">
                     <SelectItem value="none">Unassigned</SelectItem>
-                    {teamMembers.map((member) => (
-                      <SelectItem key={member.user_id} value={member.user_id}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={member.profiles?.avatar_url} />
-                            <AvatarFallback className="text-xs">
-                              {member.profiles?.full_name?.charAt(0) || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{member.profiles?.full_name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {teamMembers.map((member) => {
+                      const names = member.profiles?.full_name?.split(" ") || [];
+                      const firstName = names[0] || "";
+                      const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
+                      const displayName = `${firstName} ${lastInitial}`.trim();
+                      
+                      return (
+                        <SelectItem key={member.user_id} value={member.user_id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={member.profiles?.avatar_url} />
+                              <AvatarFallback className="text-xs">
+                                {member.profiles?.full_name?.charAt(0) || "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{displayName}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </TableCell>
