@@ -9,12 +9,12 @@ import MeetingAgenda from "@/components/meeting/MeetingAgenda";
 import MeetingTopics from "@/components/meeting/MeetingTopics";
 
 const STATIC_AGENDA = [
-  "Opening comments",
-  "Action item accountability",
-  "Last weeks items",
-  "Rest of the year calendar review",
-  "Lightning round",
-  "Employee ELT scorecard and employee at risk",
+  "Opening comments by team leader",
+  "Accountability: Review last week's items",
+  "Calendar Review",
+  "Lightning Round",
+  "ELT Scorecard",
+  "Employees At-Risk",
 ];
 
 const TeamMeeting = () => {
