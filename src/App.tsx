@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateTeam from "./pages/CreateTeam";
 import TeamMeeting from "./pages/TeamMeeting";
 import TeamSettings from "./pages/TeamSettings";
+import TeamInvite from "./pages/TeamInvite";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create-team" element={<CreateTeam />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/team/:teamId/invite" element={<TeamInvite />} />
           <Route path="/team/:teamId" element={<TeamMeeting />} />
           <Route path="/team/:teamId/settings" element={<TeamSettings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

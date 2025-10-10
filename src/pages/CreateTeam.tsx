@@ -84,7 +84,7 @@ const CreateTeam = () => {
         description: "Your team has been created successfully.",
       });
 
-      navigate(`/team/${team.id}`);
+      navigate(`/team/${team.id}/invite`);
     } catch (error: any) {
       console.error("Full error:", error);
       toast({
