@@ -198,7 +198,7 @@ const TeamInvite = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
             <Users className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Set Up Your Team</h1>
+          <h1 className="text-3xl font-bold mb-2">Set Up Your Meeting</h1>
         </div>
 
         <Card className="mb-4">
