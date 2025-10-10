@@ -9,8 +9,8 @@ import MeetingAgenda from "@/components/meeting/MeetingAgenda";
 import MeetingTopics from "@/components/meeting/MeetingTopics";
 
 const STATIC_AGENDA = [
-  "Opening comments by team leader",
-  "Accountability: Review last week's items",
+  "Opening comments",
+  "Review last week's items",
   "Calendar Review",
   "Lightning Round",
   "ELT Scorecard",
