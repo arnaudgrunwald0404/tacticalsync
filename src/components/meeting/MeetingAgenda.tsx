@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 
 interface MeetingAgendaProps {
   items: any[];
@@ -32,6 +33,21 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
     onUpdate();
   };
 
+  const handleUpdateNotes = async (itemId: string, notes: string) => {
+    const { error } = await supabase
+      .from("meeting_items")
+      .update({ notes })
+      .eq("id", itemId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update notes",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   return (
     <div className="border rounded-lg">
@@ -42,11 +58,12 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
             <TableHead>Item</TableHead>
             <TableHead className="w-[200px]">Who</TableHead>
             <TableHead className="w-[100px]">Time</TableHead>
+            <TableHead>Notes</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((item) => (
-            <TableRow key={item.id} className="h-12">
+            <TableRow key={item.id}>
               <TableCell className="py-2">
                 <Checkbox
                   checked={item.is_completed}
@@ -83,6 +100,14 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
                 <span className="text-sm">
                   {item.time_minutes ? `${item.time_minutes} min` : "-"}
                 </span>
+              </TableCell>
+              <TableCell className="py-2">
+                <Input
+                  placeholder="Add notes..."
+                  defaultValue={item.notes || ""}
+                  onBlur={(e) => handleUpdateNotes(item.id, e.target.value)}
+                  className="h-8 text-sm"
+                />
               </TableCell>
             </TableRow>
           ))}

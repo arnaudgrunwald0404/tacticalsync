@@ -62,6 +62,7 @@ export type Database = {
           id: string
           is_completed: boolean | null
           meeting_id: string | null
+          notes: string | null
           order_index: number
           outcome: string | null
           time_minutes: number | null
@@ -77,6 +78,7 @@ export type Database = {
           id?: string
           is_completed?: boolean | null
           meeting_id?: string | null
+          notes?: string | null
           order_index: number
           outcome?: string | null
           time_minutes?: number | null
@@ -92,6 +94,7 @@ export type Database = {
           id?: string
           is_completed?: boolean | null
           meeting_id?: string | null
+          notes?: string | null
           order_index?: number
           outcome?: string | null
           time_minutes?: number | null
