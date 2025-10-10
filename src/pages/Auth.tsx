@@ -13,6 +13,7 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -42,6 +43,39 @@ const Auth = () => {
     if (error) {
       console.error("Error signing in:", error.message);
       toast.error("Failed to sign in with Google");
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const trimmedEmail = email.trim();
+    
+    if (!trimmedEmail) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: `${window.location.origin}/auth`,
+      });
+      if (error) throw error;
+      toast.success("Password reset email sent! Check your inbox.");
+      setIsForgotPassword(false);
+      setEmail("");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send reset email");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -109,13 +143,15 @@ const Auth = () => {
 
         <Card className="border-border/50 shadow-large">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+            <CardTitle className="text-2xl font-bold">
+              {isForgotPassword ? "Reset Password" : "Welcome back"}
+            </CardTitle>
             <CardDescription>
-              Sign in to continue
+              {isForgotPassword ? "Enter your email to receive a reset link" : "Sign in to continue"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <form onSubmit={handleEmailAuth} className="space-y-4">
+            <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email address</Label>
                 <Input
@@ -129,54 +165,82 @@ const Auth = () => {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  className="h-12"
-                  required
-                  minLength={6}
-                />
-              </div>
+              {!isForgotPassword && (
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    className="h-12"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              )}
               <Button
                 type="submit"
                 className="w-full h-12 text-base"
                 disabled={loading}
               >
-                {loading ? "Loading..." : (isSignUp ? "Sign Up" : "Sign In")}
+                {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
               </Button>
-              <Button
-                type="button"
-                variant="link"
-                className="w-full"
-                onClick={() => setIsSignUp(!isSignUp)}
-                disabled={loading}
-              >
-                {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
-              </Button>
+              {!isForgotPassword && (
+                <>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full"
+                    onClick={() => setIsSignUp(!isSignUp)}
+                    disabled={loading}
+                  >
+                    {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-sm text-muted-foreground"
+                    onClick={() => setIsForgotPassword(true)}
+                    disabled={loading}
+                  >
+                    Forgot password?
+                  </Button>
+                </>
+              )}
+              {isForgotPassword && (
+                <Button
+                  type="button"
+                  variant="link"
+                  className="w-full"
+                  onClick={() => setIsForgotPassword(false)}
+                  disabled={loading}
+                >
+                  Back to sign in
+                </Button>
+              )}
             </form>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or continue with
-                </span>
-              </div>
-            </div>
+            {!isForgotPassword && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with
+                    </span>
+                  </div>
+                </div>
 
-            <Button
-              variant="outline"
-              className="w-full h-12 text-base hover:bg-accent transition-all"
-              onClick={handleGoogleSignIn}
-            >
+                <Button
+                  variant="outline"
+                  className="w-full h-12 text-base hover:bg-accent transition-all"
+                  onClick={handleGoogleSignIn}
+                >
               <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                 <path
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -196,9 +260,9 @@ const Auth = () => {
                 />
               </svg>
               Continue with Google
-            </Button>
+                </Button>
 
-            <div className="pt-4 space-y-4">
+                <div className="pt-4 space-y-4">
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <Users className="h-5 w-5 text-primary" />
                 <span>Collaborate with your team</span>
@@ -212,6 +276,8 @@ const Auth = () => {
                 <span>Manage action items efficiently</span>
               </div>
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
