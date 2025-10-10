@@ -3,24 +3,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Trash2, Check, X, Plus, UserCircle } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MessageSquare, Trash2, Check, X, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
 import { startOfWeek, endOfWeek, format, getWeek } from "date-fns";
-import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 
 interface MeetingTopicsProps {
   items: any[];
   meetingId: string;
   teamId: string;
   onUpdate: () => void;
+  onAddTopic?: () => void;
 }
 
-const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProps) => {
+const MeetingTopics = ({ items, meetingId, teamId, onUpdate, onAddTopic }: MeetingTopicsProps) => {
   const { toast } = useToast();
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -29,16 +27,21 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
   
   // New topic form state
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [outcome, setOutcome] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
-  const [timeMinutes, setTimeMinutes] = useState("");
 
   useEffect(() => {
     if (teamId) {
       fetchMembers();
     }
   }, [teamId]);
+
+  useEffect(() => {
+    if (onAddTopic) {
+      // Expose startCreating to parent
+      (window as any).__startCreatingTopic = startCreating;
+    }
+  }, [onAddTopic]);
 
   const fetchMembers = async () => {
     const { data } = await supabase
@@ -64,10 +67,8 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
 
   const resetForm = () => {
     setTitle("");
-    setDescription("");
     setOutcome("");
     setAssignedTo("");
-    setTimeMinutes("");
     setIsCreating(false);
   };
 
@@ -168,10 +169,8 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
         meeting_id: meetingId,
         type: "topic",
         title: title.trim(),
-        description: description.trim() || null,
         outcome: outcome.trim() || null,
         assigned_to: assignedTo || null,
-        time_minutes: timeMinutes ? parseInt(timeMinutes) : null,
         order_index: nextOrder,
         created_by: user.id,
       });
@@ -193,6 +192,21 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateOutcome = async (itemId: string, newOutcome: string) => {
+    const { error } = await supabase
+      .from("meeting_items")
+      .update({ outcome: newOutcome })
+      .eq("id", itemId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update outcome",
+        variant: "destructive",
+      });
     }
   };
 
@@ -228,9 +242,9 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4">
         {sortedWeeks.map(([weekKey, { weekStart, items: weekItems }]) => (
-          <div key={weekKey} className="space-y-4">
+          <div key={weekKey} className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-border" />
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -239,201 +253,188 @@ const MeetingTopics = ({ items, meetingId, teamId, onUpdate }: MeetingTopicsProp
               <div className="h-px flex-1 bg-border" />
             </div>
 
-            {weekItems.map((item) => (
-        <div
-          key={item.id}
-          className="p-4 rounded-lg border bg-card hover:shadow-medium transition-all space-y-3"
-        >
-          <div className="flex items-start gap-4">
-            <Checkbox
-              checked={item.is_completed}
-              onCheckedChange={() => handleToggleComplete(item.id, item.is_completed)}
-              className="mt-1"
-            />
-            <div className="flex-1 space-y-2">
-              <h3 className={`font-semibold ${item.is_completed ? "line-through text-muted-foreground" : ""}`}>
-                {item.title}
-              </h3>
-              {item.description && (
-                <p className="text-sm text-muted-foreground">{item.description}</p>
-              )}
-              {item.outcome && (
-                <div className="p-3 rounded bg-muted/50">
-                  <p className="text-sm font-medium mb-1">Outcome:</p>
-                  <p className="text-sm">{item.outcome}</p>
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[40px_2fr_200px_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
+                <div></div>
+                <div>Topic</div>
+                <div>Who</div>
+                <div>Desired Outcome</div>
+                <div></div>
+              </div>
+              
+              {weekItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="px-4 py-3 grid grid-cols-[40px_2fr_200px_2fr_80px] gap-4 items-center border-t hover:bg-muted/30 transition-colors"
+                >
+                  <Checkbox
+                    checked={item.is_completed}
+                    onCheckedChange={() => handleToggleComplete(item.id, item.is_completed)}
+                  />
+                  
+                  <div className={`font-medium ${item.is_completed ? "line-through text-muted-foreground" : ""}`}>
+                    {item.title}
+                  </div>
+
+                  <div>
+                    <Select 
+                      value={item.assigned_to || "none"} 
+                      onValueChange={(value) => handleChangeAssignment(item.id, value === "none" ? null : value)}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Assign to...">
+                          {item.assigned_to_profile ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-5 w-5">
+                                <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {item.assigned_to_profile.full_name?.charAt(0) || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm">
+                                {(() => {
+                                  const names = item.assigned_to_profile.full_name?.split(" ") || [];
+                                  const firstName = names[0] || "";
+                                  const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
+                                  return `${firstName} ${lastInitial}`.trim();
+                                })()}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Unassigned</span>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50">
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {members.map((member) => {
+                          const names = member.profiles?.full_name?.split(" ") || [];
+                          const firstName = names[0] || "";
+                          const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
+                          const displayName = `${firstName} ${lastInitial}`.trim();
+                          
+                          return (
+                            <SelectItem key={member.user_id} value={member.user_id}>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={member.profiles?.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {member.profiles?.full_name?.charAt(0) || "?"}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{displayName}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Input
+                    placeholder="Desired outcome..."
+                    defaultValue={item.outcome || ""}
+                    onBlur={(e) => handleUpdateOutcome(item.id, e.target.value)}
+                    className="h-8 text-sm"
+                  />
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setSelectedItem({ id: item.id, title: item.title })}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Inline creation row */}
+              {isCreating && (
+                <div className="px-4 py-3 grid grid-cols-[40px_2fr_200px_2fr_80px] gap-4 items-center border-t bg-primary/5">
+                  <div></div>
+                  
+                  <Input
+                    placeholder="Topic title *"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    autoFocus
+                    className="h-8"
+                  />
+
+                  <Select value={assignedTo} onValueChange={setAssignedTo}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Assign to..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-50">
+                      {members.map((member) => {
+                        const names = member.profiles?.full_name?.split(" ") || [];
+                        const firstName = names[0] || "";
+                        const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
+                        const displayName = `${firstName} ${lastInitial}`.trim();
+                        
+                        return (
+                          <SelectItem key={member.user_id} value={member.user_id}>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-5 w-5">
+                                <AvatarImage src={member.profiles?.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {member.profiles?.full_name?.charAt(0) || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>{displayName}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    placeholder="Desired outcome..."
+                    value={outcome}
+                    onChange={(e) => setOutcome(e.target.value)}
+                    className="h-8"
+                  />
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={resetForm}
+                      disabled={loading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={handleCreateTopic}
+                      disabled={loading || !title.trim()}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <Popover>
-                <PopoverTrigger asChild>
-                  {item.assigned_to_profile ? (
-                    <PersonalityHoverCard
-                      name={item.assigned_to_profile.full_name}
-                      red={item.assigned_to_profile.red_percentage}
-                      blue={item.assigned_to_profile.blue_percentage}
-                      green={item.assigned_to_profile.green_percentage}
-                      yellow={item.assigned_to_profile.yellow_percentage}
-                    >
-                      <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                          <AvatarFallback>
-                            {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm text-muted-foreground">
-                          {item.assigned_to_profile.full_name}
-                        </span>
-                      </button>
-                    </PersonalityHoverCard>
-                  ) : (
-                    <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                      <UserCircle className="h-8 w-8 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Unassigned</span>
-                    </button>
-                  )}
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-2" align="end">
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => handleChangeAssignment(item.id, null)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
-                    >
-                      <UserCircle className="h-4 w-4" />
-                      <span>Unassigned</span>
-                    </button>
-                    {members.map((member) => (
-                      <PersonalityHoverCard
-                        key={member.user_id}
-                        name={member.profiles?.full_name || "Unknown"}
-                        red={member.profiles?.red_percentage}
-                        blue={member.profiles?.blue_percentage}
-                        green={member.profiles?.green_percentage}
-                        yellow={member.profiles?.yellow_percentage}
-                      >
-                        <button
-                          onClick={() => handleChangeAssignment(item.id, member.user_id)}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-left text-sm"
-                        >
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={member.profiles?.avatar_url} />
-                            <AvatarFallback className="text-xs">
-                              {member.profiles?.full_name?.charAt(0) || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{member.profiles?.full_name || "Unknown"}</span>
-                        </button>
-                      </PersonalityHoverCard>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {item.time_minutes && (
-                <span className="text-sm text-muted-foreground">
-                  {item.time_minutes} min
-                </span>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSelectedItem({ id: item.id, title: item.title })}
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(item.id)}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      ))}
           </div>
         ))}
 
-        {/* Inline topic creation row */}
-        {isCreating ? (
-          <div className="p-4 rounded-lg border-2 border-primary bg-card space-y-3">
-            <div className="space-y-3">
-              <Input
-                placeholder="Topic title *"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                autoFocus
-              />
-              <Textarea
-                placeholder="Description (optional)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-              />
-              <Textarea
-                placeholder="Desired outcome (optional)"
-                value={outcome}
-                onChange={(e) => setOutcome(e.target.value)}
-                rows={2}
-              />
-              <div className="flex gap-2">
-                <Select value={assignedTo} onValueChange={setAssignedTo}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Assign to..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {members.map((member) => (
-                      <SelectItem key={member.user_id} value={member.user_id}>
-                        {member.profiles?.full_name || "Unknown"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  placeholder="Minutes"
-                  value={timeMinutes}
-                  onChange={(e) => setTimeMinutes(e.target.value)}
-                  className="w-24"
-                  min="1"
-                  max="60"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetForm}
-                disabled={loading}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleCreateTopic}
-                disabled={loading || !title.trim()}
-              >
-                <Check className="h-4 w-4 mr-1" />
-                {loading ? "Adding..." : "Add Topic"}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={startCreating}
-            className="w-full p-4 rounded-lg border-2 border-dashed border-muted hover:border-primary hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add new topic
-          </button>
-        )}
-
         {items.length === 0 && !isCreating && (
-          <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">No topics yet. Click above to add one.</p>
+          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            <p className="text-sm">No topics yet. Click "Add Topic" to create one.</p>
           </div>
         )}
       </div>
