@@ -23,6 +23,7 @@ const TeamInvite = () => {
   const [emailInput, setEmailInput] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [updatingName, setUpdatingName] = useState(false);
 
   useEffect(() => {
     fetchTeam();
@@ -56,6 +57,34 @@ const TeamInvite = () => {
       navigate("/dashboard");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTeamNameChange = async (newName: string) => {
+    if (!newName.trim() || newName === teamName) return;
+    
+    setUpdatingName(true);
+    try {
+      const { error } = await supabase
+        .from("teams")
+        .update({ name: newName })
+        .eq("id", teamId);
+
+      if (error) throw error;
+
+      setTeamName(newName);
+      toast({
+        title: "Team name updated",
+        description: "Team name has been updated successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingName(false);
     }
   };
 
@@ -124,7 +153,8 @@ const TeamInvite = () => {
         description: `Invitation emails sent to ${emails.length} team member${emails.length > 1 ? 's' : ''}`,
       });
       
-      navigate(`/team/${teamId}`);
+      setEmailInput("");
+      setEmails([]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -169,24 +199,26 @@ const TeamInvite = () => {
             <Users className="w-8 h-8 text-primary" />
           </div>
           <h1 className="text-3xl font-bold mb-2">Set Up Your Team</h1>
-          <p className="text-muted-foreground">{teamName}</p>
         </div>
 
         <Card className="mb-4">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
-              <CardTitle>Meeting Frequency</CardTitle>
-            </div>
-            <CardDescription>
-              Choose how often your team will meet
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="frequency">Frequency</Label>
+              <Label htmlFor="teamName">Team Name</Label>
+              <Input
+                id="teamName"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                onBlur={(e) => handleTeamNameChange(e.target.value)}
+                disabled={updatingName}
+                placeholder="Enter team name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="frequency" className="text-sm">Meeting Frequency</Label>
               <Select value={frequency} onValueChange={handleFrequencyChange}>
-                <SelectTrigger id="frequency">
+                <SelectTrigger id="frequency" className="h-9">
                   <SelectValue placeholder="Select frequency" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
@@ -200,9 +232,9 @@ const TeamInvite = () => {
           </CardContent>
         </Card>
 
-        <Card className="mb-4">
+        <Card>
           <CardHeader>
-            <CardTitle>Add Team Members</CardTitle>
+            <CardTitle>Team Members</CardTitle>
             <CardDescription>
               Enter email addresses separated by commas, semicolons, or new lines
             </CardDescription>
@@ -232,54 +264,43 @@ const TeamInvite = () => {
               </p>
             </div>
 
-            <div className="flex gap-2">
-              <Button 
-                onClick={handleSendInvites} 
-                disabled={sending || emails.length === 0}
-                className="flex-1"
-              >
-                {sending ? "Sending..." : `Send Invite${emails.length !== 1 ? 's' : ''}`}
-              </Button>
-              <Button 
-                onClick={handleSkip} 
-                variant="outline"
-                className="flex-1"
-              >
-                Skip / Invite Later
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            <Button 
+              onClick={handleSendInvites} 
+              disabled={sending || emails.length === 0}
+              className="w-full"
+            >
+              {sending ? "Sending..." : `Send Invite${emails.length !== 1 ? 's' : ''}`}
+            </Button>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Or Share Invite Link</CardTitle>
-            <CardDescription>
-              Copy this link and send it manually to your team members
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <Input 
-                value={inviteLink}
-                readOnly
-                className="font-mono text-sm"
-              />
-              <Button 
-                onClick={handleCopyLink}
-                variant="outline"
-                size="icon"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Or Share Invite Link</Label>
+              <div className="flex gap-2">
+                <Input 
+                  value={inviteLink}
+                  readOnly
+                  className="font-mono text-sm"
+                />
+                <Button 
+                  onClick={handleCopyLink}
+                  variant="outline"
+                  size="icon"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground mt-3">
-              Anyone with this link can join your team
-            </p>
+
+            <Button 
+              onClick={handleSkip} 
+              variant="ghost"
+              className="w-full"
+            >
+              Continue to Meeting
+            </Button>
           </CardContent>
         </Card>
       </main>
