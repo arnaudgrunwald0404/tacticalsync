@@ -329,7 +329,7 @@ const Profile = () => {
               {/* Insight Personality Assessment */}
               <div className="space-y-4 pt-4 border-t">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">Insight Personality Assessment</h3>
+                  <h3 className="text-lg font-semibold mb-1">Insights Discovery Profile</h3>
                   <p className="text-sm text-muted-foreground">
                     Enter whole numbers (0-100) for each personality color.
                   </p>
@@ -337,7 +337,11 @@ const Profile = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="red">Red</Label>
+                    <Label htmlFor="red" className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                        Red
+                      </span>
+                    </Label>
                     <div className="relative">
                       <Input
                         id="red"
@@ -354,7 +358,11 @@ const Profile = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="blue">Blue</Label>
+                    <Label htmlFor="blue" className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        Blue
+                      </span>
+                    </Label>
                     <div className="relative">
                       <Input
                         id="blue"
@@ -371,7 +379,11 @@ const Profile = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="green">Green</Label>
+                    <Label htmlFor="green" className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                        Green
+                      </span>
+                    </Label>
                     <div className="relative">
                       <Input
                         id="green"
@@ -388,7 +400,11 @@ const Profile = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="yellow">Yellow</Label>
+                    <Label htmlFor="yellow" className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                        Yellow
+                      </span>
+                    </Label>
                     <div className="relative">
                       <Input
                         id="yellow"
@@ -404,6 +420,51 @@ const Profile = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Pie Chart Visualization */}
+                {(Number(redPercentage) + Number(bluePercentage) + Number(greenPercentage) + Number(yellowPercentage)) > 0 && (
+                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="text-sm font-medium mb-4 text-center">Your Profile Visualization</h4>
+                    <div className="flex justify-center">
+                      <div className="w-48 h-48 rounded-full overflow-hidden" style={{
+                        background: `conic-gradient(
+                          from 0deg,
+                          #ef4444 0deg ${(Number(redPercentage) || 0) * 3.6}deg,
+                          #3b82f6 ${(Number(redPercentage) || 0) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0)) * 3.6}deg,
+                          #22c55e ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0)) * 3.6}deg ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg,
+                          #eab308 ${((Number(redPercentage) || 0) + (Number(bluePercentage) || 0) + (Number(greenPercentage) || 0)) * 3.6}deg 360deg
+                        )`
+                      }}>
+                      </div>
+                    </div>
+                    <div className="flex justify-center gap-4 mt-4 flex-wrap">
+                      {Number(redPercentage) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                          <span className="text-xs">{redPercentage}%</span>
+                        </div>
+                      )}
+                      {Number(bluePercentage) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                          <span className="text-xs">{bluePercentage}%</span>
+                        </div>
+                      )}
+                      {Number(greenPercentage) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="text-xs">{greenPercentage}%</span>
+                        </div>
+                      )}
+                      {Number(yellowPercentage) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                          <span className="text-xs">{yellowPercentage}%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Button type="submit" disabled={saving} className="w-full">
