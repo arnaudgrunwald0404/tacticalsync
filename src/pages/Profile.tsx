@@ -24,6 +24,7 @@ const Profile = () => {
   const [bluePercentage, setBluePercentage] = useState("");
   const [greenPercentage, setGreenPercentage] = useState("");
   const [yellowPercentage, setYellowPercentage] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -137,6 +138,87 @@ const Profile = () => {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          variant: "destructive",
+          title: "File too large",
+          description: "Avatar image must be less than 5MB",
+        });
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          variant: "destructive",
+          title: "Invalid file type",
+          description: "Please upload an image file",
+        });
+        return;
+      }
+
+      setUploading(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Upload to storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/avatar.${fileExt}`;
+      
+      // Delete old avatar if exists
+      const { data: existingFiles } = await supabase.storage
+        .from('avatars')
+        .list(user.id);
+      
+      if (existingFiles && existingFiles.length > 0) {
+        await supabase.storage
+          .from('avatars')
+          .remove(existingFiles.map(f => `${user.id}/${f.name}`));
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: data.publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setProfile({ ...profile, avatar_url: data.publicUrl });
+
+      toast({
+        title: "Avatar updated!",
+        description: "Your profile picture has been changed successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message,
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -175,22 +257,22 @@ const Profile = () => {
                     </AvatarFallback>
                   </Avatar>
                   <label className="absolute bottom-0 right-0 cursor-pointer">
-                    <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90">
+                    <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors">
                       <Upload className="h-4 w-4 text-primary-foreground" />
                     </div>
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
-                        // TODO: Implement avatar upload
-                        toast({
-                          title: "Avatar upload",
-                          description: "Avatar upload coming soon",
-                        });
-                      }}
+                      onChange={handleAvatarUpload}
+                      disabled={uploading}
                     />
                   </label>
+                  {uploading && (
+                    <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
+                      <div className="text-sm">Uploading...</div>
+                    </div>
+                  )}
                 </div>
               </div>
 
