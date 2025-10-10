@@ -223,6 +223,7 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"] | null
           id: string
           invite_code: string
           name: string
@@ -231,6 +232,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
           invite_code?: string
           name: string
@@ -239,6 +241,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
           invite_code?: string
           name?: string
@@ -295,6 +298,7 @@ export type Database = {
     }
     Enums: {
       item_type: "agenda" | "topic"
+      meeting_frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
       member_role: "admin" | "member"
     }
     CompositeTypes: {
@@ -424,6 +428,7 @@ export const Constants = {
   public: {
     Enums: {
       item_type: ["agenda", "topic"],
+      meeting_frequency: ["daily", "weekly", "bi-weekly", "monthly"],
       member_role: ["admin", "member"],
     },
   },

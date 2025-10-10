@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, Copy, Check } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Copy, Check, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -18,6 +19,7 @@ const TeamInvite = () => {
   const [sending, setSending] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [frequency, setFrequency] = useState<string>("weekly");
   const [emailInput, setEmailInput] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -44,6 +46,7 @@ const TeamInvite = () => {
 
       setTeamName(team.name);
       setInviteCode(team.invite_code);
+      setFrequency(team.frequency || "weekly");
     } catch (error: any) {
       toast({
         title: "Error",
@@ -53,6 +56,30 @@ const TeamInvite = () => {
       navigate("/dashboard");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFrequencyChange = async (value: "daily" | "weekly" | "bi-weekly" | "monthly") => {
+    setFrequency(value);
+    
+    try {
+      const { error } = await supabase
+        .from("teams")
+        .update({ frequency: value })
+        .eq("id", teamId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Frequency updated",
+        description: `Meeting frequency set to ${value}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -141,9 +168,37 @@ const TeamInvite = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
             <Users className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Invite Your Team Members</h1>
-          <p className="text-muted-foreground">to {teamName}</p>
+          <h1 className="text-3xl font-bold mb-2">Set Up Your Team</h1>
+          <p className="text-muted-foreground">{teamName}</p>
         </div>
+
+        <Card className="mb-4">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              <CardTitle>Meeting Frequency</CardTitle>
+            </div>
+            <CardDescription>
+              Choose how often your team will meet
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="frequency">Frequency</Label>
+              <Select value={frequency} onValueChange={handleFrequencyChange}>
+                <SelectTrigger id="frequency">
+                  <SelectValue placeholder="Select frequency" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="bi-weekly">Bi-weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="mb-4">
           <CardHeader>
