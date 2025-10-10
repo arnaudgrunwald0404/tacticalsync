@@ -95,6 +95,16 @@ const MeetingAgenda = ({ items, meetingId, teamId, onUpdate }: MeetingAgendaProp
   const handleUpdateTime = async (itemId: string, minutes: string) => {
     const timeValue = minutes ? parseInt(minutes) : null;
     
+    // Validate that time is a positive whole number
+    if (timeValue !== null && (timeValue < 0 || !Number.isInteger(timeValue))) {
+      toast({
+        title: "Invalid time",
+        description: "Time must be a positive whole number",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const { error } = await supabase
       .from("meeting_items")
       .update({ time_minutes: timeValue })
@@ -184,6 +194,7 @@ const MeetingAgenda = ({ items, meetingId, teamId, onUpdate }: MeetingAgendaProp
                   onBlur={(e) => handleUpdateTime(item.id, e.target.value)}
                   className="h-8 text-sm w-20"
                   min="0"
+                  step="1"
                 />
               </TableCell>
               <TableCell className="py-2">
