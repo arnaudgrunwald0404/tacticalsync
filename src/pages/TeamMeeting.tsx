@@ -7,6 +7,7 @@ import { ArrowLeft, Settings, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda from "@/components/meeting/MeetingAgenda";
 import MeetingTopics from "@/components/meeting/MeetingTopics";
+import { format, getWeek, addDays } from "date-fns";
 
 const STATIC_AGENDA = [
   "Opening comments",
@@ -153,6 +154,18 @@ const TeamMeeting = () => {
     });
   };
 
+  const getMeetingTitle = () => {
+    if (!meeting?.week_start_date) return `${team?.name} Weekly Tactical`;
+    
+    const monday = new Date(meeting.week_start_date);
+    const friday = addDays(monday, 4);
+    const weekNumber = getWeek(monday);
+    
+    const dateRange = `${format(monday, 'M/d')} - ${format(friday, 'M/d')}`;
+    
+    return `${team?.name} Weekly Tactical - Week ${weekNumber} (${dateRange})`;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -171,7 +184,7 @@ const TeamMeeting = () => {
               Back
             </Button>
             <h1 className="text-2xl font-bold">
-              {team?.name} Weekly Tactical
+              {getMeetingTitle()}
             </h1>
           </div>
           <div className="flex items-center gap-2">
