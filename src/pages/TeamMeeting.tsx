@@ -68,14 +68,43 @@ const TeamMeeting = () => {
         if (createError) throw createError;
         meetingData = newMeeting;
 
-        // Create static agenda items
+        // Fetch previous meeting to copy values
+        const { data: previousMeetings } = await supabase
+          .from("weekly_meetings")
+          .select(`
+            id,
+            meeting_items!inner(
+              title,
+              assigned_to,
+              time_minutes,
+              type,
+              order_index
+            )
+          `)
+          .eq("team_id", teamId)
+          .neq("id", newMeeting.id)
+          .order("week_start_date", { ascending: false })
+          .limit(1);
+
+        const previousItems = previousMeetings?.[0]?.meeting_items || [];
+        const itemsMap = new Map(
+          previousItems
+            .filter((item: any) => item.type === "agenda")
+            .map((item: any) => [item.title, item])
+        );
+
+        // Create static agenda items with values from previous meeting
+        const userId = (await supabase.auth.getUser()).data.user?.id;
         for (let i = 0; i < STATIC_AGENDA.length; i++) {
+          const previousItem = itemsMap.get(STATIC_AGENDA[i]);
           await supabase.from("meeting_items").insert({
             meeting_id: newMeeting.id,
             type: "agenda",
             title: STATIC_AGENDA[i],
             order_index: i,
-            created_by: (await supabase.auth.getUser()).data.user?.id,
+            created_by: userId,
+            assigned_to: previousItem?.assigned_to || null,
+            time_minutes: previousItem?.time_minutes || null,
           });
         }
       } else if (meetingError) {
@@ -168,6 +197,7 @@ const TeamMeeting = () => {
           <MeetingAgenda
             items={agendaItems}
             meetingId={meeting?.id}
+            teamId={teamId}
             onUpdate={() => fetchMeetingItems(meeting?.id)}
           />
         </Card>

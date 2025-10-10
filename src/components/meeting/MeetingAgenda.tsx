@@ -5,15 +5,41 @@ import { useToast } from "@/hooks/use-toast";
 import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useEffect, useState } from "react";
 
 interface MeetingAgendaProps {
   items: any[];
   meetingId: string;
+  teamId: string;
   onUpdate: () => void;
 }
 
-const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
+const MeetingAgenda = ({ items, meetingId, teamId, onUpdate }: MeetingAgendaProps) => {
   const { toast } = useToast();
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [teamId]);
+
+  const fetchTeamMembers = async () => {
+    const { data, error } = await supabase
+      .from("team_members")
+      .select(`
+        id,
+        user_id,
+        profiles:user_id(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+      `)
+      .eq("team_id", teamId);
+
+    if (error) {
+      console.error("Error fetching team members:", error);
+      return;
+    }
+
+    setTeamMembers(data || []);
+  };
 
   const handleToggleComplete = async (itemId: string, currentStatus: boolean) => {
     const { error } = await supabase
@@ -48,6 +74,41 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
     }
   };
 
+  const handleUpdateAssignedTo = async (itemId: string, userId: string | null) => {
+    const { error } = await supabase
+      .from("meeting_items")
+      .update({ assigned_to: userId })
+      .eq("id", itemId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update assignment",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    onUpdate();
+  };
+
+  const handleUpdateTime = async (itemId: string, minutes: string) => {
+    const timeValue = minutes ? parseInt(minutes) : null;
+    
+    const { error } = await supabase
+      .from("meeting_items")
+      .update({ time_minutes: timeValue })
+      .eq("id", itemId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update time",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   return (
     <div className="border rounded-lg">
@@ -74,32 +135,56 @@ const MeetingAgenda = ({ items, meetingId, onUpdate }: MeetingAgendaProps) => {
                 {item.title}
               </TableCell>
               <TableCell className="py-2">
-                {item.assigned_to_profile && (
-                  <PersonalityHoverCard
-                    name={item.assigned_to_profile.full_name}
-                    red={item.assigned_to_profile.red_percentage}
-                    blue={item.assigned_to_profile.blue_percentage}
-                    green={item.assigned_to_profile.green_percentage}
-                    yellow={item.assigned_to_profile.yellow_percentage}
-                  >
-                    <div className="flex items-center gap-2 cursor-pointer">
-                      <Avatar className="h-7 w-7">
-                        <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                        <AvatarFallback className="text-xs">
-                          {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">
-                        {item.assigned_to_profile.full_name}
-                      </span>
-                    </div>
-                  </PersonalityHoverCard>
-                )}
+                <Select
+                  value={item.assigned_to || "none"}
+                  onValueChange={(value) => handleUpdateAssignedTo(item.id, value === "none" ? null : value)}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Assign to...">
+                      {item.assigned_to_profile ? (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {item.assigned_to_profile.full_name?.charAt(0) || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">
+                            {item.assigned_to_profile.full_name}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Assign to...</span>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {teamMembers.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={member.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {member.profiles?.full_name?.charAt(0) || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{member.profiles?.full_name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </TableCell>
               <TableCell className="py-2">
-                <span className="text-sm">
-                  {item.time_minutes ? `${item.time_minutes} min` : "-"}
-                </span>
+                <Input
+                  type="number"
+                  placeholder="Min"
+                  defaultValue={item.time_minutes || ""}
+                  onBlur={(e) => handleUpdateTime(item.id, e.target.value)}
+                  className="h-8 text-sm w-20"
+                  min="0"
+                />
               </TableCell>
               <TableCell className="py-2">
                 <Input
