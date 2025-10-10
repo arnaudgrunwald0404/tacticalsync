@@ -233,21 +233,18 @@ const TeamInvite = () => {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Team Members</CardTitle>
-            <CardDescription>
-              Enter email addresses separated by commas, semicolons, or new lines
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="emails">Email Addresses</Label>
+              <p className="font-bold">Team Members</p>
+              <p className="text-sm text-muted-foreground">
+                Enter email addresses separated by commas or new lines
+              </p>
               <Textarea
                 id="emails"
                 placeholder="john@example.com, jane@example.com&#10;or paste multiple emails..."
                 value={emailInput}
                 onChange={(e) => handleEmailInputChange(e.target.value)}
-                rows={5}
+                rows={3}
                 className="resize-none"
               />
               {emails.length > 0 && (
@@ -295,8 +292,7 @@ const TeamInvite = () => {
             </div>
 
             <Button 
-              onClick={handleSkip} 
-              variant="ghost"
+              onClick={handleSkip}
               className="w-full"
             >
               Continue to Meeting
