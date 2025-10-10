@@ -15,14 +15,15 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [email, setEmail] = useState("");
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birthday, setBirthday] = useState("");
-  const [redPercentage, setRedPercentage] = useState(0);
-  const [bluePercentage, setBluePercentage] = useState(0);
-  const [greenPercentage, setGreenPercentage] = useState(0);
-  const [yellowPercentage, setYellowPercentage] = useState(0);
+  const [redPercentage, setRedPercentage] = useState("");
+  const [bluePercentage, setBluePercentage] = useState("");
+  const [greenPercentage, setGreenPercentage] = useState("");
+  const [yellowPercentage, setYellowPercentage] = useState("");
 
   useEffect(() => {
     fetchProfile();
@@ -45,12 +46,13 @@ const Profile = () => {
       if (error) throw error;
 
       setProfile(data);
+      setEmail(data.email || user.email || "");
       setFirstName(data.first_name || "");
       setLastName(data.last_name || "");
-      setRedPercentage(data.red_percentage || 0);
-      setBluePercentage(data.blue_percentage || 0);
-      setGreenPercentage(data.green_percentage || 0);
-      setYellowPercentage(data.yellow_percentage || 0);
+      setRedPercentage(data.red_percentage ? String(data.red_percentage) : "");
+      setBluePercentage(data.blue_percentage ? String(data.blue_percentage) : "");
+      setGreenPercentage(data.green_percentage ? String(data.green_percentage) : "");
+      setYellowPercentage(data.yellow_percentage ? String(data.yellow_percentage) : "");
       // Format birthday for input (without year if stored)
       if (data.birthday) {
         const date = new Date(data.birthday);
@@ -78,16 +80,21 @@ const Profile = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Validate personality percentages add up to 100
-      const total = redPercentage + bluePercentage + greenPercentage + yellowPercentage;
-      if (total !== 0 && total !== 100) {
-        toast({
-          variant: "destructive",
-          title: "Invalid Insight Assessment",
-          description: "Personality percentages must add up to 100% (or leave all at 0)",
-        });
-        setSaving(false);
-        return;
+      // Validate personality percentages are whole numbers between 0-100
+      const percentages = [redPercentage, bluePercentage, greenPercentage, yellowPercentage];
+      for (const pct of percentages) {
+        if (pct !== "") {
+          const num = Number(pct);
+          if (isNaN(num) || !Number.isInteger(num) || num < 0 || num > 100) {
+            toast({
+              variant: "destructive",
+              title: "Invalid Percentage",
+              description: "Each percentage must be a whole number between 0 and 100",
+            });
+            setSaving(false);
+            return;
+          }
+        }
       }
 
       // Convert MM-DD to a date (using a fixed year for storage)
@@ -104,10 +111,10 @@ const Profile = () => {
           first_name: firstName,
           last_name: lastName,
           birthday: birthdayDate,
-          red_percentage: redPercentage,
-          blue_percentage: bluePercentage,
-          green_percentage: greenPercentage,
-          yellow_percentage: yellowPercentage,
+          red_percentage: redPercentage ? Number(redPercentage) : 0,
+          blue_percentage: bluePercentage ? Number(bluePercentage) : 0,
+          green_percentage: greenPercentage ? Number(greenPercentage) : 0,
+          yellow_percentage: yellowPercentage ? Number(yellowPercentage) : 0,
         })
         .eq("id", user.id);
 
@@ -187,6 +194,17 @@ const Profile = () => {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  disabled
+                  className="bg-muted cursor-not-allowed"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name *</Label>
@@ -231,63 +249,78 @@ const Profile = () => {
                 <div>
                   <h3 className="text-lg font-semibold mb-1">Insight Personality Assessment</h3>
                   <p className="text-sm text-muted-foreground">
-                    Enter your personality percentages. Total must equal 100%.
+                    Enter whole numbers (0-100) for each personality color.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="red">Red %</Label>
-                    <Input
-                      id="red"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={redPercentage}
-                      onChange={(e) => setRedPercentage(parseInt(e.target.value) || 0)}
-                    />
+                    <Label htmlFor="red">Red</Label>
+                    <div className="relative">
+                      <Input
+                        id="red"
+                        type="text"
+                        placeholder="0"
+                        value={redPercentage}
+                        onChange={(e) => setRedPercentage(e.target.value)}
+                        className="pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        %
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="blue">Blue %</Label>
-                    <Input
-                      id="blue"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={bluePercentage}
-                      onChange={(e) => setBluePercentage(parseInt(e.target.value) || 0)}
-                    />
+                    <Label htmlFor="blue">Blue</Label>
+                    <div className="relative">
+                      <Input
+                        id="blue"
+                        type="text"
+                        placeholder="0"
+                        value={bluePercentage}
+                        onChange={(e) => setBluePercentage(e.target.value)}
+                        className="pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        %
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="green">Green %</Label>
-                    <Input
-                      id="green"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={greenPercentage}
-                      onChange={(e) => setGreenPercentage(parseInt(e.target.value) || 0)}
-                    />
+                    <Label htmlFor="green">Green</Label>
+                    <div className="relative">
+                      <Input
+                        id="green"
+                        type="text"
+                        placeholder="0"
+                        value={greenPercentage}
+                        onChange={(e) => setGreenPercentage(e.target.value)}
+                        className="pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        %
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="yellow">Yellow %</Label>
-                    <Input
-                      id="yellow"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={yellowPercentage}
-                      onChange={(e) => setYellowPercentage(parseInt(e.target.value) || 0)}
-                    />
+                    <Label htmlFor="yellow">Yellow</Label>
+                    <div className="relative">
+                      <Input
+                        id="yellow"
+                        type="text"
+                        placeholder="0"
+                        value={yellowPercentage}
+                        onChange={(e) => setYellowPercentage(e.target.value)}
+                        className="pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        %
+                      </span>
+                    </div>
                   </div>
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  Total: {redPercentage + bluePercentage + greenPercentage + yellowPercentage}%
-                  {(redPercentage + bluePercentage + greenPercentage + yellowPercentage) === 100 && " ✓"}
                 </div>
               </div>
 
