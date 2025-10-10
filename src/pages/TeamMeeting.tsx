@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Settings, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda from "@/components/meeting/MeetingAgenda";
@@ -25,6 +26,7 @@ const TeamMeeting = () => {
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState<any>(null);
   const [meeting, setMeeting] = useState<any>(null);
+  const [allMeetings, setAllMeetings] = useState<any[]>([]);
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
   const [topicItems, setTopicItems] = useState<any[]>([]);
 
@@ -113,6 +115,7 @@ const TeamMeeting = () => {
       }
 
       setMeeting(meetingData);
+      await fetchAllMeetings(teamId);
       await fetchMeetingItems(meetingData.id);
     } catch (error: any) {
       toast({
@@ -123,6 +126,21 @@ const TeamMeeting = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchAllMeetings = async (teamId: string) => {
+    const { data, error } = await supabase
+      .from("weekly_meetings")
+      .select("*")
+      .eq("team_id", teamId)
+      .order("week_start_date", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching meetings:", error);
+      return;
+    }
+
+    setAllMeetings(data || []);
   };
 
   const fetchMeetingItems = async (meetingId: string) => {
@@ -154,16 +172,49 @@ const TeamMeeting = () => {
     });
   };
 
-  const getMeetingTitle = () => {
-    if (!meeting?.week_start_date) return `${team?.name} Weekly Tactical`;
+  const getFrequencyLabel = () => {
+    const freq = team?.frequency || "weekly";
+    return freq.charAt(0).toUpperCase() + freq.slice(1);
+  };
+
+  const getMeetingPeriodLabel = (weekStartDate: string) => {
+    const monday = new Date(weekStartDate);
+    const frequency = team?.frequency || "weekly";
     
-    const monday = new Date(meeting.week_start_date);
-    const friday = addDays(monday, 4);
+    let endDate: Date;
+    let periodType: string;
+    
+    switch (frequency) {
+      case "daily":
+        endDate = monday;
+        periodType = "Day";
+        break;
+      case "bi-weekly":
+        endDate = addDays(monday, 11); // 2 weeks - 1 day
+        periodType = "Weeks";
+        break;
+      case "monthly":
+        endDate = addDays(monday, 27); // ~4 weeks
+        periodType = "Month";
+        break;
+      default: // weekly
+        endDate = addDays(monday, 4);
+        periodType = "Week";
+        break;
+    }
+    
     const weekNumber = getWeek(monday);
+    const dateRange = `${format(monday, 'M/d')} - ${format(endDate, 'M/d')}`;
     
-    const dateRange = `${format(monday, 'M/d')} - ${format(friday, 'M/d')}`;
-    
-    return `${team?.name} Weekly Tactical - Week ${weekNumber} (${dateRange})`;
+    return `${periodType} ${weekNumber} (${dateRange})`;
+  };
+
+  const handleMeetingChange = async (meetingId: string) => {
+    const selectedMeeting = allMeetings.find(m => m.id === meetingId);
+    if (selectedMeeting) {
+      setMeeting(selectedMeeting);
+      await fetchMeetingItems(selectedMeeting.id);
+    }
   };
 
   if (loading) {
@@ -183,9 +234,27 @@ const TeamMeeting = () => {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            <h1 className="text-2xl font-bold">
-              {getMeetingTitle()}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">
+                {team?.name} {getFrequencyLabel()} Tactical
+              </h1>
+              {meeting && allMeetings.length > 0 && (
+                <Select value={meeting.id} onValueChange={handleMeetingChange}>
+                  <SelectTrigger className="w-[240px] h-9">
+                    <SelectValue>
+                      {getMeetingPeriodLabel(meeting.week_start_date)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    {allMeetings.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {getMeetingPeriodLabel(m.week_start_date)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={copyInviteLink}>
