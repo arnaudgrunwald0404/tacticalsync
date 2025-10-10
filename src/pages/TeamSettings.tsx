@@ -130,10 +130,18 @@ const TeamSettings = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Team Members</CardTitle>
-            <CardDescription>
-              Manage your team members and their roles
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Team Members</CardTitle>
+                <CardDescription>
+                  Manage your team members and their roles
+                </CardDescription>
+              </div>
+              <Button onClick={() => navigate(`/team/${teamId}/invite`)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Invite Team Members
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {members.map((member) => (
