@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import AvatarSelector from "@/components/AvatarSelector";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -25,6 +27,7 @@ const Profile = () => {
   const [greenPercentage, setGreenPercentage] = useState("");
   const [yellowPercentage, setYellowPercentage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [avatarName, setAvatarName] = useState("");
 
   useEffect(() => {
     fetchProfile();
@@ -54,6 +57,7 @@ const Profile = () => {
       setBluePercentage(data.blue_percentage ? String(data.blue_percentage) : "");
       setGreenPercentage(data.green_percentage ? String(data.green_percentage) : "");
       setYellowPercentage(data.yellow_percentage ? String(data.yellow_percentage) : "");
+      setAvatarName(data.avatar_name || `${data.first_name || ""} ${data.last_name || ""}`.trim() || "User");
       // Format birthday for input (without year if stored)
       if (data.birthday) {
         const date = new Date(data.birthday);
@@ -138,9 +142,8 @@ const Profile = () => {
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUploadFromFile = async (file: File) => {
     try {
-      const file = e.target.files?.[0];
       if (!file) return;
 
       // Validate file size (max 5MB)
@@ -219,6 +222,31 @@ const Profile = () => {
     }
   };
 
+  const handleAvatarNameChange = async (newAvatarName: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user found");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_name: newAvatarName })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Avatar updated!",
+        description: "Your avatar has been changed successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
+        description: error.message,
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -238,7 +266,7 @@ const Profile = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-4 py-8 max-w-6xl">
         <Card>
           <CardHeader>
             <CardTitle>Your Profile</CardTitle>
@@ -247,35 +275,8 @@ const Profile = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSave} className="space-y-6">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <Avatar className="h-24 w-24">
-                    <AvatarImage src={profile?.avatar_url} />
-                    <AvatarFallback className="text-2xl">
-                      {firstName?.charAt(0) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <label className="absolute bottom-0 right-0 cursor-pointer">
-                    <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors">
-                      <Upload className="h-4 w-4 text-primary-foreground" />
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleAvatarUpload}
-                      disabled={uploading}
-                    />
-                  </label>
-                  {uploading && (
-                    <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
-                      <div className="text-sm">Uploading...</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+            <form onSubmit={handleSave} className="space-y-8">
+              {/* Email and Name Fields */}
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
                 <Input
@@ -308,6 +309,24 @@ const Profile = () => {
                     onChange={(e) => setLastName(e.target.value)}
                   />
                 </div>
+              </div>
+
+              {/* Profile Picture Section */}
+              <div className="flex justify-center">
+                <AvatarSelector
+                  currentName={avatarName}
+                  userFirstName={firstName || "User"}
+                  userLastName={lastName || ""}
+                  avatarUrl={profile?.avatar_url}
+                  uploading={uploading}
+                  onAvatarChange={(newName) => {
+                    setAvatarName(newName);
+                    // Save to database
+                    handleAvatarNameChange(newName);
+                  }}
+                  onAvatarUpload={handleAvatarUploadFromFile}
+                  className="max-w-2xl"
+                />
               </div>
 
               <div className="space-y-2">

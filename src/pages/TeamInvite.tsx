@@ -10,6 +10,7 @@ import { Users, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import GridBackground from "@/components/ui/grid-background";
 
 const TeamInvite = () => {
   const navigate = useNavigate();
@@ -306,7 +307,7 @@ const TeamInvite = () => {
   const inviteLink = `${window.location.origin}/join/${inviteCode}`;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
@@ -476,7 +477,7 @@ const TeamInvite = () => {
           {fromDashboard ? "Save and Go Back to Dashboard" : "Continue to Meeting Setup"}
         </Button>
       </main>
-    </div>
+    </GridBackground>
   );
 };
 

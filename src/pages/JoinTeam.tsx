@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import GridBackground from "@/components/ui/grid-background";
 
 const JoinTeam = () => {
   const { inviteCode } = useParams();
@@ -91,12 +92,12 @@ const JoinTeam = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
         <div className="text-center">
           <div className="text-lg text-muted-foreground mb-2">Joining team...</div>
           <div className="text-sm text-muted-foreground">Please wait</div>
         </div>
-      </div>
+      </GridBackground>
     );
   }
 

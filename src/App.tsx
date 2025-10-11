@@ -15,6 +15,7 @@ import MeetingSettings from "./pages/MeetingSettings";
 import JoinTeam from "./pages/JoinTeam";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
+import BrandingShowcase from "./pages/BrandingShowcase";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/team/:teamId/meeting/:meetingId" element={<TeamMeeting />} />
           <Route path="/team/:teamId/meeting/:meetingId/settings" element={<MeetingSettings />} />
           <Route path="/team/:teamId/settings" element={<TeamSettings />} />
+          <Route path="/branding" element={<BrandingShowcase />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

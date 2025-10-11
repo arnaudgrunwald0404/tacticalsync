@@ -41,6 +41,9 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
   const [adoptingTemplate, setAdoptingTemplate] = useState(false);
   const [isAddingManually, setIsAddingManually] = useState(false);
   const [manualItems, setManualItems] = useState<any[]>([]);
+  const [meetingStarted, setMeetingStarted] = useState(false);
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
     fetchTeamMembers();

@@ -1,31 +1,41 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
-import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
+import LayoutTextFlip from "@/components/ui/layout-text-flip";
+import GridBackground from "@/components/ui/grid-background";
+import Logo from "@/components/Logo";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [currentWord, setCurrentWord] = useState(0);
-  const words = ["Weekly", "Monthly", "Quarterly", "Daily"];
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentWord((prev) => (prev + 1) % words.length);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10">
+    <GridBackground className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10">
       <header className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            Tactical Mastery
-          </h1>
-          <Button onClick={() => navigate("/auth")}>
-            Get Started
-          </Button>
+          <div className="flex items-center">
+            <Logo variant="minimal" size="lg" />
+          </div>
+          <div className="flex gap-2">
+          
+            <Button 
+              size="lg"
+              className="text-lg h-14 w-48px-8"
+              onClick={() => navigate("/auth")}
+            >
+              Start Free
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+
+            <Button
+              size="lg"
+              variant="outline"
+              className="text-lg h-14 w-48 px-8 border-2 border-gray-300"
+              onClick={() => navigate("/auth")}
+            >
+              Sign In
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -33,15 +43,15 @@ const Index = () => {
         <div className="max-w-4xl mx-auto text-center space-y-8">
           <div className="space-y-4">
             <h2 className="text-5xl font-bold tracking-tight">
-              Transform Your Team's
-              <span className="block bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                <span 
-                  key={currentWord}
-                  className="inline-block animate-in fade-in-0 duration-500"
-                >
-                  {words[currentWord]}
-                </span> Meetings
-              </span>
+              Transform Your Team's{" "}
+              <div className="mt-4">
+                <LayoutTextFlip
+                  text=""
+                  words={["Weekly", "Monthly", "Quarterly", "Daily"]}
+                  duration={3000}
+                />
+              </div>{" "}
+              Meetings
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               Streamline your tactical meetings with collaborative agenda tracking,
@@ -49,24 +59,6 @@ const Index = () => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              size="lg"
-              className="text-lg h-14 px-8"
-              onClick={() => navigate("/auth")}
-            >
-              Start Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="text-lg h-14 px-8"
-              onClick={() => navigate("/auth")}
-            >
-              Sign In
-            </Button>
-          </div>
 
           <div className="grid md:grid-cols-3 gap-8 pt-16">
             <div className="p-6 rounded-lg bg-card border border-border/50 hover:shadow-large transition-all">
@@ -83,7 +75,7 @@ const Index = () => {
               <div className="rounded-full bg-primary/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <Calendar className="h-7 w-7 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Weekly Tracking</h3>
+              <h3 className="text-lg font-semibold mb-2">Consistent Tracking</h3>
               <p className="text-muted-foreground">
                 Automatically organize meetings by week and track progress over time
               </p>
@@ -107,7 +99,7 @@ const Index = () => {
           <p>&copy; 2025 Wikli Inc. Built for productive teams.</p>
         </div>
       </footer>
-    </div>
+    </GridBackground>
   );
 };
 

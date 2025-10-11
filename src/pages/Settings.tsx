@@ -7,20 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Edit2, Trash2, GripVertical } from "lucide-react";
+import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import GridBackground from "@/components/ui/grid-background";
+import SettingsNavbar from "@/components/ui/settings-navbar";
 
 interface TemplateItem {
   id: string;
   title: string;
   duration_minutes: number;
   order_index: number;
+  isEditing?: boolean;
+  editTitle?: string;
+  editDuration?: number;
 }
 
 interface Template {
   id: string;
   name: string;
-  description: string | null;
   items?: TemplateItem[];
 }
 
@@ -32,8 +36,8 @@ const Settings = () => {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [templateName, setTemplateName] = useState("");
-  const [templateDescription, setTemplateDescription] = useState("");
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
+  const [activeSection, setActiveSection] = useState("agenda-templates");
   const [newItemTitle, setNewItemTitle] = useState("");
   const [newItemDuration, setNewItemDuration] = useState(5);
   const [saving, setSaving] = useState(false);
@@ -83,7 +87,6 @@ const Settings = () => {
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
     setTemplateName("");
-    setTemplateDescription("");
     setTemplateItems([]);
     setShowTemplateDialog(true);
   };
@@ -91,7 +94,6 @@ const Settings = () => {
   const handleEditTemplate = (template: Template) => {
     setEditingTemplate(template);
     setTemplateName(template.name);
-    setTemplateDescription(template.description || "");
     setTemplateItems(template.items || []);
     setShowTemplateDialog(true);
   };
@@ -145,6 +147,75 @@ const Settings = () => {
     setTemplateItems(reorderedItems);
   };
 
+  const handleEditItem = (itemId: string) => {
+    const updatedItems = templateItems.map(item => 
+      item.id === itemId 
+        ? { 
+            ...item, 
+            isEditing: true, 
+            editTitle: item.title, 
+            editDuration: item.duration_minutes 
+          }
+        : { ...item, isEditing: false }
+    );
+    setTemplateItems(updatedItems);
+  };
+
+  const handleSaveItemEdit = (itemId: string) => {
+    const updatedItems = templateItems.map(item => {
+      if (item.id === itemId && item.isEditing) {
+        const title = item.editTitle?.trim();
+        const duration = item.editDuration;
+        
+        if (!title || !duration || duration < 1) {
+          toast({
+            title: "Invalid input",
+            description: "Please enter a valid title and duration",
+            variant: "destructive",
+          });
+          return item;
+        }
+        
+        return {
+          ...item,
+          title,
+          duration_minutes: duration,
+          isEditing: false,
+          editTitle: undefined,
+          editDuration: undefined,
+        };
+      }
+      return item;
+    });
+    setTemplateItems(updatedItems);
+  };
+
+  const handleCancelItemEdit = (itemId: string) => {
+    const updatedItems = templateItems.map(item => 
+      item.id === itemId 
+        ? { 
+            ...item, 
+            isEditing: false, 
+            editTitle: undefined, 
+            editDuration: undefined 
+          }
+        : item
+    );
+    setTemplateItems(updatedItems);
+  };
+
+  const handleUpdateEditField = (itemId: string, field: 'title' | 'duration', value: string | number) => {
+    const updatedItems = templateItems.map(item => 
+      item.id === itemId 
+        ? { 
+            ...item, 
+            [field === 'title' ? 'editTitle' : 'editDuration']: value 
+          }
+        : item
+    );
+    setTemplateItems(updatedItems);
+  };
+
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
       toast({
@@ -164,6 +235,17 @@ const Settings = () => {
       return;
     }
 
+    // Check if any items are currently being edited
+    const hasEditingItems = templateItems.some(item => item.isEditing);
+    if (hasEditingItems) {
+      toast({
+        title: "Finish editing items",
+        description: "Please finish editing all items before saving the template",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -176,7 +258,6 @@ const Settings = () => {
           .from("agenda_templates")
           .update({
             name: templateName,
-            description: templateDescription || null,
           })
           .eq("id", editingTemplate.id);
 
@@ -215,7 +296,6 @@ const Settings = () => {
           .insert({
             user_id: user.id,
             name: templateName,
-            description: templateDescription || null,
           })
           .select()
           .single();
@@ -296,20 +376,23 @@ const Settings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
+              Home
             </Button>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              Settings
-            </h1>
+
           </div>
         </div>
       </header>
+      
+      <SettingsNavbar 
+        activeSection={activeSection} 
+        onSectionChange={setActiveSection} 
+      />
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-8">
@@ -344,11 +427,6 @@ const Settings = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg">{template.name}</CardTitle>
-                        {template.description && (
-                          <CardDescription className="mt-1">
-                            {template.description}
-                          </CardDescription>
-                        )}
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -419,17 +497,6 @@ const Settings = () => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="templateDescription">Description (Optional)</Label>
-              <Textarea
-                id="templateDescription"
-                value={templateDescription}
-                onChange={(e) => setTemplateDescription(e.target.value)}
-                placeholder="Brief description of this template..."
-                rows={2}
-              />
-            </div>
-
             <div className="border-t pt-4">
               <h4 className="font-semibold mb-3">Agenda Items</h4>
               
@@ -446,7 +513,7 @@ const Settings = () => {
                           size="sm"
                           className="h-4 p-0 hover:bg-transparent"
                           onClick={() => handleMoveItem(index, "up")}
-                          disabled={index === 0}
+                          disabled={index === 0 || item.isEditing}
                         >
                           ▲
                         </Button>
@@ -455,25 +522,94 @@ const Settings = () => {
                           size="sm"
                           className="h-4 p-0 hover:bg-transparent"
                           onClick={() => handleMoveItem(index, "down")}
-                          disabled={index === templateItems.length - 1}
+                          disabled={index === templateItems.length - 1 || item.isEditing}
                         >
                           ▼
                         </Button>
                       </div>
                       <GripVertical className="h-4 w-4 text-muted-foreground" />
-                      <div className="flex-1">
-                        <div className="font-medium">{item.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {item.duration_minutes} minute{item.duration_minutes !== 1 ? 's' : ''}
+                      
+                      {item.isEditing ? (
+                        <div className="flex-1 space-y-2">
+                          <Input
+                            value={item.editTitle || ''}
+                            onChange={(e) => handleUpdateEditField(item.id, 'title', e.target.value)}
+                            placeholder="Item title"
+                            className="text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveItemEdit(item.id);
+                              } else if (e.key === 'Escape') {
+                                handleCancelItemEdit(item.id);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min="1"
+                              max="180"
+                              value={item.editDuration || 5}
+                              onChange={(e) => handleUpdateEditField(item.id, 'duration', parseInt(e.target.value) || 5)}
+                              className="text-sm w-20"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveItemEdit(item.id);
+                                } else if (e.key === 'Escape') {
+                                  handleCancelItemEdit(item.id);
+                                }
+                              }}
+                            />
+                            <span className="text-sm text-muted-foreground">minutes</span>
+                          </div>
                         </div>
+                      ) : (
+                        <div className="flex-1">
+                          <div className="font-medium">{item.title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {item.duration_minutes} minute{item.duration_minutes !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex gap-1">
+                        {item.isEditing ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSaveItemEdit(item.id)}
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCancelItemEdit(item.id)}
+                            >
+                              <X className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditItem(item.id)}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveItem(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </div>
                   ))}
                   <div className="text-sm text-muted-foreground text-right">
@@ -537,7 +673,7 @@ const Settings = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </GridBackground>
   );
 };
 

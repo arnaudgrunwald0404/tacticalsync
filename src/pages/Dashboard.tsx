@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Users, LogOut, User, Edit2, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import GridBackground from "@/components/ui/grid-background";
+import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
+import Logo from "@/components/Logo";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -50,12 +54,26 @@ const Dashboard = () => {
       return;
     }
 
-    // Fetch member counts and meetings for each team
+    // Fetch member counts, team members, and meetings for each team
     const teamsWithData = await Promise.all(
       (data || []).map(async (teamMember) => {
         const { count } = await supabase
           .from("team_members")
           .select("*", { count: "exact", head: true })
+          .eq("team_id", teamMember.teams.id);
+
+        // Fetch team members with their profiles
+        const { data: teamMembers } = await supabase
+          .from("team_members")
+          .select(`
+            *,
+            profiles (
+              id,
+              full_name,
+              avatar_url,
+              avatar_name
+            )
+          `)
           .eq("team_id", teamMember.teams.id);
 
         // Fetch recurring meetings for this team
@@ -68,6 +86,7 @@ const Dashboard = () => {
         return {
           ...teamMember,
           memberCount: count || 0,
+          teamMembers: teamMembers || [],
           meetings: teamMeetings || [],
         };
       })
@@ -105,12 +124,10 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            Tactical Mastery
-          </h1>
+          <Logo variant="minimal" size="lg" />
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => navigate("/settings")}>
               <Settings className="h-4 w-4 mr-2" />
@@ -170,26 +187,38 @@ const Dashboard = () => {
               return (
                 <div key={teamMember.id} className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Users className="h-5 w-5 text-primary" />
-                          <h3 className="text-xl font-bold">
-                            {teamMember.teams.name}
-                          </h3>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
-                          >
-                            <Edit2 className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                          </Button>
-                        </div>
-                        <p className="text-sm text-muted-foreground ml-7">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold">
+                          {teamMember.teams.name}
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
+                        >
+                          <Edit2 className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-muted-foreground">
                           {teamMember.memberCount} member{teamMember.memberCount !== 1 ? 's' : ''} · {teamMember.role === "admin" ? "Admin" : "Member"}
                         </p>
                       </div>
+                      {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
+                        <div className="mt-2">
+                          <AnimatedTooltip 
+                            items={teamMember.teamMembers.map((member: any, index: number) => ({
+                              id: index,
+                              name: member.profiles?.full_name || "Unknown",
+                              designation: member.role === "admin" ? "Admin" : "Member",
+                              image: member.profiles?.avatar_url || null,
+                              avatarName: member.profiles?.avatar_name || member.profiles?.full_name || "Unknown"
+                            }))}
+                          />
+                        </div>
+                      )}
                     </div>
                     {!hasNoMeetings && (
                       <Button 
@@ -247,7 +276,7 @@ const Dashboard = () => {
           </div>
         )}
       </main>
-    </div>
+    </GridBackground>
   );
 };
 

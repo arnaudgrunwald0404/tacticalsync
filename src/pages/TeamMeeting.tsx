@@ -10,6 +10,7 @@ import MeetingAgenda, { MeetingAgendaRef } from "@/components/meeting/MeetingAge
 import MeetingTopics, { MeetingTopicsRef } from "@/components/meeting/MeetingTopics";
 import { format, getWeek, addDays, startOfWeek } from "date-fns";
 import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, getISODateString, getMeetingEndDate } from "../lib/dateUtils";
+import GridBackground from "@/components/ui/grid-background";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -401,7 +402,7 @@ const TeamMeeting = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
               <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
                 <div className="container mx-auto px-4 py-4">
                   <div className="flex items-center justify-between mb-4">
@@ -599,7 +600,7 @@ const TeamMeeting = () => {
           />
         </Card>
       </main>
-    </div>
+    </GridBackground>
   );
 };
 

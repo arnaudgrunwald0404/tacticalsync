@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import GridBackground from "@/components/ui/grid-background";
 
 const CreateTeam = () => {
   const navigate = useNavigate();
@@ -100,7 +101,7 @@ const CreateTeam = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -129,13 +130,11 @@ const CreateTeam = () => {
                   onChange={(e) => setTeamName(e.target.value)}
                   required
                 />
-                <p className="text-sm text-muted-foreground">
-                  Full name of the team
-                </p>
+
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="abbreviatedName">Abbreviated Name (Optional)</Label>
+                <Label htmlFor="abbreviatedName">Short Name (Optional)</Label>
                 <Input
                   id="abbreviatedName"
                   placeholder="e.g., ELT"
@@ -143,9 +142,7 @@ const CreateTeam = () => {
                   onChange={(e) => setAbbreviatedName(e.target.value)}
                   maxLength={10}
                 />
-                <p className="text-sm text-muted-foreground">
-                  Short name for compact displays (10 characters max)
-                </p>
+
               </div>
 
               <Button type="submit" disabled={loading} className="w-full">
@@ -155,7 +152,7 @@ const CreateTeam = () => {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </GridBackground>
   );
 };
 
