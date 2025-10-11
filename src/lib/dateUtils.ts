@@ -1,4 +1,4 @@
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, format, addDays, addWeeks, addMonths, addQuarters, subDays } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, format, addDays, addWeeks, addMonths, addQuarters } from 'date-fns';
 
 /**
  * Get the start of the current week (Monday)
@@ -49,17 +49,18 @@ export const getMeetingEndDate = (frequency: string, startDate: Date): Date => {
     case 'weekly':
       return getFridayEndOfWeek(startDate);
     
-    case 'bi-weekly':
+    case 'bi-weekly': {
       const nextWeekStart = addWeeks(startDate, 1);
       return getFridayEndOfWeek(nextWeekStart);
+    }
     
     case 'monthly':
-      // endOfMonth returns first day of next month, so subtract 1 day to get last day of current month
-      return subDays(endOfMonth(startDate), 1);
+      // endOfMonth returns the last day of the current month
+      return endOfMonth(startDate);
     
     case 'quarterly':
-      // endOfQuarter returns first day of next quarter, so subtract 1 day to get last day of current quarter
-      return subDays(endOfQuarter(startDate), 1);
+      // endOfQuarter returns the last day of the current quarter
+      return endOfQuarter(startDate);
     
     default:
       return getFridayEndOfWeek(startDate);
@@ -123,11 +124,12 @@ export const getMeetingPeriodLabel = (startDate: Date, frequency: string): strin
       periodNumber = format(actualStartDate, 'MMM yyyy');
       break;
     
-    case 'quarterly':
+    case 'quarterly': {
       periodType = 'Quarter';
       const quarter = Math.floor((startDate.getMonth() + 3) / 3);
       periodNumber = `Q${quarter}`;
       break;
+    }
     
     default:
       periodType = 'Week';
