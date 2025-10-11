@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Trash2, Save, UserPlus, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import Logo from "@/components/Logo";
+import GridBackground from "@/components/ui/grid-background";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -184,16 +186,40 @@ const MeetingSettings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Get user's name for the email
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+
       const invitations = emails.map((email) => ({
         team_id: teamId,
         email,
         invited_by: user.id,
         status: "pending",
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       }));
 
       const { error } = await supabase.from("invitations").insert(invitations);
 
       if (error) throw error;
+
+      // Send invitation emails via Edge Function
+      const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
+      
+      const emailPromises = emails.map(email =>
+        supabase.functions.invoke('send-invitation-email', {
+          body: {
+            email,
+            teamName: team.name,
+            inviterName: profile?.full_name || 'A teammate',
+            inviteLink,
+          },
+        })
+      );
+
+      await Promise.all(emailPromises);
 
       toast({
         title: "Invitations sent!",
@@ -261,19 +287,20 @@ const MeetingSettings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <header className="border-b bg-card/50 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
           <Button
             variant="ghost"
-            size="sm"
             onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Meeting
           </Button>
         </div>
+      </header>
+      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
 
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Meeting Settings</h1>
@@ -458,7 +485,7 @@ const MeetingSettings = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </GridBackground>
   );
 };
 

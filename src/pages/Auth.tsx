@@ -117,7 +117,9 @@ const Auth = () => {
           },
         });
         if (error) throw error;
-        toast.success("Account created! You can now sign in.");
+        toast.success("Account created! Please check your email inbox to confirm your email address before signing in.", {
+          duration: 8000,
+        });
         setIsSignUp(false);
         setPassword("");
       } else {
@@ -137,7 +139,7 @@ const Auth = () => {
 
   return (
     <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-4 py-8">
-      <div className="w-full max-w-3xl space-y-6">
+      <div className="space-y-6" style={{ width: '40vw', maxWidth: '800px' }}>
         {/* Logo Section */}
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-2">
@@ -146,8 +148,8 @@ const Auth = () => {
 
         </div>
 
-        <Card className="border-border/50 shadow-large shadow-pink-500/100">
-          <CardHeader className="space-y-4 pb-6">
+        <Card className="border-border/50 shadow-large shadow-pink-500/100" style={{ width: '100%' }}>
+          <CardHeader className="space-y-4 pb-6 px-16">
             {!isForgotPassword ? (
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -174,7 +176,7 @@ const Auth = () => {
             
           </CardHeader>
 
-          <CardContent className="space-y-6 pt-0">
+          <CardContent className="space-y-6 pt-0 px-16">
             {/* Google Sign In */}
             {!isForgotPassword && (
               <>

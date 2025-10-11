@@ -11,6 +11,7 @@ import MeetingTopics, { MeetingTopicsRef } from "@/components/meeting/MeetingTop
 import { format, getWeek, addDays, startOfWeek } from "date-fns";
 import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, getISODateString, getMeetingEndDate } from "../lib/dateUtils";
 import GridBackground from "@/components/ui/grid-background";
+import Logo from "@/components/Logo";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -26,6 +27,9 @@ const TeamMeeting = () => {
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
   const [topicItems, setTopicItems] = useState<any[]>([]);
   const [teamAdmin, setTeamAdmin] = useState<any>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
   const meetingTopicsRef = useRef<MeetingTopicsRef>(null);
   const meetingAgendaRef = useRef<MeetingAgendaRef>(null);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
@@ -108,10 +112,50 @@ const TeamMeeting = () => {
       }
 
       console.log('Final meeting data:', meetingData);
-      setMeeting(meetingData);
+      
+      // Fetch all meetings first
       await fetchAllMeetings(meetingId);
-      await fetchMeetingItems(meetingData.id);
+      
+      // After fetching all meetings, determine which meeting to display
+      const { data: allMeetingsData } = await supabase
+        .from("weekly_meetings")
+        .select("*")
+        .eq("recurring_meeting_id", meetingId)
+        .order("week_start_date", { ascending: false });
+      
+      let selectedMeeting = meetingData;
+      
+      if (allMeetingsData && allMeetingsData.length > 0) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Try to find a meeting that includes today
+        const currentMeeting = allMeetingsData.find(m => {
+          const [year, month, day] = m.week_start_date.split('-').map(Number);
+          const startDate = new Date(year, month - 1, day);
+          startDate.setHours(0, 0, 0, 0);
+          
+          const endDate = getMeetingEndDate(recurringData.frequency, startDate);
+          endDate.setHours(23, 59, 59, 999);
+          
+          return today >= startDate && today <= endDate;
+        });
+        
+        if (currentMeeting) {
+          selectedMeeting = currentMeeting;
+          console.log('Selected current meeting (today is within its period):', currentMeeting);
+        } else {
+          // If no meeting includes today, select the most recent one
+          selectedMeeting = allMeetingsData[0];
+          console.log('Selected most recent meeting:', selectedMeeting);
+        }
+      }
+      
+      setMeeting(selectedMeeting);
+      await fetchMeetingItems(selectedMeeting.id);
       await fetchTeamAdmin(teamId);
+      await fetchCurrentUserRole(teamId);
+      updatePreviousMeetingId(selectedMeeting);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -152,6 +196,28 @@ const TeamMeeting = () => {
     }
   };
 
+  const fetchCurrentUserRole = async (teamId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setCurrentUserId(user.id);
+
+      const { data, error } = await supabase
+        .from("team_members")
+        .select("role")
+        .eq("team_id", teamId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!error && data) {
+        setCurrentUserRole(data.role);
+      }
+    } catch (error: any) {
+      console.error("Error fetching current user role:", error);
+    }
+  };
+
   const fetchAllMeetings = async (recurringMeetingId: string) => {
     const { data, error } = await supabase
       .from("weekly_meetings")
@@ -172,8 +238,8 @@ const TeamMeeting = () => {
       .from("meeting_items")
       .select(`
         *,
-        assigned_to_profile:assigned_to(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-        created_by_profile:created_by(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+        created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
       .eq("meeting_id", meetingId)
       .order("order_index");
@@ -212,6 +278,26 @@ const TeamMeeting = () => {
     if (selectedMeeting) {
       setMeeting(selectedMeeting);
       await fetchMeetingItems(selectedMeeting.id);
+      updatePreviousMeetingId(selectedMeeting);
+    }
+  };
+
+  const updatePreviousMeetingId = (currentMeeting: any) => {
+    if (!allMeetings || allMeetings.length === 0) return;
+    
+    // Sort meetings by date descending
+    const sortedMeetings = [...allMeetings].sort((a, b) => 
+      new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
+    );
+    
+    // Find current meeting index
+    const currentIndex = sortedMeetings.findIndex(m => m.id === currentMeeting.id);
+    
+    // If there's a meeting before this one (next in array since sorted desc)
+    if (currentIndex >= 0 && currentIndex < sortedMeetings.length - 1) {
+      setPreviousMeetingId(sortedMeetings[currentIndex + 1].id);
+    } else {
+      setPreviousMeetingId(null);
     }
   };
 
@@ -406,9 +492,7 @@ const TeamMeeting = () => {
               <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
                 <div className="container mx-auto px-4 py-4">
                   <div className="flex items-center justify-between mb-4">
-                    <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-                      <ArrowLeft className="h-4 w-4" />
-                    </Button>
+                    <Logo variant="minimal" size="lg" />
                     
                     {/* Meeting Title */}
                     <div className="flex-1 text-center">
@@ -440,18 +524,24 @@ const TeamMeeting = () => {
                       )}
                     </div>
                     
-                    <Button
-                      variant="ghost"
-                      onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}/settings`)}
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                    {currentUserRole === "admin" && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}/settings`)}
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                   
                   {/* Meeting Navigation */}
                   <div className="flex items-center justify-center relative">
-                    {/* Previous Button - Left positioned */}
-                    <div className="absolute left-0">
+                    {/* Back to Home & Previous Button - Left positioned */}
+                    <div className="absolute left-0 flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+                        <ArrowLeft className="h-4 w-4 mr-1" />
+                        Home
+                      </Button>
                       {meeting && hasPreviousMeeting() && (
                         <Button 
                           variant="outline" 
@@ -517,12 +607,12 @@ const TeamMeeting = () => {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Agenda</h2>
-            {teamAdmin && (
+            {teamAdmin && currentUserRole === "admin" && (
               <div className="flex items-center gap-2">
                 {isEditingAgenda ? (
                   <>
                     <Button 
-                      variant="outline" 
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         meetingAgendaRef.current?.saveChanges();
@@ -533,8 +623,8 @@ const TeamMeeting = () => {
                       <Save className="h-3 w-3 mr-1" />
                       Save
                     </Button>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         meetingAgendaRef.current?.cancelEditing();
@@ -547,8 +637,8 @@ const TeamMeeting = () => {
                     </Button>
                   </>
                 ) : (
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => {
                       meetingAgendaRef.current?.startEditing();
@@ -573,6 +663,9 @@ const TeamMeeting = () => {
                 fetchMeetingItems(meeting.id);
               }
             }}
+            previousMeetingId={previousMeetingId || undefined}
+            currentUserId={currentUserId || undefined}
+            isAdmin={currentUserRole === "admin"}
           />
         </Card>
 
@@ -583,7 +676,6 @@ const TeamMeeting = () => {
               <Button
                 onClick={() => meetingTopicsRef.current?.startCreating()}
                 size="sm"
-                disabled={isMeetingPeriodEnded()}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 {topicItems.length > 0 ? "Edit Topics" : "Add Topics"}

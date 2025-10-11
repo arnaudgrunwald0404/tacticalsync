@@ -6,11 +6,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, Copy, Check } from "lucide-react";
+import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GridBackground from "@/components/ui/grid-background";
+import Logo from "@/components/Logo";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const TeamInvite = () => {
   const navigate = useNavigate();
@@ -235,26 +247,80 @@ const TeamInvite = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Create invitation records for each email
-      const invitations = emails.map(email => ({
-        team_id: teamId,
-        email: email.toLowerCase(),
-        invited_by: user.id,
-        status: 'pending' as const,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days from now
-      }));
+      // Get user's name for the email
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
 
-      const { error } = await supabase
-        .from("invitations")
-        .insert(invitations);
+      // Separate new emails from already invited ones
+      const alreadyInvited: string[] = [];
+      const newEmails: string[] = [];
+      
+      emails.forEach(email => {
+        if (pendingInvitations.includes(email.toLowerCase())) {
+          alreadyInvited.push(email);
+        } else {
+          newEmails.push(email);
+        }
+      });
 
-      if (error) throw error;
+      // If all emails are already invited, show a message
+      if (newEmails.length === 0 && alreadyInvited.length > 0) {
+        toast({
+          title: "Already invited",
+          description: `${alreadyInvited.join(', ')} ${alreadyInvited.length > 1 ? 'have' : 'has'} already been invited. Use the "Resend" button to send a reminder.`,
+          variant: "destructive",
+        });
+        setSending(false);
+        return;
+      }
 
-      // Here you would implement the email sending logic
-      // For now, we'll just show a success message
+      // Create invitation records only for new emails
+      if (newEmails.length > 0) {
+        const invitations = newEmails.map(email => ({
+          team_id: teamId,
+          email: email.toLowerCase(),
+          invited_by: user.id,
+          status: 'pending' as const,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days from now
+        }));
+
+        const { error } = await supabase
+          .from("invitations")
+          .insert(invitations);
+
+        if (error) throw error;
+
+        // Send invitation emails via Edge Function
+        const inviteLink = `${window.location.origin}/join/${inviteCode}`;
+        
+        const emailPromises = newEmails.map(email =>
+          supabase.functions.invoke('send-invitation-email', {
+            body: {
+              email,
+              teamName,
+              inviterName: profile?.full_name || 'A teammate',
+              inviteLink,
+            },
+          })
+        );
+
+        await Promise.all(emailPromises);
+      }
+
+      // Show appropriate toast message
+      let message = "";
+      if (newEmails.length > 0 && alreadyInvited.length > 0) {
+        message = `Invited ${newEmails.length} new member${newEmails.length > 1 ? 's' : ''}. ${alreadyInvited.length} email${alreadyInvited.length > 1 ? 's were' : ' was'} already invited.`;
+      } else if (newEmails.length > 0) {
+        message = `Invitation emails sent to ${newEmails.length} team member${newEmails.length > 1 ? 's' : ''}`;
+      }
+
       toast({
         title: "Invites sent!",
-        description: `Invitation emails sent to ${emails.length} team member${emails.length > 1 ? 's' : ''}`,
+        description: message,
       });
       
       setEmailInput("");
@@ -271,6 +337,68 @@ const TeamInvite = () => {
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleResendInvitation = async (email: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Get user's name for the email
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+
+      // Send reminder email via Edge Function
+      const inviteLink = `${window.location.origin}/join/${inviteCode}`;
+      
+      await supabase.functions.invoke('send-invitation-email', {
+        body: {
+          email,
+          teamName,
+          inviterName: profile?.full_name || 'A teammate',
+          inviteLink,
+        },
+      });
+
+      toast({
+        title: "Reminder sent!",
+        description: `Invitation reminder sent to ${email}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteInvitation = async (email: string) => {
+    try {
+      const { error } = await supabase
+        .from("invitations")
+        .delete()
+        .eq("team_id", teamId)
+        .eq("email", email.toLowerCase());
+
+      if (error) throw error;
+
+      toast({
+        title: "Invitation removed",
+        description: `Invitation for ${email} has been removed`,
+      });
+
+      await fetchPendingInvitations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -296,6 +424,54 @@ const TeamInvite = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    try {
+      const { error } = await supabase
+        .from("team_members")
+        .delete()
+        .eq("id", memberId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Member removed",
+        description: `${memberName} has been removed from the team`,
+      });
+
+      await fetchCurrentMembers();
+    } catch (error: any) {
+      toast({
+        title: "Error removing member",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    try {
+      const { error } = await supabase
+        .from("teams")
+        .delete()
+        .eq("id", teamId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Team deleted",
+        description: "The team and all related data have been permanently deleted.",
+      });
+
+      navigate("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Error deleting team",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -308,6 +484,15 @@ const TeamInvite = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <header className="border-b bg-card/50 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
+          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </div>
+      </header>
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
@@ -372,6 +557,16 @@ const TeamInvite = () => {
                       <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs">
                         {member.role === "admin" ? "Admin" : "Member"}
                       </Badge>
+                      {member.role !== "admin" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleRemoveMember(member.id, member.profiles?.full_name || "Unknown User")}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -392,9 +587,25 @@ const TeamInvite = () => {
                         <div className="text-sm text-orange-800">{email}</div>
                         <div className="text-xs text-orange-600">Invitation sent</div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => handleResendInvitation(email)}
+                      >
+                        Resend
+                      </Button>
                       <Badge variant="outline" className="text-xs border-orange-300 text-orange-700">
                         Pending
                       </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleDeleteInvitation(email)}
+                      >
+                        <X className="h-4 w-4 text-orange-600" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -476,6 +687,63 @@ const TeamInvite = () => {
         >
           {fromDashboard ? "Save and Go Back to Dashboard" : "Continue to Meeting Setup"}
         </Button>
+
+        <Card className="border-destructive mt-4">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            </div>
+            <CardDescription>
+              Irreversible and destructive actions
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-destructive">Delete this team</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Once you delete a team, there is no going back. This will permanently delete
+                    the team, all meetings, topics, comments, and remove all team members.
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="shrink-0">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Team
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the team{" "}
+                        <span className="font-semibold">{teamName}</span> and all associated data including:
+                        <ul className="mt-2 list-disc list-inside space-y-1">
+                          <li>All team members</li>
+                          <li>All meetings and meeting items</li>
+                          <li>All topics and comments</li>
+                          <li>All invitations</li>
+                        </ul>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteTeam}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Yes, delete team permanently
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </main>
     </GridBackground>
   );

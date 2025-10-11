@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Check, Settings } from "lucide-react";
+import { Calendar, Check, Settings, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import GridBackground from "@/components/ui/grid-background";
+import Logo from "@/components/Logo";
 
 interface TemplateItem {
   id: string;
@@ -215,7 +217,16 @@ const TeamMeetingSetup = () => {
   const totalDuration = selectedTemplate?.items?.reduce((total, item) => total + item.duration_minutes, 0) || 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <header className="border-b bg-card/50 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
+          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </div>
+      </header>
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
@@ -291,17 +302,7 @@ const TeamMeetingSetup = () => {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Agenda Template (Optional)</CardTitle>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => navigate("/settings")}
-                >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Manage
-                </Button>
-              </div>
+              <CardTitle className="text-lg">Agenda Template (Optional)</CardTitle>
               <CardDescription>
                 Start with a pre-defined agenda template
               </CardDescription>
@@ -309,14 +310,7 @@ const TeamMeetingSetup = () => {
             <CardContent className="space-y-4">
               {templates.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground">
-                  <p className="mb-3">No templates yet</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => navigate("/settings")}
-                  >
-                    Create Your First Template
-                  </Button>
+                  <p>No templates yet</p>
                 </div>
               ) : (
                 <>
@@ -386,7 +380,7 @@ const TeamMeetingSetup = () => {
           </Card>
         </div>
       </main>
-    </div>
+    </GridBackground>
   );
 };
 

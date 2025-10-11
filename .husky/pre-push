@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🧪 Running tests before push..."
+
+# Run unit tests (fast)
+npm run test -- --run
+
+# Optionally run E2E tests (slower - comment out if too slow)
+# npm run test:e2e
+
+echo "✅ Tests passed! Proceeding with push..."
+

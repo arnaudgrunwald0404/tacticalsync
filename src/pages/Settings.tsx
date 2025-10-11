@@ -11,6 +11,7 @@ import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
+import Logo from "@/components/Logo";
 
 interface TemplateItem {
   id: string;
@@ -57,31 +58,46 @@ const Settings = () => {
   };
 
   const fetchTemplates = async () => {
-    const { data: templatesData, error } = await supabase
-      .from("agenda_templates")
-      .select(`
-        *,
-        items:agenda_template_items(*)
-      `)
-      .order("created_at", { ascending: false });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    if (error) {
-      console.error("Error fetching templates:", error);
-      toast({
-        title: "Error loading templates",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
+      // Fetch user's own templates AND system templates
+      const { data: templatesData, error } = await supabase
+        .from("agenda_templates")
+        .select(`
+          *,
+          items:agenda_template_items(*)
+        `)
+        .or(`user_id.eq.${user.id},is_system.eq.true`)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching templates:", error);
+        toast({
+          title: "Error loading templates",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Sort items by order_index and sort templates (user templates first, then system)
+      const templatesWithSortedItems = (templatesData || [])
+        .map(template => ({
+          ...template,
+          items: (template.items || []).sort((a: TemplateItem, b: TemplateItem) => a.order_index - b.order_index),
+        }))
+        .sort((a: any, b: any) => {
+          // User templates first (is_system = false), then system templates
+          if (a.is_system === b.is_system) return 0;
+          return a.is_system ? 1 : -1;
+        });
+
+      setTemplates(templatesWithSortedItems);
+    } catch (error: any) {
+      console.error("Error in fetchTemplates:", error);
     }
-
-    // Sort items by order_index
-    const templatesWithSortedItems = (templatesData || []).map(template => ({
-      ...template,
-      items: (template.items || []).sort((a: TemplateItem, b: TemplateItem) => a.order_index - b.order_index),
-    }));
-
-    setTemplates(templatesWithSortedItems);
   };
 
   const handleCreateTemplate = () => {
@@ -379,6 +395,7 @@ const Settings = () => {
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -422,28 +439,40 @@ const Settings = () => {
               </Card>
             ) : (
               templates.map((template) => (
-                <Card key={template.id} className="hover:shadow-lg transition-all">
+                <Card key={template.id} className={`hover:shadow-lg transition-all ${(template as any).is_system ? 'border-primary/30 bg-primary/5' : ''}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg">{template.name}</CardTitle>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          {template.name}
+                          {(template as any).is_system && (
+                            <span className="text-xs font-normal bg-primary/10 text-primary px-2 py-1 rounded-full">
+                              System
+                            </span>
+                          )}
+                        </CardTitle>
+                        {(template as any).description && (
+                          <p className="text-sm text-muted-foreground mt-1">{(template as any).description}</p>
+                        )}
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditTemplate(template)}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteTemplate(template)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      {!(template as any).is_system && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditTemplate(template)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteTemplate(template)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -453,17 +482,12 @@ const Settings = () => {
                       </div>
                       {template.items && template.items.length > 0 && (
                         <div className="space-y-1 text-sm">
-                          {template.items.slice(0, 3).map((item) => (
+                          {template.items.map((item) => (
                             <div key={item.id} className="flex justify-between text-muted-foreground">
                               <span className="truncate flex-1">{item.title}</span>
                               <span className="ml-2">{item.duration_minutes}m</span>
                             </div>
                           ))}
-                          {template.items.length > 3 && (
-                            <div className="text-muted-foreground text-xs">
-                              +{template.items.length - 3} more item{template.items.length - 3 !== 1 ? 's' : ''}
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>

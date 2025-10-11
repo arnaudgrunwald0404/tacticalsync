@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -40,7 +41,7 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
         .from("comments")
         .select(`
           *,
-          profiles:user_id(id, full_name, avatar_url)
+          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("item_id", itemId)
         .order("created_at", { ascending: true });
@@ -49,6 +50,21 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
       setComments(data || []);
     } catch (error: any) {
       console.error("Error fetching comments:", error);
+    }
+  };
+
+  const getDisplayName = (profile: any) => {
+    if (!profile) return "Unknown";
+    const firstName = profile.first_name || "";
+    const lastName = profile.last_name || "";
+    const email = profile.email || "";
+    
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    } else if (firstName) {
+      return firstName;
+    } else {
+      return email;
     }
   };
 
@@ -113,29 +129,41 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
               <p>No comments yet. Start the discussion!</p>
             </div>
           ) : (
-            comments.map((comment) => (
-              <div key={comment.id} className="flex gap-3">
-                <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={comment.profiles?.avatar_url} />
-                  <AvatarFallback>
-                    {comment.profiles?.full_name?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-semibold text-sm">
-                      {comment.profiles?.full_name || "Unknown"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(comment.created_at), {
-                        addSuffix: true,
-                      })}
-                    </span>
+            comments.map((comment) => {
+              const displayName = getDisplayName(comment.profiles);
+              return (
+                <div key={comment.id} className="flex gap-3">
+                  {comment.profiles?.avatar_name ? (
+                    <FancyAvatar 
+                      name={comment.profiles.avatar_name} 
+                      displayName={displayName}
+                      size="sm"
+                      className="flex-shrink-0"
+                    />
+                  ) : (
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                      <AvatarImage src={comment.profiles?.avatar_url} />
+                      <AvatarFallback>
+                        {displayName.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-semibold text-sm">
+                        {displayName}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(comment.created_at), {
+                          addSuffix: true,
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-sm">{comment.content}</p>
                   </div>
-                  <p className="text-sm">{comment.content}</p>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

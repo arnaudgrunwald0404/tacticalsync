@@ -1,5 +1,6 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,10 @@ const SortableTopicRow = ({
   onUpdateOutcome, 
   onOpenComments 
 }: SortableTopicRowProps) => {
+  const [comments, setComments] = useState<any[]>([]);
+  const [showAllComments, setShowAllComments] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+
   const {
     attributes,
     listeners,
@@ -76,11 +81,71 @@ const SortableTopicRow = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  useEffect(() => {
+    fetchComments();
+  }, [item.id]);
+
+  const fetchComments = async () => {
+    setLoadingComments(true);
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .select(`
+          *,
+          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
+        `)
+        .eq("item_id", item.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setComments(data || []);
+    } catch (error: any) {
+      console.error("Error fetching comments:", error);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const displayedComments = comments.slice(0, 5);
+  const hasMoreComments = comments.length > 5;
+
+  const getDisplayName = (profile: any) => {
+    if (!profile) return "Unknown";
+    const firstName = profile.first_name || "";
+    const lastName = profile.last_name || "";
+    const email = profile.email || "";
+    
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    } else if (firstName) {
+      return firstName;
+    } else {
+      return email;
+    }
+  };
+
+  const formatCommentDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return format(date, "MMM d");
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="px-4 py-3 grid grid-cols-[40px_40px_2fr_200px_2fr_80px] gap-4 items-center border-t hover:bg-muted/30 transition-colors"
+      className="border-t hover:bg-muted/30 transition-colors"
+    >
+      <div className="px-4 py-3 grid grid-cols-[40px_40px_2fr_200px_2fr_80px] gap-4 items-center"
     >
       <div
         {...attributes}
@@ -107,22 +172,40 @@ const SortableTopicRow = ({
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Assign to...">
               {item.assigned_to_profile ? (
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-5 w-5">
-                    <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                    <AvatarFallback className="text-xs">
-                      {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm">
-                    {(() => {
-                      const names = item.assigned_to_profile.full_name?.split(" ") || [];
-                      const firstName = names[0] || "";
-                      const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                      return `${firstName} ${lastInitial}`.trim();
-                    })()}
-                  </span>
-                </div>
+                (() => {
+                  const firstName = item.assigned_to_profile.first_name || "";
+                  const lastName = item.assigned_to_profile.last_name || "";
+                  const email = item.assigned_to_profile.email || "";
+                  
+                  let displayName = "";
+                  if (firstName && lastName) {
+                    displayName = `${firstName} ${lastName}`;
+                  } else if (firstName) {
+                    displayName = firstName;
+                  } else {
+                    displayName = email;
+                  }
+                  
+                  return (
+                    <div className="flex items-center gap-2">
+                      {item.assigned_to_profile.avatar_name ? (
+                        <FancyAvatar 
+                          name={item.assigned_to_profile.avatar_name} 
+                          displayName={displayName}
+                          size="sm" 
+                        />
+                      ) : (
+                        <Avatar className="h-5 w-5">
+                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                          <AvatarFallback className="text-xs">
+                            {displayName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      <span className="text-sm">{displayName}</span>
+                    </div>
+                  );
+                })()
               ) : (
                 <span className="text-muted-foreground">Unassigned</span>
               )}
@@ -131,20 +214,36 @@ const SortableTopicRow = ({
           <SelectContent className="bg-popover z-50">
             <SelectItem value="none">Unassigned</SelectItem>
             {members.map((member) => {
-              const names = member.profiles?.full_name?.split(" ") || [];
-              const firstName = names[0] || "";
-              const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-              const displayName = `${firstName} ${lastInitial}`.trim();
+              const firstName = member.profiles?.first_name || "";
+              const lastName = member.profiles?.last_name || "";
+              const email = member.profiles?.email || "";
+              
+              let displayName = "";
+              if (firstName && lastName) {
+                displayName = `${firstName} ${lastName}`;
+              } else if (firstName) {
+                displayName = firstName;
+              } else {
+                displayName = email;
+              }
               
               return (
                 <SelectItem key={member.user_id} value={member.user_id}>
                   <div className="flex items-center gap-2">
-                    <Avatar className="h-5 w-5">
-                      <AvatarImage src={member.profiles?.avatar_url} />
-                      <AvatarFallback className="text-xs">
-                        {member.profiles?.full_name?.charAt(0) || "?"}
-                      </AvatarFallback>
-                    </Avatar>
+                    {member.profiles?.avatar_name ? (
+                      <FancyAvatar 
+                        name={member.profiles.avatar_name} 
+                        displayName={displayName}
+                        size="sm" 
+                      />
+                    ) : (
+                      <Avatar className="h-5 w-5">
+                        <AvatarImage src={member.profiles?.avatar_url} />
+                        <AvatarFallback className="text-xs">
+                          {displayName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
                     <span>{displayName}</span>
                   </div>
                 </SelectItem>
@@ -166,9 +265,18 @@ const SortableTopicRow = ({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => onOpenComments(item.id, item.title)}
+          onClick={() => {
+            onOpenComments(item.id, item.title);
+            // Refresh comments after opening dialog
+            setTimeout(() => fetchComments(), 500);
+          }}
         >
           <MessageSquare className="h-4 w-4" />
+          {comments.length > 0 && (
+            <span className="absolute top-1 right-1 bg-primary text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              {comments.length}
+            </span>
+          )}
         </Button>
         <Button
           variant="ghost"
@@ -180,6 +288,37 @@ const SortableTopicRow = ({
         </Button>
       </div>
     </div>
+
+    {/* Comments Section */}
+    {comments.length > 0 && (
+      <div className="px-4 pb-3 ml-[140px] space-y-2">
+        {displayedComments.map((comment) => (
+          <div key={comment.id} className="text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-foreground">
+                {getDisplayName(comment.profiles)}
+              </span>
+              <span className="text-muted-foreground">
+                {formatCommentDate(comment.created_at)}
+              </span>
+            </div>
+            <p className="text-muted-foreground break-words mt-1">{comment.content}</p>
+          </div>
+        ))}
+        {hasMoreComments && (
+          <button
+            onClick={() => {
+              setShowAllComments(true);
+              onOpenComments(item.id, item.title);
+            }}
+            className="text-xs text-primary hover:underline"
+          >
+            See more ({comments.length - 5} more comments)
+          </button>
+        )}
+      </div>
+    )}
+  </div>
   );
 };
 
@@ -205,7 +344,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
       .select(`
         id,
         user_id,
-        profiles:user_id(id, full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
       .eq("team_id", teamId);
     

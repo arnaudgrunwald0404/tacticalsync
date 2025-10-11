@@ -1,7 +1,8 @@
 import React from "react";
 
 interface FancyAvatarProps {
-  name: string;
+  name: string; // Used for generating the pattern/colors (can include seed)
+  displayName?: string; // Used for displaying initials (actual first/last name)
   size?: "sm" | "md" | "lg";
   className?: string;
 }
@@ -14,6 +15,7 @@ interface AvatarConfig {
 
 const FancyAvatar: React.FC<FancyAvatarProps> = ({ 
   name, 
+  displayName,
   size = "md", 
   className = "" 
 }) => {
@@ -81,7 +83,25 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
   };
 
   const config = getAvatarConfig(name);
-  const initials = name.split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2);
+  
+  // Get initials from displayName (actual user name) or fall back to name
+  const getInitials = (nameStr: string): string => {
+    const cleanName = nameStr.trim();
+    const words = cleanName.split(' ').filter(word => word.length > 0);
+    
+    if (words.length >= 2) {
+      // First and last name available: take first letter of each
+      return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+    } else if (words.length === 1) {
+      // Only one word (could be first name or email): take first two letters
+      return words[0].slice(0, 2).toUpperCase();
+    } else {
+      // Fallback: take first two characters
+      return cleanName.slice(0, 2).toUpperCase();
+    }
+  };
+  
+  const initials = getInitials(displayName || name);
   
   const sizeClasses = {
     sm: "w-8 h-8 text-sm",

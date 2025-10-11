@@ -1,8 +1,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalityHoverCard } from "@/components/PersonalityHoverCard";
+import ReviewLastWeekDrawer from "./ReviewLastWeekDrawer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +22,9 @@ interface MeetingAgendaProps {
   meetingId: string;
   teamId: string;
   onUpdate: () => void;
+  previousMeetingId?: string;
+  currentUserId?: string;
+  isAdmin?: boolean;
 }
 
 export interface MeetingAgendaRef {
@@ -29,12 +34,10 @@ export interface MeetingAgendaRef {
   cancelEditing: () => void;
 }
 
-const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items, meetingId, teamId, onUpdate }, ref) => {
-  const { toast } = useToast();
+const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items, meetingId, teamId, onUpdate, previousMeetingId, currentUserId, isAdmin: isAdminProp }, ref) => {
+  const { toast} = useToast();
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [standingAgendaItems, setStandingAgendaItems] = useState<any[]>([]);
-  const [isEditingStanding, setIsEditingStanding] = useState(false);
-  const [savingStanding, setSavingStanding] = useState(false);
+  const [systemTemplates, setSystemTemplates] = useState<any[]>([]);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
   const [editingItems, setEditingItems] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -44,10 +47,11 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
   const [meetingStarted, setMeetingStarted] = useState(false);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [showReviewDrawer, setShowReviewDrawer] = useState(false);
 
   useEffect(() => {
     fetchTeamMembers();
-    fetchStandingAgendaItems();
+    fetchSystemTemplates();
     checkIfAdmin();
   }, [teamId]);
 
@@ -57,7 +61,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       .select(`
         id,
         user_id,
-        profiles:user_id(full_name, avatar_url, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        profiles:user_id(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
       .eq("team_id", teamId);
 
@@ -69,22 +73,23 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     setTeamMembers(data || []);
   };
 
-  const fetchStandingAgendaItems = async () => {
-    try {
-      // For now, we'll use a simple approach - store standing agenda items in team settings
-      // In a real app, you might have a separate standing_agenda_items table
-      const { data: team, error } = await supabase
-        .from("teams")
-        .select("standing_agenda_items")
-        .eq("id", teamId)
-        .single();
 
-      if (error && error.code !== 'PGRST116') throw error;
+  const fetchSystemTemplates = async () => {
+    try {
+      const { data: templates, error } = await supabase
+        .from("agenda_templates")
+        .select(`
+          *,
+          items:agenda_template_items(*)
+        `)
+        .eq("is_system", true)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
       
-      const standingItems = team?.standing_agenda_items || [];
-      setStandingAgendaItems(standingItems);
+      setSystemTemplates(templates || []);
     } catch (error: any) {
-      console.error("Error fetching standing agenda items:", error);
+      console.error("Error fetching system templates:", error);
     }
   };
 
@@ -108,99 +113,6 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     }
   };
 
-  const updateStandingAgendaItem = (index: number, field: 'name' | 'assigned_to' | 'time_minutes', value: any) => {
-    const updated = [...standingAgendaItems];
-    if (!updated[index]) {
-      updated[index] = { name: '', assigned_to: null, time_minutes: null };
-    }
-    updated[index][field] = value;
-    setStandingAgendaItems(updated);
-  };
-
-  const addStandingAgendaItem = () => {
-    setStandingAgendaItems([...standingAgendaItems, { name: '', assigned_to: null, time_minutes: null }]);
-  };
-
-  const startEditingStanding = () => {
-    if (standingAgendaItems.length === 0) {
-      // Add first item when starting
-      setStandingAgendaItems([{ name: '', assigned_to: null, time_minutes: null }]);
-    }
-    setIsEditingStanding(true);
-  };
-
-  const removeStandingAgendaItem = (index: number) => {
-    const updated = standingAgendaItems.filter((_, i) => i !== index);
-    setStandingAgendaItems(updated);
-  };
-
-  const saveStandingAgenda = async () => {
-    setSavingStanding(true);
-    try {
-      console.log("Saving standing agenda:", { teamId, standingAgendaItems });
-      
-      // Filter out items with empty names
-      const validItems = standingAgendaItems.filter(item => item.name && item.name.trim());
-      
-      console.log("Valid items to save:", validItems);
-      
-      const { data, error } = await supabase
-        .from("teams")
-        .update({ standing_agenda_items: validItems })
-        .eq("id", teamId)
-        .select();
-
-      console.log("Update result:", { data, error });
-
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
-
-      // Auto-create agenda items in the current meeting
-      if (validItems.length > 0 && meetingId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          try {
-            const inserts = validItems.map((item, idx) => ({
-              meeting_id: meetingId,
-              type: "agenda" as const,
-              title: item.name.trim(),
-              order_index: idx,
-              created_by: user.id,
-              assigned_to: item.assigned_to,
-              time_minutes: item.time_minutes,
-            }));
-            const { error: insertErr } = await supabase
-              .from("meeting_items")
-              .insert(inserts);
-            if (insertErr) {
-              console.warn("Failed to create meeting items:", insertErr);
-            }
-          } catch (err) {
-            console.warn("Failed to create meeting items:", err);
-          }
-        }
-      }
-
-      toast({
-        title: "Standing agenda saved!",
-        description: "Your standing agenda items have been updated",
-      });
-
-      setIsEditingStanding(false);
-      onUpdate(); // Refresh the current meeting agenda
-    } catch (error: any) {
-      console.error("Save failed:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save standing agenda. Make sure the standing_agenda_items column exists in your database.",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingStanding(false);
-    }
-  };
 
   const handleToggleComplete = async (itemId: string, currentStatus: boolean) => {
     const { error } = await supabase
@@ -384,29 +296,23 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     }
   };
 
-  const adoptOpeningCommentsTemplate = async () => {
+  const adoptSystemTemplate = async (template: any) => {
     setAdoptingTemplate(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const openingCommentsTemplate = [
-        { name: "Leader Opening Comments", time_minutes: 2 },
-        { name: "Review Last Week's Items", time_minutes: 4 },
-        { name: "Calendar Review", time_minutes: 2 },
-        { name: "Lightning Round", time_minutes: 10 },
-        { name: "ELT Scorecard", time_minutes: 10 },
-        { name: "Employees At-Risk", time_minutes: 10 },
-      ];
+      // Sort template items by order_index
+      const sortedItems = (template.items || []).sort((a: any, b: any) => a.order_index - b.order_index);
 
-      const inserts = openingCommentsTemplate.map((item, idx) => ({
+      const inserts = sortedItems.map((item: any, idx: number) => ({
         meeting_id: meetingId,
         type: "agenda" as const,
-        title: item.name,
+        title: item.title,
         order_index: idx,
         created_by: user.id,
         assigned_to: null,
-        time_minutes: item.time_minutes,
+        time_minutes: item.duration_minutes,
       }));
 
       const { error } = await supabase
@@ -432,53 +338,6 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     }
   };
 
-  const adoptStandingAgendaTemplate = async () => {
-    setAdoptingTemplate(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      if (standingAgendaItems.length === 0) {
-        toast({
-          title: "No standing agenda",
-          description: "Please set up a standing agenda first",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const inserts = standingAgendaItems.map((item, idx) => ({
-        meeting_id: meetingId,
-        type: "agenda" as const,
-        title: item.name,
-        order_index: idx,
-        created_by: user.id,
-        assigned_to: item.assigned_to || null,
-        time_minutes: item.time_minutes || null,
-      }));
-
-      const { error } = await supabase
-        .from("meeting_items")
-        .insert(inserts);
-
-      if (error) throw error;
-
-      toast({
-        title: "Template adopted!",
-        description: "Standing agenda has been added to your agenda",
-      });
-
-      onUpdate();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setAdoptingTemplate(false);
-    }
-  };
 
   const startAddingManually = () => {
     setIsAddingManually(true);
@@ -579,116 +438,44 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
         </Alert>
       )}
       
-      {items.length === 0 && !isEditingStanding && !isAddingManually && (
+      {items.length === 0 && !isAddingManually && (
         <div className="text-center py-8 border rounded-lg bg-muted/20">
           <div className="max-w-2xl mx-auto px-4">
             <p className="text-sm text-muted-foreground mb-6">No agenda items yet. Start with a template or create your own.</p>
             
             <div className="grid gap-4 md:grid-cols-2 mb-6">
-              {/* Opening Comments Template */}
-              <div className="border rounded-lg p-4 bg-card hover:border-primary/50 transition-colors">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <h3 className="font-semibold mb-1">Opening Comments Template</h3>
-                    <p className="text-xs text-muted-foreground mb-2">Recommended for tactical meetings</p>
-                  </div>
-                </div>
-                <div className="text-left text-xs text-muted-foreground space-y-1 mb-4">
-                  <div className="flex justify-between">
-                    <span>• Leader Opening Comments</span>
-                    <span className="text-primary font-medium">2 min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Review Last Week's Items</span>
-                    <span className="text-primary font-medium">4 min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Calendar Review</span>
-                    <span className="text-primary font-medium">2 min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Lightning Round</span>
-                    <span className="text-primary font-medium">10 min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• ELT Scorecard</span>
-                    <span className="text-primary font-medium">10 min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Employees At-Risk</span>
-                    <span className="text-primary font-medium">10 min</span>
-                  </div>
-                </div>
-                <Button 
-                  onClick={adoptOpeningCommentsTemplate} 
-                  disabled={adoptingTemplate}
-                  className="w-full"
-                  size="sm"
-                >
-                  {adoptingTemplate ? "Adopting..." : "Adopt This Template"}
-                </Button>
-              </div>
-
-              {/* Standing Agenda Template */}
-              {standingAgendaItems.length > 0 ? (
-                <div className="border rounded-lg p-4 bg-card hover:border-primary/50 transition-colors">
+              {/* System Templates */}
+              {systemTemplates.map((template) => (
+                <div key={template.id} className="border rounded-lg p-4 bg-card hover:border-primary/50 transition-colors">
                   <div className="flex items-start gap-3 mb-3">
-                    <div className="p-2 rounded-lg bg-secondary/10">
-                      <FileText className="h-5 w-5 text-secondary" />
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Sparkles className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 text-left">
-                      <h3 className="font-semibold mb-1">Standing Agenda</h3>
-                      <p className="text-xs text-muted-foreground mb-2">Your team's custom template</p>
+                      <h3 className="font-semibold mb-1">{template.name}</h3>
+                      <p className="text-xs text-muted-foreground mb-2">{template.description}</p>
                     </div>
                   </div>
-                  <div className="text-left text-xs text-muted-foreground space-y-1 mb-4 max-h-32 overflow-y-auto">
-                    {standingAgendaItems.map((item, idx) => (
-                      <div key={idx} className="flex justify-between">
-                        <span>• {htmlToPlainText(item.name)}</span>
-                        {item.time_minutes && (
-                          <span className="text-primary font-medium">{item.time_minutes} min</span>
+                  <div className="text-left text-xs text-muted-foreground space-y-1 mb-4">
+                    {(template.items || []).sort((a: any, b: any) => a.order_index - b.order_index).map((item: any) => (
+                      <div key={item.id} className="flex justify-between">
+                        <span>• {item.title}</span>
+                        {item.duration_minutes && (
+                          <span className="text-primary font-medium">{item.duration_minutes} min</span>
                         )}
                       </div>
                     ))}
                   </div>
                   <Button 
-                    onClick={adoptStandingAgendaTemplate} 
+                    onClick={() => adoptSystemTemplate(template)} 
                     disabled={adoptingTemplate}
-                    variant="secondary"
                     className="w-full"
                     size="sm"
                   >
                     {adoptingTemplate ? "Adopting..." : "Adopt This Template"}
                   </Button>
                 </div>
-              ) : (
-                <div className="border rounded-lg p-4 bg-card hover:border-primary/50 transition-colors">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="p-2 rounded-lg bg-secondary/10">
-                      <Settings className="h-5 w-5 text-secondary" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <h3 className="font-semibold mb-1">Standing Agenda</h3>
-                      <p className="text-xs text-muted-foreground mb-2">Create a custom template for your team</p>
-                    </div>
-                  </div>
-                  <div className="text-left text-xs text-muted-foreground mb-4">
-                    <p>Set up a standing agenda that will be available as a template for all future meetings.</p>
-                  </div>
-                  <Button 
-                    onClick={startEditingStanding}
-                    variant="secondary"
-                    className="w-full"
-                    size="sm"
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Create Standing Agenda
-                  </Button>
-                </div>
-              )}
+              ))}
             </div>
 
             <div className="text-xs text-muted-foreground mb-3">
@@ -771,66 +558,6 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
           </div>
         </div>
       )}
-
-      {items.length === 0 && isEditingStanding && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium">Set Standing Agenda</h3>
-          {standingAgendaItems.map((item, index) => (
-            <div key={index} className="flex items-center gap-3">
-              <div className="flex-1">
-                <RichTextEditor
-                  content={item.name || ''}
-                  onChange={(content) => updateStandingAgendaItem(index, 'name', content)}
-                  placeholder="Agenda item name"
-                />
-              </div>
-              <Select 
-                value={item.assigned_to || 'unassigned'} 
-                onValueChange={(value) => updateStandingAgendaItem(index, 'assigned_to', value === 'unassigned' ? null : value)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Assign to..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {teamMembers.map((member) => (
-                    <SelectItem key={member.user_id} value={member.user_id}>
-                      {member.profiles?.full_name || 'Unknown'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                type="number"
-                placeholder="Min"
-                value={item.time_minutes || ''}
-                onChange={(e) => updateStandingAgendaItem(index, 'time_minutes', e.target.value ? parseInt(e.target.value) : null)}
-                className="w-16"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeStandingAgendaItem(index)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={addStandingAgendaItem} className="flex-1">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Another Item
-            </Button>
-            <Button 
-              onClick={saveStandingAgenda} 
-              disabled={savingStanding}
-              className="flex-1"
-            >
-              {savingStanding ? "Saving..." : "Save Standing Agenda"}
-            </Button>
-          </div>
-        </div>
-      )}
       
       {items.length > 0 && (
         <div className="border rounded-lg">
@@ -887,63 +614,105 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
                     }}
                   />
                 ) : (
-                  htmlToPlainText(item.title)
+                  <>
+                    {htmlToPlainText(item.title).toLowerCase().includes("review last week") && previousMeetingId ? (
+                      <button
+                        onClick={() => setShowReviewDrawer(true)}
+                        className="text-blue-600 hover:text-blue-800 underline font-medium"
+                      >
+                        {htmlToPlainText(item.title)}
+                      </button>
+                    ) : (
+                      htmlToPlainText(item.title)
+                    )}
+                  </>
                 )}
               </TableCell>
               <TableCell className="py-2">
                 {isEditingAgenda ? (
                   <Select
-                    value={item.assigned_to || "none"}
+                    value={item.assigned_to || "all"}
                     onValueChange={(value) => {
-                      updateEditingItem(index, 'assigned_to', value === "none" ? null : value);
+                      updateEditingItem(index, 'assigned_to', value === "all" ? null : value);
                     }}
                   >
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Assign to...">
-                        {item.assigned_to === "all" ? (
-                          <span className="text-sm font-medium">All</span>
+                        {!item.assigned_to ? (
+                          <span className="text-sm font-medium">Unassigned / All</span>
                         ) : item.assigned_to_profile ? (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                              <AvatarFallback className="text-xs">
-                                {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm">
-                              {(() => {
-                                const names = item.assigned_to_profile.full_name?.split(" ") || [];
-                                const firstName = names[0] || "";
-                                const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                                return `${firstName} ${lastInitial}`.trim();
-                              })()}
-                            </span>
-                          </div>
-                        ) : item.assigned_to && item.assigned_to !== "none" ? (
-                          <span className="text-sm text-muted-foreground">Loading...</span>
+                          (() => {
+                            const firstName = item.assigned_to_profile.first_name || "";
+                            const lastName = item.assigned_to_profile.last_name || "";
+                            const email = item.assigned_to_profile.email || "";
+                            
+                            let displayName = "";
+                            if (firstName && lastName) {
+                              displayName = `${firstName} ${lastName}`;
+                            } else if (firstName) {
+                              displayName = firstName;
+                            } else {
+                              displayName = email;
+                            }
+                            
+                            return (
+                              <div className="flex items-center gap-2">
+                                {item.assigned_to_profile.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={item.assigned_to_profile.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {displayName.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-sm">{displayName}</span>
+                              </div>
+                            );
+                          })()
                         ) : (
                           <span className="text-muted-foreground">Assign to...</span>
                         )}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-popover z-50">
-                      <SelectItem value="none">Unassigned</SelectItem>
-                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="all">Unassigned / All</SelectItem>
                       {teamMembers.map((member) => {
-                        const names = member.profiles?.full_name?.split(" ") || [];
-                        const firstName = names[0] || "";
-                        const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                        const displayName = `${firstName} ${lastInitial}`.trim();
+                        const firstName = member.profiles?.first_name || "";
+                        const lastName = member.profiles?.last_name || "";
+                        const email = member.profiles?.email || "";
+                        
+                        let displayName = "";
+                        if (firstName && lastName) {
+                          displayName = `${firstName} ${lastName}`;
+                        } else if (firstName) {
+                          displayName = firstName;
+                        } else {
+                          displayName = email;
+                        }
                         
                         return (
                           <SelectItem key={member.user_id} value={member.user_id}>
                             <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={member.profiles?.avatar_url} />
-                                <AvatarFallback className="text-xs">
-                                  {member.profiles?.full_name?.charAt(0) || "?"}
-                                </AvatarFallback>
-                              </Avatar>
+                              {member.profiles?.avatar_name ? (
+                                <FancyAvatar 
+                                  name={member.profiles.avatar_name} 
+                                  displayName={displayName}
+                                  size="sm" 
+                                />
+                              ) : (
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={member.profiles?.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {displayName.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
                               <span>{displayName}</span>
                             </div>
                           </SelectItem>
@@ -953,25 +722,43 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
                   </Select>
                 ) : (
                   <div className="text-sm">
-                    {item.assigned_to === "all" ? (
-                      <span className="font-medium">All</span>
+                    {!item.assigned_to ? (
+                      <span className="font-medium">Unassigned / All</span>
                     ) : item.assigned_to_profile ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                          <AvatarFallback className="text-xs">
-                            {item.assigned_to_profile.full_name?.charAt(0) || "?"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>
-                          {(() => {
-                            const names = item.assigned_to_profile.full_name?.split(" ") || [];
-                            const firstName = names[0] || "";
-                            const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                            return `${firstName} ${lastInitial}`.trim();
-                          })()}
-                        </span>
-                      </div>
+                      (() => {
+                        const firstName = item.assigned_to_profile.first_name || "";
+                        const lastName = item.assigned_to_profile.last_name || "";
+                        const email = item.assigned_to_profile.email || "";
+                        
+                        let displayName = "";
+                        if (firstName && lastName) {
+                          displayName = `${firstName} ${lastName}`;
+                        } else if (firstName) {
+                          displayName = firstName;
+                        } else {
+                          displayName = email;
+                        }
+                        
+                        return (
+                          <div className="flex items-center gap-2">
+                            {item.assigned_to_profile.avatar_name ? (
+                              <FancyAvatar 
+                                name={item.assigned_to_profile.avatar_name} 
+                                displayName={displayName}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-5 w-5">
+                                <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {displayName.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span>{displayName}</span>
+                          </div>
+                        );
+                      })()
                     ) : item.assigned_to && item.assigned_to !== "none" ? (
                       <span className="text-muted-foreground">Loading...</span>
                     ) : (
@@ -1001,10 +788,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
                     {/* Progress bar background */}
                     {meetingStarted && item.time_minutes && (
                       <div 
-                        className="absolute inset-0 bg-blue-100 opacity-30 rounded"
+                        className="absolute inset-y-0 left-0 bg-blue-700 opacity-70 rounded"
                         style={{ 
-                          height: `${getItemProgress(item, index)}%`,
-                          transition: 'height 0.5s ease-in-out'
+                          width: `${getItemProgress(item, index)}%`,
+                          transition: 'width 0.5s ease-in-out'
                         }}
                       />
                     )}
@@ -1038,7 +825,16 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       </div>
       )}
 
-
+      {/* Review Last Week's Items Drawer */}
+      {previousMeetingId && currentUserId && (
+        <ReviewLastWeekDrawer
+          isOpen={showReviewDrawer}
+          onClose={() => setShowReviewDrawer(false)}
+          previousMeetingId={previousMeetingId}
+          currentUserId={currentUserId}
+          isAdmin={isAdminProp || isAdmin}
+        />
+      )}
     </div>
   );
 });

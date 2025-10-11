@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
+import Logo from "@/components/Logo";
 
 const CreateTeam = () => {
   const navigate = useNavigate();
@@ -103,7 +104,8 @@ const CreateTeam = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Dashboard

@@ -130,7 +130,11 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           <TabsContent value="avatar" className="space-y-6 mt-6">
             <div className="flex justify-center">
               <div className="relative">
-                <FancyAvatar name={selectedName} size="lg" />
+                <FancyAvatar 
+                  name={selectedName} 
+                  displayName={`${userFirstName} ${userLastName}`.trim()}
+                  size="lg" 
+                />
                 {isGenerating && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
                     <div className="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full" />

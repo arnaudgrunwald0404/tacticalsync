@@ -8,7 +8,6 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import CreateTeam from "./pages/CreateTeam";
 import TeamMeeting from "./pages/TeamMeeting";
-import TeamSettings from "./pages/TeamSettings";
 import TeamInvite from "./pages/TeamInvite";
 import TeamMeetingSetup from "./pages/TeamMeetingSetup";
 import MeetingSettings from "./pages/MeetingSettings";
@@ -38,7 +37,6 @@ const App = () => (
           <Route path="/team/:teamId/setup-meeting" element={<TeamMeetingSetup />} />
           <Route path="/team/:teamId/meeting/:meetingId" element={<TeamMeeting />} />
           <Route path="/team/:teamId/meeting/:meetingId/settings" element={<MeetingSettings />} />
-          <Route path="/team/:teamId/settings" element={<TeamSettings />} />
           <Route path="/branding" element={<BrandingShowcase />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

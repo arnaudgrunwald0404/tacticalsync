@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Plus, Trash2, Save, X } from "lucide-react";
 import {
   Sheet,
@@ -101,7 +102,7 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
       .select(`
         id,
         user_id,
-        profiles:user_id(full_name, avatar_url)
+        profiles:user_id(full_name, first_name, last_name, email, avatar_url, avatar_name)
       `)
       .eq("team_id", teamId);
 
@@ -119,7 +120,7 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
         .select(`
           id,
           user_id,
-          profiles:user_id(full_name, avatar_url)
+          profiles:user_id(full_name, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("team_id", teamId)
         .eq("user_id", user.id)
@@ -281,24 +282,41 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
                         {topic.assigned_to ? (
                           (() => {
                             const member = teamMembers.find(m => m.user_id === topic.assigned_to);
-                            return member?.profiles ? (
+                            if (!member?.profiles) return null;
+                            
+                            const firstName = member.profiles.first_name || "";
+                            const lastName = member.profiles.last_name || "";
+                            const email = member.profiles.email || "";
+                            
+                            // Display: first_name + last_name if available, otherwise email
+                            let displayName = "";
+                            if (firstName && lastName) {
+                              displayName = `${firstName} ${lastName}`;
+                            } else if (firstName) {
+                              displayName = firstName;
+                            } else {
+                              displayName = email;
+                            }
+                            
+                            return (
                               <div className="flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarImage src={member.profiles.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles.full_name?.charAt(0) || "?"}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm">
-                                  {(() => {
-                                    const names = member.profiles.full_name?.split(" ") || [];
-                                    const firstName = names[0] || "";
-                                    const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                                    return `${firstName} ${lastInitial}`.trim();
-                                  })()}
-                                </span>
+                                {member.profiles.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={member.profiles.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={member.profiles.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {displayName.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-sm">{displayName}</span>
                               </div>
-                            ) : null;
+                            );
                           })()
                         ) : (
                           <span className="text-muted-foreground">Assign to...</span>
@@ -309,12 +327,20 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
                       {currentUser && (
                         <SelectItem value={currentUser.user_id}>
                           <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={currentUser.profiles?.avatar_url} />
-                              <AvatarFallback className="text-xs">
-                                {currentUser.profiles?.full_name?.charAt(0) || "?"}
-                              </AvatarFallback>
-                            </Avatar>
+                            {currentUser.profiles?.avatar_name ? (
+                              <FancyAvatar 
+                                name={currentUser.profiles.avatar_name} 
+                                displayName={`${currentUser.profiles.first_name || ''} ${currentUser.profiles.last_name || ''}`.trim() || currentUser.profiles.email || ''}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={currentUser.profiles?.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {(currentUser.profiles?.first_name || currentUser.profiles?.email || '?').charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
                             <span>Me</span>
                           </div>
                         </SelectItem>
@@ -322,20 +348,37 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
                       {teamMembers
                         .filter(member => member.user_id !== currentUser?.user_id)
                         .map((member) => {
-                          const names = member.profiles?.full_name?.split(" ") || [];
-                          const firstName = names[0] || "";
-                          const lastInitial = names.length > 1 ? names[names.length - 1].charAt(0) + "." : "";
-                          const displayName = `${firstName} ${lastInitial}`.trim();
+                          const firstName = member.profiles?.first_name || "";
+                          const lastName = member.profiles?.last_name || "";
+                          const email = member.profiles?.email || "";
+                          
+                          // Display: first_name + last_name if available, otherwise email
+                          let displayName = "";
+                          if (firstName && lastName) {
+                            displayName = `${firstName} ${lastName}`;
+                          } else if (firstName) {
+                            displayName = firstName;
+                          } else {
+                            displayName = email;
+                          }
                           
                           return (
                             <SelectItem key={member.user_id} value={member.user_id}>
                               <div className="flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarImage src={member.profiles?.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles?.full_name?.charAt(0) || "?"}
-                                  </AvatarFallback>
-                                </Avatar>
+                                {member.profiles?.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={member.profiles.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={member.profiles?.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {displayName.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
                                 <span>{displayName}</span>
                               </div>
                             </SelectItem>

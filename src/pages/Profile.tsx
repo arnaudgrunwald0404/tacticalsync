@@ -10,6 +10,7 @@ import { ArrowLeft, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AvatarSelector from "@/components/AvatarSelector";
 import FancyAvatar from "@/components/ui/fancy-avatar";
+import Logo from "@/components/Logo";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -258,7 +259,8 @@ const Profile = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" />
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Dashboard

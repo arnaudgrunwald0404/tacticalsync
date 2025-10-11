@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running linter..."
+
+# Run linter on staged files
+npm run lint
+
+echo "✅ Linting passed!"
