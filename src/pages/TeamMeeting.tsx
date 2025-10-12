@@ -76,7 +76,7 @@ const TeamMeeting = () => {
         recurringMeetingData: recurringData
       });
 
-      let { data: meetingData, error: meetingError } = await supabase
+      const { data: meetingData, error: meetingError } = await supabase
         .from("weekly_meetings")
         .select("*")
         .eq("recurring_meeting_id", meetingId)

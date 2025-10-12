@@ -78,10 +78,29 @@ export async function addTemplateItem(
   return data;
 }
 
+interface AgendaTemplateItem {
+  id: string;
+  template_id: string;
+  title: string;
+  time_limit: number | null;
+  order_index: number;
+  created_at: string;
+}
+
+interface AgendaTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  created_at: string;
+  items?: AgendaTemplateItem[];
+}
+
 /**
  * Get agenda template with items
  */
-export async function getAgendaTemplate(templateId: string): Promise<any> {
+export async function getAgendaTemplate(templateId: string): Promise<AgendaTemplate | null> {
   const { data, error } = await supabase
     .from('agenda_templates')
     .select(`
@@ -95,7 +114,7 @@ export async function getAgendaTemplate(templateId: string): Promise<any> {
   
   // Sort items by order_index
   if (data && data.items) {
-    data.items.sort((a: any, b: any) => a.order_index - b.order_index);
+    data.items.sort((a: AgendaTemplateItem, b: AgendaTemplateItem) => a.order_index - b.order_index);
   }
   
   return data;

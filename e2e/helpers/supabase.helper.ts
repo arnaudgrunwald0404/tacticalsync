@@ -51,10 +51,10 @@ export async function cleanupTestData(email?: string, teamId?: string): Promise<
  */
 export async function waitForRecord(
   table: string,
-  condition: Record<string, any>,
+  condition: Record<string, unknown>,
   maxAttempts: number = 10,
   delayMs: number = 500
-): Promise<any> {
+): Promise<unknown> {
   for (let i = 0; i < maxAttempts; i++) {
     const query = supabase.from(table).select('*');
     

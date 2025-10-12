@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
         weekStart.setDate(today.getDate() - daysToMonday);
         const weekStartStr = weekStart.toISOString().split('T')[0];
 
-        let { data: meeting, error: meetingError } = await supabase
+        const { data: meeting, error: meetingError } = await supabase
           .from('weekly_meetings')
           .select('id')
           .eq('team_id', member.team_id)

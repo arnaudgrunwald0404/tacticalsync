@@ -82,7 +82,7 @@ test.describe('Meeting Series - Create Series', () => {
       await createRecurringMeeting(teamId, '', 'weekly', adminUserId);
       // Should fail
       expect(true).toBe(false); // This line shouldn't be reached
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Should throw error for empty name
       expect(error).toBeTruthy();
     }

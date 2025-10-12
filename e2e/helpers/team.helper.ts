@@ -114,10 +114,19 @@ export async function removeTeamMember(
   if (error) throw error;
 }
 
+interface TeamMember {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  profiles: unknown;
+}
+
 /**
  * Get team members
  */
-export async function getTeamMembers(teamId: string): Promise<any[]> {
+export async function getTeamMembers(teamId: string): Promise<TeamMember[]> {
   const { data, error } = await supabase
     .from('team_members')
     .select('*, profiles(*)')

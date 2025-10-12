@@ -24,13 +24,53 @@ interface TopicRow {
   desired_outcome: string;
 }
 
+interface TeamMember {
+  user_id: string;
+  profiles?: {
+    full_name?: string;
+    avatar_url?: string;
+    avatar_name?: string;
+  };
+}
+
+interface CurrentUser {
+  id: string;
+  email?: string;
+  full_name?: string;
+}
+
+interface ExistingTopic {
+  id: string;
+  title?: string;
+  assigned_to?: string | null;
+  desired_outcome?: string;
+}
+
+interface TopicUpdate {
+  id: string;
+  title: string;
+  outcome: string;
+  assigned_to: string | null;
+  order_index: number;
+}
+
+interface TopicInsert {
+  meeting_id: string;
+  type: "topic";
+  title: string;
+  outcome: string;
+  assigned_to: string | null;
+  order_index: number;
+  created_by: string;
+}
+
 interface AddTopicsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   meetingId: string;
   teamId: string;
   onSave: () => void;
-  existingTopics?: any[]; // Existing topics to edit
+  existingTopics?: ExistingTopic[];
 }
 
 const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingTopics = [] }: AddTopicsDrawerProps) => {
@@ -40,8 +80,8 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
     { id: "2", topic: "", assigned_to: "", desired_outcome: "" },
     { id: "3", topic: "", assigned_to: "", desired_outcome: "" }
   ]);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -159,8 +199,8 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
       if (!user) throw new Error("Not authenticated");
 
       const existingTopicIds = existingTopics.map(t => t.id);
-      const topicsToUpdate: any[] = [];
-      const topicsToInsert: any[] = [];
+      const topicsToUpdate: TopicUpdate[] = [];
+      const topicsToInsert: TopicInsert[] = [];
       let updateIndex = 0;
 
       // Process each topic row
@@ -237,10 +277,11 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
 
       onSave();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to save topics";
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

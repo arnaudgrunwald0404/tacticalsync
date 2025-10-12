@@ -214,10 +214,10 @@ test.describe('Agenda Templates - Validation and Limits', () => {
     await addTemplateItem(template.id, 'Very Long (60 min)', 60, 4);
     
     const templateData = await getAgendaTemplate(template.id);
-    expect(templateData.items.length).toBe(5);
+    expect(templateData?.items?.length).toBe(5);
     
     // Verify durations
-    const durations = templateData.items.map((item: any) => item.duration_minutes);
+    const durations = templateData?.items?.map((item) => item.time_limit);
     expect(durations).toEqual([1, 5, 15, 30, 60]);
   });
 });

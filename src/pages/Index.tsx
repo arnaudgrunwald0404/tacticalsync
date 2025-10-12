@@ -41,18 +41,19 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-20">
         <div className="max-w-4xl mx-auto text-center space-y-8">
-          <div className="space-y-4">
+          <div className="space-y-8">
             <h2 className="text-5xl font-bold tracking-tight">
-              Transform Your Team's{" "}
-              <div className="mt-4">
-                <LayoutTextFlip
+               Great Leadership Starts <br></br>with Great {" "}
+              
+                <LayoutTextFlip 
                   text=""
                   words={["Weekly", "Monthly", "Quarterly", "Daily"]}
                   duration={3000}
                 />
-              </div>{" "}
-              Meetings
+              {" "}
+              Team Meetings
             </h2>
+
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               Streamline your tactical meetings with collaborative agenda tracking,
               action items, and team accountability.
@@ -61,9 +62,9 @@ const Index = () => {
 
 
           <div className="grid md:grid-cols-3 gap-8 pt-16">
-            <div className="p-6 rounded-lg bg-card border border-border/50 hover:shadow-large transition-all">
-              <div className="rounded-full bg-primary/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Users className="h-7 w-7 text-primary" />
+            <div className="p-6 rounded-lg bg-card border border-pink-200 hover:shadow-large transition-all">
+              <div className="rounded-full bg-pink-100 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Users className="h-7 w-7 text-pink-500" />
               </div>
               <h3 className="text-lg font-semibold mb-2">Team Collaboration</h3>
               <p className="text-muted-foreground">
@@ -71,9 +72,9 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="p-6 rounded-lg bg-card border border-border/50 hover:shadow-large transition-all">
-              <div className="rounded-full bg-primary/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-7 w-7 text-primary" />
+            <div className="p-6 rounded-lg bg-card border border-pink-200 hover:shadow-large transition-all">
+              <div className="rounded-full bg-pink-100 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-7 w-7 text-pink-500" />
               </div>
               <h3 className="text-lg font-semibold mb-2">Consistent Tracking</h3>
               <p className="text-muted-foreground">
@@ -81,9 +82,9 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="p-6 rounded-lg bg-card border border-border/50 hover:shadow-large transition-all">
-              <div className="rounded-full bg-primary/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-primary" />
+            <div className="p-6 rounded-lg bg-card border border-pink-200 hover:shadow-large transition-all">
+              <div className="rounded-full bg-pink-100 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <CheckSquare className="h-7 w-7 text-pink-500" />
               </div>
               <h3 className="text-lg font-semibold mb-2">Action Items</h3>
               <p className="text-muted-foreground">
@@ -96,7 +97,7 @@ const Index = () => {
 
       <footer className="border-t mt-20">
         <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>&copy; 2025 Wikli Inc. Built for productive teams.</p>
+          <p>&copy; 2025 TacticalSync Inc. Built for productive teams.</p>
         </div>
       </footer>
     </GridBackground>

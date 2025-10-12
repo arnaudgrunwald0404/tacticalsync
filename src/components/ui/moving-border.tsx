@@ -1,15 +1,14 @@
 import React from "react";
 import { motion } from "framer-motion";
 
-interface MovingBorderProps {
+interface MovingBorderProps extends React.HTMLAttributes<HTMLElement> {
   children: React.ReactNode;
   borderRadius?: string;
   className?: string;
-  as?: any;
+  as?: React.ElementType;
   containerClassName?: string;
   borderClassName?: string;
   duration?: number;
-  [key: string]: any;
 }
 
 const MovingBorder: React.FC<MovingBorderProps> = ({

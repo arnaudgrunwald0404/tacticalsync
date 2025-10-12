@@ -277,7 +277,7 @@ test.describe('Invitations - Join via Link (Existing User)', () => {
       await page.waitForTimeout(2000);
       
       // Verify added
-      let isMember = await isTeamMember(teamId, user.id!);
+      const isMember = await isTeamMember(teamId, user.id!);
       expect(isMember).toBeTruthy();
       
       // Try to join again with same link
