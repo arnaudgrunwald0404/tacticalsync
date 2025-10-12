@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
@@ -5,9 +6,27 @@ import { cn } from "@/lib/utils";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const navigate = useNavigate();
+
+  // Check for existing session or OAuth callback
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate("/dashboard");
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        navigate("/dashboard");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   return (
     <GridBackground className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10">
@@ -97,7 +116,7 @@ const Index = () => {
 
       <footer className="border-t mt-20">
         <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>&copy; 2025 TacticalSync Inc. Built for productive teams.</p>
+          <p>&copy; 2025 TacticalSync Inc. Built for uncommon execution.</p>
         </div>
       </footer>
     </GridBackground>
