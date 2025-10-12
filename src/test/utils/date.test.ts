@@ -82,20 +82,20 @@ describe('Date Utilities', () => {
   });
 
   describe('getMeetingEndDate', () => {
-    it('should return Friday for weekly frequency', () => {
+    it('should return Sunday for weekly frequency', () => {
       const monday = new Date(2025, 9, 6); // October 6, 2025 (Monday)
       const endDate = getMeetingEndDate('weekly', monday);
       
-      expect(endDate.getDay()).toBe(5); // Friday
-      expect(endDate.getDate()).toBe(10);
+      expect(endDate.getDay()).toBe(0); // Sunday
+      expect(endDate.getDate()).toBe(12); // October 12, 2025
     });
 
-    it('should return Friday of second week for bi-weekly frequency', () => {
+    it('should return Sunday of second week for bi-weekly frequency', () => {
       const monday = new Date(2025, 9, 6); // October 6, 2025 (Monday)
       const endDate = getMeetingEndDate('bi-weekly', monday);
       
-      expect(endDate.getDay()).toBe(5); // Friday
-      expect(endDate.getDate()).toBe(17); // Second Friday
+      expect(endDate.getDay()).toBe(0); // Sunday
+      expect(endDate.getDate()).toBe(19); // October 19, 2025 (Second Sunday)
     });
 
     it('should return last day of month for monthly frequency', () => {
@@ -167,7 +167,7 @@ describe('Date Utilities', () => {
       
       expect(label).toContain('Week');
       expect(label).toContain('10/6');
-      expect(label).toContain('10/10'); // Friday
+      expect(label).toContain('10/12'); // Sunday
     });
 
     it('should format monthly meeting label correctly', () => {

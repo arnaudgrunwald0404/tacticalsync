@@ -9,10 +9,19 @@ export const getMondayStartOfWeek = (date: Date = new Date()): Date => {
 
 /**
  * Get the end of the current week (Friday)
+ * @deprecated Use getSundayEndOfWeek for full week coverage
  */
 export const getFridayEndOfWeek = (date: Date = new Date()): Date => {
   const monday = getMondayStartOfWeek(date);
   return addDays(monday, 4); // Monday + 4 days = Friday
+};
+
+/**
+ * Get the end of the current week (Sunday)
+ */
+export const getSundayEndOfWeek = (date: Date = new Date()): Date => {
+  const monday = getMondayStartOfWeek(date);
+  return addDays(monday, 6); // Monday + 6 days = Sunday
 };
 
 /**
@@ -47,11 +56,11 @@ export const getMeetingEndDate = (frequency: string, startDate: Date): Date => {
       return startDate;
     
     case 'weekly':
-      return getFridayEndOfWeek(startDate);
+      return getSundayEndOfWeek(startDate);
     
     case 'bi-weekly': {
       const nextWeekStart = addWeeks(startDate, 1);
-      return getFridayEndOfWeek(nextWeekStart);
+      return getSundayEndOfWeek(nextWeekStart);
     }
     
     case 'monthly':
@@ -63,7 +72,7 @@ export const getMeetingEndDate = (frequency: string, startDate: Date): Date => {
       return endOfQuarter(startDate);
     
     default:
-      return getFridayEndOfWeek(startDate);
+      return getSundayEndOfWeek(startDate);
   }
 };
 

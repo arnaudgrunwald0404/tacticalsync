@@ -503,12 +503,12 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
   );
 
   const getWeekHeader = (weekStart: Date) => {
-    // Use Monday-Friday for business weeks
+    // Use Monday-Sunday for full week coverage
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 }); // Monday start
-    const fridayEnd = addDays(weekStart, 4); // Monday + 4 days = Friday
+    const sundayEnd = addDays(weekStart, 6); // Monday + 6 days = Sunday
     const weekNumber = getWeek(weekStart);
     const startStr = format(weekStart, "MMM d");
-    const endStr = format(fridayEnd, "MMM d");
+    const endStr = format(sundayEnd, "MMM d");
     return `Week ${weekNumber} (${startStr} - ${endStr})`;
   };
 
