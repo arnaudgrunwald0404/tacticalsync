@@ -4,11 +4,15 @@ import { Button } from "@/components/ui/button";
 interface SettingsNavbarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
+  userEmail?: string;
 }
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail }) => {
+  const isTestUser = userEmail === "agrunwald@clearcompany.com";
+  
   const sections = [
     { id: "agenda-templates", label: "Agenda Templates" },
+    ...(isTestUser ? [{ id: "testing-mode", label: "🧪 Testing Mode" }] : []),
     // Add more sections here as needed
   ];
 
