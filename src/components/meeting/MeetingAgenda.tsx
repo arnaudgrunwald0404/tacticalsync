@@ -441,7 +441,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       {items.length === 0 && !isAddingManually && (
         <div className="text-center py-8 border rounded-lg bg-muted/20">
           <div className="max-w-2xl mx-auto px-4">
-            <p className="text-sm text-muted-foreground mb-6">No agenda items yet. Start with a template or create your own.</p>
+            <p className="text-sm text-muted-foreground mb-6">Disciplined execution starts with a consistant agenda. Start with a template or create your own.</p>
             
             <div className="grid gap-4 md:grid-cols-2 mb-6">
               {/* System Templates */}
@@ -479,15 +479,15 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
             </div>
 
             <div className="text-xs text-muted-foreground mb-3">
-              Or start from scratch:
+              Or if you'd rather adding agenda items manually:
             </div>
             <Button 
               variant="outline" 
               size="sm"
               onClick={startAddingManually}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Items Manually
+
+              Start Agenda From Scratch
             </Button>
           </div>
         </div>

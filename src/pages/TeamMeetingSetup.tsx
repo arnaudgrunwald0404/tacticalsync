@@ -2,28 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Check, Settings, ArrowLeft } from "lucide-react";
+import { Calendar, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
-
-interface TemplateItem {
-  id: string;
-  title: string;
-  duration_minutes: number;
-  order_index: number;
-}
-
-interface Template {
-  id: string;
-  name: string;
-  description: string | null;
-  items?: TemplateItem[];
-}
 
 const TeamMeetingSetup = () => {
   const navigate = useNavigate();
@@ -36,8 +22,6 @@ const TeamMeetingSetup = () => {
   const [meetingName, setMeetingName] = useState<string>("");
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
   const [teamAbbreviatedName, setTeamAbbreviatedName] = useState<string>("");
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   const generateMeetingName = (freq: string, type: string): string => {
     const frequencyLabels: Record<string, string> = {
@@ -88,23 +72,6 @@ const TeamMeetingSetup = () => {
       const typeLabels = { tactical: "Tactical", strategic: "Strategic", adhoc: "Ad hoc" };
       const initialName = `${abbreviatedName || "Team"} ${frequencyLabels["weekly"]} ${typeLabels["tactical"]}`;
       setMeetingName(initialName);
-
-      // Fetch templates
-      const { data: templatesData, error: templatesError } = await supabase
-        .from("agenda_templates")
-        .select(`
-          *,
-          items:agenda_template_items(*)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (!templatesError && templatesData) {
-        const templatesWithSortedItems = templatesData.map(template => ({
-          ...template,
-          items: (template.items || []).sort((a: TemplateItem, b: TemplateItem) => a.order_index - b.order_index),
-        }));
-        setTemplates(templatesWithSortedItems);
-      }
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -147,21 +114,26 @@ const TeamMeetingSetup = () => {
 
       if (error) throw error;
 
-      // If a template is selected, add the template items to the standing agenda
-      if (selectedTemplateId) {
-        const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-        if (selectedTemplate && selectedTemplate.items) {
-          // We need to get or create the first weekly meeting instance
-          // For now, we'll store template in meeting metadata or add items when first meeting is created
-          // Let's add template items to the standing agenda column if we have one
-          // Since we don't have a standing_agenda column on recurring_meetings yet,
-          // we'll just note this for the user
-          toast({
-            title: "Note",
-            description: "Navigate to your meeting to add agenda items from the template",
-          });
-        }
-      }
+      // Calculate start date based on frequency
+      const today = new Date();
+      const startDate = frequency === "weekly" || frequency === "bi-weekly" 
+        ? new Date(today.setDate(today.getDate() - today.getDay() + 1)) // Monday of current week
+        : frequency === "monthly"
+        ? new Date(today.getFullYear(), today.getMonth(), 1) // First of month
+        : today;
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+
+      // Create first weekly meeting instance
+      const { error: meetingError } = await supabase
+        .from("weekly_meetings")
+        .insert({
+          team_id: teamId,
+          recurring_meeting_id: meeting.id,
+          week_start_date: startDateStr
+        });
+
+      if (meetingError) throw meetingError;
 
       toast({
         title: "Meeting created!",
@@ -213,9 +185,6 @@ const TeamMeetingSetup = () => {
     );
   }
 
-  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-  const totalDuration = selectedTemplate?.items?.reduce((total, item) => total + item.duration_minutes, 0) || 0;
-
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
@@ -223,23 +192,21 @@ const TeamMeetingSetup = () => {
           <Logo variant="minimal" size="lg" />
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+            Back to Home
           </Button>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <main className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
             <Calendar className="w-8 h-8 text-primary" />
           </div>
           <h1 className="text-3xl font-bold mb-2">Set Up Meeting</h1>
           <p className="text-muted-foreground">
-            Choose how often your team will meet
-          </p>
+            Choose a frequency and a name for your recurring meeting.</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
+        <Card>
             <CardContent className="pt-6 space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="frequency">Meeting Frequency</Label>
@@ -299,86 +266,6 @@ const TeamMeetingSetup = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Agenda Template (Optional)</CardTitle>
-              <CardDescription>
-                Start with a pre-defined agenda template
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {templates.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground">
-                  <p>No templates yet</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {templates.map((template) => (
-                      <div
-                        key={template.id}
-                        className={`
-                          p-3 border rounded-lg cursor-pointer transition-all
-                          ${selectedTemplateId === template.id 
-                            ? 'border-primary bg-primary/5' 
-                            : 'border-border hover:border-primary/50'}
-                        `}
-                        onClick={() => setSelectedTemplateId(
-                          selectedTemplateId === template.id ? "" : template.id
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="font-medium flex items-center gap-2">
-                              {template.name}
-                              {selectedTemplateId === template.id && (
-                                <Check className="h-4 w-4 text-primary" />
-                              )}
-                            </div>
-                            {template.description && (
-                              <div className="text-sm text-muted-foreground mt-1">
-                                {template.description}
-                              </div>
-                            )}
-                            <div className="text-xs text-muted-foreground mt-2">
-                              {template.items?.length || 0} items
-                              {template.items && template.items.length > 0 && (
-                                <> · {template.items.reduce((sum, item) => sum + item.duration_minutes, 0)} min</>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {selectedTemplate && selectedTemplate.items && selectedTemplate.items.length > 0 && (
-                    <div className="border-t pt-4 space-y-2">
-                      <div className="font-medium text-sm mb-2">Template Preview:</div>
-                      {selectedTemplate.items.map((item, index) => (
-                        <div 
-                          key={item.id} 
-                          className="flex justify-between text-sm p-2 bg-muted/50 rounded"
-                        >
-                          <span className="text-muted-foreground">
-                            {index + 1}. {item.title}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {item.duration_minutes}m
-                          </span>
-                        </div>
-                      ))}
-                      <div className="text-xs text-muted-foreground text-right pt-2">
-                        Total: {totalDuration} minutes
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </main>
     </GridBackground>
   );

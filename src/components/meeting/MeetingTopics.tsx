@@ -568,7 +568,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
             <p className="text-sm">
               {hasAgendaItems 
                 ? "No topics yet. Click \"Add Topic\" to create one." 
-                : "Users will be able to create topics once the agenda for this recurring meeting has been set."
+                : "Topics can be added once the agenda for the meeting has been set."
               }
             </p>
           </div>
