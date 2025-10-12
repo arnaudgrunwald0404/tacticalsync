@@ -125,17 +125,34 @@ const TeamMeetingSetup = () => {
       const startDateStr = startDate.toISOString().split('T')[0];
 
       // Create first weekly meeting instance (or get existing one)
-      const { error: meetingError } = await supabase
+      const { data: weeklyMeeting, error: meetingError } = await supabase
         .from("weekly_meetings")
         .upsert({
           team_id: teamId,
           recurring_meeting_id: meeting.id,
           week_start_date: startDateStr
         }, {
-          onConflict: 'recurring_meeting_id,week_start_date'
-        });
+          onConflict: 'recurring_meeting_id,week_start_date',
+          ignoreDuplicates: false
+        })
+        .select()
+        .single();
 
-      if (meetingError) throw meetingError;
+      if (meetingError) {
+        // If it's a conflict error, try to fetch the existing meeting
+        if (meetingError.code === '23505') {
+          const { data: existing } = await supabase
+            .from("weekly_meetings")
+            .select()
+            .eq("recurring_meeting_id", meeting.id)
+            .eq("week_start_date", startDateStr)
+            .single();
+          
+          if (!existing) throw meetingError;
+        } else {
+          throw meetingError;
+        }
+      }
 
       toast({
         title: "Meeting created!",
