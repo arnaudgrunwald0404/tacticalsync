@@ -124,13 +124,15 @@ const TeamMeetingSetup = () => {
       
       const startDateStr = startDate.toISOString().split('T')[0];
 
-      // Create first weekly meeting instance
+      // Create first weekly meeting instance (or get existing one)
       const { error: meetingError } = await supabase
         .from("weekly_meetings")
-        .insert({
+        .upsert({
           team_id: teamId,
           recurring_meeting_id: meeting.id,
           week_start_date: startDateStr
+        }, {
+          onConflict: 'recurring_meeting_id,week_start_date'
         });
 
       if (meetingError) throw meetingError;
