@@ -491,77 +491,48 @@ const TeamMeeting = () => {
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
               <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
                 <div className="container mx-auto px-4 py-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <Logo variant="minimal" size="lg" />
+                  {/* Top row: Logo, Title/Admin, Settings */}
+                  <div className="flex items-center justify-between mb-3">
+                    <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+                      <ArrowLeft className="h-4 w-4 mr-1" />
+                      Home
+                    </Button>
                     
-                    {/* Meeting Title & Period Picker - Centered */}
-                    <div className="flex-1 text-center space-y-3">
-                      <div>
-                        <h1 className="text-2xl font-bold">
-                          {recurringMeeting?.name}
-                        </h1>
-                        {teamAdmin?.profiles && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Team admin: {(() => {
-                              const firstName = teamAdmin.profiles.first_name || "";
-                              const lastName = teamAdmin.profiles.last_name || "";
-                              const fullName = teamAdmin.profiles.full_name || "";
-                              
-                              // Try first_name + last_name first, fallback to full_name
-                              if (firstName && lastName) {
-                                const lastInitial = lastName.charAt(0) + ".";
-                                return `${firstName} ${lastInitial}`.trim();
-                              } else if (fullName) {
-                                // Check if it's an email address
-                                if (fullName.includes("@")) {
-                                  return fullName;
-                                }
-                                // Split full_name and use same format
-                                const nameParts = fullName.split(" ");
-                                if (nameParts.length === 1) {
-                                  // If only one part, just return it (no initial)
-                                  return fullName;
-                                }
-                                const first = nameParts[0] || "";
-                                const last = nameParts[nameParts.length - 1] || "";
-                                const lastInitial = last ? last.charAt(0) + "." : "";
-                                return `${first} ${lastInitial}`.trim();
+                    {/* Meeting Title - Centered */}
+                    <div className="flex-1 text-center">
+                      <h1 className="text-2xl font-bold">
+                        {recurringMeeting?.name}
+                      </h1>
+                      {teamAdmin?.profiles && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Team admin: {(() => {
+                            const firstName = teamAdmin.profiles.first_name || "";
+                            const lastName = teamAdmin.profiles.last_name || "";
+                            const fullName = teamAdmin.profiles.full_name || "";
+                            
+                            // Try first_name + last_name first, fallback to full_name
+                            if (firstName && lastName) {
+                              const lastInitial = lastName.charAt(0) + ".";
+                              return `${firstName} ${lastInitial}`.trim();
+                            } else if (fullName) {
+                              // Check if it's an email address
+                              if (fullName.includes("@")) {
+                                return fullName;
                               }
-                              return "Unknown";
-                            })()}
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* Meeting Period Dropdown - Directly under title */}
-                      {meeting && allMeetings.length > 0 && (
-                        <div className="flex items-center justify-center">
-                          <Select value={meeting.id} onValueChange={handleMeetingChange}>
-                            <SelectTrigger className={`w-[300px] h-12 font-semibold text-lg ${
-                              isCurrentMeetingPeriod(meeting.week_start_date) 
-                                ? 'bg-orange-100 border-orange-300 text-orange-800' 
-                                : 'bg-gray-100 border-gray-300 text-gray-600'
-                            }`}>
-                              <SelectValue>
-                                {formatMeetingPeriodLabel(meeting.week_start_date)}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-popover z-50">
-                              {allMeetings.map((m) => (
-                                <SelectItem 
-                                  key={m.id} 
-                                  value={m.id}
-                                  className={isCurrentMeetingPeriod(m.week_start_date) 
-                                    ? 'bg-orange-50 text-orange-800 border-orange-200' 
-                                    : 'bg-gray-50 text-gray-600 border-gray-200'
-                                  }
-                                >
-                                  {formatMeetingPeriodLabel(m.week_start_date)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                              // Split full_name and use same format
+                              const nameParts = fullName.split(" ");
+                              if (nameParts.length === 1) {
+                                // If only one part, just return it (no initial)
+                                return fullName;
+                              }
+                              const first = nameParts[0] || "";
+                              const last = nameParts[nameParts.length - 1] || "";
+                              const lastInitial = last ? last.charAt(0) + "." : "";
+                              return `${first} ${lastInitial}`.trim();
+                            }
+                            return "Unknown";
+                          })()}
+                        </p>
                       )}
                     </div>
                     
@@ -575,33 +546,56 @@ const TeamMeeting = () => {
                     )}
                   </div>
                   
-                  {/* Meeting Navigation */}
-                  <div className="flex items-center justify-between">
-                    {/* Back to Home & Previous Button - Left positioned */}
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-                        <ArrowLeft className="h-4 w-4 mr-1" />
-                        Home
-                      </Button>
-                      {meeting && hasPreviousMeeting() && (
+                  {/* Period Picker row with navigation buttons */}
+                  {meeting && allMeetings.length > 0 && (
+                    <div className="flex items-center justify-center gap-2">
+                      {/* Previous Button */}
+                      {hasPreviousMeeting() && (
                         <Button 
                           variant="outline" 
+                          size="sm"
                           className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary"
                           onClick={() => navigateToPreviousMeeting()}
                         >
                           ← Previous
                         </Button>
                       )}
-                    </div>
-                    
-                    {/* Next/Create Next Button - Right positioned */}
-                    <div>
-                      {meeting && (
+                      
+                      {/* Period Picker */}
+                      <Select value={meeting.id} onValueChange={handleMeetingChange}>
+                        <SelectTrigger className={`w-[300px] h-12 font-semibold text-lg ${
+                          isCurrentMeetingPeriod(meeting.week_start_date) 
+                            ? 'bg-orange-100 border-orange-300 text-orange-800' 
+                            : 'bg-gray-100 border-gray-300 text-gray-600'
+                        }`}>
+                          <SelectValue>
+                            {formatMeetingPeriodLabel(meeting.week_start_date)}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover z-50">
+                          {allMeetings.map((m) => (
+                            <SelectItem 
+                              key={m.id} 
+                              value={m.id}
+                              className={isCurrentMeetingPeriod(m.week_start_date) 
+                                ? 'bg-orange-50 text-orange-800 border-orange-200' 
+                                : 'bg-gray-50 text-gray-600 border-gray-200'
+                              }
+                            >
+                              {formatMeetingPeriodLabel(m.week_start_date)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* Next/Create Next Button */}
+                      {(
                         (isCurrentMeeting() && currentMeetingHasTopics()) || 
                         (!isCurrentMeeting() && allMeetings.length > 1)
                       ) && (
                         <Button 
                           variant="outline" 
+                          size="sm"
                           className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary"
                           onClick={() => navigateToNextMeeting()}
                         >
@@ -609,7 +603,7 @@ const TeamMeeting = () => {
                         </Button>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               </header>
 
