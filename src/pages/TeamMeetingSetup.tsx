@@ -210,6 +210,9 @@ const TeamMeetingSetup = () => {
             <CardContent className="pt-6 space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="frequency">Meeting Frequency</Label>
+                <p className="text-sm text-muted-foreground">
+                  How often will this meeting occur?
+                </p>
                 <Select value={frequency} onValueChange={handleFrequencyChange}>
                   <SelectTrigger id="frequency">
                     <SelectValue placeholder="Select frequency" />
@@ -221,13 +224,14 @@ const TeamMeetingSetup = () => {
                     <SelectItem value="monthly">Monthly</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-muted-foreground">
-                  How often will this meeting occur?
-                </p>
+                
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="meetingType">Meeting Type</Label>
+                <p className="text-sm text-muted-foreground">
+                  What will this meeting be about?
+                </p>
                 <Select value={meetingType} onValueChange={handleMeetingTypeChange}>
                   <SelectTrigger id="meetingType">
                     <SelectValue placeholder="Select type" />
@@ -238,13 +242,14 @@ const TeamMeetingSetup = () => {
                     <SelectItem value="adhoc">Ad hoc</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-muted-foreground">
-                  What type of meeting is this?
-                </p>
+                
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="meetingName">Meeting Name</Label>
+                <p className="text-sm text-muted-foreground">
+                  Auto-generated, but you can customize it
+                </p>
                 <Input
                   id="meetingName"
                   value={meetingName}
@@ -252,9 +257,7 @@ const TeamMeetingSetup = () => {
                   placeholder="e.g., Weekly Tactical, Monthly Review"
                   required
                 />
-                <p className="text-sm text-muted-foreground">
-                  Auto-generated from frequency and type, but you can customize it
-                </p>
+
               </div>
 
               <Button 
