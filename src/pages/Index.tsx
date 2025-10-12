@@ -42,7 +42,7 @@ const Index = () => {
               className="text-lg h-14 w-48px-8"
               onClick={() => navigate("/auth")}
             >
-              Start Free
+              Get Started
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
 
