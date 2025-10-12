@@ -512,8 +512,16 @@ const TeamMeeting = () => {
                                 const lastInitial = lastName.charAt(0) + ".";
                                 return `${firstName} ${lastInitial}`.trim();
                               } else if (fullName) {
+                                // Check if it's an email address
+                                if (fullName.includes("@")) {
+                                  return fullName;
+                                }
                                 // Split full_name and use same format
                                 const nameParts = fullName.split(" ");
+                                if (nameParts.length === 1) {
+                                  // If only one part, just return it (no initial)
+                                  return fullName;
+                                }
                                 const first = nameParts[0] || "";
                                 const last = nameParts[nameParts.length - 1] || "";
                                 const lastInitial = last ? last.charAt(0) + "." : "";
