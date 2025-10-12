@@ -31,7 +31,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 interface MeetingTopicsProps {
-  items: any[];
+  items: unknown[];
   meetingId: string;
   teamId: string;
   onUpdate: () => void;
@@ -45,7 +45,7 @@ export interface MeetingTopicsRef {
 
 interface SortableTopicRowProps {
   item: any;
-  members: any[];
+  members: unknown[];
   onToggleComplete: (itemId: string, currentStatus: boolean) => void;
   onDelete: (itemId: string) => void;
   onChangeAssignment: (itemId: string, newUserId: string | null) => void;
@@ -99,7 +99,7 @@ const SortableTopicRow = ({
 
       if (error) throw error;
       setComments(data || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching comments:", error);
     } finally {
       setLoadingComments(false);
@@ -362,7 +362,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
     })
   );
 
-  const handleDragEnd = async (event: DragEndEvent, weekItems: any[]) => {
+  const handleDragEnd = async (event: DragEndEvent, weekItems: unknown[]) => {
     const { active, over } = event;
 
     if (!over || active.id === over.id) {
@@ -390,7 +390,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
       });
 
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
         description: "Failed to reorder topics",
@@ -481,7 +481,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
   };
 
   // Group items by week
-  const groupedByWeek: Record<string, { weekStart: Date; items: any[] }> = items.reduce((acc, item) => {
+  const groupedByWeek: Record<string, { weekStart: Date; items: unknown[] }> = items.reduce((acc, item) => {
     const createdDate = new Date(item.created_at);
     const weekStart = startOfWeek(createdDate, { weekStartsOn: 1 }); // Monday
     const weekKey = weekStart.toISOString();
@@ -495,7 +495,7 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
     
     acc[weekKey].items.push(item);
     return acc;
-  }, {} as Record<string, { weekStart: Date; items: any[] }>);
+  }, {} as Record<string, { weekStart: Date; items: unknown[] }>);
 
   // Sort weeks descending (newest first)
   const sortedWeeks = Object.entries(groupedByWeek).sort(

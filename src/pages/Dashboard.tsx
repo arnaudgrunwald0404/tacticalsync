@@ -20,7 +20,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<unknown>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [meetings, setMeetings] = useState<Record<string, any[]>>({});
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
@@ -221,7 +221,7 @@ const Dashboard = () => {
       );
 
       setPendingInvitations(invitationsWithMeetings);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in fetchPendingInvitations:", error);
     }
   };
@@ -267,10 +267,10 @@ const Dashboard = () => {
 
       // Refresh data
       await Promise.all([fetchTeams(), fetchPendingInvitations()]);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -291,10 +291,10 @@ const Dashboard = () => {
       });
 
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }

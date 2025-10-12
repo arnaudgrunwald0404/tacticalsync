@@ -32,8 +32,8 @@ const MeetingSettings = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
-  const [team, setTeam] = useState<any>(null);
-  const [recurringMeeting, setRecurringMeeting] = useState<any>(null);
+  const [team, setTeam] = useState<unknown>(null);
+  const [recurringMeeting, setRecurringMeeting] = useState<unknown>(null);
   const [meetingName, setMeetingName] = useState("");
   
   const [currentMembers, setCurrentMembers] = useState<any[]>([]);
@@ -75,10 +75,10 @@ const MeetingSettings = () => {
       // Fetch team members
       await fetchCurrentMembers();
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -143,10 +143,10 @@ const MeetingSettings = () => {
         title: "Meeting name updated!",
         description: "Your changes have been saved",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -228,10 +228,10 @@ const MeetingSettings = () => {
 
       setEmailInput("");
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -266,10 +266,10 @@ const MeetingSettings = () => {
 
       // Navigate back to dashboard
       navigate("/dashboard");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
       setDeleting(false);
@@ -366,7 +366,7 @@ const MeetingSettings = () => {
             <div className="space-y-3">
               <Label>Current Members ({currentMembers.length})</Label>
               <div className="space-y-2">
-                {currentMembers.map((member: any) => (
+                {currentMembers.map((member: unknown) => (
                   <div
                     key={member.id}
                     className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"

@@ -76,7 +76,7 @@ const Settings = () => {
         console.error("Error fetching templates:", error);
         toast({
           title: "Error loading templates",
-          description: error.message,
+          description: error instanceof Error ? error.message : "An error occurred",
           variant: "destructive",
         });
         return;
@@ -88,14 +88,14 @@ const Settings = () => {
           ...template,
           items: (template.items || []).sort((a: TemplateItem, b: TemplateItem) => a.order_index - b.order_index),
         }))
-        .sort((a: any, b: any) => {
+        .sort((a: any, b: unknown) => {
           // User templates first (is_system = false), then system templates
           if (a.is_system === b.is_system) return 0;
           return a.is_system ? 1 : -1;
         });
 
       setTemplates(templatesWithSortedItems);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in fetchTemplates:", error);
     }
   };
@@ -340,10 +340,10 @@ const Settings = () => {
 
       setShowTemplateDialog(false);
       await fetchTemplates();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error saving template",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -370,10 +370,10 @@ const Settings = () => {
       });
 
       await fetchTemplates();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error deleting template",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }

@@ -20,13 +20,13 @@ const TeamMeeting = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [team, setTeam] = useState<any>(null);
-  const [recurringMeeting, setRecurringMeeting] = useState<any>(null);
-  const [meeting, setMeeting] = useState<any>(null);
+  const [team, setTeam] = useState<unknown>(null);
+  const [recurringMeeting, setRecurringMeeting] = useState<unknown>(null);
+  const [meeting, setMeeting] = useState<unknown>(null);
   const [allMeetings, setAllMeetings] = useState<any[]>([]);
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
   const [topicItems, setTopicItems] = useState<any[]>([]);
-  const [teamAdmin, setTeamAdmin] = useState<any>(null);
+  const [teamAdmin, setTeamAdmin] = useState<unknown>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
@@ -156,10 +156,10 @@ const TeamMeeting = () => {
       await fetchTeamAdmin(teamId);
       await fetchCurrentUserRole(teamId);
       updatePreviousMeetingId(selectedMeeting);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -191,7 +191,7 @@ const TeamMeeting = () => {
       } else {
         console.log("No admin found or error:", error);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching team admin:", error);
     }
   };
@@ -213,7 +213,7 @@ const TeamMeeting = () => {
       if (!error && data) {
         setCurrentUserRole(data.role);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching current user role:", error);
     }
   };
@@ -470,7 +470,7 @@ const TeamMeeting = () => {
         title: "Next meeting created!",
         description: `${formatMeetingPeriodLabel(nextWeekStartStr)} has been created`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
         description: "Failed to create next meeting",

@@ -89,11 +89,11 @@ const CreateTeam = () => {
       });
 
       navigate(`/team/${team.id}/invite`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Full error:", error);
       toast({
         title: "Error creating team",
-        description: error.message || "Please try again",
+        description: error instanceof Error ? error.message : "An error occurred" || "Please try again",
         variant: "destructive",
       });
     } finally {

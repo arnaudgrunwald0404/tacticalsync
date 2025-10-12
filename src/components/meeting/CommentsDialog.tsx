@@ -48,7 +48,7 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
 
       if (error) throw error;
       setComments(data || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching comments:", error);
     }
   };
@@ -102,10 +102,10 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
         title: "Comment posted",
         description: "Your comment has been added",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {

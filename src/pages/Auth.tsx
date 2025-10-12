@@ -76,7 +76,7 @@ const Auth = () => {
       toast.success("Password reset email sent! Check your inbox.");
       setIsForgotPassword(false);
       setEmail("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error(error.message || "Failed to send reset email");
     } finally {
       setLoading(false);
@@ -130,7 +130,7 @@ const Auth = () => {
         if (error) throw error;
         toast.success("Signed in successfully!");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error(error.message || "Authentication failed");
     } finally {
       setLoading(false);

@@ -181,7 +181,7 @@ const BrandingShowcase = () => {
     }
   ];
 
-  const copyStyles = (index: number, option: any) => {
+  const copyStyles = (index: number, option: unknown) => {
     const styleString = `className: "${option.className}"\nstyle: ${JSON.stringify(option.style, null, 2)}`;
     navigator.clipboard.writeText(styleString);
     setCopiedIndex(index);

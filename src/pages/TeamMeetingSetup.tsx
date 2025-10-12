@@ -105,10 +105,10 @@ const TeamMeetingSetup = () => {
         }));
         setTemplates(templatesWithSortedItems);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
       navigate("/dashboard");
@@ -169,10 +169,10 @@ const TeamMeetingSetup = () => {
       });
 
       navigate(`/team/${teamId}/meeting/${meeting.id}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {

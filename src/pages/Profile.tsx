@@ -17,7 +17,7 @@ const Profile = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<unknown>(null);
   const [email, setEmail] = useState("");
   
   const [firstName, setFirstName] = useState("");
@@ -67,10 +67,10 @@ const Profile = () => {
         const day = String(date.getDate()).padStart(2, '0');
         setBirthday(`${month}-${day}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -132,10 +132,10 @@ const Profile = () => {
       });
 
       navigate("/dashboard");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -212,11 +212,11 @@ const Profile = () => {
         title: "Avatar updated!",
         description: "Your profile picture has been changed successfully.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
       });
     } finally {
       setUploading(false);
@@ -239,11 +239,11 @@ const Profile = () => {
         title: "Avatar updated!",
         description: "Your avatar has been changed successfully.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         variant: "destructive",
         title: "Update failed",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
       });
     }
   };

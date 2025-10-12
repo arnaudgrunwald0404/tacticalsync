@@ -95,7 +95,7 @@ const ReviewLastWeekDrawer = ({
       }) || [];
 
       setTopics(topicsWithStatus);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching previous meeting topics:", error);
       toast({
         title: "Error",
@@ -141,7 +141,7 @@ const ReviewLastWeekDrawer = ({
         title: "Status updated",
         description: "Topic status has been updated successfully",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating status:", error);
       toast({
         title: "Error",

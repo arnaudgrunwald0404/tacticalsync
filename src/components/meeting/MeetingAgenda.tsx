@@ -18,7 +18,7 @@ import { htmlToPlainText } from "@/lib/htmlUtils";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 
 interface MeetingAgendaProps {
-  items: any[];
+  items: unknown[];
   meetingId: string;
   teamId: string;
   onUpdate: () => void;
@@ -88,7 +88,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       if (error) throw error;
       
       setSystemTemplates(templates || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching system templates:", error);
     }
   };
@@ -108,7 +108,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       if (!error && memberData) {
         setIsAdmin(memberData.role === "admin");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error checking admin status:", error);
     }
   };
@@ -258,7 +258,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     setIsEditingAgenda(false);
   };
 
-  const updateEditingItem = (index: number, field: string, value: any) => {
+  const updateEditingItem = (index: number, field: string, value: unknown) => {
     const updated = [...editingItems];
     updated[index][field] = value;
     setEditingItems(updated);
@@ -287,10 +287,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       setIsEditingAgenda(false);
       setEditingItems([]);
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -303,7 +303,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       if (!user) throw new Error("Not authenticated");
 
       // Sort template items by order_index
-      const sortedItems = (template.items || []).sort((a: any, b: any) => a.order_index - b.order_index);
+      const sortedItems = (template.items || []).sort((a: any, b: unknown) => a.order_index - b.order_index);
 
       const inserts = sortedItems.map((item: any, idx: number) => ({
         meeting_id: meetingId,
@@ -327,10 +327,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       });
 
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -353,7 +353,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
     setManualItems([]);
   };
 
-  const updateManualItem = (index: number, field: 'name' | 'assigned_to' | 'time_minutes', value: any) => {
+  const updateManualItem = (index: number, field: 'name' | 'assigned_to' | 'time_minutes', value: unknown) => {
     const updated = [...manualItems];
     if (!updated[index]) {
       updated[index] = { id: `${index + 1}`, name: '', assigned_to: null, time_minutes: null };
@@ -414,10 +414,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
 
       cancelAddingManually();
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -457,7 +457,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
                     </div>
                   </div>
                   <div className="text-left text-xs text-muted-foreground space-y-1 mb-4">
-                    {(template.items || []).sort((a: any, b: any) => a.order_index - b.order_index).map((item: any) => (
+                    {(template.items || []).sort((a: any, b: unknown) => a.order_index - b.order_index).map((item: unknown) => (
                       <div key={item.id} className="flex justify-between">
                         <span>• {item.title}</span>
                         {item.duration_minutes && (

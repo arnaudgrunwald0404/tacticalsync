@@ -75,10 +75,10 @@ const TeamInvite = () => {
       
       // Fetch pending invitations (we'll need to create this functionality)
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
       navigate("/dashboard");
@@ -150,11 +150,11 @@ const TeamInvite = () => {
         title: "Team updated",
         description: "Team name has been updated successfully",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Update failed:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to update team",
+        description: error instanceof Error ? error.message : "An error occurred" || "Failed to update team",
         variant: "destructive",
       });
     } finally {
@@ -177,7 +177,7 @@ const TeamInvite = () => {
       if (error) throw error;
 
       setCurrentMembers(members || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching current members:", error);
     }
   };
@@ -196,7 +196,7 @@ const TeamInvite = () => {
 
       const pendingEmails = invitations?.map(inv => inv.email) || [];
       setPendingInvitations(pendingEmails);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching pending invitations:", error);
     }
   };
@@ -329,10 +329,10 @@ const TeamInvite = () => {
       // Refresh current members and pending invitations
       await fetchCurrentMembers();
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -368,10 +368,10 @@ const TeamInvite = () => {
         title: "Reminder sent!",
         description: `Invitation reminder sent to ${email}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -393,10 +393,10 @@ const TeamInvite = () => {
       });
 
       await fetchPendingInvitations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -439,10 +439,10 @@ const TeamInvite = () => {
       });
 
       await fetchCurrentMembers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error removing member",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
@@ -463,10 +463,10 @@ const TeamInvite = () => {
       });
 
       navigate("/dashboard");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error deleting team",
-        description: error.message,
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     }
