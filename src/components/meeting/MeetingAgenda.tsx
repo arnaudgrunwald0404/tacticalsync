@@ -260,7 +260,8 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
 
   const updateEditingItem = (index: number, field: string, value: unknown) => {
     const updated = [...editingItems];
-    updated[index][field] = value;
+    (updated[index] as Record<string, unknown>)[field] = value;
+    console.log('Updated editing item:', index, field, value, updated[index]);
     setEditingItems(updated);
   };
 
@@ -441,7 +442,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       {items.length === 0 && !isAddingManually && (
         <div className="text-center py-8 border rounded-lg bg-muted/20">
           <div className="max-w-2xl mx-auto px-4">
-            <p className="text-sm text-muted-foreground mb-6">Disciplined execution starts with a consistant agenda. Start with a template or create your own.</p>
+            <p className="text-sm text-muted-foreground mb-6">Disciplined execution starts with a consistant agenda. Select a template or create your own agenda.</p>
             
             <div className="grid gap-4 md:grid-cols-2 mb-6">
               {/* System Templates */}
@@ -479,7 +480,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
             </div>
 
             <div className="text-xs text-muted-foreground mb-3">
-              Or if you'd rather adding agenda items manually:
+              Or if you'd rather add agenda items manually:
             </div>
             <Button 
               variant="outline" 
