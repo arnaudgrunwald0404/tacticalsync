@@ -261,7 +261,6 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
   const updateEditingItem = (index: number, field: string, value: unknown) => {
     const updated = [...editingItems];
     (updated[index] as Record<string, unknown>)[field] = value;
-    console.log('Updated editing item:', index, field, value, updated[index]);
     setEditingItems(updated);
   };
 
@@ -638,48 +637,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
                     }}
                   >
                     <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Assign to...">
-                        {!item.assigned_to ? (
-                          <span className="text-sm font-medium">Unassigned / All</span>
-                        ) : item.assigned_to_profile ? (
-                          (() => {
-                            const firstName = item.assigned_to_profile.first_name || "";
-                            const lastName = item.assigned_to_profile.last_name || "";
-                            const email = item.assigned_to_profile.email || "";
-                            
-                            let displayName = "";
-                            if (firstName && lastName) {
-                              displayName = `${firstName} ${lastName}`;
-                            } else if (firstName) {
-                              displayName = firstName;
-                            } else {
-                              displayName = email;
-                            }
-                            
-                            return (
-                              <div className="flex items-center gap-2">
-                                {item.assigned_to_profile.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={item.assigned_to_profile.avatar_name} 
-                                    displayName={displayName}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {displayName.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <span className="text-sm">{displayName}</span>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-muted-foreground">Assign to...</span>
-                        )}
-                      </SelectValue>
+                      <SelectValue placeholder="Assign to..." />
                     </SelectTrigger>
                     <SelectContent className="bg-popover z-50">
                       <SelectItem value="all">Unassigned / All</SelectItem>
