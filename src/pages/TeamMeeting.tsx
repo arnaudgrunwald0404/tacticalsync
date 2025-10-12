@@ -494,33 +494,66 @@ const TeamMeeting = () => {
                   <div className="flex items-center justify-between mb-4">
                     <Logo variant="minimal" size="lg" />
                     
-                    {/* Meeting Title */}
-                    <div className="flex-1 text-center">
-                      <h1 className="text-2xl font-bold">
-                        {recurringMeeting?.name}
-                      </h1>
-                      {teamAdmin?.profiles && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Team admin: {(() => {
-                            const firstName = teamAdmin.profiles.first_name || "";
-                            const lastName = teamAdmin.profiles.last_name || "";
-                            const fullName = teamAdmin.profiles.full_name || "";
-                            
-                            // Try first_name + last_name first, fallback to full_name
-                            if (firstName && lastName) {
-                              const lastInitial = lastName.charAt(0) + ".";
-                              return `${firstName} ${lastInitial}`.trim();
-                            } else if (fullName) {
-                              // Split full_name and use same format
-                              const nameParts = fullName.split(" ");
-                              const first = nameParts[0] || "";
-                              const last = nameParts[nameParts.length - 1] || "";
-                              const lastInitial = last ? last.charAt(0) + "." : "";
-                              return `${first} ${lastInitial}`.trim();
-                            }
-                            return "Unknown";
-                          })()}
-                        </p>
+                    {/* Meeting Title & Period Picker - Centered */}
+                    <div className="flex-1 text-center space-y-3">
+                      <div>
+                        <h1 className="text-2xl font-bold">
+                          {recurringMeeting?.name}
+                        </h1>
+                        {teamAdmin?.profiles && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Team admin: {(() => {
+                              const firstName = teamAdmin.profiles.first_name || "";
+                              const lastName = teamAdmin.profiles.last_name || "";
+                              const fullName = teamAdmin.profiles.full_name || "";
+                              
+                              // Try first_name + last_name first, fallback to full_name
+                              if (firstName && lastName) {
+                                const lastInitial = lastName.charAt(0) + ".";
+                                return `${firstName} ${lastInitial}`.trim();
+                              } else if (fullName) {
+                                // Split full_name and use same format
+                                const nameParts = fullName.split(" ");
+                                const first = nameParts[0] || "";
+                                const last = nameParts[nameParts.length - 1] || "";
+                                const lastInitial = last ? last.charAt(0) + "." : "";
+                                return `${first} ${lastInitial}`.trim();
+                              }
+                              return "Unknown";
+                            })()}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Meeting Period Dropdown - Directly under title */}
+                      {meeting && allMeetings.length > 0 && (
+                        <div className="flex items-center justify-center">
+                          <Select value={meeting.id} onValueChange={handleMeetingChange}>
+                            <SelectTrigger className={`w-[300px] h-12 font-semibold text-lg ${
+                              isCurrentMeetingPeriod(meeting.week_start_date) 
+                                ? 'bg-orange-100 border-orange-300 text-orange-800' 
+                                : 'bg-gray-100 border-gray-300 text-gray-600'
+                            }`}>
+                              <SelectValue>
+                                {formatMeetingPeriodLabel(meeting.week_start_date)}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover z-50">
+                              {allMeetings.map((m) => (
+                                <SelectItem 
+                                  key={m.id} 
+                                  value={m.id}
+                                  className={isCurrentMeetingPeriod(m.week_start_date) 
+                                    ? 'bg-orange-50 text-orange-800 border-orange-200' 
+                                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                                  }
+                                >
+                                  {formatMeetingPeriodLabel(m.week_start_date)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       )}
                     </div>
                     
@@ -535,9 +568,9 @@ const TeamMeeting = () => {
                   </div>
                   
                   {/* Meeting Navigation */}
-                  <div className="flex items-center justify-center relative">
+                  <div className="flex items-center justify-between">
                     {/* Back to Home & Previous Button - Left positioned */}
-                    <div className="absolute left-0 flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
                         <ArrowLeft className="h-4 w-4 mr-1" />
                         Home
@@ -553,39 +586,8 @@ const TeamMeeting = () => {
                       )}
                     </div>
                     
-                    {/* Meeting Period Dropdown - Always centered */}
-                    {meeting && allMeetings.length > 0 && (
-                      <div className="flex items-center justify-center">
-                        <Select value={meeting.id} onValueChange={handleMeetingChange}>
-                          <SelectTrigger className={`w-[300px] h-12 font-semibold text-lg ${
-                            isCurrentMeetingPeriod(meeting.week_start_date) 
-                              ? 'bg-orange-100 border-orange-300 text-orange-800' 
-                              : 'bg-gray-100 border-gray-300 text-gray-600'
-                          }`}>
-                            <SelectValue>
-                              {formatMeetingPeriodLabel(meeting.week_start_date)}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent className="bg-popover z-50">
-                            {allMeetings.map((m) => (
-                              <SelectItem 
-                                key={m.id} 
-                                value={m.id}
-                                className={isCurrentMeetingPeriod(m.week_start_date) 
-                                  ? 'bg-orange-50 text-orange-800 border-orange-200' 
-                                  : 'bg-gray-50 text-gray-600 border-gray-200'
-                                }
-                              >
-                                {formatMeetingPeriodLabel(m.week_start_date)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    
                     {/* Next/Create Next Button - Right positioned */}
-                    <div className="absolute right-0">
+                    <div>
                       {meeting && (
                         (isCurrentMeeting() && currentMeetingHasTopics()) || 
                         (!isCurrentMeeting() && allMeetings.length > 1)
