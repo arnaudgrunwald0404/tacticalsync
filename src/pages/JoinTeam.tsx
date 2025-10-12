@@ -21,6 +21,10 @@ const JoinTeam = () => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
+        // Store invite code in localStorage before redirecting
+        if (inviteCode) {
+          localStorage.setItem('pendingInviteCode', inviteCode);
+        }
         // Redirect to auth page with invite code
         navigate(`/auth?invite=${inviteCode}`);
         return;

@@ -21,15 +21,33 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Check for invite code in URL
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get('invite');
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/dashboard");
+        // If logged in and has invite code, redirect to join page
+        if (inviteCode) {
+          navigate(`/join/${inviteCode}`);
+        } else {
+          navigate("/dashboard");
+        }
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        navigate("/dashboard");
+        // Check for stored invite code after successful auth
+        const storedInvite = localStorage.getItem('pendingInviteCode');
+        if (storedInvite) {
+          localStorage.removeItem('pendingInviteCode');
+          navigate(`/join/${storedInvite}`);
+        } else if (inviteCode) {
+          navigate(`/join/${inviteCode}`);
+        } else {
+          navigate("/dashboard");
+        }
       }
     });
 
