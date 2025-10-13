@@ -30,7 +30,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: 'TacticalSync <onboarding@resend.dev>', // You can update this later with your domain
+        from: 'TacticalSync <noreply@info.tacticalsync.com>',
         to: [email],
         subject: `${inviterName} invited you to join ${teamName} on TacticalSync`,
         html: `
