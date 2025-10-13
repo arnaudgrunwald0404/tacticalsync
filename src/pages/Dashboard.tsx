@@ -487,7 +487,7 @@ const Dashboard = () => {
                         onClick={() => handleCreateMeeting(teamMember.teams.id)}
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Recurring Meeting
+                        Add Another Recurring Meeting 
                       </Button>
                     )}
                   </div>

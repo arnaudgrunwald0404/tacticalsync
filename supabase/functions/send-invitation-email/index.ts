@@ -49,26 +49,26 @@ serve(async (req) => {
                 
                 <!-- Content -->
                 <div style="padding: 40px 30px;">
-                  <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 24px;">You're Invited!</h2>
+                  <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 24px;">You're Invited to Join a Team!</h2>
                   
                   <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
                     <strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> on TacticalSync.
                   </p>
                   
                   <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-                    TacticalSync helps teams run more effective tactical meetings with structured agendas, time tracking, and action items.
+                    Click the button below to accept the invitation and start collaborating with your team.
                   </p>
                   
                   <!-- CTA Button -->
                   <div style="text-align: center; margin: 40px 0;">
                     <a href="${inviteLink}" 
                        style="display: inline-block; background: linear-gradient(135deg, #ec4899 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                      Join ${teamName}
+                      Accept Invitation
                     </a>
                   </div>
                   
                   <p style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0; text-align: center;">
-                    This invitation will expire in 7 days.
+                    This invitation link will expire in 7 days for security reasons.
                   </p>
                   
                   <!-- Link fallback -->
@@ -78,12 +78,29 @@ serve(async (req) => {
                       <a href="${inviteLink}" style="color: #3b82f6; word-break: break-all;">${inviteLink}</a>
                     </p>
                   </div>
+                  
+                  <!-- Info box -->
+                  <div style="margin-top: 30px; padding: 16px; background-color: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
+                    <p style="color: #1e40af; font-size: 14px; line-height: 1.6; margin: 0;">
+                      <strong>💡 What is TacticalSync?</strong><br>
+                      TacticalSync helps teams run more effective tactical meetings with:
+                    </p>
+                    <ul style="color: #1e40af; font-size: 14px; line-height: 1.6; margin: 10px 0 0 20px; padding: 0;">
+                      <li>Structured meeting agendas</li>
+                      <li>Time tracking and metrics</li>
+                      <li>Action item management</li>
+                      <li>Team collaboration tools</li>
+                    </ul>
+                  </div>
                 </div>
                 
                 <!-- Footer -->
                 <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
                   <p style="color: #9ca3af; font-size: 12px; margin: 0;">
                     © 2025 TacticalSync. All rights reserved.
+                  </p>
+                  <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
+                    If you didn't expect this invitation, you can safely ignore this email.
                   </p>
                 </div>
               </div>
