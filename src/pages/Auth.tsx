@@ -97,7 +97,7 @@ const Auth = () => {
       setIsForgotPassword(false);
       setEmail("");
     } catch (error: unknown) {
-      toast.error(error.message || "Failed to send reset email");
+      toast.error(error instanceof Error ? error.message : "Failed to send reset email");
     } finally {
       setLoading(false);
     }
@@ -151,7 +151,7 @@ const Auth = () => {
         toast.success("Signed in successfully!");
       }
     } catch (error: unknown) {
-      toast.error(error.message || "Authentication failed");
+      toast.error(error instanceof Error ? error.message : "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -159,17 +159,17 @@ const Auth = () => {
 
   return (
     <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-4 py-8">
-      <div className="space-y-6" style={{ width: '40vw', maxWidth: '800px' }}>
+      <div className="w-full max-w-[500px] space-y-4 sm:space-y-6">
         {/* Logo Section */}
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-2">
-            <Logo variant="full" size="xl" />
+            <Logo variant="full" size="lg" className="scale-75 sm:scale-90 md:scale-100" />
           </div>
 
         </div>
 
-        <Card className="border-border/50 shadow-large shadow-pink-500/100" style={{ width: '100%' }}>
-          <CardHeader className="space-y-4 pb-6 px-16">
+        <Card className="border-border/50 shadow-large shadow-pink-500/100 w-full">
+          <CardHeader className="space-y-4 pb-6 px-4 sm:px-8 md:px-12">
             {!isForgotPassword ? (
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -183,10 +183,10 @@ const Auth = () => {
               </Tabs>
             ) : (
               <div className="space-y-2">
-                <CardTitle className="text-2xl font-bold text-center">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-center">
                   Reset Password
                 </CardTitle>
-                <CardDescription className="text-center">
+                <CardDescription className="text-sm sm:text-base text-center">
                   Enter your email to receive a reset link
                 </CardDescription>
               </div>
@@ -196,24 +196,24 @@ const Auth = () => {
             
           </CardHeader>
 
-          <CardContent className="space-y-6 pt-0 px-16">
+          <CardContent className="space-y-6 pt-0 px-4 sm:px-8 md:px-12">
             {/* Email Verification Banner */}
             {showVerificationBanner ? (
-              <div className="py-8 space-y-6">
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-8 text-center">
+              <div className="py-4 sm:py-8 space-y-6">
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 sm:p-6 md:p-8 text-center">
                   <div className="flex justify-center mb-4">
-                    <Mail className="h-16 w-16 text-blue-600" />
+                    <Mail className="h-12 w-12 sm:h-16 sm:w-16 text-blue-600" />
                   </div>
-                  <h3 className="text-2xl font-bold text-blue-900 mb-3">
+                  <h3 className="text-xl sm:text-2xl font-bold text-blue-900 mb-3">
                     Check Your Email
                   </h3>
-                  <p className="text-blue-800 mb-2">
+                  <p className="text-sm sm:text-base text-blue-800 mb-2">
                     We've sent a verification email to:
                   </p>
-                  <p className="text-lg font-semibold text-blue-900 mb-4">
+                  <p className="text-base sm:text-lg font-semibold text-blue-900 mb-4 break-words">
                     {verificationEmail}
                   </p>
-                  <p className="text-blue-700 text-sm mb-6">
+                  <p className="text-blue-700 text-xs sm:text-sm mb-6">
                     Click the link in the email to verify your account and complete your sign up.
                     The link will expire in 1 hour.
                   </p>
@@ -252,17 +252,16 @@ const Auth = () => {
                 {/* Google Sign In */}
                 {!isForgotPassword && (
                   <>
-                    <MovingBorder
-                  borderRadius="0.5rem"
-                  duration={3000}
-        
-                  className="w-full h-26 text-md font-normal bg-white text-gray-900"
-                  onClick={handleGoogleSignIn}
-                  disabled={loading}
-                  as="button"
-                >
-                  <div className="flex items-center justify-center gap-4 pt-4 pb-4">
-                    <svg className="h-6 w-6" viewBox="0 0 24 24">
+                    <div className={loading ? "opacity-50 pointer-events-none" : ""}>
+                      <MovingBorder
+                        borderRadius="0.5rem"
+                        duration={3000}
+                        className="w-full text-sm sm:text-base font-normal bg-white text-gray-900"
+                        onClick={handleGoogleSignIn}
+                        as="button"
+                      >
+                        <div className="flex items-center justify-center gap-2 sm:gap-4 py-3 sm:py-4">
+                          <svg className="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24">
                       <path
                         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                         fill="#4285F4"
@@ -282,13 +281,14 @@ const Auth = () => {
                     </svg>
                     <span>Sign in with Google</span>
                   </div>
-                </MovingBorder>
+                      </MovingBorder>
+                    </div>
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
                   </div>
-                  <div className="relative flex justify-center text-xs uppercase">
+                  <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
                       Or continue with email
                     </span>
@@ -299,7 +299,7 @@ const Auth = () => {
             {/* Email Form */}
             <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email address</Label>
+                <Label htmlFor="email" className="text-sm sm:text-base">Email address</Label>
                 <Input
                   id="email"
                   type="email"
@@ -307,14 +307,14 @@ const Auth = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  className="h-12"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                   required
                 />
               </div>
               
               {!isForgotPassword && (
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password" className="text-sm sm:text-base">Password</Label>
                   <Input
                     id="password"
                     type="password"
@@ -322,7 +322,7 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loading}
-                    className="h-12"
+                    className="h-10 sm:h-12 text-sm sm:text-base"
                     required
                     minLength={6}
                   />
@@ -332,7 +332,7 @@ const Auth = () => {
               {/* Primary Action Button */}
               <Button
                 type="submit"
-                className="w-full h-12 text-base"
+                className="w-full h-10 sm:h-12 text-sm sm:text-base"
                 disabled={loading}
               >
                 {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
