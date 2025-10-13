@@ -291,10 +291,10 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-[75vw] sm:max-w-[75vw]">
-        <SheetHeader>
-          <SheetTitle>{existingTopics.length > 0 ? "Edit Topics" : "Add Topics"}</SheetTitle>
-          <SheetDescription>
+      <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle className="text-xl sm:text-2xl">{existingTopics.length > 0 ? "Edit Topics" : "Add Topics"}</SheetTitle>
+          <SheetDescription className="text-sm sm:text-base">
             {existingTopics.length > 0 
               ? "Edit existing topics and add new ones for this meeting." 
               : "Add multiple topics for this meeting. You can create several topics at once."
@@ -303,7 +303,8 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
         </SheetHeader>
         
         <div className="mt-6 space-y-4">
-          <div className="border rounded-lg overflow-hidden">
+          {/* Desktop Table View */}
+          <div className="hidden sm:block border rounded-lg overflow-hidden">
             <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
               <div>Who</div>
               <div>Topic</div>
@@ -462,6 +463,111 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
               </div>
             ))}
           </div>
+
+          {/* Mobile Card View */}
+          <div className="sm:hidden space-y-3">
+            {topics.map((topic, index) => {
+              const member = teamMembers.find(m => m.user_id === topic.assigned_to);
+              const firstName = member?.profiles?.first_name || "";
+              const lastName = member?.profiles?.last_name || "";
+              const email = member?.profiles?.email || "";
+              let displayName = "";
+              if (firstName && lastName) {
+                displayName = `${firstName} ${lastName}`;
+              } else if (firstName) {
+                displayName = firstName;
+              } else if (email) {
+                displayName = email;
+              }
+
+              return (
+                <div key={topic.id} className="border rounded-lg p-4 space-y-3 bg-white">
+                  {/* Assigned To */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Who</label>
+                    <Select
+                      value={topic.assigned_to || ""}
+                      onValueChange={(value) => updateTopic(topic.id, "assigned_to", value)}
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Assign to...">
+                          {topic.assigned_to && displayName ? (
+                            <span className="text-sm">{displayName}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Assign to...</span>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50">
+                        {currentUser && (
+                          <SelectItem value={currentUser.user_id}>
+                            <span className="text-sm">Me</span>
+                          </SelectItem>
+                        )}
+                        {teamMembers
+                          .filter(member => member.user_id !== currentUser?.user_id)
+                          .map((member) => {
+                            const mFirstName = member.profiles?.first_name || "";
+                            const mLastName = member.profiles?.last_name || "";
+                            const mEmail = member.profiles?.email || "";
+                            let mDisplayName = "";
+                            if (mFirstName && mLastName) {
+                              mDisplayName = `${mFirstName} ${mLastName}`;
+                            } else if (mFirstName) {
+                              mDisplayName = mFirstName;
+                            } else {
+                              mDisplayName = mEmail;
+                            }
+                            return (
+                              <SelectItem key={member.user_id} value={member.user_id}>
+                                <span className="text-sm">{mDisplayName}</span>
+                              </SelectItem>
+                            );
+                          })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Topic */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Topic</label>
+                    <RichTextEditor
+                      content={topic.topic}
+                      onChange={(content) => updateTopic(topic.id, "topic", content)}
+                      placeholder="Enter topic..."
+                      className="min-h-[80px] text-sm"
+                    />
+                  </div>
+
+                  {/* Desired Outcome */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Desired Outcome</label>
+                    <RichTextEditor
+                      content={topic.desired_outcome}
+                      onChange={(content) => updateTopic(topic.id, "desired_outcome", content)}
+                      placeholder="Desired outcome..."
+                      className="min-h-[80px] text-sm"
+                    />
+                  </div>
+
+                  {/* Delete Button */}
+                  {topics.length > 3 && (
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeTopicRow(topic.id)}
+                        className="text-destructive hover:text-destructive text-xs"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           
           <div className="flex items-center gap-2">
             <Button 
@@ -469,18 +575,19 @@ const AddTopicsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingT
               size="sm" 
               onClick={addTopicRow}
               disabled={!allTopicsUsed()}
+              className="w-full sm:w-auto text-xs sm:text-sm"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Another Topic
             </Button>
           </div>
           
-          <div className="flex items-center gap-2 pt-4 border-t">
-            <Button onClick={handleSave} disabled={saving}>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t">
+            <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto text-sm">
               <Save className="h-4 w-4 mr-2" />
               {saving ? "Saving..." : existingTopics.length > 0 ? "Save Changes" : `Save ${topics.filter(t => t.topic.trim()).length} Topic${topics.filter(t => t.topic.trim()).length !== 1 ? 's' : ''}`}
             </Button>
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto text-sm">
               <X className="h-4 w-4 mr-2" />
               Cancel
             </Button>

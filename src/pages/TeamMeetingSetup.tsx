@@ -125,33 +125,33 @@ const TeamMeetingSetup = () => {
       const startDateStr = startDate.toISOString().split('T')[0];
 
       // Create first weekly meeting instance (or get existing one)
-      const { data: weeklyMeeting, error: meetingError } = await supabase
+      // First, check if it already exists
+      const { data: existingWeeklyMeeting } = await supabase
         .from("weekly_meetings")
-        .upsert({
-          team_id: teamId,
-          recurring_meeting_id: meeting.id,
-          week_start_date: startDateStr
-        }, {
-          onConflict: 'recurring_meeting_id,week_start_date',
-          ignoreDuplicates: false
-        })
         .select()
-        .single();
+        .eq("recurring_meeting_id", meeting.id)
+        .eq("week_start_date", startDateStr)
+        .maybeSingle();
 
-      if (meetingError) {
-        // If it's a conflict error, try to fetch the existing meeting
-        if (meetingError.code === '23505') {
-          const { data: existing } = await supabase
-            .from("weekly_meetings")
-            .select()
-            .eq("recurring_meeting_id", meeting.id)
-            .eq("week_start_date", startDateStr)
-            .single();
-          
-          if (!existing) throw meetingError;
-        } else {
-          throw meetingError;
-        }
+      let weeklyMeeting;
+      
+      if (existingWeeklyMeeting) {
+        // Use existing meeting
+        weeklyMeeting = existingWeeklyMeeting;
+      } else {
+        // Create new meeting
+        const { data: newWeeklyMeeting, error: meetingError } = await supabase
+          .from("weekly_meetings")
+          .insert({
+            team_id: teamId,
+            recurring_meeting_id: meeting.id,
+            week_start_date: startDateStr
+          })
+          .select()
+          .single();
+
+        if (meetingError) throw meetingError;
+        weeklyMeeting = newWeeklyMeeting;
       }
 
       toast({
@@ -207,33 +207,34 @@ const TeamMeetingSetup = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo variant="minimal" size="lg" />
-          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
+            <ArrowLeft className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Back to Home</span>
+            <span className="sm:hidden">Back</span>
           </Button>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-            <Calendar className="w-8 h-8 text-primary" />
+      <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 mb-4">
+            <Calendar className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Set Up Meeting</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Set Up Meeting</h1>
+          <p className="text-sm sm:text-base text-muted-foreground px-4">
             Choose a frequency and a name for your recurring meeting.</p>
         </div>
 
         <Card>
-            <CardContent className="pt-6 space-y-6">
+            <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6 space-y-5 sm:space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="frequency">Meeting Frequency</Label>
-                <p className="text-sm text-muted-foreground">
+                <Label htmlFor="frequency" className="text-sm sm:text-base">Meeting Frequency</Label>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   How often will this meeting occur?
                 </p>
                 <Select value={frequency} onValueChange={handleFrequencyChange}>
-                  <SelectTrigger id="frequency">
+                  <SelectTrigger id="frequency" className="h-10 sm:h-11">
                     <SelectValue placeholder="Select frequency" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
@@ -247,12 +248,12 @@ const TeamMeetingSetup = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="meetingType">Meeting Type</Label>
-                <p className="text-sm text-muted-foreground">
+                <Label htmlFor="meetingType" className="text-sm sm:text-base">Meeting Type</Label>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   What will this meeting be about?
                 </p>
                 <Select value={meetingType} onValueChange={handleMeetingTypeChange}>
-                  <SelectTrigger id="meetingType">
+                  <SelectTrigger id="meetingType" className="h-10 sm:h-11">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
@@ -265,8 +266,8 @@ const TeamMeetingSetup = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="meetingName">Meeting Name</Label>
-                <p className="text-sm text-muted-foreground">
+                <Label htmlFor="meetingName" className="text-sm sm:text-base">Meeting Name</Label>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Auto-generated, but you can customize it
                 </p>
                 <Input
@@ -275,6 +276,7 @@ const TeamMeetingSetup = () => {
                   onChange={(e) => handleMeetingNameChange(e.target.value)}
                   placeholder="e.g., Weekly Tactical, Monthly Review"
                   required
+                  className="h-10 sm:h-11"
                 />
 
               </div>
@@ -282,7 +284,7 @@ const TeamMeetingSetup = () => {
               <Button 
                 onClick={handleSave}
                 disabled={saving || !meetingName.trim()}
-                className="w-full"
+                className="w-full h-10 sm:h-11 text-sm sm:text-base"
               >
                 {saving ? "Creating..." : "Create Meeting"}
               </Button>

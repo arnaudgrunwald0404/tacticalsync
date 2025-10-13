@@ -525,7 +525,8 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
               <div className="h-px flex-1 bg-border" />
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
+            {/* Desktop Table View */}
+            <div className="hidden sm:block border rounded-lg overflow-hidden">
               <div className="bg-muted/50 px-4 py-2 grid grid-cols-[40px_40px_2fr_200px_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
                 <div></div>
                 <div></div>
@@ -559,6 +560,124 @@ const MeetingTopics = forwardRef<MeetingTopicsRef, MeetingTopicsProps>(({ items,
                 </SortableContext>
               </DndContext>
 
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="sm:hidden space-y-3">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => handleDragEnd(event, weekItems)}
+              >
+                <SortableContext
+                  items={weekItems.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {weekItems.map((item) => {
+                    const firstName = item.assigned_to_profile?.first_name || "";
+                    const lastName = item.assigned_to_profile?.last_name || "";
+                    const email = item.assigned_to_profile?.email || "";
+                    let displayName = "";
+                    if (firstName && lastName) {
+                      displayName = `${firstName} ${lastName}`;
+                    } else if (firstName) {
+                      displayName = firstName;
+                    } else if (email) {
+                      displayName = email;
+                    }
+
+                    return (
+                      <div key={item.id} className="border rounded-lg p-4 space-y-3 bg-white">
+                        {/* Checkbox and Title */}
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={item.is_completed}
+                            onCheckedChange={() => handleToggleComplete(item.id, item.is_completed)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm break-words">{htmlToPlainText(item.title)}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 flex-shrink-0"
+                            onClick={() => handleDelete(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+
+                        {/* Assigned To */}
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Assigned To</span>
+                          <Select
+                            value={item.assigned_to || "none"}
+                            onValueChange={(value) => handleChangeAssignment(item.id, value === "none" ? null : value)}
+                          >
+                            <SelectTrigger className="h-9 text-sm">
+                              <SelectValue>
+                                {!item.assigned_to ? (
+                                  <span className="text-muted-foreground">Unassigned</span>
+                                ) : displayName ? (
+                                  <span>{displayName}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">Unknown</span>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover z-50">
+                              <SelectItem value="none">Unassigned</SelectItem>
+                              {members.map((member) => {
+                                const mFirstName = member.profiles?.first_name || "";
+                                const mLastName = member.profiles?.last_name || "";
+                                const mEmail = member.profiles?.email || "";
+                                let mDisplayName = "";
+                                if (mFirstName && mLastName) {
+                                  mDisplayName = `${mFirstName} ${mLastName}`;
+                                } else if (mFirstName) {
+                                  mDisplayName = mFirstName;
+                                } else {
+                                  mDisplayName = mEmail;
+                                }
+                                return (
+                                  <SelectItem key={member.user_id} value={member.user_id}>
+                                    {mDisplayName}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Desired Outcome */}
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Desired Outcome</span>
+                          <Input
+                            placeholder="Desired outcome..."
+                            defaultValue={htmlToPlainText(item.outcome || "")}
+                            onBlur={(e) => handleUpdateOutcome(item.id, e.target.value)}
+                            className="h-9 text-sm"
+                          />
+                        </div>
+
+                        {/* Comments Button */}
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedItem({ id: item.id, title: item.title })}
+                            className="text-xs"
+                          >
+                            <MessageSquare className="h-3 w-3 mr-1" />
+                            Comments
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             </div>
           </div>
         ))}

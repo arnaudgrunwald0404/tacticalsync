@@ -490,21 +490,21 @@ const TeamMeeting = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
               <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-                <div className="container mx-auto px-4 py-4">
+                <div className="container mx-auto px-4 py-3 sm:py-4">
                   {/* Top row: Logo, Title/Admin, Settings */}
                   <div className="flex items-center justify-between mb-3">
-                    <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-                      <ArrowLeft className="h-4 w-4 mr-1" />
-                      Home
+                    <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
+                      <ArrowLeft className="h-4 w-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Home</span>
                     </Button>
                     
                     {/* Meeting Title - Centered */}
-                    <div className="flex-1 text-center">
-                      <h1 className="text-2xl font-bold">
+                    <div className="flex-1 text-center px-2">
+                      <h1 className="text-lg sm:text-xl md:text-2xl font-bold">
                         {recurringMeeting?.name}
                       </h1>
                       {teamAdmin?.profiles && (
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                           Team admin: {(() => {
                             const firstName = teamAdmin.profiles.first_name || "";
                             const lastName = teamAdmin.profiles.last_name || "";
@@ -539,7 +539,9 @@ const TeamMeeting = () => {
                     {currentUserRole === "admin" && (
                       <Button
                         variant="ghost"
+                        size="sm"
                         onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}/settings`)}
+                        className="h-8 sm:h-10 w-8 sm:w-10 p-0"
                       >
                         <Settings className="h-4 w-4" />
                       </Button>
@@ -548,22 +550,23 @@ const TeamMeeting = () => {
                   
                   {/* Period Picker row with navigation buttons */}
                   {meeting && allMeetings.length > 0 && (
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-1 sm:gap-2">
                       {/* Previous Button */}
                       {hasPreviousMeeting() && (
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary"
+                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
                           onClick={() => navigateToPreviousMeeting()}
                         >
-                          ← Previous
+                          <span className="hidden sm:inline">← Previous</span>
+                          <span className="sm:hidden">←</span>
                         </Button>
                       )}
                       
                       {/* Period Picker */}
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
-                        <SelectTrigger className={`w-[300px] h-12 font-semibold text-lg ${
+                        <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
                           isCurrentMeetingPeriod(meeting.week_start_date) 
                             ? 'bg-orange-100 border-orange-300 text-orange-800' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
@@ -596,10 +599,11 @@ const TeamMeeting = () => {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary"
+                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
                           onClick={() => navigateToNextMeeting()}
                         >
-                          {isCurrentMeeting() ? "Create Next →" : "Next →"}
+                          <span className="hidden sm:inline">{isCurrentMeeting() ? "Create Next →" : "Next →"}</span>
+                          <span className="sm:hidden">→</span>
                         </Button>
                       )}
                     </div>
@@ -607,12 +611,12 @@ const TeamMeeting = () => {
                 </div>
               </header>
 
-      <main className="container mx-auto px-4 py-8 space-y-8">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">Agenda</h2>
+      <main className="container mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold">Agenda</h2>
             {teamAdmin && currentUserRole === "admin" && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 {isEditingAgenda ? (
                   <>
                     <Button 
@@ -622,10 +626,10 @@ const TeamMeeting = () => {
                         meetingAgendaRef.current?.saveChanges();
                         setIsEditingAgenda(false);
                       }}
-                      className="h-7 text-xs"
+                      className="h-7 sm:h-8 text-xs px-2 sm:px-3"
                     >
-                      <Save className="h-3 w-3 mr-1" />
-                      Save
+                      <Save className="h-3 w-3 sm:mr-1" />
+                      <span className="hidden sm:inline">Save</span>
                     </Button>
                     <Button
                       variant="ghost"
@@ -634,10 +638,10 @@ const TeamMeeting = () => {
                         meetingAgendaRef.current?.cancelEditing();
                         setIsEditingAgenda(false);
                       }}
-                      className="h-7 text-xs"
+                      className="h-7 sm:h-8 text-xs px-2 sm:px-3"
                     >
-                      <X className="h-3 w-3 mr-1" />
-                      Cancel
+                      <X className="h-3 w-3 sm:mr-1" />
+                      <span className="hidden sm:inline">Cancel</span>
                     </Button>
                   </>
                 ) : (
@@ -648,10 +652,10 @@ const TeamMeeting = () => {
                       meetingAgendaRef.current?.startEditing();
                       setIsEditingAgenda(true);
                     }}
-                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                    className="h-7 sm:h-8 text-xs px-2 sm:px-3 text-muted-foreground hover:text-foreground"
                   >
-                    <Edit2 className="h-3 w-3 mr-1" />
-                    Edit
+                    <Edit2 className="h-3 w-3 sm:mr-1" />
+                    <span className="hidden sm:inline">Edit</span>
                   </Button>
                 )}
               </div>
@@ -673,16 +677,18 @@ const TeamMeeting = () => {
           />
         </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">Topics</h2>
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold">Topics</h2>
             {agendaItems.length > 0 && (
               <Button
                 onClick={() => meetingTopicsRef.current?.startCreating()}
                 size="sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
               >
-                <Plus className="h-4 w-4 mr-2" />
-                {topicItems.length > 0 ? "Edit Topics" : "Add Topics"}
+                <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{topicItems.length > 0 ? "Edit Topics" : "Add Topics"}</span>
+                <span className="sm:hidden">{topicItems.length > 0 ? "Edit" : "Add"}</span>
               </Button>
             )}
           </div>

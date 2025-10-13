@@ -289,47 +289,51 @@ const MeetingSettings = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo variant="minimal" size="lg" />
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
+            className="h-8 sm:h-10"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Meeting
+            <ArrowLeft className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Back to Meeting</span>
+            <span className="sm:hidden">Back</span>
           </Button>
         </div>
       </header>
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">
 
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Meeting Settings</h1>
-          <p className="text-slate-600 mt-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Meeting Settings</h1>
+          <p className="text-sm sm:text-base text-slate-600 mt-2">
             Manage your meeting configuration and team members
           </p>
         </div>
 
         {/* Meeting Details */}
         <Card>
-          <CardHeader>
-            <CardTitle>Meeting Details</CardTitle>
-            <CardDescription>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">Meeting Details</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
               Update the name and configuration of this meeting
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
             <div className="space-y-2">
-              <Label htmlFor="meetingName">Meeting Name</Label>
+              <Label htmlFor="meetingName" className="text-sm sm:text-base">Meeting Name</Label>
               <Input
                 id="meetingName"
                 value={meetingName}
                 onChange={(e) => setMeetingName(e.target.value)}
                 placeholder="e.g., Weekly Tactical"
+                className="h-10 sm:h-11"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Frequency</Label>
+              <Label className="text-sm sm:text-base">Frequency</Label>
               <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-md">
                 {recurringMeeting?.frequency || "weekly"}
               </div>
@@ -338,7 +342,7 @@ const MeetingSettings = () => {
               </p>
             </div>
 
-            <Button onClick={handleSaveMeetingName} disabled={saving}>
+            <Button onClick={handleSaveMeetingName} disabled={saving} size="sm" className="w-full sm:w-auto">
               <Save className="h-4 w-4 mr-2" />
               {saving ? "Saving..." : "Save Changes"}
             </Button>
@@ -347,29 +351,29 @@ const MeetingSettings = () => {
 
         {/* Team Members */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <CardTitle>Team Members</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-lg sm:text-xl">Team Members</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   Invite people to join {team?.name}
                 </CardDescription>
               </div>
-              <Button variant="outline" onClick={copyInviteLink}>
+              <Button variant="outline" onClick={copyInviteLink} size="sm" className="w-full sm:w-auto">
                 <LinkIcon className="h-4 w-4 mr-2" />
                 Copy Invite Link
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 p-4 sm:p-6 pt-0">
             {/* Current Members */}
             <div className="space-y-3">
-              <Label>Current Members ({currentMembers.length})</Label>
+              <Label className="text-sm sm:text-base">Current Members ({currentMembers.length})</Label>
               <div className="space-y-2">
                 {currentMembers.map((member: unknown) => (
                   <div
                     key={member.id}
-                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-slate-50 rounded-lg"
                   >
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={member.profiles?.avatar_url} />
@@ -378,15 +382,15 @@ const MeetingSettings = () => {
                         {member.profiles?.last_name?.[0]}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-900 text-sm sm:text-base">
                         {member.profiles?.first_name} {member.profiles?.last_name}
                       </div>
-                      <div className="text-sm text-slate-600">
+                      <div className="text-xs sm:text-sm text-slate-600 truncate">
                         {member.profiles?.email}
                       </div>
                     </div>
-                    <Badge variant={member.role === "admin" ? "default" : "secondary"}>
+                    <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs w-fit">
                       {member.role}
                     </Badge>
                   </div>
@@ -397,22 +401,22 @@ const MeetingSettings = () => {
             {/* Pending Invitations */}
             {pendingInvitations.length > 0 && (
               <div className="space-y-3">
-                <Label>Pending Invitations ({pendingInvitations.length})</Label>
+                <Label className="text-sm sm:text-base">Pending Invitations ({pendingInvitations.length})</Label>
                 <div className="space-y-2">
                   {pendingInvitations.map((invitation: any) => (
                     <div
                       key={invitation.id}
-                      className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg"
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg"
                     >
-                      <div className="flex-1">
-                        <div className="font-medium text-slate-900">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-900 text-sm sm:text-base truncate">
                           {invitation.email}
                         </div>
-                        <div className="text-sm text-slate-600">
+                        <div className="text-xs sm:text-sm text-slate-600">
                           Invited {new Date(invitation.created_at).toLocaleDateString()}
                         </div>
                       </div>
-                      <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
+                      <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300 text-xs w-fit">
                         Pending
                       </Badge>
                     </div>
@@ -423,15 +427,16 @@ const MeetingSettings = () => {
 
             {/* Invite New Members */}
             <div className="space-y-3">
-              <Label htmlFor="emailInput">Invite New Members</Label>
+              <Label htmlFor="emailInput" className="text-sm sm:text-base">Invite New Members</Label>
               <Textarea
                 id="emailInput"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
                 placeholder="Enter email addresses (one per line or comma-separated)"
                 rows={4}
+                className="text-sm"
               />
-              <Button onClick={handleSendInvites} disabled={sendingInvites}>
+              <Button onClick={handleSendInvites} disabled={sendingInvites} size="sm" className="w-full sm:w-auto">
                 <UserPlus className="h-4 w-4 mr-2" />
                 {sendingInvites ? "Sending..." : "Send Invitations"}
               </Button>
@@ -441,16 +446,16 @@ const MeetingSettings = () => {
 
         {/* Danger Zone */}
         <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-900">Danger Zone</CardTitle>
-            <CardDescription className="text-red-700">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-red-900 text-lg sm:text-xl">Danger Zone</CardTitle>
+            <CardDescription className="text-red-700 text-xs sm:text-sm">
               Irreversible actions that will permanently delete data
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6 pt-0">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={deleting}>
+                <Button variant="destructive" disabled={deleting} size="sm" className="w-full sm:w-auto">
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete Meeting
                 </Button>

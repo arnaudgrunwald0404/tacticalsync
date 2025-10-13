@@ -560,7 +560,9 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
       )}
       
       {items.length > 0 && (
-        <div className="border rounded-lg">
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden sm:block border rounded-lg">
         <Table>
         <TableHeader>
           <TableRow>
@@ -782,6 +784,172 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>(({ items,
         </TableBody>
       </Table>
       </div>
+
+          {/* Mobile Card View */}
+          <div className="sm:hidden space-y-3">
+            {/* Meeting Timer Control - Mobile */}
+            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+              <span className="text-sm font-medium">Meeting Timer</span>
+              {!meetingStarted ? (
+                <Button size="sm" onClick={startMeeting} variant="outline">
+                  Start Timer
+                </Button>
+              ) : (
+                <Button size="sm" onClick={stopMeeting} variant="outline" className="text-red-600">
+                  Stop Timer
+                </Button>
+              )}
+            </div>
+
+            {(isEditingAgenda ? editingItems : items).map((item, index) => {
+              const firstName = item.assigned_to_profile?.first_name || "";
+              const lastName = item.assigned_to_profile?.last_name || "";
+              const email = item.assigned_to_profile?.email || "";
+              let displayName = "";
+              if (firstName && lastName) {
+                displayName = `${firstName} ${lastName}`;
+              } else if (firstName) {
+                displayName = firstName;
+              } else if (email) {
+                displayName = email;
+              }
+
+              return (
+                <div key={item.id} className="border rounded-lg p-4 space-y-3 bg-white">
+                  {/* Checkbox and Title */}
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={item.is_completed}
+                      onCheckedChange={() => handleToggleComplete(item.id, item.is_completed)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      {isEditingAgenda ? (
+                        <Textarea
+                          value={htmlToPlainText(item.title || "")}
+                          onChange={(e) => updateEditingItem(index, 'title', e.target.value)}
+                          placeholder="Agenda item title"
+                          className="min-h-[60px] text-sm"
+                          rows={2}
+                        />
+                      ) : (
+                        <p className="font-medium text-sm">
+                          {htmlToPlainText(item.title).toLowerCase().includes("review last week") && previousMeetingId ? (
+                            <button
+                              onClick={() => setShowReviewDrawer(true)}
+                              className="text-blue-600 hover:text-blue-800 underline"
+                            >
+                              {htmlToPlainText(item.title)}
+                            </button>
+                          ) : (
+                            htmlToPlainText(item.title)
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Assigned To and Duration */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Assigned To</span>
+                      {isEditingAgenda ? (
+                        <Select
+                          value={item.assigned_to || "all"}
+                          onValueChange={(value) => {
+                            updateEditingItem(index, 'assigned_to', value === "all" ? null : value);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Assign..." />
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover z-50">
+                            <SelectItem value="all">All</SelectItem>
+                            {teamMembers.map((member) => {
+                              const mFirstName = member.profiles?.first_name || "";
+                              const mLastName = member.profiles?.last_name || "";
+                              const mEmail = member.profiles?.email || "";
+                              let mDisplayName = "";
+                              if (mFirstName && mLastName) {
+                                mDisplayName = `${mFirstName} ${mLastName}`;
+                              } else if (mFirstName) {
+                                mDisplayName = mFirstName;
+                              } else {
+                                mDisplayName = mEmail;
+                              }
+                              return (
+                                <SelectItem key={member.user_id} value={member.user_id}>
+                                  {mDisplayName}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="text-xs">
+                          {!item.assigned_to ? (
+                            <span className="font-medium">All</span>
+                          ) : displayName ? (
+                            <span>{displayName}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Duration</span>
+                      {isEditingAgenda ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            placeholder="5"
+                            value={item.time_minutes || ""}
+                            onChange={(e) => {
+                              updateEditingItem(index, 'time_minutes', e.target.value ? parseInt(e.target.value) : null);
+                            }}
+                            className="h-8 text-xs w-16"
+                            min="0"
+                          />
+                          <span className="text-xs">min</span>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          {meetingStarted && item.time_minutes && (
+                            <div 
+                              className="absolute inset-y-0 left-0 bg-blue-100 rounded"
+                              style={{ 
+                                width: `${getItemProgress(item, index)}%`,
+                                transition: 'width 0.5s ease-in-out'
+                              }}
+                            />
+                          )}
+                          <div className="relative text-xs font-medium">
+                            {item.time_minutes ? `${item.time_minutes} min` : <span className="text-muted-foreground">—</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Notes</span>
+                    <Textarea
+                      value={htmlToPlainText(item.notes || "")}
+                      onChange={(e) => handleUpdateNotes(item.id, e.target.value)}
+                      onBlur={(e) => handleUpdateNotes(item.id, e.target.value)}
+                      placeholder="Add notes..."
+                      className="min-h-[60px] text-xs"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Review Last Week's Items Drawer */}

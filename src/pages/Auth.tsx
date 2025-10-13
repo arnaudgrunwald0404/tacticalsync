@@ -157,18 +157,18 @@ const Auth = () => {
   };
 
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-4 py-8">
-      <div className="w-full max-w-[90%] sm:max-w-[500px] space-y-6">
+    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-3 sm:px-4 py-8">
+      <div className="w-full max-w-full  space-y-6">
         {/* Logo Section */}
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-4">
-            <Logo variant="full" size="lg" className="scale-100" />
+            <Logo variant="full" size="lg" className="scale-90 sm:scale-100" />
           </div>
 
         </div>
 
-        <Card className="border-border/50 shadow-large shadow-pink-500/100 w-full">
-          <CardHeader className="space-y-4 pb-6 px-6 sm:px-8 md:px-12">
+        <Card className="border-border/50 shadow-large shadow-pink-500/100 w-full  sm:max-w-full">
+          <CardHeader className="space-y-4 pb-6 px-5 sm:px-8 md:px-12">
             {!isForgotPassword ? (
               <Tabs defaultValue="signin" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4 h-12 sm:h-14">
@@ -195,7 +195,7 @@ const Auth = () => {
             
           </CardHeader>
 
-          <CardContent className="space-y-6 pt-0 px-6 sm:px-8 md:px-12">
+          <CardContent className="space-y-6 pt-0 px-5 sm:px-8 md:px-12">
             {/* Email Verification Banner */}
             {showVerificationBanner ? (
               <div className="py-6 sm:py-8 space-y-6">

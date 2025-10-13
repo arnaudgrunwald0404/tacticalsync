@@ -311,35 +311,35 @@ const Dashboard = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo variant="minimal" size="lg" />
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => navigate("/settings")}>
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="h-8 sm:h-10">
+              <Settings className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Settings</span>
             </Button>
-            <Button variant="ghost" onClick={() => navigate("/profile")}>
-              <User className="h-4 w-4 mr-2" />
-              {user?.email}
+            <Button variant="ghost" size="sm" onClick={() => navigate("/profile")} className="h-8 sm:h-10">
+              <User className="h-4 w-4 sm:mr-2" />
+              <span className="hidden lg:inline">{(user as any)?.email}</span>
             </Button>
-            <Button variant="ghost" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="h-8 sm:h-10">
+              <LogOut className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-start justify-between">
+      <main className="container mx-auto px-4 py-6 sm:py-8">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-bold mb-2">Your Teams</h2>
-            <p className="text-muted-foreground">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
+            <p className="text-sm sm:text-base text-muted-foreground">
               Manage your tactical meetings and collaborate with your teams
             </p>
           </div>
           {(teams.length > 0 || pendingInvitations.length > 0) && (
-            <Button variant="outline" onClick={handleCreateTeam}>
+            <Button variant="outline" onClick={handleCreateTeam} size="sm" className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Create New Team
             </Button>
@@ -368,38 +368,40 @@ const Dashboard = () => {
             {/* Pending Invitations as Team Cards */}
             {pendingInvitations.map((invitation) => (
               <div key={`invitation-${invitation.id}`} className="space-y-4">
-                <Card className="border-orange-300 bg-orange-50/50 max-w-2xl">
-                  <CardHeader>
+                <Card className="border-orange-300 bg-orange-50/50 max-w-full sm:max-w-2xl">
+                  <CardHeader className="p-4 sm:p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-xl mb-3">{invitation.teams.name}</CardTitle>
-                        <div className="flex items-center gap-1 mb-2">
-                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
+                        <CardTitle className="text-lg sm:text-xl mb-3">{invitation.teams.name}</CardTitle>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 mb-2">
+                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200 w-fit">
                             Invitation Pending
                           </div>
                           <CardDescription className="text-xs">
-                            · Invited by {invitation.invited_by_profile?.full_name || "a team member"}
+                            <span className="hidden sm:inline">·</span> Invited by {invitation.invited_by_profile?.full_name || "a team member"}
                           </CardDescription>
                         </div>
                         {invitation.meetings && invitation.meetings.length > 0 && (
-                          <CardDescription className="mt-1">
+                          <CardDescription className="mt-1 text-xs sm:text-sm">
                             {invitation.meetings.length} meeting{invitation.meetings.length > 1 ? 's' : ''}: {invitation.meetings.map((m: any) => m.name).join(', ')}
                           </CardDescription>
                         )}
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex gap-2">
+                  <CardContent className="flex flex-col sm:flex-row gap-2 p-4 sm:p-6 pt-0">
                     <Button
                       onClick={() => handleAcceptInvitation(invitation)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                      className="bg-orange-500 hover:bg-orange-600 text-white w-full sm:w-auto"
+                      size="sm"
                     >
                       Accept Invitation
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleDeclineInvitation(invitation)}
-                      className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                      className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full sm:w-auto"
+                      size="sm"
                     >
                       Decline
                     </Button>
@@ -415,10 +417,10 @@ const Dashboard = () => {
 
               return (
                 <div key={teamMember.id} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="flex flex-col gap-2 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-xl font-bold">
+                        <h3 className="text-lg sm:text-xl font-bold">
                           {teamMember.teams.name}
                         </h3>
                         <TooltipProvider>
@@ -439,7 +441,7 @@ const Dashboard = () => {
                           </Tooltip>
                         </TooltipProvider>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                         <span>{teamMember.memberCount} active</span>
                         <span>·</span>
                         {teamMember.invitedCount > 0 ? (
@@ -485,20 +487,22 @@ const Dashboard = () => {
                         variant="outline" 
                         size="sm"
                         onClick={() => handleCreateMeeting(teamMember.teams.id)}
+                        className="w-full sm:w-auto text-xs sm:text-sm"
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Another Recurring Meeting 
+                        <span className="hidden md:inline">Add Another Recurring Meeting</span>
+                        <span className="md:hidden">Add Meeting</span>
                       </Button>
                     )}
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                     {hasNoMeetings ? (
                       <Card
                         className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
                         onClick={() => handleCreateMeeting(teamMember.teams.id)}
                       >
-                        <CardContent className="flex flex-col items-center justify-center py-8">
+                        <CardContent className="flex flex-col items-center justify-center py-6 sm:py-8">
                           <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:bg-primary/20 transition-all">
                             <Plus className="h-6 w-6 text-primary" />
                           </div>
@@ -515,15 +519,15 @@ const Dashboard = () => {
                           className="hover:shadow-large transition-all cursor-pointer group"
                           onClick={() => navigate(`/team/${teamMember.teams.id}/meeting/${meeting.id}`)}
                         >
-                          <CardHeader>
-                            <CardTitle className="text-base">{meeting.name}</CardTitle>
-                            <CardDescription className="capitalize">
+                          <CardHeader className="p-4 sm:p-6">
+                            <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
+                            <CardDescription className="capitalize text-xs sm:text-sm">
                               {meeting.frequency.replace('-', ' ')}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent>
-                            <Button variant="default" size="sm" className="w-full group-hover:bg-primary/90">
-                              Open Recurring Meeting →
+                          <CardContent className="p-4 sm:p-6 pt-0">
+                            <Button variant="default" size="sm" className="w-full group-hover:bg-primary/90 text-xs sm:text-sm">
+                              Access Meeting →
                             </Button>
                           </CardContent>
                         </Card>
