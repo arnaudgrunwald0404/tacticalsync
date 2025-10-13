@@ -19,6 +19,8 @@ const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showVerificationBanner, setShowVerificationBanner] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
 
   useEffect(() => {
     // Check for invite code in URL
@@ -135,10 +137,10 @@ const Auth = () => {
           },
         });
         if (error) throw error;
-        toast.success("Account created! Please check your email inbox to confirm your email address before signing in.", {
-          duration: 8000,
-        });
-        setIsSignUp(false);
+        
+        // Show verification banner instead of toast
+        setVerificationEmail(trimmedEmail);
+        setShowVerificationBanner(true);
         setPassword("");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -195,10 +197,62 @@ const Auth = () => {
           </CardHeader>
 
           <CardContent className="space-y-6 pt-0 px-16">
-            {/* Google Sign In */}
-            {!isForgotPassword && (
+            {/* Email Verification Banner */}
+            {showVerificationBanner ? (
+              <div className="py-8 space-y-6">
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-8 text-center">
+                  <div className="flex justify-center mb-4">
+                    <Mail className="h-16 w-16 text-blue-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-blue-900 mb-3">
+                    Check Your Email
+                  </h3>
+                  <p className="text-blue-800 mb-2">
+                    We've sent a verification email to:
+                  </p>
+                  <p className="text-lg font-semibold text-blue-900 mb-4">
+                    {verificationEmail}
+                  </p>
+                  <p className="text-blue-700 text-sm mb-6">
+                    Click the link in the email to verify your account and complete your sign up.
+                    The link will expire in 1 hour.
+                  </p>
+                  <div className="border-t border-blue-200 pt-4 mt-4">
+                    <p className="text-sm text-blue-600 mb-3">
+                      Didn't receive the email?
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                        onClick={() => {
+                          setShowVerificationBanner(false);
+                          setIsSignUp(true);
+                        }}
+                      >
+                        Try Again
+                      </Button>
+                      <Button
+                        variant="link"
+                        className="text-blue-600"
+                        onClick={() => {
+                          setShowVerificationBanner(false);
+                          setEmail("");
+                          setIsSignUp(false);
+                        }}
+                      >
+                        Back to Sign In
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
               <>
-                <MovingBorder
+                {/* Google Sign In */}
+                {!isForgotPassword && (
+                  <>
+                    <MovingBorder
                   borderRadius="0.5rem"
                   duration={3000}
         
@@ -310,6 +364,8 @@ const Auth = () => {
                 </Button>
               )}
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
