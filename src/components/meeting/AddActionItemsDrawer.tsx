@@ -64,18 +64,18 @@ interface PriorityInsert {
   created_by: string;
 }
 
-interface AddPrioritiesDrawerProps {
+interface AddActionItemsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   meetingId: string;
   teamId: string;
   onSave: () => void;
-  existingPriorities?: ExistingPriority[];
+  existingActionItems?: ExistingPriority[];
 }
 
-const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingPriorities = [] }: AddPrioritiesDrawerProps) => {
+const AddActionItemsDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingActionItems = [] }: AddActionItemsDrawerProps) => {
   const { toast } = useToast();
-  const [priorities, setPriorities] = useState<PriorityRow[]>([
+  const [actionitems, setActionItems] = useState<PriorityRow[]>([
     { id: "1", priority: "", assigned_to: "", desired_outcome: "" },
     { id: "2", priority: "", assigned_to: "", desired_outcome: "" },
     { id: "3", priority: "", assigned_to: "", desired_outcome: "" }
@@ -90,9 +90,9 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       fetchCurrentUser();
       
       // Load existing priorities if editing, otherwise start with empty priorities
-      if (existingPriorities.length > 0) {
-        console.log("Loading existing priorities:", existingPriorities);
-        const existingPriorityRows = existingPriorities.map((priority, index) => ({
+      if (existingActionItems.length > 0) {
+        console.log("Loading existing priorities:", existingActionItems);
+        const existingPriorityRows = existingActionItems.map((priority, index) => ({
           id: priority.id,
           priority: priority.title || "",
           assigned_to: priority.assigned_to || "",
@@ -111,23 +111,23 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
           });
         }
         
-        setPriorities(existingPriorityRows);
+        setActionItems(existingPriorityRows);
       } else {
         console.log("No existing priorities, starting fresh");
         // Reset priorities when opening for new priorities
-        setPriorities([
+        setActionItems([
           { id: "1", priority: "", assigned_to: "", desired_outcome: "" },
           { id: "2", priority: "", assigned_to: "", desired_outcome: "" },
           { id: "3", priority: "", assigned_to: "", desired_outcome: "" }
         ]);
       }
     }
-  }, [isOpen, existingPriorities]);
+  }, [isOpen, existingActionItems]);
 
   // Set current user as default when currentUser is loaded
   useEffect(() => {
     if (currentUser) {
-      setPriorities(prevPrioritys => 
+      setActionItems(prevPrioritys => 
         prevPrioritys.map(priority => ({
           ...priority,
           assigned_to: priority.assigned_to === "" ? currentUser.user_id : priority.assigned_to
@@ -171,23 +171,23 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
   };
 
   const addPriorityRow = () => {
-    const newId = (priorities.length + 1).toString();
-    setPriorities([...priorities, { id: newId, priority: "", assigned_to: currentUser?.user_id || "", desired_outcome: "" }]);
+    const newId = (actionitems.length + 1).toString();
+    setActionItems([...actionitems, { id: newId, priority: "", assigned_to: currentUser?.user_id || "", desired_outcome: "" }]);
   };
 
   const removePriorityRow = (id: string) => {
-    if (priorities.length > 3) {
-      setPriorities(priorities.filter(priority => priority.id !== id));
+    if (actionitems.length > 3) {
+      setActionItems(actionitems.filter(priority => priority.id !== id));
     }
   };
 
   // Check if all priorities have been used (have content)
   const allPrioritysUsed = () => {
-    return priorities.every(priority => priority.priority.trim() !== "");
+    return actionitems.every(priority => priority.priority.trim() !== "");
   };
 
   const updatePriority = (id: string, field: keyof PriorityRow, value: string) => {
-    setPriorities(priorities.map(priority => 
+    setActionItems(actionitems.map(priority => 
       priority.id === id ? { ...priority, [field]: value } : priority
     ));
   };
@@ -198,13 +198,13 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const existingPriorityIds = existingPriorities.map(t => t.id);
+      const existingPriorityIds = existingActionItems.map(t => t.id);
       const prioritiesToUpdate: PriorityUpdate[] = [];
       const prioritiesToInsert: PriorityInsert[] = [];
       let updateIndex = 0;
 
       // Process each priority row
-      for (const priority of priorities) {
+      for (const priority of actionitems) {
         if (priority.priority.trim()) {
           if (existingPriorityIds.includes(priority.id)) {
             // Update existing priority
@@ -232,8 +232,8 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       }
 
       // Delete priorities that were removed (existing priorities not in current list)
-      const currentPriorityIds = priorities.filter(t => t.priority.trim()).map(t => t.id);
-      const prioritiesToDelete = existingPriorities.filter(t => !currentPriorityIds.includes(t.id));
+      const currentPriorityIds = actionitems.filter(t => t.priority.trim()).map(t => t.id);
+      const prioritiesToDelete = existingActionItems.filter(t => !currentPriorityIds.includes(t.id));
       
       for (const priorityToDelete of prioritiesToDelete) {
         await supabase
@@ -270,7 +270,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       
       if (totalChanges > 0) {
         toast({
-          title: "Prioritys updated!",
+          title: "Priorities updated!",
           description: `${totalChanges} change${totalChanges > 1 ? 's' : ''} saved successfully`,
         });
       }
@@ -278,7 +278,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       onSave();
       onClose();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to save prioritys";
+      const errorMessage = error instanceof Error ? error.message : "Failed to save priorities";
       toast({
         title: "Error",
         description: errorMessage,
@@ -293,9 +293,9 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] overflow-y-auto">
         <SheetHeader className="pb-4">
-          <SheetTitle className="text-xl sm:text-2xl">{existingPriorities.length > 0 ? "Edit Prioritys" : "Add Prioritys"}</SheetTitle>
+          <SheetTitle className="text-xl sm:text-2xl">{existingActionItems.length > 0 ? "Edit Priorities" : "Add Priorities"}</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
-            {existingPriorities.length > 0 
+            {existingActionItems.length > 0 
               ? "Edit existing priorities and add new ones for this meeting." 
               : "Add multiple priorities for this meeting. You can create several priorities at once."
             }
@@ -312,7 +312,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
               <div></div>
             </div>
             
-            {priorities.map((priority, index) => (
+            {actionitems.map((priority, index) => (
               <div key={priority.id} className="px-4 py-3 grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-center border-t">
                 <div>
                   <Select
@@ -449,7 +449,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
                 </div>
                 
                 <div className="flex justify-center">
-                  {priorities.length > 3 && (
+                  {actionitems.length > 3 && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -466,7 +466,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
 
           {/* Mobile Card View */}
           <div className="sm:hidden space-y-3">
-            {priorities.map((priority, index) => {
+            {actionitems.map((priority, index) => {
               const member = teamMembers.find(m => m.user_id === priority.assigned_to);
               const firstName = member?.profiles?.first_name || "";
               const lastName = member?.profiles?.last_name || "";
@@ -551,7 +551,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
                   </div>
 
                   {/* Delete Button */}
-                  {priorities.length > 3 && (
+                  {actionitems.length > 3 && (
                     <div className="flex justify-end pt-2">
                       <Button
                         variant="ghost"
@@ -585,7 +585,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t">
             <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto text-sm">
               <Save className="h-4 w-4 mr-2" />
-              {saving ? "Saving..." : existingPriorities.length > 0 ? "Save Changes" : `Save ${priorities.filter(t => t.priority.trim()).length} Priority${priorities.filter(t => t.priority.trim()).length !== 1 ? 's' : ''}`}
+              {saving ? "Saving..." : existingActionItems.length > 0 ? "Save Changes" : `Save ${actionitems.filter(t => t.priority.trim()).length} Priority${actionitems.filter(t => t.priority.trim()).length !== 1 ? 's' : ''}`}
             </Button>
             <Button variant="outline" onClick={onClose} className="w-full sm:w-auto text-sm">
               <X className="h-4 w-4 mr-2" />
@@ -598,4 +598,4 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
   );
 };
 
-export default AddPrioritiesDrawer;
+export default AddActionItemsDrawer;

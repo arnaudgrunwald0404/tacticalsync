@@ -9,7 +9,7 @@ import { MessageSquare, Trash2, Check, X, Plus, GripVertical } from "lucide-reac
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
-import AddPrioritysDrawer from "./AddPrioritysDrawer";
+import AddPrioritiesDrawer from "./AddPrioritiesDrawer";
 import { startOfWeek, endOfWeek, format, getWeek, addDays } from "date-fns";
 import { htmlToPlainText } from "@/lib/htmlUtils";
 import {
@@ -50,6 +50,7 @@ interface SortablePriorityRowProps {
   onDelete: (itemId: string) => void;
   onChangeAssignment: (itemId: string, newUserId: string | null) => void;
   onUpdateOutcome: (itemId: string, newOutcome: string) => void;
+  onToggleFuture: (itemId: string, currentStatus: boolean) => void;
   onOpenComments: (id: string, title: string) => void;
 }
 
@@ -159,7 +160,12 @@ const SortablePriorityRow = ({
         checked={item.is_completed}
         onCheckedChange={() => onToggleComplete(item.id, item.is_completed)}
       />
-      
+      <Checkbox
+        checked={item.is_future}
+        onCheckedChange={() => onToggleFuture(item.id, item.is_future)}
+        className="ml-2"
+      />
+
       <div className={`font-medium ${item.is_completed ? "line-through text-muted-foreground" : ""}`}>
         {htmlToPlainText(item.title)}
       </div>
@@ -480,6 +486,29 @@ const MeetingPrioritys = forwardRef<MeetingPrioritiesRef, MeetingPrioritysProps>
     }
   };
 
+  const handleToggleFuture = async (itemId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('meeting_items')
+      .update({ is_future: !currentStatus })
+      .eq('id', itemId);
+    
+    if (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update future status',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    toast({
+      title: 'Future status updated',
+      description: 'Item future status has been toggled',
+    });
+    
+    onUpdate();
+  };
+
   // Group items by week
   const groupedByWeek: Record<string, { weekStart: Date; items: unknown[] }> = items.reduce((acc, item) => {
     const createdDate = new Date(item.created_at);
@@ -555,6 +584,7 @@ const MeetingPrioritys = forwardRef<MeetingPrioritiesRef, MeetingPrioritysProps>
                       onChangeAssignment={handleChangeAssignment}
                       onUpdateOutcome={handleUpdateOutcome}
                       onOpenComments={(id, title) => setSelectedItem({ id, title })}
+                      onToggleFuture={handleToggleFuture}
                     />
                   ))}
                 </SortableContext>
@@ -673,6 +703,17 @@ const MeetingPrioritys = forwardRef<MeetingPrioritiesRef, MeetingPrioritysProps>
                             Comments
                           </Button>
                         </div>
+                        {/** Future toggle on mobile **/}
+                        <Checkbox
+                          checked={item.is_future}
+                          onCheckedChange={() => handleToggleFuture(item.id, item.is_future)}
+                          className="mt-1"
+                        />
+                        {/* Toggle Future? */}
+                        <div className="flex justify-between items-center mt-3">
+                          <span className="text-xs text-muted-foreground">Future?</span>
+                          <Checkbox checked={item.is_future} onCheckedChange={() => handleToggleFuture(item.id, item.is_future)} />
+                        </div>
                       </div>
                     );
                   })}
@@ -703,13 +744,13 @@ const MeetingPrioritys = forwardRef<MeetingPrioritiesRef, MeetingPrioritysProps>
         />
       )}
 
-      <AddPrioritysDrawer
+      <AddPrioritiesDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         meetingId={meetingId}
         teamId={teamId}
         onSave={onUpdate}
-        existingPrioritys={items}
+        existingPriorities={items}
       />
     </>
   );
