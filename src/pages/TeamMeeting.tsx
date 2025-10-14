@@ -7,7 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Settings, Plus, Edit2, Save, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda, { MeetingAgendaRef } from "@/components/meeting/MeetingAgenda";
-import MeetingTopics, { MeetingTopicsRef } from "@/components/meeting/MeetingTopics";
+import MeetingPriorities, { MeetingPrioritiesRef } from "@/components/meeting/MeetingPriorities";
+import TeamTopics from "@/components/meeting/TeamTopics";
+import ActionItems, { ActionItemsRef } from "@/components/meeting/ActionItems";
 import { format, getWeek, addDays, startOfWeek } from "date-fns";
 import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, getISODateString, getMeetingEndDate } from "../lib/dateUtils";
 import GridBackground from "@/components/ui/grid-background";
@@ -25,12 +27,15 @@ const TeamMeeting = () => {
   const [meeting, setMeeting] = useState<unknown>(null);
   const [allMeetings, setAllMeetings] = useState<any[]>([]);
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
-  const [topicItems, setTopicItems] = useState<any[]>([]);
+  const [priorityItems, setPriorityItems] = useState<any[]>([]);
+  const [teamTopicItems, setTeamTopicItems] = useState<any[]>([]);
+  const [actionItems, setActionItems] = useState<any[]>([]);
   const [teamAdmin, setTeamAdmin] = useState<unknown>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
-  const meetingTopicsRef = useRef<MeetingTopicsRef>(null);
+  const meetingPrioritiesRef = useRef<MeetingPrioritiesRef>(null);
+  const actionItemsRef = useRef<ActionItemsRef>(null);
   const meetingAgendaRef = useRef<MeetingAgendaRef>(null);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
 
@@ -249,8 +254,10 @@ const TeamMeeting = () => {
       return;
     }
 
-    setAgendaItems(data.filter((item) => item.type === "agenda"));
-    setTopicItems(data.filter((item) => item.type === "topic"));
+    setAgendaItems(data.filter((item: any) => item.type === "agenda"));
+    setPriorityItems(data.filter((item: any) => item.type === "priority" || item.type === "topic")); // Support old 'topic' type
+    setTeamTopicItems(data.filter((item: any) => item.type === "team_topic"));
+    setActionItems(data.filter((item: any) => item.type === "action_item"));
   };
 
 
@@ -310,9 +317,9 @@ const TeamMeeting = () => {
     return meeting.id === sortedMeetings[0].id;
   };
 
-  // Check if current meeting has topics
-  const currentMeetingHasTopics = () => {
-    return topicItems.length > 0;
+  // Check if current meeting has priorities
+  const currentMeetingHasPriorities = () => {
+    return priorityItems.length > 0;
   };
 
   // Check if the meeting period has ended (past meetings)
@@ -593,7 +600,7 @@ const TeamMeeting = () => {
                       
                       {/* Next/Create Next Button */}
                       {(
-                        (isCurrentMeeting() && currentMeetingHasTopics()) || 
+                        (isCurrentMeeting() && currentMeetingHasPriorities()) || 
                         (!isCurrentMeeting() && allMeetings.length > 1)
                       ) && (
                         <Button 
@@ -679,22 +686,60 @@ const TeamMeeting = () => {
 
         <Card className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold">Topics</h2>
+            <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
             {agendaItems.length > 0 && (
               <Button
-                onClick={() => meetingTopicsRef.current?.startCreating()}
+                onClick={() => meetingPrioritiesRef.current?.startCreating()}
                 size="sm"
                 className="text-xs sm:text-sm h-8 sm:h-9"
               >
                 <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{topicItems.length > 0 ? "Edit Topics" : "Add Topics"}</span>
-                <span className="sm:hidden">{topicItems.length > 0 ? "Edit" : "Add"}</span>
+                <span className="hidden sm:inline">{priorityItems.length > 0 ? "Edit Priorities" : "Add Priorities"}</span>
+                <span className="sm:hidden">{priorityItems.length > 0 ? "Edit" : "Add"}</span>
               </Button>
             )}
           </div>
-          <MeetingTopics
-            ref={meetingTopicsRef}
-            items={topicItems}
+          <MeetingPriorities
+            ref={meetingPrioritiesRef}
+            items={priorityItems}
+            meetingId={meeting?.id}
+            teamId={teamId}
+            onUpdate={() => fetchMeetingItems(meeting?.id)}
+            hasAgendaItems={agendaItems.length > 0}
+          />
+        </Card>
+
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold">{team?.abbreviated_name || team?.name} Topics</h2>
+          </div>
+          <TeamTopics
+            items={teamTopicItems}
+            meetingId={meeting?.id}
+            teamId={teamId}
+            teamName={team?.abbreviated_name || team?.name || "Team"}
+            onUpdate={() => fetchMeetingItems(meeting?.id)}
+          />
+        </Card>
+
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold">Action Items</h2>
+            {agendaItems.length > 0 && (
+              <Button
+                onClick={() => actionItemsRef.current?.startCreating()}
+                size="sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
+              >
+                <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{actionItems.length > 0 ? "Edit Actions" : "Add Actions"}</span>
+                <span className="sm:hidden">{actionItems.length > 0 ? "Edit" : "Add"}</span>
+              </Button>
+            )}
+          </div>
+          <ActionItems
+            ref={actionItemsRef}
+            items={actionItems}
             meetingId={meeting?.id}
             teamId={teamId}
             onUpdate={() => fetchMeetingItems(meeting?.id)}
