@@ -101,7 +101,13 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
     }
   };
   
-  const initials = getInitials(displayName || name);
+  // Always use displayName for initials if available, otherwise clean up name
+  const cleanNameForInitials = (str: string): string => {
+    // Remove any numbers from the end of the string
+    return str.replace(/\d+$/, '').trim();
+  };
+  
+  const initials = getInitials(displayName || cleanNameForInitials(name));
   
   const sizeClasses = {
     sm: "w-8 h-8 text-sm",
