@@ -127,9 +127,13 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
                 <polygon points="10,2 18,16 2,16" fill={colors[0]} opacity="0.8"/>
                 <polygon points="10,8 18,22 2,22" fill={colors[1]} opacity="0.6"/>
               </pattern>
+              <clipPath id={`circle-clip-${name}`}>
+                <circle cx="50" cy="50" r="50"/>
+              </clipPath>
             </defs>
             <rect width="100" height="100" fill={`url(#triangles-${name})`} 
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -141,9 +145,13 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
                 <circle cx="12.5" cy="12.5" r="8" fill={colors[0]} opacity="0.7"/>
                 <circle cx="20" cy="20" r="5" fill={colors[1]} opacity="0.9"/>
               </pattern>
+              <clipPath id={`circle-clip-${name}`}>
+                <circle cx="50" cy="50" r="50"/>
+              </clipPath>
             </defs>
             <rect width="100" height="100" fill={`url(#circles-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -155,9 +163,13 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
                 <polygon points="15,2 25,8 25,18 15,24 5,18 5,8" fill={colors[0]} opacity="0.8"/>
                 <polygon points="20,5 28,10 28,18 20,23 12,18 12,10" fill={colors[1]} opacity="0.6"/>
               </pattern>
+              <clipPath id={`circle-clip-${name}`}>
+                <circle cx="50" cy="50" r="50"/>
+              </clipPath>
             </defs>
             <rect width="100" height="100" fill={`url(#hexagons-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -171,7 +183,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#waves-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -187,7 +200,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#stars-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -201,7 +215,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#diamonds-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -216,7 +231,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#dots-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -230,7 +246,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#lines-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -244,7 +261,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#grid-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -258,7 +276,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#diagonal-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
@@ -273,7 +292,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               </radialGradient>
             </defs>
             <rect width="100" height="100" fill={`url(#radial-${name})`}
-                  transform={`rotate(${rotation} 50 50)`}/>
+                  transform={`rotate(${rotation || 0} 50 50)`}
+                  clipPath={`url(#circle-clip-${name})`}/>
           </svg>
         );
       
