@@ -1,21 +1,11 @@
 import { supabase } from './supabase.helper';
 
-export interface TestUser {
-  id: string;
-  email: string;
-}
-
-export interface TestTeam {
-  id: string;
-  name: string;
-  abbreviated_name: string;
-}
-
 export interface TestRecurringMeeting {
   id: string;
   team_id: string;
   name: string;
   frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter';
+  created_by?: string;
 }
 
 export interface TestMeetingInstance {
@@ -77,6 +67,26 @@ export async function getWeeklyMeetings(seriesId: string): Promise<TestMeetingIn
     .select()
     .eq('recurring_meeting_id', seriesId)
     .order('start_date', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function getTeamRecurringMeetings(teamId: string): Promise<TestRecurringMeeting[]> {
+  const { data, error } = await supabase
+    .from('recurring_meetings')
+    .select()
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function getRecurringMeeting(seriesId: string): Promise<TestRecurringMeeting> {
+  const { data, error } = await supabase
+    .from('recurring_meetings')
+    .select()
+    .eq('id', seriesId)
+    .single();
   if (error) throw error;
   return data;
 }
