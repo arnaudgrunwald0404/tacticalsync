@@ -18,14 +18,15 @@ export function useMeetingData(props: MeetingAgendaProps): {
 
   // State
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [editingItems, setEditingItems] = useState<AgendaItem[]>([]);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
   
+  // Only clear editing items when exiting edit mode
   useEffect(() => {
-    if (!isEditingAgenda) {
+    if (!isEditingAgenda && editingItems.length > 0) {
       setEditingItems([]);
     }
-  }, [isEditingAgenda]);
-  const [editingItems, setEditingItems] = useState<AgendaItem[]>([]);
+  }, [isEditingAgenda, editingItems]);
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Data fetching
