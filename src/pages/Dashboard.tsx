@@ -9,6 +9,7 @@ import GridBackground from "@/components/ui/grid-background";
 import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
 import Logo from "@/components/Logo";
 import FancyAvatar from "@/components/ui/fancy-avatar";
+import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import {
   Tooltip,
   TooltipContent,
@@ -24,6 +25,18 @@ const Dashboard = () => {
   const [teams, setTeams] = useState<any[]>([]);
   const [meetings, setMeetings] = useState<Record<string, any[]>>({});
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedMeetingNavigation, setSelectedMeetingNavigation] = useState<{
+    teamId: string;
+    meetingId: string;
+  } | null>(null);
+  interface UserProfile {
+    first_name?: string;
+    last_name?: string;
+    avatar_name?: string;
+  }
+  
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     checkUser();
@@ -67,6 +80,20 @@ const Dashboard = () => {
       return;
     }
     setUser(session.user);
+
+    // Fetch user profile
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, avatar_name")
+      .eq("id", session.user.id)
+      .single();
+
+    if (profileError) {
+      console.error("Error fetching profile:", profileError);
+    } else {
+      setUserProfile(profile);
+    }
+
     await fetchPendingInvitations();
     await fetchTeams();
     setLoading(false);
@@ -162,6 +189,37 @@ const Dashboard = () => {
 
   const handleCreateMeeting = (teamId: string) => {
     navigate(`/team/${teamId}/setup-meeting`);
+  };
+
+  const isProfileComplete = () => {
+    console.log("Checking profile completion:", {
+      userProfile,
+      first_name: userProfile?.first_name?.trim(),
+      last_name: userProfile?.last_name?.trim(),
+      avatar_name: userProfile?.avatar_name?.trim()
+    });
+    return !!(
+      userProfile?.first_name?.trim() &&
+      userProfile?.last_name?.trim() &&
+      userProfile?.avatar_name?.trim()
+    );
+  };
+
+  const handleMeetingAccess = (teamId: string, meetingId: string) => {
+    if (!isProfileComplete()) {
+      setSelectedMeetingNavigation({ teamId, meetingId });
+      setShowProfileModal(true);
+    } else {
+      navigate(`/team/${teamId}/meeting/${meetingId}`);
+    }
+  };
+
+  const handleProfileComplete = () => {
+    setShowProfileModal(false);
+    if (selectedMeetingNavigation) {
+      navigate(`/team/${selectedMeetingNavigation.teamId}/meeting/${selectedMeetingNavigation.meetingId}`);
+      setSelectedMeetingNavigation(null);
+    }
   };
 
   const fetchPendingInvitations = async () => {
@@ -517,7 +575,7 @@ const Dashboard = () => {
                         <Card
                           key={meeting.id}
                           className="hover:shadow-large transition-all cursor-pointer group"
-                          onClick={() => navigate(`/team/${teamMember.teams.id}/meeting/${meeting.id}`)}
+                          onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
                           <CardHeader className="p-4 sm:p-6">
                             <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
@@ -540,6 +598,17 @@ const Dashboard = () => {
           </div>
         )}
       </main>
+
+      <ProfileCompletionModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onComplete={handleProfileComplete}
+        initialData={{
+          firstName: userProfile?.first_name || "",
+          lastName: userProfile?.last_name || "",
+          avatarName: userProfile?.avatar_name || ""
+        }}
+      />
     </GridBackground>
   );
 };

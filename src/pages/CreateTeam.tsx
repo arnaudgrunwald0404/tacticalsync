@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
@@ -14,74 +14,43 @@ const CreateTeam = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
-  const [abbreviatedName, setAbbreviatedName] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast({
-          title: "Authentication required",
-          description: "Please sign in to create a team",
-          variant: "destructive",
-        });
-        navigate("/auth");
-      }
-    };
-    checkAuth();
-  }, [navigate, toast]);
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!teamName.trim()) return;
+    
     setLoading(true);
 
     try {
-      // Get fresh session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) throw sessionError;
-      if (!session) {
-        toast({
-          title: "Session expired",
-          description: "Please sign in again",
-          variant: "destructive",
-        });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         navigate("/auth");
         return;
       }
-
-      const userId = session.user.id;
 
       // Create team
       const { data: team, error: teamError } = await supabase
         .from("teams")
         .insert({ 
-          name: teamName,
-          abbreviated_name: abbreviatedName || null,
-          created_by: userId 
+          name: teamName.trim(),
+          created_by: user.id 
         })
         .select()
         .single();
 
-      if (teamError) {
-        console.error("Team creation error:", teamError);
-        throw new Error(teamError.message);
-      }
+      if (teamError) throw teamError;
 
       // Add creator as admin
       const { error: memberError } = await supabase
         .from("team_members")
         .insert({
           team_id: team.id,
-          user_id: userId,
+          user_id: user.id,
           role: "admin",
         });
 
-      if (memberError) {
-        console.error("Member creation error:", memberError);
-        throw new Error(memberError.message);
-      }
+      if (memberError) throw memberError;
 
       toast({
         title: "Team created!",
@@ -90,10 +59,9 @@ const CreateTeam = () => {
 
       navigate(`/team/${team.id}/invite`);
     } catch (error: unknown) {
-      console.error("Full error:", error);
       toast({
         title: "Error creating team",
-        description: error instanceof Error ? error.message : "An error occurred" || "Please try again",
+        description: error instanceof Error ? error.message : "Failed to create team",
         variant: "destructive",
       });
     } finally {
@@ -108,18 +76,15 @@ const CreateTeam = () => {
           <Logo variant="minimal" size="lg" />
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+            Back
           </Button>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-4 py-8 max-w-md">
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Create New Team</CardTitle>
-            <CardDescription>
-              Set up a new team for your tactical meetings
-            </CardDescription>
+            <CardTitle className="text-xl">Create New Team</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateTeam} className="space-y-4">
@@ -127,27 +92,14 @@ const CreateTeam = () => {
                 <Label htmlFor="teamName">Team Name</Label>
                 <Input
                   id="teamName"
-                  placeholder="e.g., Executive Leadership Team"
+                  placeholder="Enter your team name"
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   required
                 />
-
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="abbreviatedName">Short Name (Optional)</Label>
-                <Input
-                  id="abbreviatedName"
-                  placeholder="e.g., ELT"
-                  value={abbreviatedName}
-                  onChange={(e) => setAbbreviatedName(e.target.value)}
-                  maxLength={10}
-                />
-
-              </div>
-
-              <Button type="submit" disabled={loading} className="w-full">
+              <Button type="submit" disabled={loading || !teamName.trim()} className="w-full">
                 {loading ? "Creating..." : "Create Team"}
               </Button>
             </form>

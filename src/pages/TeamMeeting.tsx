@@ -3,13 +3,19 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Settings, Plus, Edit2, Save, X } from "lucide-react";
+import { ArrowLeft, Settings, Plus, Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import MeetingAgenda, { MeetingAgendaRef } from "@/components/meeting/MeetingAgenda";
-import MeetingPriorities, { MeetingPrioritiesRef } from "@/components/meeting/MeetingPriorities";
+import MeetingAgenda from "@/components/meeting/MeetingAgenda";
+import type { MeetingAgendaRef } from "@/types/meeting";
+import MeetingPriorities from "@/components/meeting/MeetingPriorities";
+import type { MeetingPrioritiesRef } from "@/components/meeting/MeetingPriorities";
 import TeamTopics from "@/components/meeting/TeamTopics";
-import ActionItems, { ActionItemsRef } from "@/components/meeting/ActionItems";
+import ActionItems from "@/components/meeting/ActionItems";
+interface ActionItemsRef {
+  startCreating: () => void;
+}
 import { format, getWeek, addDays, startOfWeek } from "date-fns";
 import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, getISODateString, getMeetingEndDate } from "../lib/dateUtils";
 import GridBackground from "@/components/ui/grid-background";
@@ -22,15 +28,42 @@ const TeamMeeting = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [team, setTeam] = useState<unknown>(null);
-  const [recurringMeeting, setRecurringMeeting] = useState<unknown>(null);
-  const [meeting, setMeeting] = useState<unknown>(null);
-  const [allMeetings, setAllMeetings] = useState<any[]>([]);
+  interface Team {
+    id: string;
+    name: string;
+    abbreviated_name?: string;
+  }
+
+  interface RecurringMeeting {
+    id: string;
+    name: string;
+    frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
+  }
+
+  interface Meeting {
+    id: string;
+    week_start_date: string;
+  }
+
+  interface TeamAdmin {
+    id: string;
+    role: string;
+    profiles: {
+      full_name?: string;
+      first_name?: string;
+      last_name?: string;
+    };
+  }
+
+  const [team, setTeam] = useState<Team | null>(null);
+  const [recurringMeeting, setRecurringMeeting] = useState<RecurringMeeting | null>(null);
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
   const [priorityItems, setPriorityItems] = useState<any[]>([]);
   const [teamTopicItems, setTeamTopicItems] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any[]>([]);
-  const [teamAdmin, setTeamAdmin] = useState<unknown>(null);
+  const [teamAdmin, setTeamAdmin] = useState<TeamAdmin | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
@@ -38,6 +71,12 @@ const TeamMeeting = () => {
   const actionItemsRef = useRef<ActionItemsRef>(null);
   const meetingAgendaRef = useRef<MeetingAgendaRef>(null);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
+  const [sectionsCollapsed, setSectionsCollapsed] = useState({
+    priorities: false,
+    topics: false,
+    actionItems: false,
+  });
+  const [showPreviousPeriod, setShowPreviousPeriod] = useState(false);
 
   useEffect(() => {
     if (teamId && meetingId) {
@@ -59,9 +98,10 @@ const TeamMeeting = () => {
 
       // Fetch recurring meeting
       const { data: recurringData, error: recurringError } = await supabase
-        .from("recurring_meetings")
-        .select("*")
-        .eq("id", meetingId)
+        .from('recurring_meetings')
+        .select('id,name,frequency')
+        .filter('id', 'eq', meetingId)
+        .limit(1)
         .single();
 
       if (recurringError) throw recurringError;
@@ -495,8 +535,8 @@ const TeamMeeting = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-              <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+    <GridBackground inverted className="min-h-screen bg-blue-50">
+              <header className="shadow-sm shadow-blue-200 bg-gradient-to-r from-blue-100 via-pink-200 to-blue-100 bg-opacity-10 sticky top-0 z-10">
                 <div className="container mx-auto px-4 py-3 sm:py-4">
                   {/* Top row: Logo, Title/Admin, Settings */}
                   <div className="flex items-center justify-between mb-3">
@@ -511,7 +551,7 @@ const TeamMeeting = () => {
                         {recurringMeeting?.name}
                       </h1>
                       {teamAdmin?.profiles && (
-                        <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                        <p className="text-[10px] sm:text-xs mt-1">
                           Team admin: {(() => {
                             const firstName = teamAdmin.profiles.first_name || "";
                             const lastName = teamAdmin.profiles.last_name || "";
@@ -575,7 +615,7 @@ const TeamMeeting = () => {
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
                         <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
                           isCurrentMeetingPeriod(meeting.week_start_date) 
-                            ? 'bg-orange-100 border-orange-300 text-orange-800' 
+                            ? 'bg-pink-100 border-2 border-pink-600 text-pink-800' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
                         }`}>
                           <SelectValue>
@@ -619,55 +659,8 @@ const TeamMeeting = () => {
               </header>
 
       <main className="container mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold">Agenda</h2>
-            {teamAdmin && currentUserRole === "admin" && (
-              <div className="flex items-center gap-1 sm:gap-2">
-                {isEditingAgenda ? (
-                  <>
-                    <Button 
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        meetingAgendaRef.current?.saveChanges();
-                        setIsEditingAgenda(false);
-                      }}
-                      className="h-7 sm:h-8 text-xs px-2 sm:px-3"
-                    >
-                      <Save className="h-3 w-3 sm:mr-1" />
-                      <span className="hidden sm:inline">Save</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        meetingAgendaRef.current?.cancelEditing();
-                        setIsEditingAgenda(false);
-                      }}
-                      className="h-7 sm:h-8 text-xs px-2 sm:px-3"
-                    >
-                      <X className="h-3 w-3 sm:mr-1" />
-                      <span className="hidden sm:inline">Cancel</span>
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      meetingAgendaRef.current?.startEditing();
-                      setIsEditingAgenda(true);
-                    }}
-                    className="h-7 sm:h-8 text-xs px-2 sm:px-3 text-muted-foreground hover:text-foreground"
-                  >
-                    <Edit2 className="h-3 w-3 sm:mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
+        <div className="flex">
+          {/* Fixed Agenda Sidebar */}
           <MeetingAgenda
             ref={meetingAgendaRef}
             items={agendaItems}
@@ -678,74 +671,120 @@ const TeamMeeting = () => {
                 fetchMeetingItems(meeting.id);
               }
             }}
-            previousMeetingId={previousMeetingId || undefined}
             currentUserId={currentUserId || undefined}
-            isAdmin={currentUserRole === "admin"}
+            isAdmin={currentUserRole === "admin" || false}
           />
-        </Card>
 
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
-            {agendaItems.length > 0 && (
-              <Button
-                onClick={() => meetingPrioritiesRef.current?.startCreating()}
-                size="sm"
-                className="text-xs sm:text-sm h-8 sm:h-9"
-              >
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{priorityItems.length > 0 ? "Edit Priorities" : "Add Priorities"}</span>
-                <span className="sm:hidden">{priorityItems.length > 0 ? "Edit" : "Add"}</span>
-              </Button>
-            )}
-          </div>
-          <MeetingPriorities
-            ref={meetingPrioritiesRef}
-            items={priorityItems}
-            meetingId={meeting?.id}
-            teamId={teamId}
-            onUpdate={() => fetchMeetingItems(meeting?.id)}
-            hasAgendaItems={agendaItems.length > 0}
-          />
-        </Card>
+          {/* Main Content */}
+          <div className="flex-1 pl-80 space-y-6 sm:space-y-8">
+            <Card className="p-4 sm:p-6">
+                <div className="space-y-4 mb-4 sm:mb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-0 h-auto hover:bg-transparent"
+                          onClick={() => setSectionsCollapsed(prev => ({ ...prev, priorities: !prev.priorities }))}
+                        >
+                          {sectionsCollapsed.priorities ? (
+                            <ChevronRight className="h-5 w-5" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5" />
+                          )}
+                        </Button>
+                        <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
+                      </div>
+                      <div className="flex items-center gap-2 pl-9">
+                        <label className="text-sm text-muted-foreground">Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}</label>
+                        <Switch
+                          checked={showPreviousPeriod}
+                          onCheckedChange={setShowPreviousPeriod}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => meetingPrioritiesRef.current?.startCreating()}
+                      size="sm"
+                      className="text-xs sm:text-sm h-8 sm:h-9"
+                    >
+                      <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">{priorityItems.length > 0 ? "Edit Priorities" : "Add Priorities"}</span>
+                      <span className="sm:hidden">{priorityItems.length > 0 ? "Edit" : "Add"}</span>
+                    </Button>
+                  </div>
+                </div>
+              {!sectionsCollapsed.priorities && (
+                <MeetingPriorities
+                ref={meetingPrioritiesRef}
+                items={priorityItems}
+                meetingId={meeting?.id}
+                teamId={teamId}
+                onUpdate={() => fetchMeetingItems(meeting?.id)}
+                frequency={recurringMeeting?.frequency}
+                showPreviousPeriod={showPreviousPeriod}
+              />
+              )}
+            </Card>
 
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold">{team?.abbreviated_name || team?.name} Topics</h2>
-          </div>
-          <TeamTopics
-            items={teamTopicItems}
-            meetingId={meeting?.id}
-            teamId={teamId}
-            teamName={team?.abbreviated_name || team?.name || "Team"}
-            onUpdate={() => fetchMeetingItems(meeting?.id)}
-          />
-        </Card>
+            <Card className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-0 h-auto hover:bg-transparent"
+                    onClick={() => setSectionsCollapsed(prev => ({ ...prev, topics: !prev.topics }))}
+                  >
+                    {sectionsCollapsed.topics ? (
+                      <ChevronRight className="h-5 w-5" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5" />
+                    )}
+                  </Button>
+                  <h2 className="text-lg sm:text-xl font-semibold">Topics</h2>
+                </div>
+              </div>
+              {!sectionsCollapsed.topics && (
+                <TeamTopics
+                items={teamTopicItems}
+                meetingId={meeting?.id}
+                teamId={teamId}
+                teamName={team?.abbreviated_name || team?.name || "Team"}
+                onUpdate={() => fetchMeetingItems(meeting?.id)}
+              />
+              )}
+            </Card>
 
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold">Action Items</h2>
-            {agendaItems.length > 0 && (
-              <Button
-                onClick={() => actionItemsRef.current?.startCreating()}
-                size="sm"
-                className="text-xs sm:text-sm h-8 sm:h-9"
-              >
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{actionItems.length > 0 ? "Edit Actions" : "Add Actions"}</span>
-                <span className="sm:hidden">{actionItems.length > 0 ? "Edit" : "Add"}</span>
-              </Button>
-            )}
+            <Card className="p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-4 sm:mb-6">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-0 h-auto hover:bg-transparent"
+                  onClick={() => setSectionsCollapsed(prev => ({ ...prev, actionItems: !prev.actionItems }))}
+                >
+                  {sectionsCollapsed.actionItems ? (
+                    <ChevronRight className="h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5" />
+                  )}
+                </Button>
+                <h2 className="text-lg sm:text-xl font-semibold">Action Items</h2>
+              </div>
+              {!sectionsCollapsed.actionItems && (
+                <ActionItems
+                ref={actionItemsRef}
+                items={actionItems}
+                meetingId={meeting?.id}
+                teamId={teamId}
+                onUpdate={() => fetchMeetingItems(meeting?.id)}
+              />
+              )}
+            </Card>
           </div>
-          <ActionItems
-            ref={actionItemsRef}
-            items={actionItems}
-            meetingId={meeting?.id}
-            teamId={teamId}
-            onUpdate={() => fetchMeetingItems(meeting?.id)}
-            hasAgendaItems={agendaItems.length > 0}
-          />
-        </Card>
+        </div>
       </main>
     </GridBackground>
   );

@@ -302,7 +302,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
   };
 
   return (
-    <div className={`relative ${sizeClasses[size]} ${className}`}>
+    <div className={`relative rounded-full overflow-hidden ${sizeClasses[size]} ${className}`}>
       {/* Background pattern */}
       {renderPattern()}
       

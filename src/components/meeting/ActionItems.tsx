@@ -5,13 +5,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Trash2, Check, X, Plus, GripVertical } from "lucide-react";
+import { MessageSquare, X, Plus, CalendarIcon, GripVertical } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import CommentsDialog from "./CommentsDialog";
-import AddActionItemsDrawer from "./AddActionItemsDrawer";
-import { startOfWeek, endOfWeek, format, getWeek, addDays } from "date-fns";
-import { htmlToPlainText } from "@/lib/htmlUtils";
 import {
   DndContext,
   closestCenter,
@@ -28,14 +23,23 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { formatNameWithInitial } from "@/lib/nameUtils";
+import RichTextEditor from "@/components/ui/rich-text-editor";
+import CommentsDialog from "./CommentsDialog";
+import { ActionItem, ActionItemInsert } from "@/types/action-items";
+import { TeamMember } from "@/types/meeting";
+import { CompletionStatus } from "@/types/priorities";
 
 interface MeetingActionItemsProps {
-  items: unknown[];
-  meetingId: string;
+  items: ActionItem[];
+  meetingId: string;  // This is actually series_id for action items
   teamId: string;
   onUpdate: () => void;
-  onAddActionItem?: () => void;
   hasAgendaItems?: boolean;
 }
 
@@ -44,28 +48,12 @@ export interface MeetingActionItemsRef {
 }
 
 interface SortableActionItemRowProps {
-  item: any;
-  members: unknown[];
-  onToggleComplete: (itemId: string, currentStatus: boolean) => void;
-  onDelete: (itemId: string) => void;
-  onChangeAssignment: (itemId: string, newUserId: string | null) => void;
-  onUpdateOutcome: (itemId: string, newOutcome: string) => void;
-  onOpenComments: (id: string, title: string) => void;
+  item: ActionItem;
+  onDelete: (id: string) => void;
+  onSetCompletion: (status: CompletionStatus) => void;
 }
 
-const SortableActionItemRow = ({ 
-  item, 
-  members, 
-  onToggleComplete, 
-  onDelete, 
-  onChangeAssignment, 
-  onUpdateOutcome, 
-  onOpenComments 
-}: SortableActionItemRowProps) => {
-  const [comments, setComments] = useState<any[]>([]);
-  const [showAllComments, setShowAllComments] = useState(false);
-  const [loadingComments, setLoadingComments] = useState(false);
-
+const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActionItemRowProps) => {
   const {
     attributes,
     listeners,
@@ -76,266 +64,107 @@ const SortableActionItemRow = ({
   } = useSortable({ id: item.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  useEffect(() => {
-    fetchComments();
-  }, [item.id]);
-
-  const fetchComments = async () => {
-    setLoadingComments(true);
-    try {
-      const { data, error } = await supabase
-        .from("comments")
-        .select(`
-          *,
-          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
-        `)
-        .eq("item_id", item.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setComments(data || []);
-    } catch (error: unknown) {
-      console.error("Error fetching comments:", error);
-    } finally {
-      setLoadingComments(false);
-    }
-  };
-
-  const displayedComments = comments.slice(0, 5);
-  const hasMoreComments = comments.length > 5;
-
-  const getDisplayName = (profile: any) => {
-    if (!profile) return "Unknown";
-    const firstName = profile.first_name || "";
-    const lastName = profile.last_name || "";
-    const email = profile.email || "";
-    
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    } else if (firstName) {
-      return firstName;
-    } else {
-      return email;
-    }
-  };
-
-  const formatCommentDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return format(date, "MMM d");
+    zIndex: isDragging ? 1 : undefined,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="border-t hover:bg-muted/30 transition-colors"
+      className={cn(
+        "border rounded-lg p-3 bg-white",
+        isDragging && "shadow-lg"
+      )}
     >
-      <div className="px-4 py-3 grid grid-cols-[40px_40px_2fr_200px_2fr_80px] gap-4 items-center"
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <GripVertical className="h-4 w-4" />
-      </div>
-      
-      <Checkbox
-        checked={item.is_completed}
-        onCheckedChange={() => onToggleComplete(item.id, item.is_completed)}
-      />
-      
-      <div className={`font-medium ${item.is_completed ? "line-through text-muted-foreground" : ""}`}>
-        {htmlToPlainText(item.title)}
-      </div>
-
-      <div>
-        <Select 
-          value={item.assigned_to || "none"} 
-          onValueChange={(value) => onChangeAssignment(item.id, value === "none" ? null : value)}
-        >
-          <SelectTrigger className="h-8 text-sm">
-            <SelectValue placeholder="Assign to...">
-              {item.assigned_to_profile ? (
-                (() => {
-                  const firstName = item.assigned_to_profile.first_name || "";
-                  const lastName = item.assigned_to_profile.last_name || "";
-                  const email = item.assigned_to_profile.email || "";
-                  
-                  let displayName = "";
-                  if (firstName && lastName) {
-                    displayName = `${firstName} ${lastName}`;
-                  } else if (firstName) {
-                    displayName = firstName;
-                  } else {
-                    displayName = email;
-                  }
-                  
-                  return (
-                    <div className="flex items-center gap-2">
-                      {item.assigned_to_profile.avatar_name ? (
-                        <FancyAvatar 
-                          name={item.assigned_to_profile.avatar_name} 
-                          displayName={displayName}
-                          size="sm" 
-                        />
-                      ) : (
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                          <AvatarFallback className="text-xs">
-                            {displayName.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <span className="text-sm">{displayName}</span>
-                    </div>
-                  );
-                })()
-              ) : (
-                <span className="text-muted-foreground">Unassigned</span>
+      <div className="grid grid-cols-[auto_auto_2fr_auto_auto_2fr_auto] gap-4 items-center">
+        <div {...attributes} {...listeners} className="cursor-grab hover:text-foreground/80">
+          <GripVertical className="h-4 w-4" />
+        </div>
+        <Checkbox
+          checked={item.completion_status === 'completed'}
+          onCheckedChange={(checked) => onSetCompletion(checked ? 'completed' : 'not_completed')}
+        />
+        <div className="text-base truncate">{item.title}</div>
+        <div className="flex items-center gap-2">
+          {item.assigned_to_profile?.avatar_name ? (
+            <FancyAvatar 
+              name={item.assigned_to_profile.avatar_name} 
+              displayName={formatNameWithInitial(
+                item.assigned_to_profile.first_name,
+                item.assigned_to_profile.last_name,
+                item.assigned_to_profile.email
               )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-popover z-50">
-            <SelectItem value="none">Unassigned</SelectItem>
-            {members.map((member) => {
-              const firstName = member.profiles?.first_name || "";
-              const lastName = member.profiles?.last_name || "";
-              const email = member.profiles?.email || "";
-              
-              let displayName = "";
-              if (firstName && lastName) {
-                displayName = `${firstName} ${lastName}`;
-              } else if (firstName) {
-                displayName = firstName;
-              } else {
-                displayName = email;
-              }
-              
-              return (
-                <SelectItem key={member.user_id} value={member.user_id}>
-                  <div className="flex items-center gap-2">
-                    {member.profiles?.avatar_name ? (
-                      <FancyAvatar 
-                        name={member.profiles.avatar_name} 
-                        displayName={displayName}
-                        size="sm" 
-                      />
-                    ) : (
-                      <Avatar className="h-5 w-5">
-                        <AvatarImage src={member.profiles?.avatar_url} />
-                        <AvatarFallback className="text-xs">
-                          {displayName.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                    <span>{displayName}</span>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <Input
-        placeholder="Desired outcome..."
-        defaultValue={htmlToPlainText(item.outcome || "")}
-        onBlur={(e) => onUpdateOutcome(item.id, e.target.value)}
-        className="h-8 text-sm"
-      />
-
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => {
-            onOpenComments(item.id, item.title);
-            // Refresh comments after opening dialog
-            setTimeout(() => fetchComments(), 500);
-          }}
-        >
-          <MessageSquare className="h-4 w-4" />
-          {comments.length > 0 && (
-            <span className="absolute top-1 right-1 bg-primary text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-              {comments.length}
-            </span>
+              size="sm" 
+            />
+          ) : (
+            <Avatar className="h-6 w-6 rounded-full">
+              <AvatarImage src={item.assigned_to_profile?.avatar_url} />
+              <AvatarFallback className="text-xs">
+                {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           )}
-        </Button>
+          <span className="text-base">{item.assigned_to_profile?.first_name || "Unassigned"}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-base whitespace-nowrap">
+          <CalendarIcon className="h-4 w-4" />
+          <span>{item.due_date ? format(new Date(item.due_date), "MM/dd") : "No date"}</span>
+        </div>
+        <div className="text-base truncate text-muted-foreground">
+          {item.notes ? (
+            <div dangerouslySetInnerHTML={{ __html: item.notes }} />
+          ) : (
+            "No notes"
+          )}
+        </div>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
           onClick={() => onDelete(item.id)}
+          className="text-destructive hover:text-destructive"
         >
-          <Trash2 className="h-4 w-4 text-destructive" />
+          <X className="h-4 w-4" />
         </Button>
       </div>
     </div>
-
-    {/* Comments Section */}
-    {comments.length > 0 && (
-      <div className="px-4 pb-3 ml-[140px] space-y-2">
-        {displayedComments.map((comment) => (
-          <div key={comment.id} className="text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">
-                {getDisplayName(comment.profiles)}
-              </span>
-              <span className="text-muted-foreground">
-                {formatCommentDate(comment.created_at)}
-              </span>
-            </div>
-            <p className="text-muted-foreground break-words mt-1">{comment.content}</p>
-          </div>
-        ))}
-        {hasMoreComments && (
-          <button
-            onClick={() => {
-              setShowAllComments(true);
-              onOpenComments(item.id, item.title);
-            }}
-            className="text-xs text-primary hover:underline"
-          >
-            See more ({comments.length - 5} more comments)
-          </button>
-        )}
-      </div>
-    )}
-  </div>
   );
 };
 
-const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsProps>(({ items, meetingId, teamId, onUpdate, onAddActionItem, hasAgendaItems = true }, ref) => {
+const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsProps>(({ items, meetingId, teamId, onUpdate, hasAgendaItems = true }, ref) => {
   const { toast } = useToast();
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [newItem, setNewItem] = useState({
+    title: "",
+    assigned_to: null as string | null,
+    notes: "",
+    due_date: null as Date | null
+  });
 
   useEffect(() => {
     if (teamId) {
       fetchMembers();
+      fetchCurrentUser();
     }
   }, [teamId]);
 
   useImperativeHandle(ref, () => ({
-    startCreating,
+    startCreating: () => {
+      // Focus the title input
+      const titleInput = document.getElementById('new-action-item-title');
+      if (titleInput) {
+        titleInput.focus();
+      }
+    },
   }));
 
   const fetchMembers = async () => {
@@ -344,66 +173,94 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       .select(`
         id,
         user_id,
-        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
       `)
       .eq("team_id", teamId);
     
-    setMembers(data || []);
+    if (data) {
+      setMembers(data);
+    }
   };
 
-  const startCreating = () => {
-    setIsDrawerOpen(true);
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+        setNewItem(prev => ({ ...prev, assigned_to: user.id }));
+      }
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch current user",
+        variant: "destructive",
+      });
+    }
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = async (event: DragEndEvent, weekItems: unknown[]) => {
-    const { active, over } = event;
-
-    if (!over || active.id === over.id) {
+  const handleAddItem = async () => {
+    if (!newItem.title.trim()) return;
+    if (!meetingId) {
+      toast({
+        title: "Error",
+        description: "No meeting selected",
+        variant: "destructive",
+      });
       return;
     }
 
-    const oldIndex = weekItems.findIndex((item) => item.id === active.id);
-    const newIndex = weekItems.findIndex((item) => item.id === over.id);
-
-    const reorderedItems = arrayMove(weekItems, oldIndex, newIndex);
-
-    // Update order_index for all affected items in the database
     try {
-      for (let i = 0; i < reorderedItems.length; i++) {
-        const item = reorderedItems[i];
-        await supabase
-          .from("meeting_items")
-          .update({ order_index: i })
-          .eq("id", item.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const actionItemToInsert: ActionItemInsert = {
+        series_id: meetingId,
+        title: newItem.title.trim(),
+        notes: newItem.notes.trim(),
+        assigned_to: newItem.assigned_to,
+        due_date: newItem.due_date ? format(newItem.due_date, "yyyy-MM-dd") : null,
+        completion_status: 'not_completed',
+        order_index: items.length,
+        created_by: user.id
+      };
+
+      const { error } = await supabase
+        .from("meeting_series_action_items")
+        .insert(actionItemToInsert);
+
+      if (error) {
+        console.error("Error adding action item:", error);
+        throw error;
       }
 
       toast({
-        title: "ActionItems reordered",
-        description: "The action_item order has been updated",
+        title: "Action item added",
+        description: "The action item has been added successfully.",
+      });
+
+      // Reset form
+      setNewItem({
+        title: "",
+        assigned_to: currentUserId,
+        notes: "",
+        due_date: null
       });
 
       onUpdate();
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: "Failed to reorder action_items",
+        description: error instanceof Error ? error.message : "Failed to add action item",
         variant: "destructive",
       });
     }
   };
 
-
-  const handleToggleComplete = async (itemId: string, currentStatus: boolean) => {
+  const handleSetCompletion = async (itemId: string, status: CompletionStatus) => {
     const { error } = await supabase
-      .from("meeting_items")
-      .update({ is_completed: !currentStatus })
+      .from("meeting_series_action_items")
+      .update({ completion_status: status })
       .eq("id", itemId);
 
     if (error) {
@@ -420,7 +277,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
 
   const handleDelete = async (itemId: string) => {
     const { error } = await supabase
-      .from("meeting_items")
+      .from("meeting_series_action_items")
       .delete()
       .eq("id", itemId);
 
@@ -434,283 +291,381 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     }
 
     toast({
-      title: "ActionItem deleted",
-      description: "The action_item has been removed from the meeting.",
+      title: "Action item deleted",
+      description: "The action item has been removed.",
     });
 
     onUpdate();
   };
 
-  const handleChangeAssignment = async (itemId: string, newUserId: string | null) => {
-    const { error } = await supabase
-      .from("meeting_items")
-      .update({ assigned_to: newUserId })
-      .eq("id", itemId);
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update assignment",
-        variant: "destructive",
-      });
+    if (!over || active.id === over.id) {
       return;
     }
 
-    toast({
-      title: "Assignment updated",
-      description: "ActionItem has been reassigned",
-    });
+    const oldIndex = items.findIndex((item) => item.id === active.id);
+    const newIndex = items.findIndex((item) => item.id === over.id);
 
-    onUpdate();
-  };
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
 
+    const reorderedItems = arrayMove(items, oldIndex, newIndex);
 
-  const handleUpdateOutcome = async (itemId: string, newOutcome: string) => {
-    const { error } = await supabase
-      .from("meeting_items")
-      .update({ outcome: newOutcome })
-      .eq("id", itemId);
+    // Update order_index for all affected items
+    try {
+      for (let i = 0; i < reorderedItems.length; i++) {
+        const item = reorderedItems[i];
+        await supabase
+          .from("meeting_series_action_items")
+          .update({ order_index: i })
+          .eq("id", item.id);
+      }
 
-    if (error) {
+      toast({
+        title: "Action items reordered",
+        description: "The action item order has been updated",
+      });
+
+      onUpdate();
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: "Failed to update outcome",
+        description: "Failed to update item order",
         variant: "destructive",
       });
     }
   };
 
-  // Group items by week
-  const groupedByWeek: Record<string, { weekStart: Date; items: unknown[] }> = items.reduce((acc, item) => {
-    const createdDate = new Date(item.created_at);
-    const weekStart = startOfWeek(createdDate, { weekStartsOn: 1 }); // Monday
-    const weekKey = weekStart.toISOString();
+  const getDisplayName = (member: TeamMember) => {
+    if (!member.profiles) return "Unknown";
+    const firstName = member.profiles.first_name || "";
+    const lastName = member.profiles.last_name || "";
+    const email = member.profiles.email || "";
     
-    if (!acc[weekKey]) {
-      acc[weekKey] = {
-        weekStart,
-        items: [],
-      };
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    } else if (firstName) {
+      return firstName;
+    } else {
+      return email;
     }
-    
-    acc[weekKey].items.push(item);
-    return acc;
-  }, {} as Record<string, { weekStart: Date; items: unknown[] }>);
-
-  // Sort weeks descending (newest first)
-  const sortedWeeks = Object.entries(groupedByWeek).sort(
-    ([keyA], [keyB]) => new Date(keyB).getTime() - new Date(keyA).getTime()
-  );
-
-  const getWeekHeader = (weekStart: Date) => {
-    // Use Monday-Sunday for full week coverage
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 }); // Monday start
-    const sundayEnd = addDays(weekStart, 6); // Monday + 6 days = Sunday
-    const weekNumber = getWeek(weekStart);
-    const startStr = format(weekStart, "MMM d");
-    const endStr = format(sundayEnd, "MMM d");
-    return `Week ${weekNumber} (${startStr} - ${endStr})`;
   };
 
   return (
     <>
       <div className="space-y-4">
-        {sortedWeeks.map(([weekKey, { weekStart, items: weekItems }]) => (
-          <div key={weekKey} className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                {getWeekHeader(weekStart)}
-              </h3>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="hidden sm:block border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[40px_40px_2fr_200px_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
-                <div></div>
-                <div></div>
-                <div>ActionItem</div>
-                <div>Who</div>
-                <div>Desired Outcome</div>
-                <div></div>
-              </div>
-              
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => handleDragEnd(event, weekItems)}
+        {/* Action Items List */}
+        {items.length > 0 && (
+          <div className="space-y-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={items.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <SortableContext
-                  items={weekItems.map((item) => item.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {weekItems.map((item) => (
-                    <SortableActionItemRow
-                      key={item.id}
-                      item={item}
-                      members={members}
-                      onToggleComplete={handleToggleComplete}
-                      onDelete={handleDelete}
-                      onChangeAssignment={handleChangeAssignment}
-                      onUpdateOutcome={handleUpdateOutcome}
-                      onOpenComments={(id, title) => setSelectedItem({ id, title })}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="sm:hidden space-y-3">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => handleDragEnd(event, weekItems)}
-              >
-                <SortableContext
-                  items={weekItems.map((item) => item.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {weekItems.map((item) => {
-                    const firstName = item.assigned_to_profile?.first_name || "";
-                    const lastName = item.assigned_to_profile?.last_name || "";
-                    const email = item.assigned_to_profile?.email || "";
-                    let displayName = "";
-                    if (firstName && lastName) {
-                      displayName = `${firstName} ${lastName}`;
-                    } else if (firstName) {
-                      displayName = firstName;
-                    } else if (email) {
-                      displayName = email;
-                    }
-
-                    return (
-                      <div key={item.id} className="border rounded-lg p-4 space-y-3 bg-white">
-                        {/* Checkbox and Title */}
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={item.is_completed}
-                            onCheckedChange={() => handleToggleComplete(item.id, item.is_completed)}
-                            className="mt-1"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm break-words">{htmlToPlainText(item.title)}</p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 flex-shrink-0"
-                            onClick={() => handleDelete(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-
-                        {/* Assigned To */}
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Assigned To</span>
-                          <Select
-                            value={item.assigned_to || "none"}
-                            onValueChange={(value) => handleChangeAssignment(item.id, value === "none" ? null : value)}
-                          >
-                            <SelectTrigger className="h-9 text-sm">
-                              <SelectValue>
-                                {!item.assigned_to ? (
-                                  <span className="text-muted-foreground">Unassigned</span>
-                                ) : displayName ? (
-                                  <span>{displayName}</span>
-                                ) : (
-                                  <span className="text-muted-foreground">Unknown</span>
-                                )}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-popover z-50">
-                              <SelectItem value="none">Unassigned</SelectItem>
-                              {members.map((member) => {
-                                const mFirstName = member.profiles?.first_name || "";
-                                const mLastName = member.profiles?.last_name || "";
-                                const mEmail = member.profiles?.email || "";
-                                let mDisplayName = "";
-                                if (mFirstName && mLastName) {
-                                  mDisplayName = `${mFirstName} ${mLastName}`;
-                                } else if (mFirstName) {
-                                  mDisplayName = mFirstName;
-                                } else {
-                                  mDisplayName = mEmail;
-                                }
-                                return (
-                                  <SelectItem key={member.user_id} value={member.user_id}>
-                                    {mDisplayName}
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Desired Outcome */}
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Desired Outcome</span>
-                          <Input
-                            placeholder="Desired outcome..."
-                            defaultValue={htmlToPlainText(item.outcome || "")}
-                            onBlur={(e) => handleUpdateOutcome(item.id, e.target.value)}
-                            className="h-9 text-sm"
-                          />
-                        </div>
-
-                        {/* Comments Button */}
-                        <div className="flex justify-end">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedItem({ id: item.id, title: item.title })}
-                            className="text-xs"
-                          >
-                            <MessageSquare className="h-3 w-3 mr-1" />
-                            Comments
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </SortableContext>
-              </DndContext>
-            </div>
-          </div>
-        ))}
-
-        {items.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground border rounded-lg">
-            <p className="text-sm">
-              {hasAgendaItems 
-                ? "No action_items yet. Click \"Add ActionItem\" to create one." 
-                : "ActionItems can be added once the agenda for the meeting has been set."
-              }
-            </p>
+                {items.map((item) => (
+                  <SortableActionItemRow
+                    key={item.id}
+                    item={item}
+                    onDelete={handleDelete}
+                    onSetCompletion={(status) => handleSetCompletion(item.id, status)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </div>
         )}
+
+        {items.length === 0 && (
+          <div className="text-center py-2 text-muted-foreground">
+            <p className="text-sm">No action items yet.</p>
+          </div>
+        )}
+
+        {/* Add New Action Item Form */}
+        <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">Add Action Item</h4>
+            
+            {/* Desktop Layout */}
+            <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_2fr_40px] gap-3 items-start">
+              {/* Title Input */}
+              <div>
+                <Input
+                  id="new-action-item-title"
+                  value={newItem.title}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Action item"
+                  className="h-10"
+                />
+              </div>
+
+              {/* Who Selector */}
+              <div>
+                <Select 
+                  value={newItem.assigned_to || ""} 
+                  onValueChange={(value) => setNewItem(prev => ({ ...prev, assigned_to: value }))}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Who?">
+                      {newItem.assigned_to ? (
+                        (() => {
+                          const member = members.find(m => m.user_id === newItem.assigned_to);
+                          if (!member?.profiles) return "Unknown";
+                          
+                          const displayName = formatNameWithInitial(
+                            member.profiles.first_name,
+                            member.profiles.last_name,
+                            member.profiles.email
+                          );
+                          
+                          return (
+                            <div className="flex items-center gap-2">
+                              {member.profiles.avatar_name ? (
+                                <FancyAvatar 
+                                  name={member.profiles.avatar_name} 
+                                  displayName={displayName}
+                                  size="sm" 
+                                />
+                              ) : (
+                                <Avatar className="h-6 w-6 rounded-full">
+                                  <AvatarImage src={member.profiles.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <span className="text-sm truncate">{displayName}</span>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        "Who?"
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((member) => {
+                      const displayName = formatNameWithInitial(
+                        member.profiles?.first_name,
+                        member.profiles?.last_name,
+                        member.profiles?.email
+                      );
+                      
+                      return (
+                        <SelectItem key={member.user_id} value={member.user_id}>
+                          <div className="flex items-center gap-2">
+                            {member.profiles?.avatar_name ? (
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name} 
+                                displayName={displayName}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-6 w-6 rounded-full">
+                                <AvatarImage src={member.profiles?.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span className="truncate">{displayName}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Due Date Picker */}
+              <div className="relative">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !newItem.due_date && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newItem.due_date ? format(newItem.due_date, "MM/dd") : <span>Due Date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newItem.due_date || undefined}
+                      onSelect={(date) => setNewItem(prev => ({ ...prev, due_date: date }))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Notes Input */}
+              <div>
+                <RichTextEditor
+                  content={newItem.notes}
+                  onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
+                  placeholder="Notes..."
+                  className="min-h-[100px]"
+                />
+              </div>
+
+              {/* Add Button */}
+              <div>
+                <Button
+                  onClick={handleAddItem}
+                  disabled={!newItem.title.trim()}
+                  size="icon"
+                  className="h-10 w-full"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Mobile Layout */}
+            <div className="sm:hidden space-y-3">
+              <Input
+                id="new-action-item-title"
+                value={newItem.title}
+                onChange={(e) => setNewItem(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Action item title"
+                className="h-10"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Select 
+                  value={newItem.assigned_to || ""} 
+                  onValueChange={(value) => setNewItem(prev => ({ ...prev, assigned_to: value }))}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Who?">
+                      {newItem.assigned_to ? (
+                        (() => {
+                          const member = members.find(m => m.user_id === newItem.assigned_to);
+                          if (!member?.profiles) return "Unknown";
+                          
+                          const displayName = formatNameWithInitial(
+                            member.profiles.first_name,
+                            member.profiles.last_name,
+                            member.profiles.email
+                          );
+                          
+                          return (
+                            <div className="flex items-center gap-2">
+                              {member.profiles.avatar_name ? (
+                                <FancyAvatar 
+                                  name={member.profiles.avatar_name} 
+                                  displayName={displayName}
+                                  size="sm" 
+                                />
+                              ) : (
+                                <Avatar className="h-6 w-6 rounded-full">
+                                  <AvatarImage src={member.profiles.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <span className="text-sm truncate">{displayName}</span>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        "Who?"
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((member) => {
+                      const displayName = formatNameWithInitial(
+                        member.profiles?.first_name,
+                        member.profiles?.last_name,
+                        member.profiles?.email
+                      );
+                      
+                      return (
+                        <SelectItem key={member.user_id} value={member.user_id}>
+                          <div className="flex items-center gap-2">
+                            {member.profiles?.avatar_name ? (
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name} 
+                                displayName={displayName}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-6 w-6 rounded-full">
+                                <AvatarImage src={member.profiles?.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span className="truncate">{displayName}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !newItem.due_date && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newItem.due_date ? format(newItem.due_date, "MM/dd") : <span>Due Date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newItem.due_date || undefined}
+                      onSelect={(date) => setNewItem(prev => ({ ...prev, due_date: date }))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <RichTextEditor
+                content={newItem.notes}
+                onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
+                placeholder="Notes..."
+                className="min-h-[100px]"
+              />
+              <Button
+                onClick={handleAddItem}
+                disabled={!newItem.title.trim()}
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Action Item
+              </Button>
+            </div>
+          </div>
       </div>
 
       {selectedItem && (
         <CommentsDialog
           itemId={selectedItem.id}
           itemTitle={selectedItem.title}
+          itemType="action_item"
           open={!!selectedItem}
           onOpenChange={(open) => !open && setSelectedItem(null)}
         />
       )}
-
-      <AddActionItemsDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        meetingId={meetingId}
-        teamId={teamId}
-        onSave={onUpdate}
-        existingActionItems={items}
-      />
     </>
   );
 });

@@ -26,6 +26,8 @@ interface TemplateItem {
 interface Template {
   id: string;
   name: string;
+  description?: string;
+  is_system?: boolean;
   items?: TemplateItem[];
 }
 
@@ -53,20 +55,53 @@ const Settings = () => {
   }, []);
 
   const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      navigate("/auth");
-      return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      
+      // Get user email for testing mode check
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate("/auth");
+        return;
+      }
+
+      setUserEmail(user.email || "");
+
+      // Check if user is an admin on any team
+      const { data: teamMemberships, error: membershipError } = await supabase
+        .from("team_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin");
+
+      if (membershipError) throw membershipError;
+
+      // If user is not an admin on any team, redirect to dashboard
+      if (!teamMemberships || teamMemberships.length === 0) {
+        toast({
+          title: "Access Denied",
+          description: "You need admin privileges to access settings",
+          variant: "destructive",
+        });
+        navigate("/dashboard");
+        return;
+      }
+      
+      await fetchTemplates();
+      setLoading(false);
+    } catch (error: unknown) {
+      console.error("Error checking auth:", error);
+      toast({
+        title: "Error",
+        description: "Failed to verify access permissions",
+        variant: "destructive",
+      });
+      navigate("/dashboard");
     }
-    
-    // Get user email for testing mode check
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.email) {
-      setUserEmail(user.email);
-    }
-    
-    await fetchTemplates();
-    setLoading(false);
   };
 
   const fetchTemplates = async () => {
@@ -100,7 +135,7 @@ const Settings = () => {
           ...template,
           items: (template.items || []).sort((a: TemplateItem, b: TemplateItem) => a.order_index - b.order_index),
         }))
-        .sort((a: any, b: unknown) => {
+        .sort((a: Template, b: Template) => {
           // User templates first (is_system = false), then system templates
           if (a.is_system === b.is_system) return 0;
           return a.is_system ? 1 : -1;
@@ -363,22 +398,26 @@ const Settings = () => {
     }
   };
 
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
+
   const handleDeleteTemplate = async (template: Template) => {
-    if (!confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
-      return;
-    }
+    setTemplateToDelete(template);
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!templateToDelete) return;
 
     try {
       const { error } = await supabase
         .from("agenda_templates")
         .delete()
-        .eq("id", template.id);
+        .eq("id", templateToDelete.id);
 
       if (error) throw error;
 
       toast({
         title: "Template deleted",
-        description: `${template.name} has been deleted`,
+        description: `${templateToDelete.name} has been deleted`,
       });
 
       await fetchTemplates();
@@ -388,6 +427,8 @@ const Settings = () => {
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
+    } finally {
+      setTemplateToDelete(null);
     }
   };
 
@@ -613,6 +654,33 @@ const Settings = () => {
         )}
       </main>
 
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!templateToDelete} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{templateToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTemplateToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteTemplate}
+            >
+              Delete Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Template Edit Dialog */}
       <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

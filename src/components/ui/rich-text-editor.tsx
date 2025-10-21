@@ -18,9 +18,12 @@ interface RichTextEditorProps {
   onChange?: (content: string) => void
   placeholder?: string
   className?: string
+  readOnly?: boolean
 }
 
-const RichTextEditor = ({ content = '', onChange, placeholder, className = '' }: RichTextEditorProps) => {
+const RichTextEditor = ({ content = '', onChange, placeholder, className = '', readOnly = false }: RichTextEditorProps) => {
+  // Clean up empty lines when displaying existing content
+  const cleanContent = content ? content.replace(/(<p><\/p>)+/g, '') : content;
   const [isFocused, setIsFocused] = useState(false)
   const [isToolbarHovered, setIsToolbarHovered] = useState(false)
   
@@ -34,7 +37,8 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '' }:
         },
       }),
     ],
-    content,
+    content: cleanContent,
+    editable: true,
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML())
     },
@@ -49,7 +53,7 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '' }:
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-[32px] p-2',
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[32px] p-2 bg-background',
       },
     },
   })
@@ -79,10 +83,10 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '' }:
 
   return (
     <div className={`relative ${className}`}>
-      {/* Floating Toolbar - Only shown when focused */}
+      {/* Floating Toolbar */}
       {(isFocused || isToolbarHovered) && (
         <div 
-          className="absolute -top-12 left-0 z-10 flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-md shadow-lg"
+          className="absolute bg-white border shadow-lg rounded-lg -top-12 right-0 p-2 flex gap-1 z-[100]"
           onMouseEnter={() => setIsToolbarHovered(true)}
           onMouseLeave={() => setIsToolbarHovered(false)}
         >
@@ -174,7 +178,7 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '' }:
       )}
 
       {/* Editor Content */}
-      <div className="border rounded-md min-h-[32px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+      <div className="relative border rounded-md min-h-[32px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
         <EditorContent 
           editor={editor} 
           placeholder={placeholder}

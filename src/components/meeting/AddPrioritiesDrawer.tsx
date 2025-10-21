@@ -2,13 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import RichTextEditor from "@/components/ui/rich-text-editor";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import FancyAvatar from "@/components/ui/fancy-avatar";
-import { Plus, Trash2, Save, X } from "lucide-react";
+import { Plus, Save, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -16,73 +10,40 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { PriorityForm } from "./PriorityForm";
+import { TopicForm } from "./TopicForm";
+import { 
+  PriorityRow, 
+  ExistingPriority, 
+  PriorityUpdate, 
+  PriorityInsert,
+  AddPrioritiesDrawerProps 
+} from "@/types/priorities";
+import { TeamMember } from "@/types/meeting";
 
-interface PriorityRow {
-  id: string;
-  priority: string;
-  assigned_to: string | null;
-  desired_outcome: string;
-}
-
-interface TeamMember {
-  user_id: string;
-  profiles?: {
-    full_name?: string;
-    avatar_url?: string;
-    avatar_name?: string;
-  };
-}
-
-interface CurrentUser {
-  id: string;
-  email?: string;
-  full_name?: string;
-}
-
-interface ExistingPriority {
-  id: string;
-  title?: string;
-  assigned_to?: string | null;
-  desired_outcome?: string;
-}
-
-interface PriorityUpdate {
-  id: string;
-  title: string;
-  outcome: string;
-  assigned_to: string | null;
-  order_index: number;
-}
-
-interface PriorityInsert {
-  meeting_id: string;
-  type: "priority";
-  title: string;
-  outcome: string;
-  assigned_to: string | null;
-  order_index: number;
-  created_by: string;
-}
-
-interface AddPrioritiesDrawerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  meetingId: string;
-  teamId: string;
-  onSave: () => void;
-  existingPriorities?: ExistingPriority[];
-}
-
-const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, existingPriorities = [] }: AddPrioritiesDrawerProps) => {
+const AddPrioritiesDrawer = ({ 
+  isOpen, 
+  onClose, 
+  meetingId, 
+  teamId, 
+  onSave, 
+  existingPriorities = [] 
+}: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
   const [priorities, setPriorities] = useState<PriorityRow[]>([
-    { id: "1", priority: "", assigned_to: "", desired_outcome: "" },
-    { id: "2", priority: "", assigned_to: "", desired_outcome: "" },
-    { id: "3", priority: "", assigned_to: "", desired_outcome: "" }
+    { id: `temp-${Date.now()}-1`, priority: "", assigned_to: "", notes: "", time_minutes: null },
+    { id: `temp-${Date.now()}-2`, priority: "", assigned_to: "", notes: "", time_minutes: null },
+    { id: `temp-${Date.now()}-3`, priority: "", assigned_to: "", notes: "", time_minutes: null }
   ]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [newTopic, setNewTopic] = useState({
+    title: "",
+    assigned_to: "",
+    time_minutes: 5,
+    notes: ""
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -91,15 +52,13 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       
       // Load existing priorities if editing, otherwise start with empty priorities
       if (existingPriorities.length > 0) {
-        console.log("Loading existing priorities:", existingPriorities);
-        const existingPriorityRows = existingPriorities.map((priority, index) => ({
+        const existingPriorityRows = existingPriorities.map((priority) => ({
           id: priority.id,
           priority: priority.title || "",
           assigned_to: priority.assigned_to || "",
-          desired_outcome: priority.outcome || ""
+          notes: priority.notes || "",
+          time_minutes: priority.time_minutes || null
         }));
-        
-        console.log("Mapped existing priority rows:", existingPriorityRows);
         
         // Ensure we have at least 3 rows for consistency
         while (existingPriorityRows.length < 3) {
@@ -107,18 +66,18 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
             id: `new-${existingPriorityRows.length + 1}`,
             priority: "",
             assigned_to: "",
-            desired_outcome: ""
+            notes: "",
+            time_minutes: null
           });
         }
         
         setPriorities(existingPriorityRows);
       } else {
-        console.log("No existing priorities, starting fresh");
         // Reset priorities when opening for new priorities
         setPriorities([
-          { id: "1", priority: "", assigned_to: "", desired_outcome: "" },
-          { id: "2", priority: "", assigned_to: "", desired_outcome: "" },
-          { id: "3", priority: "", assigned_to: "", desired_outcome: "" }
+          { id: `temp-${Date.now()}-1`, priority: "", assigned_to: "", notes: "", time_minutes: null },
+          { id: `temp-${Date.now()}-2`, priority: "", assigned_to: "", notes: "", time_minutes: null },
+          { id: `temp-${Date.now()}-3`, priority: "", assigned_to: "", notes: "", time_minutes: null }
         ]);
       }
     }
@@ -127,8 +86,8 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
   // Set current user as default when currentUser is loaded
   useEffect(() => {
     if (currentUser) {
-      setPriorities(prevPrioritys => 
-        prevPrioritys.map(priority => ({
+      setPriorities(prevPriorities => 
+        prevPriorities.map(priority => ({
           ...priority,
           assigned_to: priority.assigned_to === "" ? currentUser.user_id : priority.assigned_to
         }))
@@ -171,8 +130,14 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
   };
 
   const addPriorityRow = () => {
-    const newId = (priorities.length + 1).toString();
-    setPriorities([...priorities, { id: newId, priority: "", assigned_to: currentUser?.user_id || "", desired_outcome: "" }]);
+    const newId = `temp-${Date.now()}-${priorities.length + 1}`;
+    setPriorities([...priorities, { 
+      id: newId, 
+      priority: "", 
+      assigned_to: currentUser?.user_id || "", 
+      notes: "", 
+      time_minutes: null 
+    }]);
   };
 
   const removePriorityRow = (id: string) => {
@@ -182,7 +147,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
   };
 
   // Check if all priorities have been used (have content)
-  const allPrioritysUsed = () => {
+  const allPrioritiesUsed = () => {
     return priorities.every(priority => priority.priority.trim() !== "");
   };
 
@@ -192,70 +157,82 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
     ));
   };
 
+  const handleAddTopic = async () => {
+    if (!newTopic.title.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a topic title",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("meeting_items")
+        .insert({
+          meeting_id: meetingId,
+          type: "team_topic",
+          title: newTopic.title,
+          assigned_to: newTopic.assigned_to || null,
+          time_minutes: newTopic.time_minutes,
+          notes: newTopic.notes || null,
+          order_index: 0,
+          created_by: user.id,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Topic added!",
+        description: "The team topic has been added to the meeting",
+      });
+
+      // Reset form
+      setNewTopic({
+        title: "",
+        assigned_to: "",
+        time_minutes: 5,
+        notes: ""
+      });
+
+      onSave();
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add topic",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const existingPriorityIds = existingPriorities.map(t => t.id);
-      const prioritiesToUpdate: PriorityUpdate[] = [];
-      const prioritiesToInsert: PriorityInsert[] = [];
-      let updateIndex = 0;
+      // Only save priorities that have content
+      const filledPriorities = priorities.filter(p => p.priority.trim());
+      console.log('Priorities to save:', filledPriorities);
 
-      // Process each priority row
-      for (const priority of priorities) {
-        if (priority.priority.trim()) {
-          if (existingPriorityIds.includes(priority.id)) {
-            // Update existing priority
-            prioritiesToUpdate.push({
-              id: priority.id,
-              title: priority.priority,
-              outcome: priority.desired_outcome,
-              assigned_to: priority.assigned_to || null,
-              order_index: updateIndex,
-            });
-          } else {
-            // Insert new priority
-            prioritiesToInsert.push({
-              meeting_id: meetingId,
-              type: "priority" as const,
-              title: priority.priority,
-              outcome: priority.desired_outcome,
-              assigned_to: priority.assigned_to || null,
-              order_index: updateIndex,
-              created_by: user.id,
-            });
-          }
-          updateIndex++;
-        }
-      }
+      // All filled priorities will be new inserts since we're using temp IDs
+      // Look at how topics are inserted - they only use these fields
+      const prioritiesToInsert = filledPriorities.map((priority, index) => ({
+        meeting_id: meetingId,
+        type: "priority" as const,
+        title: priority.priority,      // Desired outcome goes in title
+        notes: "",                     // Supporting activities go in notes
+        assigned_to: priority.assigned_to || null,
+        time_minutes: null,            // Optional duration
+        order_index: index,
+        created_by: user.id
+      }));
 
-      // Delete priorities that were removed (existing priorities not in current list)
-      const currentPriorityIds = priorities.filter(t => t.priority.trim()).map(t => t.id);
-      const prioritiesToDelete = existingPriorities.filter(t => !currentPriorityIds.includes(t.id));
-      
-      for (const priorityToDelete of prioritiesToDelete) {
-        await supabase
-          .from("meeting_items")
-          .delete()
-          .eq("id", priorityToDelete.id);
-      }
-
-      // Update existing priorities
-      for (const priorityUpdate of prioritiesToUpdate) {
-        const { error } = await supabase
-          .from("meeting_items")
-          .update({
-            title: priorityUpdate.title,
-            outcome: priorityUpdate.outcome,
-            assigned_to: priorityUpdate.assigned_to,
-            order_index: priorityUpdate.order_index,
-          })
-          .eq("id", priorityUpdate.id);
-        
-        if (error) throw error;
-      }
+      console.log('Data to insert:', prioritiesToInsert);
 
       // Insert new priorities
       if (prioritiesToInsert.length > 0) {
@@ -263,14 +240,17 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
           .from("meeting_items")
           .insert(prioritiesToInsert);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Insert error:', error);
+          throw error;
+        }
       }
 
-      const totalChanges = prioritiesToUpdate.length + prioritiesToInsert.length + prioritiesToDelete.length;
+      const totalChanges = prioritiesToInsert.length;
       
       if (totalChanges > 0) {
         toast({
-          title: "Prioritys updated!",
+          title: "Priorities updated!",
           description: `${totalChanges} change${totalChanges > 1 ? 's' : ''} saved successfully`,
         });
       }
@@ -278,7 +258,7 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
       onSave();
       onClose();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to save prioritys";
+      const errorMessage = error instanceof Error ? error.message : "Failed to save priorities";
       toast({
         title: "Error",
         description: errorMessage,
@@ -291,306 +271,110 @@ const AddPrioritiesDrawer = ({ isOpen, onClose, meetingId, teamId, onSave, exist
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] overflow-y-auto">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="text-xl sm:text-2xl">{existingPriorities.length > 0 ? "Edit Prioritys" : "Add Prioritys"}</SheetTitle>
+      <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] flex flex-col h-full">
+        <SheetHeader className="pb-4 flex-none">
+          <SheetTitle className="text-xl sm:text-2xl">Set This Period's Priorities</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
-            {existingPriorities.length > 0 
-              ? "Edit existing priorities and add new ones for this meeting." 
-              : "Add multiple priorities for this meeting. You can create several priorities at once."
-            }
+            Set your priorities for the upcoming period. You can add up to three priorities.
           </SheetDescription>
         </SheetHeader>
         
-        <div className="mt-6 space-y-4">
-          {/* Desktop Table View */}
-          <div className="hidden sm:block border rounded-lg overflow-hidden">
-            <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
-              <div>Who</div>
-              <div>Priority</div>
-              <div>Desired Outcome</div>
-              <div></div>
-            </div>
-            
-            {priorities.map((priority, index) => (
-              <div key={priority.id} className="px-4 py-3 grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-center border-t">
-                <div>
-                  <Select
-                    value={priority.assigned_to || ""}
-                    onValueChange={(value) => updatePriority(priority.id, "assigned_to", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Assign to...">
-                        {priority.assigned_to ? (
-                          (() => {
-                            const member = teamMembers.find(m => m.user_id === priority.assigned_to);
-                            if (!member?.profiles) return null;
-                            
-                            const firstName = member.profiles.first_name || "";
-                            const lastName = member.profiles.last_name || "";
-                            const email = member.profiles.email || "";
-                            
-                            // Display: first_name + last_name if available, otherwise email
-                            let displayName = "";
-                            if (firstName && lastName) {
-                              displayName = `${firstName} ${lastName}`;
-                            } else if (firstName) {
-                              displayName = firstName;
-                            } else {
-                              displayName = email;
-                            }
-                            
-                            return (
-                              <div className="flex items-center gap-2">
-                                {member.profiles.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={member.profiles.avatar_name} 
-                                    displayName={displayName}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={member.profiles.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {displayName.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <span className="text-sm">{displayName}</span>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-muted-foreground">Assign to...</span>
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currentUser && (
-                        <SelectItem value={currentUser.user_id}>
-                          <div className="flex items-center gap-2">
-                            {currentUser.profiles?.avatar_name ? (
-                              <FancyAvatar 
-                                name={currentUser.profiles.avatar_name} 
-                                displayName={`${currentUser.profiles.first_name || ''} ${currentUser.profiles.last_name || ''}`.trim() || currentUser.profiles.email || ''}
-                                size="sm" 
-                              />
-                            ) : (
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={currentUser.profiles?.avatar_url} />
-                                <AvatarFallback className="text-xs">
-                                  {(currentUser.profiles?.first_name || currentUser.profiles?.email || '?').charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                            )}
-                            <span>Me</span>
-                          </div>
-                        </SelectItem>
-                      )}
-                      {teamMembers
-                        .filter(member => member.user_id !== currentUser?.user_id)
-                        .map((member) => {
-                          const firstName = member.profiles?.first_name || "";
-                          const lastName = member.profiles?.last_name || "";
-                          const email = member.profiles?.email || "";
-                          
-                          // Display: first_name + last_name if available, otherwise email
-                          let displayName = "";
-                          if (firstName && lastName) {
-                            displayName = `${firstName} ${lastName}`;
-                          } else if (firstName) {
-                            displayName = firstName;
-                          } else {
-                            displayName = email;
-                          }
-                          
-                          return (
-                            <SelectItem key={member.user_id} value={member.user_id}>
-                              <div className="flex items-center gap-2">
-                                {member.profiles?.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={member.profiles.avatar_name} 
-                                    displayName={displayName}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={member.profiles?.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {displayName.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <span>{displayName}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <RichTextEditor
-                    content={priority.priority}
-                    onChange={(content) => updatePriority(priority.id, "priority", content)}
-                    placeholder="Enter priority..."
-                    className="min-h-[80px]"
-                  />
-                </div>
-                
-                <div>
-                  <RichTextEditor
-                    content={priority.desired_outcome}
-                    onChange={(content) => updatePriority(priority.id, "desired_outcome", content)}
-                    placeholder="Desired outcome..."
-                    className="min-h-[80px]"
-                  />
-                </div>
-                
-                <div className="flex justify-center">
-                  {priorities.length > 3 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removePriorityRow(priority.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+        <div className="flex-1 overflow-y-auto min-h-0 pr-6">
+          <div className="space-y-4">
+            {/* Desktop Table View */}
+            <div className="hidden sm:block border rounded-lg overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
+                <div>Who</div>
+                <div>Desired Outcome</div>
+                <div>Supporting Activities</div>
+                <div></div>
               </div>
-            ))}
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="sm:hidden space-y-3">
-            {priorities.map((priority, index) => {
-              const member = teamMembers.find(m => m.user_id === priority.assigned_to);
-              const firstName = member?.profiles?.first_name || "";
-              const lastName = member?.profiles?.last_name || "";
-              const email = member?.profiles?.email || "";
-              let displayName = "";
-              if (firstName && lastName) {
-                displayName = `${firstName} ${lastName}`;
-              } else if (firstName) {
-                displayName = firstName;
-              } else if (email) {
-                displayName = email;
-              }
-
-              return (
-                <div key={priority.id} className="border rounded-lg p-4 space-y-3 bg-white">
-                  {/* Assigned To */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Who</label>
-                    <Select
-                      value={priority.assigned_to || ""}
-                      onValueChange={(value) => updatePriority(priority.id, "assigned_to", value)}
-                    >
-                      <SelectTrigger className="h-10 text-sm">
-                        <SelectValue placeholder="Assign to...">
-                          {priority.assigned_to && displayName ? (
-                            <span className="text-sm">{displayName}</span>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">Assign to...</span>
-                          )}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover z-50">
-                        {currentUser && (
-                          <SelectItem value={currentUser.user_id}>
-                            <span className="text-sm">Me</span>
-                          </SelectItem>
-                        )}
-                        {teamMembers
-                          .filter(member => member.user_id !== currentUser?.user_id)
-                          .map((member) => {
-                            const mFirstName = member.profiles?.first_name || "";
-                            const mLastName = member.profiles?.last_name || "";
-                            const mEmail = member.profiles?.email || "";
-                            let mDisplayName = "";
-                            if (mFirstName && mLastName) {
-                              mDisplayName = `${mFirstName} ${mLastName}`;
-                            } else if (mFirstName) {
-                              mDisplayName = mFirstName;
-                            } else {
-                              mDisplayName = mEmail;
-                            }
-                            return (
-                              <SelectItem key={member.user_id} value={member.user_id}>
-                                <span className="text-sm">{mDisplayName}</span>
-                              </SelectItem>
-                            );
-                          })}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Priority */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Priority</label>
-                    <RichTextEditor
-                      content={priority.priority}
-                      onChange={(content) => updatePriority(priority.id, "priority", content)}
-                      placeholder="Enter priority..."
-                      className="min-h-[80px] text-sm"
-                    />
-                  </div>
-
-                  {/* Desired Outcome */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Desired Outcome</label>
-                    <RichTextEditor
-                      content={priority.desired_outcome}
-                      onChange={(content) => updatePriority(priority.id, "desired_outcome", content)}
-                      placeholder="Desired outcome..."
-                      className="min-h-[80px] text-sm"
-                    />
-                  </div>
-
-                  {/* Delete Button */}
-                  {priorities.length > 3 && (
-                    <div className="flex justify-end pt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removePriorityRow(priority.id)}
-                        className="text-destructive hover:text-destructive text-xs"
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Remove
-                      </Button>
-                    </div>
-                  )}
+              
+              {priorities.map((priority) => (
+                <div key={priority.id} className="px-4 py-3 border-t">
+                  <PriorityForm
+                    priority={priority}
+                    teamMembers={teamMembers}
+                    currentUser={currentUser}
+                    onUpdate={updatePriority}
+                    onRemove={priorities.length > 3 ? () => removePriorityRow(priority.id) : undefined}
+                    showRemove={priorities.length > 3}
+                  />
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="sm:hidden space-y-3">
+              {priorities.map((priority) => (
+                <div key={priority.id} className="border rounded-lg p-4 space-y-3 bg-white">
+                  <PriorityForm
+                    priority={priority}
+                    teamMembers={teamMembers}
+                    currentUser={currentUser}
+                    onUpdate={updatePriority}
+                    onRemove={priorities.length > 3 ? () => removePriorityRow(priority.id) : undefined}
+                    showRemove={priorities.length > 3}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={addPriorityRow}
-              disabled={!allPrioritysUsed()}
-              className="w-full sm:w-auto text-xs sm:text-sm"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Another Priority
-            </Button>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t">
-            <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto text-sm">
+        </div>
+
+        {/* Fixed Footer */}
+        <div className="flex-none mt-6 pt-6 border-t">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={onClose} className="text-sm">
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={addPriorityRow}
+                disabled={!allPrioritiesUsed()}
+                className="text-xs sm:text-sm"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Priority
+              </Button>
+            </div>
+            <Button onClick={handleSave} disabled={saving} className="text-sm">
               <Save className="h-4 w-4 mr-2" />
-              {saving ? "Saving..." : existingPriorities.length > 0 ? "Save Changes" : `Save ${priorities.filter(t => t.priority.trim()).length} Priority${priorities.filter(t => t.priority.trim()).length !== 1 ? 's' : ''}`}
+              {saving ? "Saving..." : existingPriorities.length > 0 ? "Save Changes" : `Save ${priorities.filter(t => t.priority.trim()).length} ${priorities.filter(t => t.priority.trim()).length === 1 ? 'Priority' : 'Priorities'}`}
             </Button>
-            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto text-sm">
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
+          </div>
+
+          {/* Topic Section */}
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Thinking of a Topic?</h3>
+            <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground">Add Topic</h4>
+              
+              {/* Desktop Layout */}
+              <div className="hidden sm:block">
+                <TopicForm
+                  topic={newTopic}
+                  teamMembers={teamMembers}
+                  onUpdate={(updates) => setNewTopic(prev => ({ ...prev, ...updates }))}
+                  onSubmit={handleAddTopic}
+                  isDesktop={true}
+                />
+              </div>
+
+              {/* Mobile Layout */}
+              <div className="sm:hidden">
+                <TopicForm
+                  topic={newTopic}
+                  teamMembers={teamMembers}
+                  onUpdate={(updates) => setNewTopic(prev => ({ ...prev, ...updates }))}
+                  onSubmit={handleAddTopic}
+                  isDesktop={false}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </SheetContent>

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useSessionManager } from "@/hooks/useSessionManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,9 +14,12 @@ import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 
 const Auth = () => {
+  // Initialize session management
+  useSessionManager();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -169,30 +174,68 @@ const Auth = () => {
 
         <Card className="border-border/50 shadow-large shadow-pink-500/100 w-full  sm:max-w-full">
           <CardHeader className="space-y-4 pb-6 px-5 sm:px-8 md:px-12">
-            {!isForgotPassword ? (
-              <Tabs defaultValue="signin" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4 h-12 sm:h-14">
-                  <TabsTrigger value="signin" onClick={() => setIsSignUp(false)} className="text-base sm:text-lg">
-                    Sign In
-                  </TabsTrigger>
-                  <TabsTrigger value="signup" onClick={() => setIsSignUp(true)} className="text-base sm:text-lg">
-                    Sign Up
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+            {showEmailForm ? (
+              <>
+                <div className="flex items-center mb-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="p-0 h-auto hover:bg-transparent"
+                    onClick={() => {
+                      setShowEmailForm(false);
+                      setIsSignUp(false);
+                      setIsForgotPassword(false);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-6 w-6"
+                    >
+                      <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                    <span className="ml-2">Back</span>
+                  </Button>
+                </div>
+                {!isForgotPassword ? (
+                  <Tabs defaultValue="signin" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-4 h-12 sm:h-14">
+                      <TabsTrigger value="signin" onClick={() => setIsSignUp(false)} className="text-base sm:text-lg">
+                        Sign In
+                      </TabsTrigger>
+                      <TabsTrigger value="signup" onClick={() => setIsSignUp(true)} className="text-base sm:text-lg">
+                        Sign Up
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                ) : (
+                  <div className="space-y-2">
+                    <CardTitle className="text-2xl sm:text-3xl font-bold text-center">
+                      Reset Password
+                    </CardTitle>
+                    <CardDescription className="text-base sm:text-lg text-center">
+                      Enter your email to receive a reset link
+                    </CardDescription>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="space-y-2">
-                <CardTitle className="text-2xl sm:text-3xl font-bold text-center">
-                  Reset Password
+              <div className="text-center space-y-2">
+                <CardTitle className="text-2xl sm:text-3xl font-bold">
+                  We are so glad you're here!
                 </CardTitle>
-                <CardDescription className="text-base sm:text-lg text-center">
-                  Enter your email to receive a reset link
+                <CardDescription className="text-base sm:text-lg">
+                  Sign in to continue to Team TacticalSync
                 </CardDescription>
               </div>
             )}
-
-            {/* Feature highlights - only show on sign in/up */}
-            
           </CardHeader>
 
           <CardContent className="space-y-6 pt-0 px-5 sm:px-8 md:px-12">
@@ -248,9 +291,15 @@ const Auth = () => {
               </div>
             ) : (
               <>
-                {/* Google Sign In */}
-                {!isForgotPassword && (
-                  <>
+                <AnimatePresence mode="wait">
+                  {!showEmailForm ? (
+                  <motion.div
+                    className="space-y-6"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
                     <Button
                       type="button"
                       variant="outline"
@@ -281,86 +330,103 @@ const Auth = () => {
                       </div>
                     </Button>
 
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs sm:text-sm uppercase">
-                    <span className="bg-background px-3 text-muted-foreground">
-                      Or continue with email
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
-            {/* Email Form */}
-            <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-base sm:text-base font-medium">Email address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                  className="h-12 sm:h-12 text-base sm:text-base"
-                  required
-                />
-              </div>
-              
-              {!isForgotPassword && (
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-base sm:text-base font-medium">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    className="h-12 sm:h-12 text-base sm:text-base"
-                    required
-                    minLength={6}
-                  />
-                </div>
-              )}
-              
-              {/* Primary Action Button */}
-              <Button
-                type="submit"
-                className="w-full h-12 sm:h-12 text-base sm:text-base font-medium"
-                disabled={loading}
-              >
-                {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
-              </Button>
-            </form>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="w-full text-base text-muted-foreground hover:text-primary"
+                      onClick={() => setShowEmailForm(true)}
+                      disabled={loading}
+                    >
+                      Want to use your email and password?
+                    </Button>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {!isForgotPassword && (
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold mb-1">
+                          {isSignUp ? "Create your account" : "Sign in to your account"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {isSignUp ? "Enter your details below to create your account" : "Enter your email and password to sign in"}
+                        </p>
+                      </div>
+                    )}
+                    <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-5">
+                      <div className="space-y-2">
+                        <Label htmlFor="email" className="text-base sm:text-base font-medium">Email address</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          disabled={loading}
+                          className="h-12 sm:h-12 text-base sm:text-base"
+                          required
+                        />
+                      </div>
+                      
+                      {!isForgotPassword && (
+                        <div className="space-y-2">
+                          <Label htmlFor="password" className="text-base sm:text-base font-medium">Password</Label>
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            disabled={loading}
+                            className="h-12 sm:h-12 text-base sm:text-base"
+                            required
+                            minLength={6}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Primary Action Button */}
+                      <Button
+                        type="submit"
+                        className="w-full h-12 sm:h-12 text-base sm:text-base font-medium"
+                        disabled={loading}
+                      >
+                        {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
+                      </Button>
+                    </form>
 
-            {/* Secondary Actions */}
-            <div className="space-y-2 pt-2">
-              {!isForgotPassword && (
-                <Button
-                  type="button"
-                  variant="link"
-                  className="w-full text-base text-muted-foreground"
-                  onClick={() => setIsForgotPassword(true)}
-                  disabled={loading}
-                >
-                  Forgot password?
-                </Button>
-              )}
-              {isForgotPassword && (
-                <Button
-                  type="button"
-                  variant="link"
-                  className="w-full text-base"
-                  onClick={() => setIsForgotPassword(false)}
-                  disabled={loading}
-                >
-                  Back to sign in
-                </Button>
-              )}
-            </div>
+                    {/* Secondary Actions */}
+                    <div className="space-y-2 pt-2">
+                      {!isForgotPassword && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="w-full text-base text-muted-foreground"
+                          onClick={() => setIsForgotPassword(true)}
+                          disabled={loading}
+                        >
+                          Forgot password?
+                        </Button>
+                      )}
+                      {isForgotPassword && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="w-full text-base"
+                          onClick={() => setIsForgotPassword(false)}
+                          disabled={loading}
+                        >
+                          Back to sign in
+                        </Button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+                </AnimatePresence>
               </>
             )}
           </CardContent>

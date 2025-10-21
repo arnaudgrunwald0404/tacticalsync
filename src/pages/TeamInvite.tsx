@@ -688,45 +688,30 @@ const TeamInvite = () => {
           {fromDashboard ? "Save and Go Back to Dashboard" : "Continue to Meeting Setup"}
         </Button>
 
-        <Card className="border-destructive mt-4">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            </div>
-            <CardDescription>
-              Irreversible and destructive actions
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <h3 className="font-semibold text-destructive">Delete this team</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Once you delete a team, there is no going back. This will permanently delete
-                    the team, all meetings, topics, comments, and remove all team members.
-                  </p>
+        <Card className="mt-9 border-destructive/40 bg-red-50">
+          <CardContent className="p-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                <h2 className="font-semibold text-destructive">Danger Zone</h2>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold">Delete Team</h3>
+                  <p className="text-sm text-muted-foreground">This action cannot be undone</p>
                 </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="shrink-0">
+                    <Button variant="destructive" size="sm">
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Team
+                      Delete
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogTitle>Delete {teamName}?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the team{" "}
-                        <span className="font-semibold">{teamName}</span> and all associated data including:
-                        <ul className="mt-2 list-disc list-inside space-y-1">
-                          <li>All team members</li>
-                          <li>All meetings and meeting items</li>
-                          <li>All topics and comments</li>
-                          <li>All invitations</li>
-                        </ul>
+                        This will permanently delete all team data including meetings, topics, and member access.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -735,7 +720,7 @@ const TeamInvite = () => {
                         onClick={handleDeleteTeam}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
-                        Yes, delete team permanently
+                        Delete Team
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>

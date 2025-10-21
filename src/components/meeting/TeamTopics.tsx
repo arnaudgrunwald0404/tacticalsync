@@ -3,14 +3,41 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Save, Send, Clock, X, GripVertical } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
+import { Arrow } from "@radix-ui/react-tooltip";
+import { formatNameWithInitial } from "@/lib/nameUtils";
+import { cn } from "@/lib/utils";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 interface TeamTopicsProps {
-  items: any[];
+  items: Array<{
+    id: string;
+    title: string;
+    notes?: string;
+    assigned_to?: string;
+    time_minutes?: number;
+    is_completed?: boolean;
+  }>;
   meetingId: string;
   teamId: string;
   teamName: string;
@@ -29,8 +56,102 @@ interface TeamMember {
   };
 }
 
+interface SortableTopicRowProps {
+  item: TeamTopicsProps['items'][0];
+  members: TeamMember[];
+  onToggleComplete: (checked: boolean) => void;
+  onDelete: (id: string) => void;
+}
+
+const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: SortableTopicRowProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+    zIndex: isDragging ? 1 : undefined,
+  };
+
+  const assignedMember = members.find(m => m.user_id === item.assigned_to);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "border rounded-lg p-3 bg-white",
+        isDragging && "shadow-lg"
+      )}
+    >
+      <div className="grid grid-cols-[auto_auto_2fr_auto_auto_2fr_auto] gap-4 items-center">
+        <div {...attributes} {...listeners} className="cursor-grab hover:text-foreground/80">
+          <GripVertical className="h-4 w-4" />
+        </div>
+        <Checkbox
+          checked={item.is_completed}
+          onCheckedChange={onToggleComplete}
+        />
+        <div className="text-base truncate">{item.title}</div>
+        <div className="flex items-center gap-2">
+          {assignedMember?.profiles?.avatar_name ? (
+            <FancyAvatar 
+              name={assignedMember.profiles.avatar_name} 
+              displayName={formatNameWithInitial(
+                assignedMember.profiles.first_name,
+                assignedMember.profiles.last_name,
+                assignedMember.profiles.email
+              )}
+              size="sm" 
+            />
+          ) : (
+            <Avatar className="h-6 w-6 rounded-full">
+              <AvatarImage src={assignedMember?.profiles?.avatar_url} />
+              <AvatarFallback className="text-xs">
+                {(assignedMember?.profiles?.first_name || assignedMember?.profiles?.email || '?').charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          <span className="text-base">{assignedMember?.profiles?.first_name || "Unassigned"}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-base whitespace-nowrap">
+          <Clock className="h-4 w-4" />
+          <span>{item.time_minutes} min</span>
+        </div>
+        <div className="text-base truncate text-muted-foreground">
+          {item.notes ? (
+            <div dangerouslySetInnerHTML={{ __html: item.notes }} />
+          ) : (
+            "No notes"
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onDelete(item.id)}
+          className="text-destructive hover:text-destructive"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopicsProps) => {
   const { toast } = useToast();
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [newTopic, setNewTopic] = useState({
     title: "",
@@ -43,8 +164,34 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
   useEffect(() => {
     if (teamId) {
       fetchMembers();
+      fetchCurrentUser();
     }
   }, [teamId]);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Find current user in team members
+      const { data: memberData } = await supabase
+        .from("team_members")
+        .select(`
+          id,
+          user_id,
+          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
+        `)
+        .eq("team_id", teamId)
+        .eq("user_id", user.id)
+        .single();
+      
+      if (memberData) {
+        setNewTopic(prev => ({ ...prev, assigned_to: memberData.user_id }));
+      }
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+    }
+  };
 
   const fetchMembers = async () => {
     const { data } = await supabase
@@ -94,13 +241,19 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
         description: "The team topic has been added to the meeting",
       });
 
-      // Reset form
-      setNewTopic({
+      // Reset form but keep the current user assigned
+      setNewTopic(prev => ({
         title: "",
-        assigned_to: "",
+        assigned_to: prev.assigned_to, // Keep current user assigned
         time_minutes: 5,
+        notes: "" // Empty string for RichTextEditor
+      }));
+      
+      // Reset RichTextEditor content through state
+      setNewTopic(prev => ({
+        ...prev,
         notes: ""
-      });
+      }));
 
       onUpdate();
     } catch (error: unknown) {
@@ -137,6 +290,51 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     onUpdate();
   };
 
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = items.findIndex((item) => item.id === active.id);
+    const newIndex = items.findIndex((item) => item.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const reorderedItems = arrayMove(items, oldIndex, newIndex);
+
+    // Update order_index for all affected items
+    const updates = reorderedItems.map((item, index) => ({
+      id: item.id,
+      meeting_id: meetingId,
+      order_index: index,
+      title: item.title,
+      type: "team_topic" as const,
+      notes: item.notes || null,
+      assigned_to: item.assigned_to || null,
+      time_minutes: item.time_minutes || 5,
+      is_completed: item.is_completed || false
+    }));
+
+    const { error } = await supabase
+      .from("meeting_items")
+      .upsert(updates, { onConflict: "id" });
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update item order",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    onUpdate();
+  };
+
   const getDisplayName = (member: TeamMember) => {
     const firstName = member.profiles?.first_name || "";
     const lastName = member.profiles?.last_name || "";
@@ -156,44 +354,50 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       {/* Existing Topics */}
       {items.length > 0 && (
         <div className="space-y-2">
-          {items.map((item) => {
-            const assignedMember = members.find(m => m.user_id === item.assigned_to);
-            const displayName = assignedMember ? getDisplayName(assignedMember) : "Unassigned";
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={items.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {items.map((item) => (
+                <SortableTopicRow
+                  key={item.id}
+                  item={item}
+                  members={members}
+                  onToggleComplete={async (checked) => {
+                    const { error } = await supabase
+                      .from("meeting_items")
+                      .update({ is_completed: Boolean(checked) })
+                      .eq("id", item.id);
+                    
+                    if (!error) {
+                      onUpdate();
+                    }
+                  }}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
 
-            return (
-              <div key={item.id} className="border rounded-lg p-4 bg-white space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{item.title}</p>
-                    {item.notes && (
-                      <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(item.id)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>👤 {displayName}</span>
-                  <span>⏱️ {item.time_minutes} min</span>
-                </div>
-              </div>
-            );
-          })}
+      {items.length === 0 && (
+        <div className="text-center py-2 text-muted-foreground">
+          <p className="text-sm">No team topics yet for this meeting.</p>
         </div>
       )}
 
       {/* Add New Topic Form */}
-      <div className="border-2 border-dashed rounded-lg p-4 space-y-3 bg-muted/20">
-        <h4 className="text-sm font-medium text-muted-foreground">Add New Topic</h4>
+      <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
+        <h4 className="text-sm font-medium text-muted-foreground">Add Topic</h4>
         
         {/* Desktop Layout */}
-        <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_100px_80px] gap-3 items-start">
+        <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_2fr_40px] gap-3 items-start">
           <div>
             <Input
               placeholder="Topic title..."
@@ -208,28 +412,99 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               onValueChange={(value) => setNewTopic({ ...newTopic, assigned_to: value })}
             >
               <SelectTrigger className="h-10">
-                <SelectValue placeholder="Who?" />
+                <SelectValue placeholder="Who?">
+                  {newTopic.assigned_to && members.find(m => m.user_id === newTopic.assigned_to) && (
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const member = members.find(m => m.user_id === newTopic.assigned_to);
+                        if (!member?.profiles) return null;
+                        
+                        const displayName = formatNameWithInitial(
+                          member.profiles.first_name,
+                          member.profiles.last_name,
+                          member.profiles.email
+                        );
+
+                        return (
+                          <>
+                            {member.profiles.avatar_name ? (
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name} 
+                                displayName={displayName}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-6 w-6 rounded-full">
+                                <AvatarImage src={member.profiles.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {(member.profiles.first_name || member.profiles.email || '?').charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span>{displayName}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member.user_id} value={member.user_id}>
-                    {getDisplayName(member)}
-                  </SelectItem>
-                ))}
+                <SelectContent>
+                {members.map((member) => {
+                  const displayName = formatNameWithInitial(
+                    member.profiles?.first_name,
+                    member.profiles?.last_name,
+                    member.profiles?.email
+                  );
+                  
+                  return (
+                    <SelectItem key={member.user_id} value={member.user_id}>
+                      <div className="flex items-center gap-2">
+                        {member.profiles?.avatar_name ? (
+                          <FancyAvatar 
+                            name={member.profiles.avatar_name} 
+                            displayName={displayName}
+                            size="sm" 
+                          />
+                        ) : (
+                          <Avatar className="h-6 w-6 rounded-full">
+                            <AvatarImage src={member.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <span className="truncate">{displayName}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className="relative">
             <Input
               type="number"
               placeholder="Duration"
               value={newTopic.time_minutes}
               onChange={(e) => setNewTopic({ ...newTopic, time_minutes: parseInt(e.target.value) || 5 })}
-              className="h-10"
+              className="h-10 pr-12"
               min="1"
               max="60"
             />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              min
+            </span>
           </div>
+          {/* Notes field for desktop */}
+        <div className="hidden sm:block">
+          <RichTextEditor
+            content={newTopic.notes}
+            onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
+            placeholder="Notes..."
+            className="min-h-[16px]"
+          />
+        </div>
           <div>
             <Button
               onClick={handleAdd}
@@ -256,31 +531,95 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               onValueChange={(value) => setNewTopic({ ...newTopic, assigned_to: value })}
             >
               <SelectTrigger className="h-10">
-                <SelectValue placeholder="Who?" />
+                <SelectValue placeholder="Who?">
+                  {newTopic.assigned_to && members.find(m => m.user_id === newTopic.assigned_to) && (
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const member = members.find(m => m.user_id === newTopic.assigned_to);
+                        if (!member?.profiles) return null;
+                        
+                        const displayName = formatNameWithInitial(
+                          member.profiles.first_name,
+                          member.profiles.last_name,
+                          member.profiles.email
+                        );
+
+                        return (
+                          <>
+                            {member.profiles.avatar_name ? (
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name} 
+                                displayName={displayName}
+                                size="sm" 
+                              />
+                            ) : (
+                              <Avatar className="h-6 w-6 rounded-full">
+                                <AvatarImage src={member.profiles.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {(member.profiles.first_name || member.profiles.email || '?').charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span>{displayName}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member.user_id} value={member.user_id}>
-                    {getDisplayName(member)}
-                  </SelectItem>
-                ))}
+                <SelectContent>
+                {members.map((member) => {
+                  const displayName = formatNameWithInitial(
+                    member.profiles?.first_name,
+                    member.profiles?.last_name,
+                    member.profiles?.email
+                  );
+                  
+                  return (
+                    <SelectItem key={member.user_id} value={member.user_id}>
+                      <div className="flex items-center gap-2">
+                        {member.profiles?.avatar_name ? (
+                          <FancyAvatar 
+                            name={member.profiles.avatar_name} 
+                            displayName={displayName}
+                            size="sm" 
+                          />
+                        ) : (
+                          <Avatar className="h-6 w-6 rounded-full">
+                            <AvatarImage src={member.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <span className="truncate">{displayName}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
-            <Input
-              type="number"
-              placeholder="Minutes"
-              value={newTopic.time_minutes}
-              onChange={(e) => setNewTopic({ ...newTopic, time_minutes: parseInt(e.target.value) || 5 })}
-              className="h-10"
-              min="1"
-              max="60"
-            />
+            <div className="relative">
+              <Input
+                type="number"
+                placeholder="Minutes"
+                value={newTopic.time_minutes}
+                onChange={(e) => setNewTopic({ ...newTopic, time_minutes: parseInt(e.target.value) || 5 })}
+                className="h-10 pr-12"
+                min="1"
+                max="60"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                min
+              </span>
+            </div>
           </div>
-          <Textarea
-            placeholder="Notes (optional)..."
-            value={newTopic.notes}
-            onChange={(e) => setNewTopic({ ...newTopic, notes: e.target.value })}
-            className="min-h-[60px] text-sm"
+          <RichTextEditor
+            content={newTopic.notes}
+            onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
+            placeholder="Notes..."
+            className="min-h-[32px]"
           />
           <Button
             onClick={handleAdd}
@@ -292,22 +631,8 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
           </Button>
         </div>
 
-        {/* Notes field for desktop */}
-        <div className="hidden sm:block">
-          <Textarea
-            placeholder="Notes (optional)..."
-            value={newTopic.notes}
-            onChange={(e) => setNewTopic({ ...newTopic, notes: e.target.value })}
-            className="min-h-[60px] text-sm"
-          />
-        </div>
+        
       </div>
-
-      {items.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          <p className="text-sm">No team topics yet. Add one above to get started.</p>
-        </div>
-      )}
     </div>
   );
 };

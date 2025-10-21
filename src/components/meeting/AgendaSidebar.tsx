@@ -1,0 +1,435 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
+import { htmlToPlainText } from "@/lib/htmlUtils";
+import { AgendaItem, MeetingDataActions, TeamMember } from "@/types/meeting";
+import { useState, useEffect, useCallback } from "react";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { useHotkeys } from "react-hotkeys-hook";
+import RichTextEditor from "@/components/ui/rich-text-editor";
+
+interface AgendaSidebarProps {
+  items: AgendaItem[];
+  isAdmin: boolean;
+  isEditingAgenda: boolean;
+  editingItems: AgendaItem[];
+  actions: MeetingDataActions;
+  teamMembers: TeamMember[];
+  onStartEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  systemTemplates?: any[];
+  adoptingTemplate?: boolean;
+  adoptSystemTemplate?: (template: any) => Promise<void>;
+  startAddingManually?: () => void;
+}
+
+export function AgendaSidebar({
+  items,
+  isAdmin,
+  isEditingAgenda,
+  editingItems,
+  actions,
+  teamMembers,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  systemTemplates = [],
+  adoptingTemplate = false,
+  adoptSystemTemplate,
+  startAddingManually,
+}: AgendaSidebarProps) {
+  const displayItems = isEditingAgenda ? editingItems : items;
+  console.log('AgendaSidebar state:', { isEditingAgenda, editingItems, items, displayItems });
+  const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
+  const [timerStarted, setTimerStarted] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  const shouldShowNotes = (item: AgendaItem) => {
+    // Don't show notes when creating from scratch (item has a temp id)
+    if (item.id.startsWith('temp-')) return false;
+    return isEditingAgenda || expandedNotes.includes(item.id);
+  };
+
+  const handleNotesToggle = (itemId: string) => {
+    setExpandedNotes(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
+  // Auto-collapse empty notes after save
+  useEffect(() => {
+    if (!isEditingAgenda) {
+      setExpandedNotes(prev => 
+        prev.filter(id => {
+          const item = items.find(i => i.id === id);
+          return item?.notes;
+        })
+      );
+    }
+  }, [isEditingAgenda, items]);
+
+  const toggleTimer = () => {
+    if (timerStarted) {
+      setTimerStarted(false);
+      setElapsedTime(0);
+    } else {
+      setTimerStarted(true);
+      setElapsedTime(0);
+    }
+  };
+
+  // Format elapsed time as mm:ss
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timerStarted) {
+      interval = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timerStarted]);
+
+  // Keyboard shortcuts
+  useHotkeys('mod+s', (e) => {
+    e.preventDefault();
+    if (isEditingAgenda) onSaveEdit();
+  }, [isEditingAgenda, onSaveEdit]);
+
+  useHotkeys('mod+e', (e) => {
+    e.preventDefault();
+    if (!isEditingAgenda && isAdmin) onStartEdit();
+  }, [isEditingAgenda, isAdmin, onStartEdit]);
+
+  const handleDragEnd = useCallback((result: any) => {
+    if (!result.destination || !isEditingAgenda) return;
+
+    const items = Array.from(editingItems);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    // Update order_index for all items
+    items.forEach((item, index) => {
+      item.order_index = index;
+    });
+
+    actions.updateEditingItems(items);
+  }, [editingItems, isEditingAgenda, actions]);
+
+  return (
+    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-0">
+      {/* Sidebar Header */}
+      <div className="flex items-center justify-between pt-16 pb-4 px-4 sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <h2 className="font-semibold text-xl pl-4">Agenda</h2>
+          {isAdmin && (isEditingAgenda || items.length > 0) && (
+            <div className="flex items-center -ml-2">
+              {isEditingAgenda ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
+                      onClick={async () => {
+                        await onSaveEdit();
+                        actions.setEditing(false);
+                      }}
+                    >
+                      <Save className="h-4 w-4" />
+                      <span className="text-sm">Save</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
+                      onClick={() => onCancelEdit()}
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="text-sm">Cancel</span>
+                    </Button>
+                  </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-6 w-6 hover:bg-transparent"
+                  onClick={onStartEdit}
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Sidebar Content */}
+      <div className="px-4 space-y-2 overflow-y-auto h-[calc(100%-57px)]">
+        {items.length === 0 && !isEditingAgenda ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Select a template or create your own agenda.
+            </p>
+            
+            {/* Template Cards */}
+            <div className="space-y-3">
+              {systemTemplates.map((template) => (
+                <div 
+                  key={template.id} 
+                  className="border rounded-lg p-3 bg-card hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="p-1.5 rounded-md bg-primary/10">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium mb-0.5">{template.name}</h3>
+                      <p className="text-xs text-muted-foreground">{template.description}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 mb-3">
+                    {(template.items || [])
+                      .sort((a: any, b: any) => a.order_index - b.order_index)
+                      .map((item: any) => (
+                        <div key={item.id} className="flex justify-between text-xs text-muted-foreground">
+                          <span>• {item.title}</span>
+                          {item.duration_minutes && (
+                            <span className="text-primary font-medium">{item.duration_minutes} min</span>
+                          )}
+                        </div>
+                    ))}
+                  </div>
+                  <Button 
+                    onClick={() => adoptSystemTemplate?.(template)} 
+                    disabled={adoptingTemplate}
+                    className="w-full"
+                    size="sm"
+                  >
+                    {adoptingTemplate ? "Adopting..." : "Use This Template"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {/* Manual Creation Option */}
+            <div className="text-center pt-2">
+              <p className="text-xs text-muted-foreground mb-2">
+                Or if you'd rather add agenda items manually:
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={startAddingManually}
+              >
+                Start From Scratch
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="agenda-items">
+              {(provided) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="space-y-2"
+                >
+                  {displayItems.map((item, index) => (
+                    <Draggable
+                      key={item.id}
+                      draggableId={item.id}
+                      index={index}
+                      isDragDisabled={!isEditingAgenda}
+                    >
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className={`border rounded-lg p-4 bg-background transition-colors ${
+                            snapshot.isDragging ? 'shadow-lg border-primary' : 'hover:border-primary/50'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {isEditingAgenda && (
+                              <div
+                                {...provided.dragHandleProps}
+                                className="mt-2 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </div>
+                            )}
+                            <Checkbox
+                              checked={item.is_completed}
+                              onCheckedChange={() => actions.handleToggleComplete(item.id, item.is_completed)}
+                              className="mt-2"
+                            />
+                            <div className="flex-1 min-w-0 space-y-2">
+                              {/* Row 1: Title and Delete */}
+                              <div className="flex items-center gap-3">
+                                {isEditingAgenda ? (
+                                  <>
+                                    <div className="flex-1">
+                                      <Textarea
+                                        value={htmlToPlainText(item.title || "")}
+                                        onChange={(e) => actions.updateEditingItem(index, 'title', e.target.value)}
+                                        placeholder="Agenda item"
+                                        className="min-h-[32px] resize-none  overflow-hidden text-sm font-medium p-1.5 focus-visible:ring-0"
+                                        rows={1}
+                                        onInput={(e) => {
+                                          const target = e.target as HTMLTextAreaElement;
+                                          target.style.height = 'auto';
+                                          target.style.height = target.scrollHeight + 'px';
+                                        }}
+                                      />
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                      onClick={() => {
+                                        const updatedItems = editingItems.filter((_, i) => i !== index);
+                                        actions.updateEditingItems(updatedItems);
+                                      }}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <div className="flex-1">
+                                    <p className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                                      {htmlToPlainText(item.title)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Row 2: Assignee and Duration */}
+                              {isEditingAgenda ? (
+                                <div className="grid grid-cols-[1fr_100px] gap-3">
+                                  <select
+                                    value={item.assigned_to || ""}
+                                    onChange={(e) => actions.updateEditingItem(index, 'assigned_to', e.target.value || null)}
+                                    className="h-8 text-sm rounded-md border border-input bg-transparent px-3 w-full"
+                                  >
+                                    <option value="">All</option>
+                                    {teamMembers.map((member) => (
+                                      <option key={member.id} value={member.user_id}>
+                                        {member.profiles.first_name || member.profiles.full_name || member.profiles.email}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <input
+                                    type="number"
+                                    value={item.time_minutes || ""}
+                                    onChange={(e) => actions.updateEditingItem(index, 'time_minutes', e.target.value ? parseInt(e.target.value) : null)}
+                                    placeholder="...mins"
+                                    className="h-8 text-sm rounded-md border border-input bg-transparent px-3 w-full"
+                                    min="0"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  {item.assigned_to_profile ? (
+                                    <div className="flex items-center gap-2">
+                                      <Avatar className="h-6 w-6">
+                                        <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                                        <AvatarFallback className="text-xs">
+                                          {item.assigned_to_profile.first_name?.[0]}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="text-sm text-muted-foreground">{item.assigned_to_profile.first_name}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">All</span>
+                                  )}
+
+                                  {item.time_minutes && (
+                                    <>
+                                      <span className="text-sm text-muted-foreground">•</span>
+                                      <span className="text-sm text-muted-foreground">{item.time_minutes} min</span>
+                                    </>
+                                  )}
+
+                                  {!isEditingAgenda && (
+                                    <button
+                                      onClick={() => handleNotesToggle(item.id)}
+                                      className={`p-2 rounded-md transition-colors ${
+                                        !item.notes || item.notes.trim() === '' 
+                                          ? 'text-muted-foreground hover:bg-muted/10' 
+                                          : expandedNotes.includes(item.id) 
+                                            ? 'text-primary bg-primary/10' 
+                                            : 'text-primary hover:bg-primary/10'
+                                      }`}
+                                    >
+                                      <MessageSquare className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Notes Section */}
+                              {!isEditingAgenda && shouldShowNotes(item) && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <RichTextEditor
+                                    content={item.notes || ""}
+                                    onChange={(content) => {
+                                      // Convert HTML to plain text when saving
+                                      const plainText = htmlToPlainText(content);
+                                      actions.handleUpdateNotes(item.id, plainText);
+                                    }}
+                                    placeholder="Add notes..."
+                                    className="overflow-hidden text-sm border-none focus-visible:ring-0"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                  {isEditingAgenda && (
+                    <Button
+                      onClick={() => {
+                        const newItem = {
+                          id: `temp-${Date.now()}`,
+                          title: "",
+                          is_completed: false,
+                          assigned_to: null,
+                          notes: null,
+                          order_index: displayItems.length,
+                          time_minutes: null,
+                          desired_outcomes: null,
+                          activities: null,
+                        };
+                        actions.updateEditingItems([...displayItems, newItem]);
+                      }}
+                      className="w-full mt-4"
+                      variant="outline"
+                      size="sm"
+                    >
+                      Add New Item
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+        )}
+      </div>
+    </div>
+  );
+}
