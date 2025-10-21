@@ -1,77 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client for test helpers
-// These should use service role key for admin operations
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = 'http://127.0.0.1:54321';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error(
-    'Missing Supabase credentials. Set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.'
-  );
-}
-
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+export const supabaseTest = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: false,
     persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
   },
 });
-
-/**
- * Clean up test data from database
- */
-export async function cleanupTestData(email?: string, teamId?: string): Promise<void> {
-  try {
-    // Clean up team memberships if teamId provided
-    if (teamId) {
-      await supabase.from('team_members').delete().eq('team_id', teamId);
-      await supabase.from('teams').delete().eq('id', teamId);
-    }
-
-    // Clean up user if email provided
-    if (email) {
-      const { data: user } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (user) {
-        await supabase.auth.admin.deleteUser(user.id);
-      }
-    }
-  } catch (error) {
-    console.warn('Cleanup failed:', error);
-  }
-}
-
-/**
- * Wait for database record to exist
- */
-export async function waitForRecord(
-  table: string,
-  condition: Record<string, unknown>,
-  maxAttempts: number = 10,
-  delayMs: number = 500
-): Promise<unknown> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const query = supabase.from(table).select('*');
-    
-    // Apply all conditions
-    Object.entries(condition).forEach(([key, value]) => {
-      query.eq(key, value);
-    });
-
-    const { data, error } = await query.single();
-
-    if (!error && data) {
-      return data;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-
-  throw new Error(`Record not found in ${table} after ${maxAttempts} attempts`);
-}
-
