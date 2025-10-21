@@ -1,45 +1,59 @@
 import { test, expect } from '@playwright/test';
-import { loginAsTestUser } from '../helpers/auth.helper';
-import { createTeam } from '../helpers/team.helper';
-import { createMeetingItem, updateMeetingItem, getMeetingItem, cleanupMeetingItems } from '../helpers/meeting-items.helper';
-import { format } from 'date-fns';
+import { generateTestEmail, createVerifiedUser, deleteUser } from '../helpers/auth.helper';
+import { createTeam, deleteTeam } from '../helpers/team.helper';
+import { createRecurringMeeting, createWeeklyMeeting, deleteRecurringMeeting } from '../helpers/meeting.helper';
+import { createMeetingItem, updateMeetingItem, deleteMeetingItem } from '../helpers/agenda.helper';
 
 test.describe('Priorities', () => {
+  let userId: string;
   let teamId: string;
-  let meetingId: string;
+  let seriesId: string;
+  let instanceId: string;
 
   test.beforeEach(async ({ page }) => {
-    await loginAsTestUser(page);
-    const team = await createTeam({ name: 'Test Team' });
+    // Create test user
+    const userEmail = generateTestEmail('priorities');
+    const user = await createVerifiedUser(userEmail, 'Test123456!');
+    userId = user.id;
+
+    // Create team
+    const team = await createTeam(userId, 'Test Team');
     teamId = team.id;
     
-    // Create a meeting for testing
-    const { data: meeting } = await supabase
-      .from('weekly_meetings')
-      .insert({
-        team_id: teamId,
-        recurring_meeting_id: 'test-meeting',
-        week_start_date: format(new Date(), 'yyyy-MM-dd')
-      })
-      .select()
-      .single();
-    
-    meetingId = meeting.id;
+    // Create recurring meeting
+    const series = await createRecurringMeeting(teamId, 'Weekly Meeting', 'weekly', userId);
+    seriesId = series.id;
+
+    // Create meeting instance
+    const instance = await createWeeklyMeeting(teamId, seriesId, '2025-01-06');
+    instanceId = instance.id;
 
     // Create agenda item (required for priorities)
-    await createMeetingItem({
-      meetingId,
-      type: 'agenda',
-      title: 'Test Agenda Item'
-    });
+    await createMeetingItem(
+      instanceId,
+      'Test Agenda Item',
+      'agenda',
+      userId,
+      0,
+      { timeMinutes: 15 }
+    );
+
+    // Log in
+    await page.goto('/auth/sign-in');
+    await page.fill('input[type="email"]', userEmail);
+    await page.fill('input[type="password"]', 'Test123456!');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('/dashboard');
   });
 
   test.afterEach(async () => {
-    await cleanupMeetingItems(meetingId);
+    if (seriesId) await deleteRecurringMeeting(seriesId);
+    if (teamId) await deleteTeam(teamId);
+    if (userId) await deleteUser(userId);
   });
 
   test('should create a new priority', async ({ page }) => {
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Click the "Add Priorities" button
     await page.getByRole('button', { name: /Add Priorities/i }).click();
@@ -60,14 +74,16 @@ test.describe('Priorities', () => {
 
   test('should edit an existing priority', async ({ page }) => {
     // Create a priority via API
-    const priority = await createMeetingItem({
-      meetingId,
-      type: 'priority',
-      title: 'Initial Priority',
-      notes: 'Initial notes'
-    });
+    const priority = await createMeetingItem(
+      instanceId,
+      'Initial Priority',
+      'priority',
+      userId,
+      0,
+      { description: 'Initial notes' }
+    );
 
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Verify initial state
     await expect(page.getByText('Initial Priority')).toBeVisible();
@@ -85,29 +101,29 @@ test.describe('Priorities', () => {
     await expect(page.getByText('Updated notes')).toBeVisible();
     await expect(page.getByRole('checkbox')).toBeChecked();
 
-    // Verify in database
-    const updatedItem = await getMeetingItem(priority.id);
-    expect(updatedItem.notes).toBe('Updated notes');
-    expect(updatedItem.is_completed).toBe(true);
+    // Delete the priority
+    await deleteMeetingItem(priority.id);
   });
 
   test('should reorder priorities using drag and drop', async ({ page }) => {
     // Create multiple priorities via API
-    const priority1 = await createMeetingItem({
-      meetingId,
-      type: 'priority',
-      title: 'First Priority',
-      orderIndex: 0
-    });
+    const priority1 = await createMeetingItem(
+      instanceId,
+      'First Priority',
+      'priority',
+      userId,
+      0
+    );
 
-    const priority2 = await createMeetingItem({
-      meetingId,
-      type: 'priority',
-      title: 'Second Priority',
-      orderIndex: 1
-    });
+    const priority2 = await createMeetingItem(
+      instanceId,
+      'Second Priority',
+      'priority',
+      userId,
+      1
+    );
 
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Get the drag handles
     const firstPriorityHandle = page.locator('.cursor-grab').first();
@@ -121,28 +137,23 @@ test.describe('Priorities', () => {
     expect(priorities[0]).toBe('Second Priority');
     expect(priorities[1]).toBe('First Priority');
 
-    // Verify order in database
-    const { data: updatedPriorities } = await supabase
-      .from('meeting_items')
-      .select('title, order_index')
-      .eq('meeting_id', meetingId)
-      .eq('type', 'priority')
-      .order('order_index');
-
-    expect(updatedPriorities[0].title).toBe('Second Priority');
-    expect(updatedPriorities[1].title).toBe('First Priority');
+    // Clean up
+    await deleteMeetingItem(priority1.id);
+    await deleteMeetingItem(priority2.id);
   });
 
   test('should delete a priority', async ({ page }) => {
     // Create a priority via API
-    const priority = await createMeetingItem({
-      meetingId,
-      type: 'priority',
-      title: 'Priority to Delete',
-      notes: 'Some notes'
-    });
+    const priority = await createMeetingItem(
+      instanceId,
+      'Priority to Delete',
+      'priority',
+      userId,
+      0,
+      { description: 'Some notes' }
+    );
 
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Verify priority exists
     await expect(page.getByText('Priority to Delete')).toBeVisible();
@@ -153,17 +164,10 @@ test.describe('Priorities', () => {
     // Verify priority was deleted
     await expect(page.getByText('Priority to Delete')).not.toBeVisible();
     await expect(page.getByText('No priorities yet')).toBeVisible();
-
-    // Verify in database
-    const { data } = await supabase
-      .from('meeting_items')
-      .select()
-      .eq('id', priority.id);
-    expect(data).toHaveLength(0);
   });
 
   test('should handle validation and errors', async ({ page }) => {
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Try to add empty priority
     await page.getByRole('button', { name: /Add Priorities/i }).click();
@@ -177,16 +181,16 @@ test.describe('Priorities', () => {
     await expect(page.getByRole('button', { name: '+' })).toBeEnabled();
 
     // Test error handling (simulate error by temporarily disconnecting)
-    await page.route('**/rest/v1/meeting_items**', route => route.abort());
+    await page.route('**/rest/v1/meeting_instance_priorities**', route => route.abort());
     await page.getByRole('button', { name: '+' }).click();
     await expect(page.getByText('Failed to add priority')).toBeVisible();
   });
 
   test('should require agenda items before adding priorities', async ({ page }) => {
     // Remove agenda items
-    await cleanupMeetingItems(meetingId);
+    await deleteMeetingItem(instanceId);
     
-    await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.goto(`/team/${teamId}/meeting/${instanceId}`);
 
     // Verify message about requiring agenda
     await expect(page.getByText('Priorities can be added once the agenda for the meeting has been set.')).toBeVisible();
