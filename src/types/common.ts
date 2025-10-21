@@ -55,12 +55,12 @@ export interface RecurringMeeting {
   created_at: string;
 }
 
-export interface WeeklyMeeting {
+export interface MeetingInstance {
   id: string;
   recurring_meeting_id: string;
   team_id: string;
-  week_start_date: string;
-  week_end_date?: string | null;
+  start_date: string;
+  end_date?: string | null;
   created_at: string;
 }
 
