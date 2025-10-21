@@ -90,3 +90,17 @@ export async function getRecurringMeeting(seriesId: string): Promise<TestRecurri
   if (error) throw error;
   return data;
 }
+
+export async function updateRecurringMeeting(
+  seriesId: string,
+  updates: {
+    name?: string;
+    frequency?: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter';
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from('recurring_meetings')
+    .update(updates)
+    .eq('id', seriesId);
+  if (error) throw error;
+}
