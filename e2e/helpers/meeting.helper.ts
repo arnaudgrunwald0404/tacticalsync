@@ -1,27 +1,18 @@
-import { supabase } from './supabase.helper';
+import { Page } from '@playwright/test';
+import { supabaseAdmin } from './supabase.helper';
+import { testMeetings, type TestRecurringMeeting, type TestMeetingInstance } from '../fixtures/meetings';
+import type { TestTeam } from '../fixtures/teams';
+import type { TestUser } from '../fixtures/users';
 
-export interface TestRecurringMeeting {
-  id: string;
-  team_id: string;
-  name: string;
-  frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter';
-  created_by?: string;
-}
-
-export interface TestMeetingInstance {
-  id: string;
-  team_id: string;
-  recurring_meeting_id: string;
-  start_date: string;
-}
+export { testMeetings, type TestRecurringMeeting, type TestMeetingInstance } from '../fixtures/meetings';
 
 export async function createRecurringMeeting(
   teamId: string,
-  name: string = 'Weekly Tactical',
-  frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter' = 'weekly',
+  name: string = testMeetings.weekly.name,
+  frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter' = testMeetings.weekly.frequency,
   createdBy?: string
 ): Promise<TestRecurringMeeting> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('recurring_meetings')
     .insert({
       team_id: teamId,
@@ -31,6 +22,7 @@ export async function createRecurringMeeting(
     })
     .select()
     .single();
+
   if (error) throw error;
   return data;
 }
@@ -38,9 +30,9 @@ export async function createRecurringMeeting(
 export async function createWeeklyMeeting(
   teamId: string,
   seriesId: string,
-  startDate: string
+  startDate: string = new Date().toISOString().split('T')[0]
 ): Promise<TestMeetingInstance> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('meeting_instances')
     .insert({
       team_id: teamId,
@@ -49,44 +41,47 @@ export async function createWeeklyMeeting(
     })
     .select()
     .single();
+
   if (error) throw error;
   return data;
 }
 
 export async function deleteRecurringMeeting(seriesId: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('recurring_meetings')
     .delete()
     .eq('id', seriesId);
+
   if (error) throw error;
 }
 
-export async function getWeeklyMeetings(seriesId: string): Promise<TestMeetingInstance[]> {
-  const { data, error } = await supabase
+export async function deleteMeetingInstance(instanceId: string): Promise<void> {
+  const { error } = await supabaseAdmin
     .from('meeting_instances')
-    .select()
-    .eq('recurring_meeting_id', seriesId)
-    .order('start_date', { ascending: true });
+    .delete()
+    .eq('id', instanceId);
+
   if (error) throw error;
-  return data;
 }
 
 export async function getTeamRecurringMeetings(teamId: string): Promise<TestRecurringMeeting[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('recurring_meetings')
     .select()
     .eq('team_id', teamId)
     .order('created_at', { ascending: false });
+
   if (error) throw error;
   return data;
 }
 
 export async function getRecurringMeeting(seriesId: string): Promise<TestRecurringMeeting> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('recurring_meetings')
     .select()
     .eq('id', seriesId)
     .single();
+
   if (error) throw error;
   return data;
 }
@@ -98,9 +93,57 @@ export async function updateRecurringMeeting(
     frequency?: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter';
   }
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('recurring_meetings')
     .update(updates)
     .eq('id', seriesId);
+
   if (error) throw error;
+}
+
+export async function navigateToMeeting(
+  page: Page,
+  teamId: string,
+  instanceId: string
+): Promise<void> {
+  await page.goto(`/team/${teamId}/meeting/${instanceId}`);
+  await page.waitForSelector('text=Meeting');
+}
+
+export async function setupTestMeeting(
+  team: TestTeam,
+  admin: TestUser,
+  options: {
+    name?: string;
+    frequency?: 'daily' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarter';
+    startDate?: string;
+  } = {}
+): Promise<{
+  series: TestRecurringMeeting;
+  instance: TestMeetingInstance;
+}> {
+  // Create recurring meeting
+  const series = await createRecurringMeeting(
+    team.id,
+    options.name || testMeetings.weekly.name,
+    options.frequency || testMeetings.weekly.frequency,
+    admin.id
+  );
+
+  // Create meeting instance
+  const instance = await createWeeklyMeeting(
+    team.id,
+    series.id,
+    options.startDate || new Date().toISOString().split('T')[0]
+  );
+
+  return { series, instance };
+}
+
+export async function cleanupTestMeeting(
+  series: TestRecurringMeeting,
+  instance: TestMeetingInstance
+): Promise<void> {
+  await deleteMeetingInstance(instance.id);
+  await deleteRecurringMeeting(series.id);
 }

@@ -1,11 +1,8 @@
 import { Page } from '@playwright/test';
-import { supabase } from './supabase.helper';
+import { supabaseAdmin } from './supabase.helper';
+import { testUsers, type TestUser } from '../fixtures/users';
 
-export interface TestUser {
-  id: string;
-  email: string;
-  password: string;
-}
+export { testUsers, type TestUser } from '../fixtures/users';
 
 export function generateTestEmail(prefix: string = 'test'): string {
   const timestamp = Date.now();
@@ -14,19 +11,20 @@ export function generateTestEmail(prefix: string = 'test'): string {
 }
 
 export async function createVerifiedUser(
-  email: string,
-  password: string
+  email: string = testUsers.member.email,
+  password: string = testUsers.member.password
 ): Promise<TestUser> {
-  const { data, error } = await supabase.auth.signUp({
+  const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
+    email_confirm: true,
   });
 
   if (error) throw error;
-  if (!data.user) throw new Error('User creation failed');
+  if (!user) throw new Error('User creation failed');
 
   return {
-    id: data.user.id,
+    id: user.id,
     email,
     password,
   };
@@ -47,7 +45,7 @@ export async function loginViaUI(
 export const loginAsTestUser = loginViaUI;
 
 export async function deleteUser(userId: string): Promise<void> {
-  const { error } = await supabase.auth.admin.deleteUser(userId);
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
   if (error) {
     console.warn(`Failed to delete user ${userId}:`, error);
   }
@@ -86,4 +84,27 @@ export async function clearAuthState(page: Page): Promise<void> {
     sessionStorage.clear();
   });
   await page.context().clearCookies();
+}
+
+export async function setupTestUser(
+  page: Page,
+  options: {
+    email?: string;
+    password?: string;
+    isAdmin?: boolean;
+  } = {}
+): Promise<TestUser> {
+  const email = options.email || generateTestEmail();
+  const password = options.password || testUsers.member.password;
+  const user = await createVerifiedUser(email, password);
+  await loginViaUI(page, email, password);
+  return user;
+}
+
+export async function cleanupTestUser(
+  page: Page,
+  user: TestUser
+): Promise<void> {
+  await clearAuthState(page);
+  await deleteUser(user.id);
 }
