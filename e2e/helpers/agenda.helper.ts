@@ -1,216 +1,44 @@
-import { Page, expect } from '@playwright/test';
 import { supabase } from './supabase.helper';
 
-export interface TestAgendaTemplate {
+export interface MeetingItem {
   id: string;
-  user_id: string;
-  name: string;
-  description: string | null;
-  is_system?: boolean;
-}
-
-export interface TestAgendaTemplateItem {
-  id: string;
-  template_id: string;
   title: string;
-  duration_minutes: number;
+  description?: string;
+  time_minutes?: number;
   order_index: number;
+  created_by: string;
+  assigned_to?: string;
+  completion_status: 'completed' | 'not_completed';
 }
 
-export interface TestMeetingItem {
-  id: string;
-  meeting_id: string;
-  title: string;
-  description: string | null;
-  type: 'topic' | 'agenda_item' | 'action_item';
-  assigned_to: string | null;
-  created_by: string | null;
-  is_completed: boolean;
-  notes: string | null;
-  outcome: string | null;
-  time_minutes: number | null;
-  order_index: number;
-}
-
-/**
- * Create agenda template via API
- */
-export async function createAgendaTemplate(
-  userId: string,
-  name: string,
-  description?: string
-): Promise<TestAgendaTemplate> {
-  const { data, error } = await supabase
-    .from('agenda_templates')
-    .insert({
-      user_id: userId,
-      name,
-      description: description || null,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-/**
- * Add item to agenda template
- */
-export async function addTemplateItem(
-  templateId: string,
-  title: string,
-  durationMinutes: number,
-  orderIndex: number
-): Promise<TestAgendaTemplateItem> {
-  const { data, error } = await supabase
-    .from('agenda_template_items')
-    .insert({
-      template_id: templateId,
-      title,
-      duration_minutes: durationMinutes,
-      order_index: orderIndex,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-interface AgendaTemplateItem {
-  id: string;
-  template_id: string;
-  title: string;
-  time_limit: number | null;
-  order_index: number;
-  created_at: string;
-}
-
-interface AgendaTemplate {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string | null;
-  is_default: boolean;
-  created_at: string;
-  items?: AgendaTemplateItem[];
-}
-
-/**
- * Get agenda template with items
- */
-export async function getAgendaTemplate(templateId: string): Promise<AgendaTemplate | null> {
-  const { data, error } = await supabase
-    .from('agenda_templates')
-    .select(`
-      *,
-      items:agenda_template_items(*)
-    `)
-    .eq('id', templateId)
-    .single();
-
-  if (error) return null;
-  
-  // Sort items by order_index
-  if (data && data.items) {
-    data.items.sort((a: AgendaTemplateItem, b: AgendaTemplateItem) => a.order_index - b.order_index);
-  }
-  
-  return data;
-}
-
-/**
- * Get user's agenda templates
- */
-export async function getUserAgendaTemplates(userId: string): Promise<TestAgendaTemplate[]> {
-  const { data, error } = await supabase
-    .from('agenda_templates')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-
-  if (error) throw error;
-  return data || [];
-}
-
-/**
- * Update agenda template
- */
-export async function updateAgendaTemplate(
-  templateId: string,
-  updates: Partial<TestAgendaTemplate>
-): Promise<void> {
-  const { error } = await supabase
-    .from('agenda_templates')
-    .update(updates)
-    .eq('id', templateId);
-
-  if (error) throw error;
-}
-
-/**
- * Delete agenda template
- */
-export async function deleteAgendaTemplate(templateId: string): Promise<void> {
-  try {
-    // Delete items first
-    await supabase
-      .from('agenda_template_items')
-      .delete()
-      .eq('template_id', templateId);
-
-    // Delete template
-    await supabase
-      .from('agenda_templates')
-      .delete()
-      .eq('id', templateId);
-  } catch (error) {
-    console.warn(`Failed to delete template ${templateId}:`, error);
-  }
-}
-
-/**
- * Reorder template items
- */
-export async function reorderTemplateItems(
-  items: Array<{ id: string; order_index: number }>
-): Promise<void> {
-  for (const item of items) {
-    await supabase
-      .from('agenda_template_items')
-      .update({ order_index: item.order_index })
-      .eq('id', item.id);
-  }
-}
-
-/**
- * Create meeting item (topic)
- */
 export async function createMeetingItem(
-  meetingId: string,
+  instanceId: string,
   title: string,
-  type: 'topic' | 'agenda_item' | 'action_item',
+  type: 'agenda' | 'priority' | 'topic' | 'action_item',
   createdBy: string,
   orderIndex: number,
-  options?: {
+  options: {
     description?: string;
-    assignedTo?: string;
     timeMinutes?: number;
-  }
-): Promise<TestMeetingItem> {
+    assignedTo?: string;
+  } = {}
+): Promise<MeetingItem> {
+  const table = type === 'agenda' ? 'meeting_series_agenda' :
+                type === 'priority' ? 'meeting_instance_priorities' :
+                type === 'topic' ? 'meeting_instance_topics' :
+                'meeting_series_action_items';
+
   const { data, error } = await supabase
-    .from('meeting_items')
+    .from(table)
     .insert({
-      meeting_id: meetingId,
+      instance_id: instanceId,
       title,
-      type,
-      created_by: createdBy,
+      description: options.description,
+      time_minutes: options.timeMinutes,
+      assigned_to: options.assignedTo,
       order_index: orderIndex,
-      description: options?.description || null,
-      assigned_to: options?.assignedTo || null,
-      time_minutes: options?.timeMinutes || null,
-      is_completed: false,
+      created_by: createdBy,
+      completion_status: 'not_completed',
     })
     .select()
     .single();
@@ -219,68 +47,46 @@ export async function createMeetingItem(
   return data;
 }
 
-/**
- * Get meeting items
- */
-export async function getMeetingItems(meetingId: string): Promise<TestMeetingItem[]> {
-  const { data, error } = await supabase
-    .from('meeting_items')
-    .select('*')
-    .eq('meeting_id', meetingId)
-    .order('order_index', { ascending: true });
-
-  if (error) throw error;
-  return data || [];
-}
-
-/**
- * Update meeting item
- */
 export async function updateMeetingItem(
   itemId: string,
-  updates: Partial<TestMeetingItem>
+  updates: {
+    title?: string;
+    description?: string;
+    timeMinutes?: number;
+    assignedTo?: string;
+    completionStatus?: 'completed' | 'not_completed';
+  }
 ): Promise<void> {
   const { error } = await supabase
-    .from('meeting_items')
-    .update(updates)
+    .from('meeting_instance_topics')
+    .update({
+      title: updates.title,
+      description: updates.description,
+      time_minutes: updates.timeMinutes,
+      assigned_to: updates.assignedTo,
+      completion_status: updates.completionStatus,
+    })
     .eq('id', itemId);
 
   if (error) throw error;
 }
 
-/**
- * Delete meeting item
- */
 export async function deleteMeetingItem(itemId: string): Promise<void> {
   const { error } = await supabase
-    .from('meeting_items')
+    .from('meeting_instance_topics')
     .delete()
     .eq('id', itemId);
 
   if (error) throw error;
 }
 
-/**
- * Navigate to settings/templates page
- */
-export async function navigateToTemplates(page: Page): Promise<void> {
-  await page.goto('/settings');
-  
-  // Look for agenda templates section
-  const templatesSection = page.getByText(/agenda.*templates/i);
-  if (await templatesSection.isVisible().catch(() => false)) {
-    await templatesSection.click();
-  }
-}
+export async function getMeetingItems(instanceId: string): Promise<MeetingItem[]> {
+  const { data, error } = await supabase
+    .from('meeting_instance_topics')
+    .select()
+    .eq('instance_id', instanceId)
+    .order('order_index');
 
-/**
- * Navigate to meeting instance
- */
-export async function navigateToMeeting(
-  page: Page,
-  teamId: string,
-  meetingId: string
-): Promise<void> {
-  await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+  if (error) throw error;
+  return data;
 }
-
