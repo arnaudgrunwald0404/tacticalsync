@@ -32,7 +32,7 @@ export async function createVerifiedUser(
   };
 }
 
-export async function loginAsTestUser(
+export async function loginViaUI(
   page: Page,
   email: string,
   password: string
@@ -43,6 +43,8 @@ export async function loginAsTestUser(
   await page.click('button[type="submit"]');
   await page.waitForURL('/dashboard');
 }
+
+export const loginAsTestUser = loginViaUI;
 
 export async function deleteUser(userId: string): Promise<void> {
   const { error } = await supabase.auth.admin.deleteUser(userId);
