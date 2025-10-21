@@ -124,34 +124,34 @@ const TeamMeetingSetup = () => {
       
       const startDateStr = startDate.toISOString().split('T')[0];
 
-      // Create first weekly meeting instance (or get existing one)
+      // Create first meeting instance (or get existing one)
       // First, check if it already exists
-      const { data: existingWeeklyMeeting } = await supabase
-        .from("weekly_meetings")
+      const { data: existingMeeting } = await supabase
+        .from("meeting_instances")
         .select()
         .eq("recurring_meeting_id", meeting.id)
-        .eq("week_start_date", startDateStr)
+        .eq("start_date", startDateStr)
         .maybeSingle();
 
-      let weeklyMeeting;
+      let meetingInstance;
       
-      if (existingWeeklyMeeting) {
+      if (existingMeeting) {
         // Use existing meeting
-        weeklyMeeting = existingWeeklyMeeting;
+        meetingInstance = existingMeeting;
       } else {
         // Create new meeting
-        const { data: newWeeklyMeeting, error: meetingError } = await supabase
-          .from("weekly_meetings")
+        const { data: newMeeting, error: meetingError } = await supabase
+          .from("meeting_instances")
           .insert({
             team_id: teamId,
             recurring_meeting_id: meeting.id,
-            week_start_date: startDateStr
+            start_date: startDateStr
           })
           .select()
           .single();
 
         if (meetingError) throw meetingError;
-        weeklyMeeting = newWeeklyMeeting;
+        meetingInstance = newMeeting;
       }
 
       toast({
@@ -221,7 +221,10 @@ const TeamMeetingSetup = () => {
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 mb-4">
             <Calendar className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Set Up Meeting</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+            <span className="bg-gradient-to-r from-blue-600 via-pink-500 to-blue-600 bg-clip-text text-transparent font-light text-4xl tracking-tight">Great! </span>
+            {" Now Let's Set Up Your Team Meeting"}
+          </h1>
           <p className="text-sm sm:text-base text-muted-foreground px-4">
             Choose a frequency and a name for your recurring meeting.</p>
         </div>
@@ -229,10 +232,8 @@ const TeamMeetingSetup = () => {
         <Card>
             <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6 space-y-5 sm:space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="frequency" className="text-sm sm:text-base">Meeting Frequency</Label>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                  How often will this meeting occur?
-                </p>
+                <Label htmlFor="frequency" className="text-sm sm:text-base">How often will this meeting occur?</Label>
+
                 <Select value={frequency} onValueChange={handleFrequencyChange}>
                   <SelectTrigger id="frequency" className="h-10 sm:h-11">
                     <SelectValue placeholder="Select frequency" />
@@ -248,10 +249,8 @@ const TeamMeetingSetup = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="meetingType" className="text-sm sm:text-base">Meeting Type</Label>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                  What will this meeting be about?
-                </p>
+                <Label htmlFor="meetingType" className="text-sm sm:text-base">What will this meeting be about?</Label>
+
                 <Select value={meetingType} onValueChange={handleMeetingTypeChange}>
                   <SelectTrigger id="meetingType" className="h-10 sm:h-11">
                     <SelectValue placeholder="Select type" />
@@ -266,10 +265,8 @@ const TeamMeetingSetup = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="meetingName" className="text-sm sm:text-base">Meeting Name</Label>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                  Auto-generated, but you can customize it
-                </p>
+                <Label htmlFor="meetingName" className="text-sm sm:text-base">Meeting Name. Auto-generated. You can customize it</Label>
+          
                 <Input
                   id="meetingName"
                   value={meetingName}

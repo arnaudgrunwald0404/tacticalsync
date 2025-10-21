@@ -3,7 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Users, LogOut, User, Settings } from "lucide-react";
+import { Plus, Users, LogOut, Settings, User } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
@@ -34,9 +41,12 @@ const Dashboard = () => {
     first_name?: string;
     last_name?: string;
     avatar_name?: string;
+    avatar_url?: string;
+    email?: string;
   }
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     checkUser();
@@ -70,7 +80,7 @@ const Dashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const checkUser = async () => {
@@ -84,7 +94,7 @@ const Dashboard = () => {
     // Fetch user profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("first_name, last_name, avatar_name")
+      .select("first_name, last_name, avatar_name, avatar_url, email")
       .eq("id", session.user.id)
       .single();
 
@@ -92,6 +102,8 @@ const Dashboard = () => {
       console.error("Error fetching profile:", profileError);
     } else {
       setUserProfile(profile);
+      // Also set profile for the header avatar
+      setProfile(profile);
     }
 
     await fetchPendingInvitations();
@@ -372,18 +384,38 @@ const Dashboard = () => {
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           <div className="flex items-center gap-1 sm:gap-2">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="h-8 sm:h-10">
-              <Settings className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Settings</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/profile")} className="h-8 sm:h-10">
-              <User className="h-4 w-4 sm:mr-2" />
-              <span className="hidden lg:inline">{(user as any)?.email}</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="h-8 sm:h-10">
-              <LogOut className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 sm:h-10">
+                  <FancyAvatar 
+                    name={profile?.avatar_name || ''}
+                    displayName={`${(profile?.first_name?.[0] || '').toUpperCase()}${(profile?.last_name?.[0] || '').toUpperCase()}`}
+                    size="sm"
+                    className="mr-2"
+                  />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm leading-none">
+                      {`${profile?.first_name || profile?.email} ${profile?.last_name || ''}`}
+                    </span>
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => navigate("/profile")}>
+                  <User className="h-4 w-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>

@@ -42,7 +42,7 @@ const TeamMeeting = () => {
 
   interface Meeting {
     id: string;
-    week_start_date: string;
+    start_date: string;
   }
 
   interface TeamAdmin {
@@ -122,10 +122,10 @@ const TeamMeeting = () => {
       });
 
       let { data: meetingData, error: meetingError } = await supabase
-        .from("weekly_meetings")
+        .from("meeting_instances")
         .select("*")
         .eq("recurring_meeting_id", meetingId)
-        .eq("week_start_date", periodStartStr)
+        .eq("start_date", periodStartStr)
         .single();
 
       if (meetingError && meetingError.code === "PGRST116") {
@@ -133,15 +133,15 @@ const TeamMeeting = () => {
         console.log('Creating new meeting with data:', {
           team_id: teamId,
           recurring_meeting_id: meetingId,
-          week_start_date: periodStartStr
+          start_date: periodStartStr
         });
         
         const { data: newMeeting, error: createError } = await supabase
-          .from("weekly_meetings")
+          .from("meeting_instances")
           .insert({ 
             team_id: teamId, 
             recurring_meeting_id: meetingId,
-            week_start_date: periodStartStr 
+            start_date: periodStartStr 
           })
           .select()
           .single();
@@ -163,10 +163,10 @@ const TeamMeeting = () => {
       
       // After fetching all meetings, determine which meeting to display
       const { data: allMeetingsData } = await supabase
-        .from("weekly_meetings")
+        .from("meeting_instances")
         .select("*")
         .eq("recurring_meeting_id", meetingId)
-        .order("week_start_date", { ascending: false });
+        .order("start_date", { ascending: false });
       
       let selectedMeeting = meetingData;
       
@@ -176,7 +176,7 @@ const TeamMeeting = () => {
         
         // Try to find a meeting that includes today
         const currentMeeting = allMeetingsData.find(m => {
-          const [year, month, day] = m.week_start_date.split('-').map(Number);
+          const [year, month, day] = m.start_date.split('-').map(Number);
           const startDate = new Date(year, month - 1, day);
           startDate.setHours(0, 0, 0, 0);
           
@@ -265,10 +265,10 @@ const TeamMeeting = () => {
 
   const fetchAllMeetings = async (recurringMeetingId: string) => {
     const { data, error } = await supabase
-      .from("weekly_meetings")
+      .from("meeting_instances")
       .select("*")
       .eq("recurring_meeting_id", recurringMeetingId)
-      .order("week_start_date", { ascending: false });
+      .order("start_date", { ascending: false });
 
     if (error) {
       console.error("Error fetching meetings:", error);
@@ -279,6 +279,33 @@ const TeamMeeting = () => {
   };
 
   const fetchMeetingItems = async (meetingId: string) => {
+    // First get the current meeting to get its start date
+    const { data: meetingData, error: meetingError } = await supabase
+      .from("meeting_instances")
+      .select("start_date")
+      .eq("id", meetingId)
+      .single();
+
+    if (meetingError) {
+      console.error("Error fetching meeting:", meetingError);
+      return;
+    }
+
+    // Get all meetings in the same period for the team
+    const { data: periodMeetings, error: periodError } = await supabase
+      .from("meeting_instances")
+      .select("id")
+      .eq("team_id", teamId)
+      .eq("start_date", meetingData.start_date);
+
+    if (periodError) {
+      console.error("Error fetching period meetings:", periodError);
+      return;
+    }
+
+    const meetingIds = periodMeetings.map(m => m.id);
+
+    // Fetch items for all meetings in the period
     const { data, error } = await supabase
       .from("meeting_items")
       .select(`
@@ -286,7 +313,7 @@ const TeamMeeting = () => {
         assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
         created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
       `)
-      .eq("meeting_id", meetingId)
+      .in("meeting_id", meetingIds)
       .order("order_index");
 
     if (error) {
@@ -294,10 +321,14 @@ const TeamMeeting = () => {
       return;
     }
 
-    setAgendaItems(data.filter((item: any) => item.type === "agenda"));
-    setPriorityItems(data.filter((item: any) => item.type === "priority" || item.type === "topic")); // Support old 'topic' type
-    setTeamTopicItems(data.filter((item: any) => item.type === "team_topic"));
-    setActionItems(data.filter((item: any) => item.type === "action_item"));
+    // For agenda items and action items, only show the current meeting's items
+    const currentMeetingItems = data.filter((item: any) => item.meeting_id === meetingId);
+    setAgendaItems(currentMeetingItems.filter((item: any) => item.type === "agenda"));
+    setActionItems(currentMeetingItems.filter((item: any) => item.type === "action_item"));
+    setTeamTopicItems(currentMeetingItems.filter((item: any) => item.type === "team_topic"));
+
+    // For priorities, show all team members' priorities from the period
+    setPriorityItems(data.filter((item: any) => item.type === "priority" || item.type === "topic"));
   };
 
 
@@ -334,7 +365,7 @@ const TeamMeeting = () => {
     
     // Sort meetings by date descending
     const sortedMeetings = [...allMeetings].sort((a, b) => 
-      new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
+      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
     );
     
     // Find current meeting index
@@ -352,7 +383,7 @@ const TeamMeeting = () => {
   const isCurrentMeeting = () => {
     if (!meeting || allMeetings.length === 0) return false;
     const sortedMeetings = [...allMeetings].sort((a, b) => 
-      new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
+      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
     );
     return meeting.id === sortedMeetings[0].id;
   };
@@ -367,7 +398,7 @@ const TeamMeeting = () => {
     if (!meeting || !recurringMeeting) return false;
     
     // Fix timezone issue: parse date string safely to avoid UTC conversion
-    const [year, month, day] = meeting.week_start_date.split('-').map(Number);
+    const [year, month, day] = meeting.start_date.split('-').map(Number);
     const safeDate = new Date(year, month - 1, day); // month is 0-indexed
     
     const meetingEndDate = getMeetingEndDate(recurringMeeting.frequency, safeDate);
@@ -378,7 +409,7 @@ const TeamMeeting = () => {
     meetingEndDate.setHours(23, 59, 59, 999);
     
     console.log('isMeetingPeriodEnded debug:', {
-      meetingStartDate: meeting.week_start_date,
+      meetingStartDate: meeting.start_date,
       safeDate: safeDate.toISOString().split('T')[0],
       meetingEndDate: meetingEndDate.toISOString().split('T')[0],
       today: today.toISOString().split('T')[0],
@@ -422,7 +453,7 @@ const TeamMeeting = () => {
   const hasPreviousMeeting = () => {
     if (!meeting || allMeetings.length <= 1) return false;
     const sortedMeetings = [...allMeetings].sort((a, b) => 
-      new Date(a.week_start_date).getTime() - new Date(b.week_start_date).getTime()
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     );
     const currentIndex = sortedMeetings.findIndex(m => m.id === meeting.id);
     return currentIndex > 0; // There's a meeting before this one
@@ -433,7 +464,7 @@ const TeamMeeting = () => {
     if (!meeting || allMeetings.length === 0) return;
     
     const sortedMeetings = [...allMeetings].sort((a, b) => 
-      new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
+      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
     );
     
     const currentIndex = sortedMeetings.findIndex(m => m.id === meeting.id);
@@ -448,7 +479,7 @@ const TeamMeeting = () => {
     if (!meeting || allMeetings.length === 0) return;
     
     const sortedMeetings = [...allMeetings].sort((a, b) => 
-      new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime()
+      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
     );
     
     const currentIndex = sortedMeetings.findIndex(m => m.id === meeting.id);
@@ -469,17 +500,17 @@ const TeamMeeting = () => {
     
     try {
       // Calculate next meeting start date using proper boundaries
-      const currentWeekStart = new Date(meeting.week_start_date);
-      const nextWeekStart = getNextMeetingStartDate(recurringMeeting.frequency, currentWeekStart);
-      const nextWeekStartStr = getISODateString(nextWeekStart);
+    const currentStart = new Date(meeting.start_date);
+    const nextStart = getNextMeetingStartDate(recurringMeeting.frequency, currentStart);
+    const nextStartStr = getISODateString(nextStart);
       
       // Create new meeting
       const { data: newMeeting, error } = await supabase
-        .from("weekly_meetings")
+        .from("meeting_instances")
         .insert({
           team_id: teamId,
           recurring_meeting_id: meetingId,
-          week_start_date: nextWeekStartStr
+          start_date: nextStartStr
         })
         .select()
         .single();
@@ -515,7 +546,7 @@ const TeamMeeting = () => {
 
       toast({
         title: "Next meeting created!",
-        description: `${formatMeetingPeriodLabel(nextWeekStartStr)} has been created`,
+        description: `${formatMeetingPeriodLabel(nextStartStr)} has been created`,
       });
     } catch (error: unknown) {
       toast({
@@ -614,12 +645,12 @@ const TeamMeeting = () => {
                       {/* Period Picker */}
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
                         <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
-                          isCurrentMeetingPeriod(meeting.week_start_date) 
+                          isCurrentMeetingPeriod(meeting.start_date) 
                             ? 'bg-pink-100 border-2 border-pink-600 text-pink-800' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
                         }`}>
                           <SelectValue>
-                            {formatMeetingPeriodLabel(meeting.week_start_date)}
+                            {formatMeetingPeriodLabel(meeting.start_date)}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-popover z-50">
@@ -627,12 +658,12 @@ const TeamMeeting = () => {
                             <SelectItem 
                               key={m.id} 
                               value={m.id}
-                              className={isCurrentMeetingPeriod(m.week_start_date) 
+                              className={isCurrentMeetingPeriod(m.start_date) 
                                 ? 'bg-orange-50 text-orange-800 border-orange-200' 
                                 : 'bg-gray-50 text-gray-600 border-gray-200'
                               }
                             >
-                              {formatMeetingPeriodLabel(m.week_start_date)}
+                              {formatMeetingPeriodLabel(m.start_date)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -660,48 +691,56 @@ const TeamMeeting = () => {
 
       <main className="container mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <div className="flex">
-          {/* Fixed Agenda Sidebar */}
-          <MeetingAgenda
-            ref={meetingAgendaRef}
-            items={agendaItems}
-            meetingId={meeting?.id}
-            teamId={teamId}
-            onUpdate={() => {
-              if (meeting?.id) {
-                fetchMeetingItems(meeting.id);
-              }
-            }}
-            currentUserId={currentUserId || undefined}
-            isAdmin={currentUserRole === "admin" || false}
-          />
+          {/* Fixed Agenda Sidebar - Hide on small screens */}
+          <div className="hidden lg:block w-72 xl:w-80 shrink-0">
+            <div className="fixed w-72 xl:w-80">
+              <MeetingAgenda
+                ref={meetingAgendaRef}
+                items={agendaItems}
+                meetingId={meeting?.id}
+                teamId={teamId}
+                onUpdate={() => {
+                  if (meeting?.id) {
+                    fetchMeetingItems(meeting.id);
+                  }
+                }}
+                currentUserId={currentUserId || undefined}
+                isAdmin={currentUserRole === "admin" || false}
+              />
+            </div>
+          </div>
 
           {/* Main Content */}
-          <div className="flex-1 pl-80 space-y-6 sm:space-y-8">
+          <div className="flex-1 lg:pl-8 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
                 <div className="space-y-4 mb-4 sm:mb-6">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="p-0 h-auto hover:bg-transparent"
-                          onClick={() => setSectionsCollapsed(prev => ({ ...prev, priorities: !prev.priorities }))}
-                        >
-                          {sectionsCollapsed.priorities ? (
-                            <ChevronRight className="h-5 w-5" />
-                          ) : (
-                            <ChevronDown className="h-5 w-5" />
-                          )}
-                        </Button>
-                        <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
-                      </div>
-                      <div className="flex items-center gap-2 pl-9">
-                        <label className="text-sm text-muted-foreground">Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}</label>
-                        <Switch
-                          checked={showPreviousPeriod}
-                          onCheckedChange={setShowPreviousPeriod}
-                        />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="p-0 h-auto hover:bg-transparent"
+                            onClick={() => setSectionsCollapsed(prev => ({ ...prev, priorities: !prev.priorities }))}
+                          >
+                            {sectionsCollapsed.priorities ? (
+                              <ChevronRight className="h-5 w-5" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5" />
+                            )}
+                          </Button>
+                          <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
+                        </div>
+                        {previousMeetingId && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm text-muted-foreground">Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}</label>
+                            <Switch
+                              checked={showPreviousPeriod}
+                              onCheckedChange={setShowPreviousPeriod}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button
@@ -729,7 +768,7 @@ const TeamMeeting = () => {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <div className="flex items-center justify-between mb-2 sm:mb-4">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
@@ -743,7 +782,7 @@ const TeamMeeting = () => {
                       <ChevronDown className="h-5 w-5" />
                     )}
                   </Button>
-                  <h2 className="text-lg sm:text-xl font-semibold">Topics</h2>
+                  <h2 className="text-lg sm:text-xl font-semibold">Topics for Today</h2>
                 </div>
               </div>
               {!sectionsCollapsed.topics && (
