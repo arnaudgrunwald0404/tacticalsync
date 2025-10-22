@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import Logo from "@/components/Logo";
 const TeamMeeting = () => {
   const { teamId, meetingId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   interface Team {
@@ -82,10 +83,26 @@ const TeamMeeting = () => {
     if (teamId && meetingId) {
       fetchTeamAndMeeting();
     }
+  }, [teamId, meetingId, location.pathname]);
+
+  // Refetch data when component becomes visible (handles navigation back from settings)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && teamId && meetingId) {
+        // Small delay to ensure the component is fully mounted
+        setTimeout(() => {
+          fetchTeamAndMeeting();
+        }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [teamId, meetingId]);
 
   const fetchTeamAndMeeting = async () => {
     try {
+      
       // Fetch team
       const { data: teamData, error: teamError } = await supabase
         .from("teams")

@@ -54,3 +54,32 @@ export interface MeetingSeriesActionItem {
   created_at: string;
   updated_at: string;
 }
+
+// Import types from other files
+export type { AgendaItem } from './agenda';
+export type { TeamMember } from './common';
+
+// Meeting data types
+export interface MeetingAgendaProps {
+  items: AgendaItem[];
+  meetingId: string;
+  teamId: string;
+  onUpdate: () => void;
+  currentUserId?: string;
+  isAdmin?: boolean;
+}
+
+export interface MeetingDataState {
+  teamMembers: TeamMember[];
+  isEditingAgenda: boolean;
+  editingItems: AgendaItem[];
+  isAdmin: boolean;
+}
+
+export interface MeetingDataActions {
+  handleToggleComplete: (itemId: string, currentStatus: boolean) => Promise<void>;
+  handleUpdateNotes: (itemId: string, notes: string) => Promise<void>;
+  updateEditingItem: (index: number, field: keyof AgendaItem, value: AgendaItem[keyof AgendaItem]) => void;
+  updateEditingItems: (items: AgendaItem[]) => void;
+  setEditing: (editing: boolean) => void;
+}

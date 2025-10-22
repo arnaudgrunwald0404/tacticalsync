@@ -4,14 +4,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
 import { htmlToPlainText } from "@/lib/htmlUtils";
-import { AgendaItem, MeetingDataActions, TeamMember } from "@/types/meeting";
+import { AgendaItem, AgendaItemWithProfile } from "@/types/agenda";
+import { TeamMember } from "@/types/common";
+import { MeetingDataActions } from "@/types/meeting";
 import { useState, useEffect, useCallback } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useHotkeys } from "react-hotkeys-hook";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 
 interface AgendaSidebarProps {
-  items: AgendaItem[];
+  items: AgendaItemWithProfile[];
   isAdmin: boolean;
   isEditingAgenda: boolean;
   editingItems: AgendaItem[];
@@ -47,7 +49,7 @@ export function AgendaSidebar({
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  const shouldShowNotes = (item: AgendaItem) => {
+  const shouldShowNotes = (item: AgendaItemWithProfile) => {
     // Don't show notes when creating from scratch (item has a temp id)
     if (item.id.startsWith('temp-')) return false;
     return isEditingAgenda || expandedNotes.includes(item.id);
@@ -245,7 +247,7 @@ export function AgendaSidebar({
                   {...provided.droppableProps}
                   className="space-y-2"
                 >
-                  {displayItems.map((item, index) => (
+                  {displayItems.map((item: AgendaItemWithProfile, index) => (
                     <Draggable
                       key={item.id}
                       draggableId={item.id}
