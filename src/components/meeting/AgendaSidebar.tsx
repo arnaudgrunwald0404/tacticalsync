@@ -269,11 +269,13 @@ export function AgendaSidebar({
                                 <GripVertical className="h-4 w-4" />
                               </div>
                             )}
-                            <Checkbox
-                              checked={item.is_completed}
-                              onCheckedChange={() => actions.handleToggleComplete(item.id, item.is_completed)}
-                              className="mt-2"
-                            />
+                            {!isEditingAgenda && (
+                              <Checkbox
+                                checked={item.is_completed}
+                                onCheckedChange={() => actions.handleToggleComplete(item.id, item.is_completed)}
+                                className="mt-2"
+                              />
+                            )}
                             <div className="flex-1 min-w-0 space-y-2">
                               {/* Row 1: Title and Delete */}
                               <div className="flex items-center gap-3">

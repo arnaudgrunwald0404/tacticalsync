@@ -283,10 +283,15 @@ const TeamMeeting = () => {
         .from("meeting_instances")
         .select("series_id, start_date")
         .eq("id", meetingId)
-        .single();
+        .maybeSingle();
 
       if (meetingError) {
         console.error("Error fetching meeting:", meetingError);
+        return;
+      }
+
+      if (!meetingData) {
+        console.error("Meeting not found:", meetingId);
         return;
       }
 

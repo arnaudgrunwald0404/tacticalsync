@@ -59,9 +59,10 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         .from("meeting_instances")
         .select("series_id")
         .eq("id", meetingId)
-        .single();
+        .maybeSingle();
 
-      if (meetingError || !meetingData) throw meetingError || new Error("Meeting not found");
+      if (meetingError) throw meetingError;
+      if (!meetingData) throw new Error("Meeting not found");
 
       // Clear existing agenda items first
       const { error: deleteError } = await supabase
@@ -114,9 +115,10 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         .from("meeting_instances")
         .select("series_id")
         .eq("id", meetingId)
-        .single();
+        .maybeSingle();
 
-      if (meetingError || !meetingData) throw meetingError || new Error("Meeting not found");
+      if (meetingError) throw meetingError;
+      if (!meetingData) throw new Error("Meeting not found");
 
       // Clear existing agenda items
       const { error: deleteError } = await supabase
@@ -209,9 +211,10 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         .from("meeting_instances")
         .select("series_id")
         .eq("id", meetingId)
-        .single();
+        .maybeSingle();
 
-      if (meetingError || !meetingData) throw meetingError || new Error("Meeting not found");
+      if (meetingError) throw meetingError;
+      if (!meetingData) throw new Error("Meeting not found");
 
       // Insert new items
       if (newItems.length > 0) {

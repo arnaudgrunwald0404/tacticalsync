@@ -36,45 +36,35 @@ export function useMeetingData(props: MeetingAgendaProps): {
   }, [teamId]);
 
   const fetchTeamMembers = async () => {
-    const { data, error } = await supabase
+    // Fetch team members first
+    const { data: teamMembers } = await supabase
       .from("team_members")
-      .select(`
-        id,
-        user_id,
-        profiles:user_id(full_name, first_name, last_name, email, avatar_url, avatar_name)
-      `)
+      .select("id, user_id")
       .eq("team_id", teamId);
-
-    if (error) {
-      console.error("Error fetching team members:", error);
+    
+    if (!teamMembers || teamMembers.length === 0) {
+      setTeamMembers([]);
       return;
     }
-
-    if (data) {
-      const validMembers = (data as unknown[])
-        .filter((member): member is { id: unknown; user_id: unknown; profiles: Record<string, unknown> } => (
-          member !== null &&
-          typeof member === 'object' &&
-          'id' in member &&
-          'user_id' in member &&
-          'profiles' in member &&
-          member.profiles !== null &&
-          typeof member.profiles === 'object'
-        ))
-        .map(member => ({
-          id: String(member.id),
-          user_id: String(member.user_id),
-          profiles: {
-            full_name: typeof member.profiles.full_name === 'string' ? member.profiles.full_name : undefined,
-            first_name: typeof member.profiles.first_name === 'string' ? member.profiles.first_name : undefined,
-            last_name: typeof member.profiles.last_name === 'string' ? member.profiles.last_name : undefined,
-            email: typeof member.profiles.email === 'string' ? member.profiles.email : '',
-            avatar_url: typeof member.profiles.avatar_url === 'string' ? member.profiles.avatar_url : undefined,
-            avatar_name: typeof member.profiles.avatar_name === 'string' ? member.profiles.avatar_name : undefined,
-          }
-        })) as TeamMember[];
-      setTeamMembers(validMembers);
-    }
+    
+    // Fetch profiles for all team members
+    const userIds = teamMembers.map(member => member.user_id);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+      .in("id", userIds);
+    
+    // Combine team members with their profiles
+    const membersWithProfiles = teamMembers.map(member => {
+      const profile = profiles?.find(p => p.id === member.user_id);
+      return {
+        id: member.id,
+        user_id: member.user_id,
+        profiles: profile || null
+      };
+    });
+    
+    setTeamMembers(membersWithProfiles);
   };
 
   const checkIfAdmin = async () => {
