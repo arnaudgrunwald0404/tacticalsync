@@ -164,15 +164,18 @@ const Auth = () => {
   return (
     <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-3 sm:px-4 py-8">
       <div className="w-full max-w-full  space-y-6">
-        {/* Logo Section */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center mb-4">
-            <Logo variant="full" size="lg" className="scale-90 sm:scale-100" />
+       
+
+        <Card className="border-border/100 shadow-large shadow-pink-500/100 w-full  sm:max-w-full">
+
+ {/* Logo Section */}
+ <div className="text-center space-y-2">
+          <div className="flex justify-center mt-12 mb-6">
+            <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
           </div>
 
         </div>
 
-        <Card className="border-border/50 shadow-large shadow-pink-500/100 w-full  sm:max-w-full">
           <CardHeader className="space-y-4 pb-6 px-5 sm:px-8 md:px-12">
             {showEmailForm ? (
               <>
@@ -228,10 +231,10 @@ const Auth = () => {
               </>
             ) : (
               <div className="text-center space-y-2">
-                <CardTitle className="text-2xl sm:text-3xl font-bold">
+                <CardTitle className="text-2xl sm:text-3xl font-bold mb-6">
                   We are so glad you're here!
                 </CardTitle>
-                <CardDescription className="text-base sm:text-lg">
+                <CardDescription className="text-base sm:text-lg mb-6">
                   Sign in to continue to Team TacticalSync
                 </CardDescription>
               </div>

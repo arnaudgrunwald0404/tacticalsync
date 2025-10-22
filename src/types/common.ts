@@ -46,7 +46,7 @@ export interface Comment {
   profiles?: Profile | null;
 }
 
-export interface RecurringMeeting {
+export interface MeetingSeries {
   id: string;
   team_id: string;
   name: string;
@@ -57,8 +57,7 @@ export interface RecurringMeeting {
 
 export interface MeetingInstance {
   id: string;
-  recurring_meeting_id: string;
-  team_id: string;
+  series_id: string;
   start_date: string;
   end_date?: string | null;
   created_at: string;

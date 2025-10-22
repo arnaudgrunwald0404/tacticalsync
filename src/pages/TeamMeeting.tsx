@@ -96,9 +96,9 @@ const TeamMeeting = () => {
       if (teamError) throw teamError;
       setTeam(teamData);
 
-      // Fetch recurring meeting
+      // Fetch meeting series
       const { data: recurringData, error: recurringError } = await supabase
-        .from('recurring_meetings')
+        .from('meeting_series')
         .select('id,name,frequency')
         .filter('id', 'eq', meetingId)
         .limit(1)
@@ -124,23 +124,21 @@ const TeamMeeting = () => {
       let { data: meetingData, error: meetingError } = await supabase
         .from("meeting_instances")
         .select("*")
-        .eq("recurring_meeting_id", meetingId)
+        .eq("series_id", meetingId)
         .eq("start_date", periodStartStr)
         .single();
 
       if (meetingError && meetingError.code === "PGRST116") {
         // Create new meeting
         console.log('Creating new meeting with data:', {
-          team_id: teamId,
-          recurring_meeting_id: meetingId,
+          series_id: meetingId,
           start_date: periodStartStr
         });
         
         const { data: newMeeting, error: createError } = await supabase
           .from("meeting_instances")
           .insert({ 
-            team_id: teamId, 
-            recurring_meeting_id: meetingId,
+            series_id: meetingId,
             start_date: periodStartStr 
           })
           .select()
@@ -165,7 +163,7 @@ const TeamMeeting = () => {
       const { data: allMeetingsData } = await supabase
         .from("meeting_instances")
         .select("*")
-        .eq("recurring_meeting_id", meetingId)
+        .eq("series_id", meetingId)
         .order("start_date", { ascending: false });
       
       let selectedMeeting = meetingData;
@@ -267,7 +265,7 @@ const TeamMeeting = () => {
     const { data, error } = await supabase
       .from("meeting_instances")
       .select("*")
-      .eq("recurring_meeting_id", recurringMeetingId)
+      .eq("series_id", recurringMeetingId)
       .order("start_date", { ascending: false });
 
     if (error) {
@@ -279,56 +277,89 @@ const TeamMeeting = () => {
   };
 
   const fetchMeetingItems = async (meetingId: string) => {
-    // First get the current meeting to get its start date
-    const { data: meetingData, error: meetingError } = await supabase
-      .from("meeting_instances")
-      .select("start_date")
-      .eq("id", meetingId)
-      .single();
+    try {
+      // Get the current meeting instance to get its series_id
+      const { data: meetingData, error: meetingError } = await supabase
+        .from("meeting_instances")
+        .select("series_id, start_date")
+        .eq("id", meetingId)
+        .single();
 
-    if (meetingError) {
-      console.error("Error fetching meeting:", meetingError);
-      return;
+      if (meetingError) {
+        console.error("Error fetching meeting:", meetingError);
+        return;
+      }
+
+      // Fetch agenda items from meeting_series_agenda
+      const { data: agendaData, error: agendaError } = await supabase
+        .from("meeting_series_agenda")
+        .select(`
+          *,
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        `)
+        .eq("series_id", meetingData.series_id)
+        .order("order_index");
+
+      if (agendaError) {
+        console.error("Error fetching agenda items:", agendaError);
+      } else {
+        setAgendaItems(agendaData || []);
+      }
+
+      // Fetch priorities from meeting_instance_priorities
+      const { data: prioritiesData, error: prioritiesError } = await supabase
+        .from("meeting_instance_priorities")
+        .select(`
+          *,
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        `)
+        .eq("instance_id", meetingId)
+        .order("order_index");
+
+      if (prioritiesError) {
+        console.error("Error fetching priorities:", prioritiesError);
+      } else {
+        setPriorityItems(prioritiesData || []);
+      }
+
+      // Fetch topics from meeting_instance_topics
+      const { data: topicsData, error: topicsError } = await supabase
+        .from("meeting_instance_topics")
+        .select(`
+          *,
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        `)
+        .eq("instance_id", meetingId)
+        .order("order_index");
+
+      if (topicsError) {
+        console.error("Error fetching topics:", topicsError);
+      } else {
+        setTeamTopicItems(topicsData || []);
+      }
+
+      // Fetch action items from meeting_series_action_items
+      const { data: actionItemsData, error: actionItemsError } = await supabase
+        .from("meeting_series_action_items")
+        .select(`
+          *,
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        `)
+        .eq("series_id", meetingData.series_id)
+        .order("order_index");
+
+      if (actionItemsError) {
+        console.error("Error fetching action items:", actionItemsError);
+      } else {
+        setActionItems(actionItemsData || []);
+      }
+    } catch (error) {
+      console.error("Error in fetchMeetingItems:", error);
     }
-
-    // Get all meetings in the same period for the team
-    const { data: periodMeetings, error: periodError } = await supabase
-      .from("meeting_instances")
-      .select("id")
-      .eq("team_id", teamId)
-      .eq("start_date", meetingData.start_date);
-
-    if (periodError) {
-      console.error("Error fetching period meetings:", periodError);
-      return;
-    }
-
-    const meetingIds = periodMeetings.map(m => m.id);
-
-    // Fetch items for all meetings in the period
-    const { data, error } = await supabase
-      .from("meeting_items")
-      .select(`
-        *,
-        assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-        created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
-      `)
-      .in("meeting_id", meetingIds)
-      .order("order_index");
-
-    if (error) {
-      console.error("Error fetching items:", error);
-      return;
-    }
-
-    // For agenda items and action items, only show the current meeting's items
-    const currentMeetingItems = data.filter((item: any) => item.meeting_id === meetingId);
-    setAgendaItems(currentMeetingItems.filter((item: any) => item.type === "agenda"));
-    setActionItems(currentMeetingItems.filter((item: any) => item.type === "action_item"));
-    setTeamTopicItems(currentMeetingItems.filter((item: any) => item.type === "team_topic"));
-
-    // For priorities, show all team members' priorities from the period
-    setPriorityItems(data.filter((item: any) => item.type === "priority" || item.type === "topic"));
   };
 
 
@@ -508,8 +539,7 @@ const TeamMeeting = () => {
       const { data: newMeeting, error } = await supabase
         .from("meeting_instances")
         .insert({
-          team_id: teamId,
-          recurring_meeting_id: meetingId,
+          series_id: meetingId,
           start_date: nextStartStr
         })
         .select()
@@ -730,7 +760,7 @@ const TeamMeeting = () => {
                               <ChevronDown className="h-5 w-5" />
                             )}
                           </Button>
-                          <h2 className="text-lg sm:text-xl font-semibold">Priorities</h2>
+                          <h2 className="text-lg sm:text-xl font-semibold" data-testid="priorities-section">Priorities</h2>
                         </div>
                         {previousMeetingId && (
                           <div className="flex items-center gap-2">
@@ -760,7 +790,11 @@ const TeamMeeting = () => {
                 items={priorityItems}
                 meetingId={meeting?.id}
                 teamId={teamId}
-                onUpdate={() => fetchMeetingItems(meeting?.id)}
+                onUpdate={async () => {
+                  if (meeting?.id) {
+                    await fetchMeetingItems(meeting.id);
+                  }
+                }}
                 frequency={recurringMeeting?.frequency}
                 showPreviousPeriod={showPreviousPeriod}
               />
@@ -782,7 +816,7 @@ const TeamMeeting = () => {
                       <ChevronDown className="h-5 w-5" />
                     )}
                   </Button>
-                  <h2 className="text-lg sm:text-xl font-semibold">Topics for Today</h2>
+                  <h2 className="text-lg sm:text-xl font-semibold" data-testid="topics-section">Topics for Today</h2>
                 </div>
               </div>
               {!sectionsCollapsed.topics && (
@@ -810,7 +844,7 @@ const TeamMeeting = () => {
                     <ChevronDown className="h-5 w-5" />
                   )}
                 </Button>
-                <h2 className="text-lg sm:text-xl font-semibold">Action Items</h2>
+                <h2 className="text-lg sm:text-xl font-semibold" data-testid="action-items-section">Action Items</h2>
               </div>
               {!sectionsCollapsed.actionItems && (
                 <ActionItems

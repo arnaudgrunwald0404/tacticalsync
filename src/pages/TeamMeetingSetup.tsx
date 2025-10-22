@@ -100,9 +100,9 @@ const TeamMeetingSetup = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Create recurring meeting
+      // Create meeting series
       const { data: meeting, error } = await supabase
-        .from("recurring_meetings")
+        .from("meeting_series")
         .insert({
           team_id: teamId,
           name: meetingName,
@@ -129,7 +129,7 @@ const TeamMeetingSetup = () => {
       const { data: existingMeeting } = await supabase
         .from("meeting_instances")
         .select()
-        .eq("recurring_meeting_id", meeting.id)
+        .eq("series_id", meeting.id)
         .eq("start_date", startDateStr)
         .maybeSingle();
 
@@ -143,8 +143,7 @@ const TeamMeetingSetup = () => {
         const { data: newMeeting, error: meetingError } = await supabase
           .from("meeting_instances")
           .insert({
-            team_id: teamId,
-            recurring_meeting_id: meeting.id,
+            series_id: meeting.id,
             start_date: startDateStr
           })
           .select()

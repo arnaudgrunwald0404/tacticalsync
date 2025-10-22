@@ -61,9 +61,9 @@ const MeetingSettings = () => {
       if (teamError) throw teamError;
       setTeam(teamData);
 
-      // Fetch recurring meeting
+      // Fetch meeting series
       const { data: meetingData, error: meetingError } = await supabase
-        .from("recurring_meetings")
+        .from("meeting_series")
         .select("*")
         .eq("id", meetingId)
         .single();
@@ -133,7 +133,7 @@ const MeetingSettings = () => {
     setSaving(true);
     try {
       const { error } = await supabase
-        .from("recurring_meetings")
+        .from("meeting_series")
         .update({ name: meetingName })
         .eq("id", meetingId);
 
@@ -251,9 +251,9 @@ const MeetingSettings = () => {
   const handleDeleteMeeting = async () => {
     setDeleting(true);
     try {
-      // Delete the recurring meeting (cascade will delete all weekly_meetings and meeting_items)
+      // Delete the meeting series (cascade will delete all meeting_instances and related items)
       const { error } = await supabase
-        .from("recurring_meetings")
+        .from("meeting_series")
         .delete()
         .eq("id", meetingId);
 

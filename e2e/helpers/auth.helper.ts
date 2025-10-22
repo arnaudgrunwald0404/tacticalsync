@@ -130,13 +130,23 @@ export async function logout(page: Page): Promise<void> {
 export async function clearAuthState(page: Page): Promise<void> {
   try {
     await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.clear();
+        }
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.clear();
+        }
+      } catch (e) {
+        // Ignore localStorage/sessionStorage errors
+        console.warn('Could not clear storage:', e);
+      }
     });
     await page.context().clearCookies();
   } catch (error) {
     console.error('Failed to clear auth state:', formatError(error));
-    throw error;
+    // Don't throw - just log the error and continue
+    console.warn('Continuing despite auth state clear failure');
   }
 }
 

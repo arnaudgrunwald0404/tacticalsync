@@ -13,7 +13,7 @@ export async function createRecurringMeeting(
   createdBy?: string
 ): Promise<TestRecurringMeeting> {
   const { data, error } = await supabaseAdmin
-    .from('recurring_meetings')
+    .from('meeting_series')
     .insert({
       team_id: teamId,
       name,
@@ -35,8 +35,7 @@ export async function createWeeklyMeeting(
   const { data, error } = await supabaseAdmin
     .from('meeting_instances')
     .insert({
-      team_id: teamId,
-      recurring_meeting_id: seriesId,
+      series_id: seriesId,
       start_date: startDate,
     })
     .select()
@@ -48,7 +47,7 @@ export async function createWeeklyMeeting(
 
 export async function deleteRecurringMeeting(seriesId: string): Promise<void> {
   const { error } = await supabaseAdmin
-    .from('recurring_meetings')
+    .from('meeting_series')
     .delete()
     .eq('id', seriesId);
 
@@ -66,7 +65,7 @@ export async function deleteMeetingInstance(instanceId: string): Promise<void> {
 
 export async function getTeamRecurringMeetings(teamId: string): Promise<TestRecurringMeeting[]> {
   const { data, error } = await supabaseAdmin
-    .from('recurring_meetings')
+    .from('meeting_series')
     .select()
     .eq('team_id', teamId)
     .order('created_at', { ascending: false });
@@ -77,7 +76,7 @@ export async function getTeamRecurringMeetings(teamId: string): Promise<TestRecu
 
 export async function getRecurringMeeting(seriesId: string): Promise<TestRecurringMeeting> {
   const { data, error } = await supabaseAdmin
-    .from('recurring_meetings')
+    .from('meeting_series')
     .select()
     .eq('id', seriesId)
     .single();
@@ -94,7 +93,7 @@ export async function updateRecurringMeeting(
   }
 ): Promise<void> {
   const { error } = await supabaseAdmin
-    .from('recurring_meetings')
+    .from('meeting_series')
     .update(updates)
     .eq('id', seriesId);
 

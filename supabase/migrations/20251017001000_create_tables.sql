@@ -1,7 +1,17 @@
 -- Create tables first
+CREATE TABLE IF NOT EXISTS meeting_series (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly', 'bi-weekly', 'monthly')),
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS meeting_instances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  recurring_meeting_id UUID NOT NULL,
+  series_id UUID NOT NULL REFERENCES meeting_series(id) ON DELETE CASCADE,
   start_date DATE NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

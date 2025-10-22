@@ -82,11 +82,12 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
     };
   };
 
-  const config = getAvatarConfig(name);
+  const safeName = (name && name.trim().length > 0) ? name : "User";
+  const config = getAvatarConfig(safeName);
   
   // Get initials from displayName (actual user name) or fall back to name
   const getInitials = (nameStr: string): string => {
-    const cleanName = nameStr.trim();
+    const cleanName = (nameStr && nameStr.trim().length > 0) ? nameStr.trim() : "User";
     const words = cleanName.split(' ').filter(word => word.length > 0);
     
     if (words.length >= 2) {

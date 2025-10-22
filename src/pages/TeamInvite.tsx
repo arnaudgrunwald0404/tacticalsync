@@ -315,7 +315,7 @@ const TeamInvite = () => {
       if (newEmails.length > 0 && alreadyInvited.length > 0) {
         message = `Invited ${newEmails.length} new member${newEmails.length > 1 ? 's' : ''}. ${alreadyInvited.length} email${alreadyInvited.length > 1 ? 's were' : ' was'} already invited.`;
       } else if (newEmails.length > 0) {
-        message = `Invitation emails sent to ${newEmails.length} team member${newEmails.length > 1 ? 's' : ''}`;
+        message = `Invitation email sent to ${newEmails.length} team member${newEmails.length > 1 ? 's' : ''}`;
       }
 
       toast({

@@ -54,9 +54,9 @@ const AddPrioritiesDrawer = ({
       if (existingPriorities.length > 0) {
         const existingPriorityRows = existingPriorities.map((priority) => ({
           id: priority.id,
-          priority: priority.title || "",
+          priority: priority.outcome || "",
           assigned_to: priority.assigned_to || "",
-          notes: priority.notes || "",
+          notes: priority.activities || "",
           time_minutes: priority.time_minutes || null
         }));
         
@@ -220,16 +220,14 @@ const AddPrioritiesDrawer = ({
       console.log('Priorities to save:', filledPriorities);
 
       // All filled priorities will be new inserts since we're using temp IDs
-      // Look at how topics are inserted - they only use these fields
+      // Insert into meeting_instance_priorities table
       const prioritiesToInsert = filledPriorities.map((priority, index) => ({
-        meeting_id: meetingId,
-        type: "priority" as const,
-        title: priority.priority,      // Desired outcome goes in title
-        notes: "",                     // Supporting activities go in notes
-        assigned_to: priority.assigned_to || null,
-        time_minutes: null,            // Optional duration
+        instance_id: meetingId,
+        outcome: priority.priority,      // Desired outcome
+        activities: priority.notes || "", // Supporting activities
+              assigned_to: priority.assigned_to || null,
         order_index: index,
-        created_by: user.id
+              created_by: user.id
       }));
 
       console.log('Data to insert:', prioritiesToInsert);
@@ -237,7 +235,7 @@ const AddPrioritiesDrawer = ({
       // Insert new priorities
       if (prioritiesToInsert.length > 0) {
         const { error } = await supabase
-          .from("meeting_items")
+          .from("meeting_instance_priorities")
           .insert(prioritiesToInsert);
         
         if (error) {
@@ -255,7 +253,9 @@ const AddPrioritiesDrawer = ({
         });
       }
 
-      onSave();
+      await onSave();
+      // Small delay to ensure state updates propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
       onClose();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save priorities";
@@ -281,15 +281,15 @@ const AddPrioritiesDrawer = ({
         
         <div className="flex-1 overflow-y-auto min-h-0 pr-6">
           <div className="space-y-4">
-            {/* Desktop Table View */}
-            <div className="hidden sm:block border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
-                <div>Who</div>
-                <div>Desired Outcome</div>
-                <div>Supporting Activities</div>
-                <div></div>
-              </div>
-              
+          {/* Desktop Table View */}
+          <div className="hidden sm:block border rounded-lg overflow-hidden">
+            <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
+              <div>Who</div>
+              <div>Desired Outcome</div>
+              <div>Supporting Activities</div>
+              <div></div>
+            </div>
+            
               {priorities.map((priority) => (
                 <div key={priority.id} className="px-4 py-3 border-t">
                   <PriorityForm
@@ -300,12 +300,12 @@ const AddPrioritiesDrawer = ({
                     onRemove={priorities.length > 3 ? () => removePriorityRow(priority.id) : undefined}
                     showRemove={priorities.length > 3}
                   />
-                </div>
-              ))}
-            </div>
+              </div>
+            ))}
+          </div>
 
-            {/* Mobile Card View */}
-            <div className="sm:hidden space-y-3">
+          {/* Mobile Card View */}
+          <div className="sm:hidden space-y-3">
               {priorities.map((priority) => (
                 <div key={priority.id} className="border rounded-lg p-4 space-y-3 bg-white">
                   <PriorityForm
@@ -320,33 +320,33 @@ const AddPrioritiesDrawer = ({
               ))}
             </div>
           </div>
-        </div>
-
+          </div>
+          
         {/* Fixed Footer */}
         <div className="flex-none mt-6 pt-6 border-t">
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
               <Button variant="outline" onClick={onClose} className="text-sm">
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={addPriorityRow}
-                disabled={!allPrioritiesUsed()}
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={addPriorityRow}
+              disabled={!allPrioritiesUsed()}
                 className="text-xs sm:text-sm"
-              >
-                <Plus className="h-4 w-4 mr-2" />
+            >
+              <Plus className="h-4 w-4 mr-2" />
                 Add Priority
-              </Button>
+            </Button>
             </div>
             <Button onClick={handleSave} disabled={saving} className="text-sm">
               <Save className="h-4 w-4 mr-2" />
               {saving ? "Saving..." : existingPriorities.length > 0 ? "Save Changes" : `Save ${priorities.filter(t => t.priority.trim()).length} ${priorities.filter(t => t.priority.trim()).length === 1 ? 'Priority' : 'Priorities'}`}
             </Button>
           </div>
-
+          
           {/* Topic Section */}
           <div className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">Thinking of a Topic?</h3>

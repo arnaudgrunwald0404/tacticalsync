@@ -91,16 +91,51 @@ const Dashboard = () => {
     }
     setUser(session.user);
 
-    // Fetch user profile
-    const { data: profile, error: profileError } = await supabase
+    // Fetch or create user profile
+    const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("first_name, last_name, avatar_name, avatar_url, email")
+      .select("first_name, last_name, full_name, avatar_name, avatar_url, email")
       .eq("id", session.user.id)
-      .single();
+      .maybeSingle();
+
+    let profile = profileData;
 
     if (profileError) {
       console.error("Error fetching profile:", profileError);
-    } else {
+    }
+
+    if (!profile) {
+      // Create minimal profile if missing (helps in local/dev when DB trigger isn't installed)
+      const userMeta: Record<string, any> = (session.user as any).user_metadata || {};
+      const firstName = (userMeta.given_name || "").toString();
+      const lastName = (userMeta.family_name || "").toString();
+      const fullName = (userMeta.full_name || `${firstName} ${lastName}`.trim() || session.user.email || "").toString();
+      const avatarUrl = (userMeta.avatar_url || userMeta.picture || "").toString();
+
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .insert({
+          id: session.user.id,
+          email: session.user.email,
+          full_name: fullName,
+          first_name: firstName || null,
+          last_name: lastName || null,
+          avatar_url: avatarUrl || null,
+        });
+
+      if (insertError) {
+        console.error("Error creating profile:", insertError);
+      } else {
+        const { data: newProfile } = await supabase
+          .from("profiles")
+          .select("first_name, last_name, avatar_name, avatar_url, email")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        profile = newProfile || null;
+      }
+    }
+
+    if (profile) {
       setUserProfile(profile);
       // Also set profile for the header avatar
       setProfile(profile);
@@ -154,9 +189,9 @@ const Dashboard = () => {
           `)
           .eq("team_id", teamMember.teams.id);
 
-        // Fetch recurring meetings for this team
+        // Fetch meeting series for this team
         const { data: teamMeetings } = await supabase
-          .from("recurring_meetings")
+          .from("meeting_series")
           .select("*")
           .eq("team_id", teamMember.teams.id)
           .order("created_at", { ascending: true });
@@ -278,7 +313,7 @@ const Dashboard = () => {
       const invitationsWithMeetings = await Promise.all(
         validInvitations.map(async (invitation) => {
           const { data: teamMeetings } = await supabase
-            .from("recurring_meetings")
+            .from("meeting_series")
             .select("*")
             .eq("team_id", invitation.team_id)
             .order("created_at", { ascending: true });
@@ -388,14 +423,17 @@ const Dashboard = () => {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 sm:h-10">
                   <FancyAvatar 
-                    name={profile?.avatar_name || ''}
-                    displayName={`${(profile?.first_name?.[0] || '').toUpperCase()}${(profile?.last_name?.[0] || '').toUpperCase()}`}
+                    name={(profile?.avatar_name && profile.avatar_name.trim())
+                      || `${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim()
+                      || (profile?.full_name || '')
+                      || (profile?.email || 'User')}
+                    displayName={`${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim() || (profile?.email?.split('@')[0] || 'U')}
                     size="sm"
                     className="mr-2"
                   />
                   <div className="flex flex-col items-start">
                     <span className="text-sm leading-none">
-                      {`${profile?.first_name || profile?.email} ${profile?.last_name || ''}`}
+                      {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
                     </span>
                   </div>
                 </Button>
@@ -591,6 +629,7 @@ const Dashboard = () => {
                       <Card
                         className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
                         onClick={() => handleCreateMeeting(teamMember.teams.id)}
+                        data-testid="create-meeting-card"
                       >
                         <CardContent className="flex flex-col items-center justify-center py-6 sm:py-8">
                           <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:bg-primary/20 transition-all">

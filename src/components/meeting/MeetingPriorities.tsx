@@ -126,7 +126,7 @@ const SortablePriorityRow = ({
             {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <span className="text-sm">{item.title}</span>
+        <span className="text-sm">{item.outcome}</span>
       </div>
       <Button variant="ghost" size="sm" onClick={() => onDelete(item.id)}>
         <X className="h-4 w-4" />
@@ -361,7 +361,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
   // Group items by week
   const groupedByWeek: Record<string, { weekStart: Date; items: Priority[] }> = items.reduce((acc, item) => {
-    const createdDate = new Date(item.created_at);
+    // Use current date if created_at is missing or invalid
+    const createdDate = item.created_at ? new Date(item.created_at) : new Date();
     const weekStart = startOfWeek(createdDate, { weekStartsOn: 1 }); // Monday
     const weekKey = weekStart.toISOString();
     
@@ -384,287 +385,118 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   return (
     <>
       <div className="space-y-4">
-        {sortedWeeks.map(([weekKey, { weekStart, items: weekItems }]) => (
-          <div key={weekKey} className="space-y-3">
-            {/* Desktop Table View */}
-            <div className="hidden sm:block border rounded-lg overflow-hidden relative">
-              <div className="sticky top-0 z-20 bg-background">
-                <div className={`bg-muted/50 px-4 py-2 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 text-sm font-medium text-muted-foreground`}>
-                  <div>Who</div>
-                  {showPreviousPeriod && (
-                    <div>Previous {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities</div>
-                  )}
-                  <div>This {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities</div>
-                </div>
-              </div>
-              
-              {members.map((member) => {
-                const userPriorities = weekItems.filter(item => item.assigned_to === member.user_id);
-                const priorities = ['P1', 'P2', 'P3'];
-              
-                return priorities.map((priority, index) => {
-                  const item = userPriorities[index];
-                  return (
-                    <div key={`${member.user_id}-${priority}`} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-center border-t relative z-0`}>
-                      {/* User Column */}
-                      <div className="flex items-center gap-2">
-                        <UserDisplay user={member} />
-                      </div>
+        {/* Edit Priorities Button */}
+        {items.length > 0 && (
+          <div className="flex justify-end">
+            <Button
+              onClick={() => setIsDrawerOpen(true)}
+              variant="outline"
+              size="sm"
+            >
+              Edit Priorities
+            </Button>
+          </div>
+        )}
 
-                      {/* Previous Period Content */}
-                      {showPreviousPeriod && (
-                        <div className="space-y-1">
-                          {item ? (
-                            <div className="flex gap-3">
-                              {/* Completion Buttons */}
-                              <div className="flex flex-col gap-2">
-                                <button
-                                  onClick={() => handleSetCompletion(item.id, 'completed')}
-                                  className={`w-8 h-8 border border-gray-300 rounded-md flex items-center justify-center transition-colors ${
-                                    item.completion_status === 'completed'
-                                      ? 'bg-green-600 text-white hover:bg-green-700'
-                                      : 'text-muted-foreground hover:border-green-700 hover:bg-green-50 hover:text-green-700'
-                                  }`}
-                                >
-                                  <Check className="h-5 w-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleSetCompletion(item.id, 'not_completed')}
-                                  className={`w-8 h-8 border border-gray-300 rounded-md flex items-center justify-center transition-colors ${
-                                    item.completion_status === 'not_completed'
-                                      ? 'bg-red-600 text-white hover:bg-red-700'
-                                      : 'text-muted-foreground hover:border-red-700 hover:bg-red-50 hover:text-red-700'
-                                  }`}
-                                >
-                                  <X className="h-5 w-5" />
-                                </button>
-                              </div>
-                              
-                              {/* Content */}
-                              <div className="flex-1">
-                                <div className="font-bold">
-                                  {htmlToPlainText(item.outcome)}
-                                </div>
-                                {item.activities && (
-                                  <div className="pl-4 space-y-1 text-sm mt-1">
-                                    {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
-                                      <div key={idx} className="flex items-start gap-2">
-                                        <span className="text-muted-foreground">•</span>
-                                        <span>{line.trim()}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-muted-foreground italic text-sm">No priority set</div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* This Period */}
-                      <div className="space-y-3">
-                        {item?.isEditing ? (
-                          <>
-                            <Input
-                              placeholder="Desired Outcome"
-                              defaultValue={htmlToPlainText(item.outcome)}
-                              onBlur={async (e) => {
-                                await handleUpdateOutcome(item.id, e.target.value);
-                                onUpdate();
-                              }}
-                              className="h-8 text-sm"
-                              autoFocus
-                            />
-                            <Input
-                              placeholder="Supporting Activities"
-                              defaultValue={htmlToPlainText(item.activities || "")}
-                              onBlur={async (e) => {
-                                await handleUpdateActivities(item.id, e.target.value);
-                                onUpdate();
-                              }}
-                              className="h-8 text-sm"
-                            />
-                          </>
-                        ) : (
-                          <div 
-                            className="space-y-2 cursor-pointer hover:bg-muted/30 p-2 rounded-md transition-colors"
-                            onClick={() => {
-                              const updatedItem = { ...item, isEditing: true };
-                              const updatedItems = weekItems.map(i => i.id === item.id ? updatedItem : i);
-                              onUpdate();
-                            }}
-                          >
-                            {item?.outcome ? (
-                              <div className="font-bold">{htmlToPlainText(item.outcome)}</div>
-                            ) : (
-                              <div className="text-muted-foreground italic text-sm">Click to add desired outcome</div>
-                            )}
-                            {item?.activities ? (
-                              <div className="pl-4 space-y-1 text-sm">
-                                {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
-                                  <div key={idx} className="flex items-start gap-2">
-                                    <span className="text-muted-foreground">•</span>
-                                    <span>{line.trim()}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="text-muted-foreground italic text-sm pl-4">Click to add supporting activities</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                });
-              })}
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="sm:hidden space-y-6">
-              {members.map((member) => {
-                const userPriorities = weekItems.filter(item => item.assigned_to === member.user_id);
-                const priorities = ['P1', 'P2', 'P3'];
-
-                return (
-                  <div key={member.user_id} className="space-y-3">
-                    {/* User Header */}
-                    <div className="flex items-center gap-2 px-1">
-                      <UserDisplay user={member} />
-                    </div>
-
-                    {/* Priorities */}
-                    {priorities.map((priority, index) => {
-                      const item = userPriorities[index];
-                      return (
-                        <div key={priority} className="border rounded-lg p-4 space-y-3 bg-white">
-                          <div className="flex items-center justify-between">
-                            <div className="font-medium text-sm">{priority}</div>
-                            {item && (
-                              <div className="flex items-center gap-2">
-                                {/* Done Status */}
-                                <div className="flex flex-col items-center gap-1">
-                                  <div className="text-xs font-medium text-muted-foreground">Done</div>
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => handleSetCompletion(item.id, 'not_completed')}
-                                      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-                                        item.completion_status === 'not_completed'
-                                          ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                                      }`}
-                                    >
-                                      <X className="h-5 w-5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleSetCompletion(item.id, 'completed')}
-                                      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-                                        item.completion_status === 'completed'
-                                          ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                                      }`}
-                                    >
-                                      <Check className="h-5 w-5" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="space-y-4">
-                            {/* Previous Period */}
-                            {showPreviousPeriod && (
-                              item ? (
-                                <div className="space-y-2">
-                                  <div className="text-sm font-medium text-muted-foreground">Previous Period</div>
-                                  <div className={cn(
-                                    "rounded-md transition-colors",
-                                    item.completion_status === 'completed' && "bg-green-50",
-                                    item.completion_status === 'not_completed' && "bg-red-50",
-                                    "p-3"
-                                  )}>
-                                    <div className="flex items-start gap-4">
-                                      {/* Completion Buttons */}
-                                      <div className="flex flex-col gap-2 pt-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleSetCompletion(item.id, 'completed')}
-                                          className={`h-8 w-8 ${
-                                            item.completion_status === 'completed'
-                                              ? 'bg-green-600 text-white hover:bg-green-700'
-                                              : 'text-muted-foreground hover:bg-green-50 hover:text-green-700'
-                                          }`}
-                                        >
-                                          <Check className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleSetCompletion(item.id, 'not_completed')}
-                                          className={`h-8 w-8 ${
-                                            item.completion_status === 'not_completed'
-                                              ? 'bg-red-600 text-white hover:bg-red-700'
-                                              : 'text-muted-foreground hover:bg-red-50 hover:text-red-700'
-                                          }`}
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="flex-1">
-                                        <div className="font-bold">
-                                          {htmlToPlainText(item.outcome)}
-                                        </div>
-                                        {item.activities && (
-                                          <div className="pl-4 space-y-1 text-sm">
-                                            {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
-                                              <div key={idx} className="flex items-start gap-2">
-                                                <span className="text-muted-foreground">•</span>
-                                                <span>{line.trim()}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-muted-foreground italic text-sm">No priority set</div>
-                              )
-                            )}
-
-                            {/* This Period */}
-                            <div className="space-y-3">
-                              <div className="text-sm font-medium text-muted-foreground">This Period</div>
-                              <Input
-                                placeholder="Desired Outcome"
-                                defaultValue={htmlToPlainText(item?.outcome || "")}
-                                onBlur={(e) => handleUpdateOutcome(item?.id, e.target.value)}
-                                className="h-8 text-sm"
-                              />
-                              <Input
-                                placeholder="Supporting Activities"
-                                defaultValue={htmlToPlainText(item?.activities || "")}
-                                onBlur={(e) => handleUpdateActivities(item?.id, e.target.value)}
-                                className="h-8 text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+        {/* Desktop Table View */}
+        <div className="hidden sm:block border rounded-lg overflow-hidden relative">
+          <div className="sticky top-0 z-20 bg-background">
+            <div className={`bg-muted/50 px-4 py-2 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 text-sm font-medium text-muted-foreground`}>
+              <div>Who</div>
+              {showPreviousPeriod && (
+                <div>Previous {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities</div>
+              )}
+              <div>This {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities</div>
             </div>
           </div>
-        ))}
+          
+          {/* Display all priorities */}
+          {items.length > 0 ? (
+            items.map((item, index) => (
+              <div key={item.id || index} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-center border-t relative z-0`}>
+                {/* User Column */}
+                <div className="flex items-center gap-2">
+                  {item.assigned_to_profile ? (
+                    <UserDisplay user={item.assigned_to_profile} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Unassigned</div>
+                  )}
+                </div>
+
+                {/* Previous Period Content */}
+                {showPreviousPeriod && (
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground italic text-sm">No previous priority</div>
+                  </div>
+                )}
+
+                {/* Current Period Content - Read-only text */}
+                <div className="space-y-1">
+                  <div className="font-bold">
+                    {htmlToPlainText(item.outcome)}
+                  </div>
+                  {item.activities && (
+                    <div className="pl-4 space-y-1 text-sm mt-1">
+                      {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <span className="text-muted-foreground">•</span>
+                          <span>{line.trim()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className={`px-4 py-8 text-center text-muted-foreground ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4`}>
+              <div className="col-span-full">
+                No priorities set yet for this {frequency === "monthly" ? "month" : frequency === "weekly" ? "week" : frequency === "quarter" ? "quarter" : "period"}.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="sm:hidden space-y-6">
+          {items.length > 0 ? (
+            items.map((item, index) => (
+              <div key={item.id || index} className="border rounded-lg p-4 space-y-3 bg-white">
+                {/* User Header */}
+                <div className="flex items-center gap-2 px-1">
+                  {item.assigned_to_profile ? (
+                    <UserDisplay user={item.assigned_to_profile} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Unassigned</div>
+                  )}
+                </div>
+
+                {/* Priority Content - Read-only text */}
+                <div className="space-y-3">
+                  <div className="font-bold">
+                    {htmlToPlainText(item.outcome)}
+                  </div>
+                  {item.activities && (
+                    <div className="pl-4 space-y-1 text-sm">
+                      {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <span className="text-muted-foreground">•</span>
+                          <span>{line.trim()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-muted-foreground border rounded-lg">
+              <p className="text-sm">
+                No priorities set yet for this {frequency === "monthly" ? "month" : frequency === "weekly" ? "week" : frequency === "quarter" ? "quarter" : "period"}.
+              </p>
+            </div>
+          )}
+        </div>
 
         {items.length === 0 && (
           <div className="text-center py-8 text-muted-foreground border rounded-lg">

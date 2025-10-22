@@ -110,10 +110,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
     if (!meetingId) return;
     
     try {
-      // Get the recurring meeting ID for this meeting instance
+      // Get the series ID for this meeting instance
       const { data: meetingData, error: meetingError } = await supabase
         .from("meeting_instances")
-        .select("recurring_meeting_id")
+        .select("series_id")
         .eq("id", meetingId)
         .single();
 
@@ -123,7 +123,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       const { error: deleteError } = await supabase
         .from("meeting_series_agenda")
         .delete()
-        .eq("series_id", meetingData.recurring_meeting_id);
+        .eq("series_id", meetingData.series_id);
 
       if (deleteError) throw deleteError;
 
@@ -131,7 +131,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       const { error: insertError } = await supabase
         .from("meeting_series_agenda")
         .insert({
-          series_id: meetingData.recurring_meeting_id,
+          series_id: meetingData.series_id,
           title: "",
           notes: "",
           order_index: 0,

@@ -132,7 +132,7 @@ export function AgendaSidebar({
       {/* Sidebar Header */}
       <div className="flex items-center justify-between pt-16 pb-4 px-4 sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <h2 className="font-semibold text-xl pl-4">Agenda</h2>
+          <h2 className="font-semibold text-xl pl-4" data-testid="agenda-section">Agenda</h2>
           {isAdmin && (isEditingAgenda || items.length > 0) && (
             <div className="flex items-center -ml-2">
               {isEditingAgenda ? (

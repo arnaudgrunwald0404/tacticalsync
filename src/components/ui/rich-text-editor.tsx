@@ -82,7 +82,7 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '', r
   }
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className}`} data-testid="rich-text-editor">
       {/* Floating Toolbar */}
       {(isFocused || isToolbarHovered) && (
         <div 
