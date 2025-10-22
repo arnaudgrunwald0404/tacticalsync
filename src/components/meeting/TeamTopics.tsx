@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -157,14 +157,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
   });
   const [adding, setAdding] = useState(false);
 
-  useEffect(() => {
-    if (teamId) {
-      fetchMembers();
-      fetchCurrentUser();
-    }
-  }, [teamId]);
-
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -187,9 +180,9 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     } catch (error) {
       console.error("Error fetching current user:", error);
     }
-  };
+  }, [teamId]);
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     // Fetch team members first
     const { data: teamMembers } = await supabase
       .from("team_members")
@@ -219,7 +212,14 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     });
     
     setMembers(membersWithProfiles);
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    if (teamId) {
+      fetchMembers();
+      fetchCurrentUser();
+    }
+  }, [teamId, fetchMembers, fetchCurrentUser]);
 
   const handleAdd = async () => {
     if (!newTopic.title.trim()) {

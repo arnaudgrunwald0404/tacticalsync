@@ -2,12 +2,11 @@ import { forwardRef, useImperativeHandle, useCallback, useEffect, useState } fro
 import { supabase } from "@/integrations/supabase/client";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { useMeetingData } from "@/hooks/useMeetingData";
-import { MeetingAgendaProps, MeetingAgendaRef } from "@/types/meeting";
-import { AgendaItem, AgendaItemInsert } from "@/types/agenda";
+import { AgendaItem } from "@/types/agenda";
 import { useToast } from "@/components/ui/use-toast";
 import debounce from "lodash/debounce";
 
-const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, ref) => {
+const MeetingAgenda = forwardRef<any, any>((props, ref) => {
   const { items, meetingId, onUpdate, isAdmin: isAdminProp } = props;
   const { state, actions } = useMeetingData(props);
   const { toast } = useToast();
@@ -216,7 +215,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
 
       // Insert new items
       if (newItems.length > 0) {
-        const itemsToInsert: AgendaItemInsert[] = newItems.map(item => ({
+        const itemsToInsert = newItems.map(item => ({
           series_id: meetingData.series_id,
           title: item.title,
           notes: item.notes || null,

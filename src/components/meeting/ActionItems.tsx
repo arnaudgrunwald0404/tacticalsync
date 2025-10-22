@@ -1,4 +1,4 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -163,13 +163,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     due_date: null as Date | null
   });
 
-  useEffect(() => {
-    if (teamId) {
-      fetchMembers();
-      fetchCurrentUser();
-    }
-  }, [teamId]);
-
   useImperativeHandle(ref, () => ({
     startCreating: () => {
       // Focus the title input
@@ -180,7 +173,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     },
   }));
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     // Fetch team members first
     const { data: teamMembers } = await supabase
       .from("team_members")
@@ -210,9 +203,9 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     });
     
     setMembers(membersWithProfiles);
-  };
+  }, [teamId]);
 
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -227,7 +220,14 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         variant: "destructive",
       });
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (teamId) {
+      fetchMembers();
+      fetchCurrentUser();
+    }
+  }, [teamId, fetchMembers, fetchCurrentUser]);
 
   const handleAddItem = async () => {
     if (!newItem.title.trim()) return;

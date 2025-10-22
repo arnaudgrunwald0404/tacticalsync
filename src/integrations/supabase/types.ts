@@ -218,6 +218,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_meeting_instance_priorities_assigned_to"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meeting_instance_priorities_instance_id_fkey"
             columns: ["instance_id"]
             isOneToOne: false
@@ -267,6 +274,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_meeting_instance_topics_assigned_to"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "meeting_instance_topics_instance_id_fkey"
             columns: ["instance_id"]
@@ -388,6 +402,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_meeting_series_action_items_assigned_to"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meeting_series_action_items_series_id_fkey"
             columns: ["series_id"]
             isOneToOne: false
@@ -437,6 +458,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_meeting_series_agenda_assigned_to"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "meeting_series_agenda_series_id_fkey"
             columns: ["series_id"]

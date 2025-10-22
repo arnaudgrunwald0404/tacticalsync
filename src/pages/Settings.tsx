@@ -71,24 +71,29 @@ const Settings = () => {
 
       setUserEmail(user.email || "");
 
-      // Check if user is an admin on any team
-      const { data: teamMemberships, error: membershipError } = await supabase
-        .from("team_members")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin");
+      // Check if user is superadmin first
+      const isSuperAdmin = user.email === "agrunwald@clearcompany.com";
+      
+      if (!isSuperAdmin) {
+        // Check if user is an admin on any team
+        const { data: teamMemberships, error: membershipError } = await supabase
+          .from("team_members")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin");
 
-      if (membershipError) throw membershipError;
+        if (membershipError) throw membershipError;
 
-      // If user is not an admin on any team, redirect to dashboard
-      if (!teamMemberships || teamMemberships.length === 0) {
-        toast({
-          title: "Access Denied",
-          description: "You need admin privileges to access settings",
-          variant: "destructive",
-        });
-        navigate("/dashboard");
-        return;
+        // If user is not an admin on any team, redirect to dashboard
+        if (!teamMemberships || teamMemberships.length === 0) {
+          toast({
+            title: "Access Denied",
+            description: "You need admin privileges to access settings",
+            variant: "destructive",
+          });
+          navigate("/dashboard");
+          return;
+        }
       }
       
       await fetchTemplates();
