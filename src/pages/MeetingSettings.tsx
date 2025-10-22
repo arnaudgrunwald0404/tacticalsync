@@ -197,6 +197,7 @@ const MeetingSettings = () => {
         team_id: teamId,
         email,
         invited_by: user.id,
+        role: 'member' as const,
         status: "pending",
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       }));

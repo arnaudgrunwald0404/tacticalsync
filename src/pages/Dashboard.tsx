@@ -141,88 +141,141 @@ const Dashboard = () => {
       setProfile(profile);
     }
 
-    await fetchPendingInvitations();
-    await fetchTeams();
+    // Only fetch data if user has teams
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user?.id) {
+      const { data: userTeams } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", userData.user.id);
+      
+      if (userTeams && userTeams.length > 0) {
+        await fetchPendingInvitations();
+        await fetchTeams();
+      } else {
+        // User has no teams, set empty arrays
+        setPendingInvitations([]);
+        setTeams([]);
+        setMeetings({});
+      }
+    }
     setLoading(false);
   };
 
   const fetchTeams = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    
-    const { data, error } = await supabase
-      .from("team_members")
-      .select(`
-        *,
-        teams:team_id (
-          id,
-          name,
-          created_at,
-          invite_code
-        )
-      `)
-      .eq("user_id", userData.user?.id);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (!userData.user?.id) {
+        setTeams([]);
+        return;
+      }
 
-    if (error) {
-      console.error("Error fetching teams:", error);
-      return;
+      const { data, error } = await supabase
+        .from("team_members")
+        .select(`
+          *,
+          teams:team_id (
+            id,
+            name,
+            created_at,
+            invite_code
+          )
+        `)
+        .eq("user_id", userData.user.id);
+
+      if (error) {
+        console.error("Error fetching teams:", error);
+        setTeams([]);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setTeams([]);
+        return;
+      }
+
+      // Fetch member counts, team members, and meetings for each team
+      const teamsWithData = await Promise.all(
+        data.map(async (teamMember) => {
+          try {
+            const { count } = await supabase
+              .from("team_members")
+              .select("*", { count: "exact", head: true })
+              .eq("team_id", teamMember.teams.id);
+
+            // Fetch team members with their profiles
+            const { data: teamMembers } = await supabase
+              .from("team_members")
+              .select(`
+                *,
+                profiles (
+                  id,
+                  full_name,
+                  avatar_url,
+                  avatar_name
+                )
+              `)
+              .eq("team_id", teamMember.teams.id);
+
+            // Fetch meeting series for this team
+            const { data: teamMeetings } = await supabase
+              .from("meeting_series")
+              .select("*")
+              .eq("team_id", teamMember.teams.id)
+              .order("created_at", { ascending: true });
+
+            // Fetch pending invitations with emails (handle errors gracefully)
+            let invitations = [];
+            let invitedCount = 0;
+            try {
+              const { data: invitationsData, count: invitedCountData } = await supabase
+                .from("invitations")
+                .select("email", { count: "exact" })
+                .eq("team_id", teamMember.teams.id)
+                .eq("status", "pending")
+                .gt("expires_at", new Date().toISOString());
+              
+              invitations = invitationsData || [];
+              invitedCount = invitedCountData || 0;
+            } catch (invitationError) {
+              console.warn("Error fetching invitations for team:", teamMember.teams.id, invitationError);
+            }
+
+            return {
+              ...teamMember,
+              memberCount: count || 0,
+              invitedCount: invitedCount,
+              invitedEmails: invitations.map(inv => inv.email) || [],
+              teamMembers: teamMembers || [],
+              meetings: teamMeetings || [],
+            };
+          } catch (error) {
+            console.error("Error processing team member:", teamMember.teams.id, error);
+            return {
+              ...teamMember,
+              memberCount: 0,
+              invitedCount: 0,
+              invitedEmails: [],
+              teamMembers: [],
+              meetings: [],
+            };
+          }
+        })
+      );
+
+      setTeams(teamsWithData);
+
+      // Organize meetings by team
+      const meetingsByTeam: Record<string, any[]> = {};
+      teamsWithData.forEach((team) => {
+        meetingsByTeam[team.teams.id] = team.meetings;
+      });
+      setMeetings(meetingsByTeam);
+    } catch (error: unknown) {
+      console.error("Error in fetchTeams:", error);
+      setTeams([]);
     }
-
-    // Fetch member counts, team members, and meetings for each team
-    const teamsWithData = await Promise.all(
-      (data || []).map(async (teamMember) => {
-        const { count } = await supabase
-          .from("team_members")
-          .select("*", { count: "exact", head: true })
-          .eq("team_id", teamMember.teams.id);
-
-        // Fetch team members with their profiles
-        const { data: teamMembers } = await supabase
-          .from("team_members")
-          .select(`
-            *,
-            profiles (
-              id,
-              full_name,
-              avatar_url,
-              avatar_name
-            )
-          `)
-          .eq("team_id", teamMember.teams.id);
-
-        // Fetch meeting series for this team
-        const { data: teamMeetings } = await supabase
-          .from("meeting_series")
-          .select("*")
-          .eq("team_id", teamMember.teams.id)
-          .order("created_at", { ascending: true });
-
-        // Fetch pending invitations with emails
-        const { data: invitations, count: invitedCount } = await supabase
-          .from("invitations")
-          .select("email", { count: "exact" })
-          .eq("team_id", teamMember.teams.id)
-          .eq("status", "pending")
-          .gt("expires_at", new Date().toISOString());
-
-        return {
-          ...teamMember,
-          memberCount: count || 0,
-          invitedCount: invitedCount || 0,
-          invitedEmails: invitations?.map(inv => inv.email) || [],
-          teamMembers: teamMembers || [],
-          meetings: teamMeetings || [],
-        };
-      })
-    );
-
-    setTeams(teamsWithData);
-
-    // Organize meetings by team
-    const meetingsByTeam: Record<string, any[]> = {};
-    teamsWithData.forEach((team) => {
-      meetingsByTeam[team.teams.id] = team.meetings;
-    });
-    setMeetings(meetingsByTeam);
   };
 
   const handleSignOut = async () => {
@@ -272,27 +325,28 @@ const Dashboard = () => {
   const fetchPendingInvitations = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) return;
+      if (!user?.email) {
+        setPendingInvitations([]);
+        return;
+      }
 
+      // First check if invitations table exists and has data
       const { data: invitations, error } = await supabase
         .from("invitations")
-        .select(`
-          *,
-          teams:team_id (
-            id,
-            name,
-            abbreviated_name
-          ),
-          invited_by_profile:invited_by (
-            full_name
-          )
-        `)
+        .select("*")
         .eq("email", user.email.toLowerCase())
         .eq("status", "pending")
         .gt("expires_at", new Date().toISOString());
 
       if (error) {
         console.error("Error fetching invitations:", error);
+        setPendingInvitations([]);
+        return;
+      }
+
+      // If no invitations, set empty array and return
+      if (!invitations || invitations.length === 0) {
+        setPendingInvitations([]);
         return;
       }
 
@@ -305,9 +359,15 @@ const Dashboard = () => {
       const memberTeamIds = new Set(memberTeams?.map(m => m.team_id) || []);
 
       // Filter out invitations for teams user is already a member of
-      const validInvitations = (invitations || []).filter(
+      const validInvitations = invitations.filter(
         inv => !memberTeamIds.has(inv.team_id)
       );
+
+      // If no valid invitations, set empty array
+      if (validInvitations.length === 0) {
+        setPendingInvitations([]);
+        return;
+      }
 
       // Fetch meetings for each invited team
       const invitationsWithMeetings = await Promise.all(
@@ -328,6 +388,7 @@ const Dashboard = () => {
       setPendingInvitations(invitationsWithMeetings);
     } catch (error: unknown) {
       console.error("Error in fetchPendingInvitations:", error);
+      setPendingInvitations([]);
     }
   };
 
@@ -415,13 +476,15 @@ const Dashboard = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+      <header className="border-b bg-card/50 sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          <div className="flex items-center gap-1 sm:gap-2">
+          
+          {/* Avatar positioned absolutely to avoid clipping */}
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 sm:h-10">
+                <div className="flex items-center gap-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md px-3 py-2 transition-colors">
                   <FancyAvatar 
                     name={(profile?.avatar_name && profile.avatar_name.trim())
                       || `${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim()
@@ -429,14 +492,14 @@ const Dashboard = () => {
                       || (profile?.email || 'User')}
                     displayName={`${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim() || (profile?.email?.split('@')[0] || 'U')}
                     size="sm"
-                    className="mr-2"
+                    className="flex-shrink-0"
                   />
                   <div className="flex flex-col items-start">
                     <span className="text-sm leading-none">
                       {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
                     </span>
                   </div>
-                </Button>
+                </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
@@ -462,6 +525,7 @@ const Dashboard = () => {
         <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
+            
             <p className="text-sm sm:text-base text-muted-foreground">
               Manage your tactical meetings and collaborate with your teams
             </p>

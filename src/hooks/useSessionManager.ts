@@ -20,25 +20,28 @@ export function useSessionManager() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.warn('No active session found during refresh attempt');
-        navigate('/auth');
+        // Don't immediately redirect, let the user finish their current action
         return;
       }
 
       const { error } = await supabase.auth.refreshSession();
       if (error) {
         console.error('Failed to refresh session:', error);
-        navigate('/auth');
+        // Don't immediately redirect, let the user finish their current action
       }
     } catch (error) {
       console.error('Error during session refresh:', error);
-      navigate('/auth');
+      // Don't immediately redirect, let the user finish their current action
     }
-  }, [navigate]);
+  }, []);
 
   const checkSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      navigate('/auth');
+      // Only redirect if we're not on the auth page already
+      if (window.location.pathname !== '/auth') {
+        navigate('/auth');
+      }
       return;
     }
 

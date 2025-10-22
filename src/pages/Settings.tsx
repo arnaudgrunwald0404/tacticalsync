@@ -155,6 +155,16 @@ const Settings = () => {
   };
 
   const handleEditTemplate = (template: Template) => {
+    // Check if user is trying to edit a system template without superadmin privileges
+    if ((template as any).is_system && !isSuperAdmin) {
+      toast({
+        title: "Access Denied",
+        description: "Only superadmin can edit system templates",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setEditingTemplate(template);
     setTemplateName(template.name);
     setTemplateItems(template.items || []);
@@ -401,6 +411,16 @@ const Settings = () => {
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
 
   const handleDeleteTemplate = async (template: Template) => {
+    // Check if user is trying to delete a system template without superadmin privileges
+    if ((template as any).is_system && !isSuperAdmin) {
+      toast({
+        title: "Access Denied",
+        description: "Only superadmin can delete system templates",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setTemplateToDelete(template);
   };
 
@@ -494,6 +514,7 @@ const Settings = () => {
   }
 
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
+  const isSuperAdmin = userEmail === "agrunwald@clearcompany.com";
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
@@ -609,7 +630,7 @@ const Settings = () => {
                           <p className="text-sm text-muted-foreground mt-1">{(template as any).description}</p>
                         )}
                       </div>
-                      {!(template as any).is_system && (
+                      {(!(template as any).is_system || isSuperAdmin) && (
                         <div className="flex gap-2">
                           <Button
                             variant="ghost"

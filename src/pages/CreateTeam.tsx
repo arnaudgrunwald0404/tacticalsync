@@ -23,11 +23,31 @@ const CreateTeam = () => {
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // First, refresh the session to ensure we have a valid token
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.error("Failed to refresh session:", refreshError);
+        toast({
+          title: "Session expired",
+          description: "Please sign in again",
+          variant: "destructive",
+        });
         navigate("/auth");
         return;
       }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Not authenticated",
+          description: "Please sign in again",
+          variant: "destructive",
+        });
+        navigate("/auth");
+        return;
+      }
+
+      console.log("Creating team with user:", user.id);
 
       // Create team
       const { data: team, error: teamError } = await supabase
@@ -39,7 +59,12 @@ const CreateTeam = () => {
         .select()
         .single();
 
-      if (teamError) throw teamError;
+      if (teamError) {
+        console.error("Team creation error:", teamError);
+        throw teamError;
+      }
+
+      console.log("Team created:", team.id);
 
       // Add creator as admin
       const { error: memberError } = await supabase
@@ -50,7 +75,12 @@ const CreateTeam = () => {
           role: "admin",
         });
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error("Team member creation error:", memberError);
+        throw memberError;
+      }
+
+      console.log("Team member added successfully");
 
       toast({
         title: "Team created!",
@@ -59,6 +89,7 @@ const CreateTeam = () => {
 
       navigate(`/team/${team.id}/invite`);
     } catch (error: unknown) {
+      console.error("Full error:", error);
       toast({
         title: "Error creating team",
         description: error instanceof Error ? error.message : "Failed to create team",

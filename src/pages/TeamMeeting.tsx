@@ -321,6 +321,7 @@ const TeamMeeting = () => {
       if (prioritiesError) {
         console.error("Error fetching priorities:", prioritiesError);
       } else {
+        console.log("Fetched priorities data:", prioritiesData);
         setPriorityItems(prioritiesData || []);
       }
 
@@ -338,6 +339,7 @@ const TeamMeeting = () => {
       if (topicsError) {
         console.error("Error fetching topics:", topicsError);
       } else {
+        console.log("Fetched topics data:", topicsData);
         setTeamTopicItems(topicsData || []);
       }
 

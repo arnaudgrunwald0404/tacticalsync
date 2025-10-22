@@ -122,7 +122,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
     switch (pattern) {
       case "triangles":
         return (
-          <svg viewBox="0 0 100 100" className="absolute inset-0">
+          <svg viewBox="0 0 100 100" className="absolute inset-0" style={{ shapeRendering: 'crispEdges' }}>
             <defs>
               <pattern id={`triangles-${name}`} patternUnits="userSpaceOnUse" width="20" height="20">
                 <polygon points="10,2 18,16 2,16" fill={colors[0]} opacity="0.8"/>
@@ -140,7 +140,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
       
       case "circles":
         return (
-          <svg viewBox="0 0 100 100" className="absolute inset-0">
+          <svg viewBox="0 0 100 100" className="absolute inset-0" style={{ shapeRendering: 'crispEdges' }}>
             <defs>
               <pattern id={`circles-${name}`} patternUnits="userSpaceOnUse" width="25" height="25">
                 <circle cx="12.5" cy="12.5" r="8" fill={colors[0]} opacity="0.7"/>
@@ -323,7 +323,14 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
   };
 
   return (
-    <div className={`relative rounded-full overflow-hidden ${sizeClasses[size]} ${className}`}>
+    <div 
+      className={`relative rounded-full overflow-hidden ${sizeClasses[size]} ${className}`} 
+      style={{ 
+        zIndex: 1, 
+        imageRendering: 'crisp-edges',
+        shapeRendering: 'crispEdges'
+      } as React.CSSProperties}
+    >
       {/* Background pattern */}
       {renderPattern()}
       
@@ -345,10 +352,15 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
       />
       
       {/* Initials */}
-      <div className="relative z-10 flex items-center justify-center h-full">
+      <div className="relative z-20 flex items-center justify-center h-full">
         <span 
           className="font-black text-white drop-shadow-lg tracking-tighter"
-          style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.7), 0 0 10px rgba(255,255,255,0.3)' }}
+          style={{ 
+            textShadow: '2px 2px 4px rgba(0,0,0,0.7), 0 0 10px rgba(255,255,255,0.3)',
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+            textRendering: 'optimizeLegibility'
+          }}
         >
           {initials}
         </span>

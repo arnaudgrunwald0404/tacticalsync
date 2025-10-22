@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 const test = baseTest.extend({});
 
 test.describe('Team Management Flow', () => {
-  let supabaseAdmin: any;
-  let testUser: any;
+  let supabaseAdmin: { id: string; email: string };
+  let testUser: { id: string; email: string };
 
   test.beforeEach(async () => {
     // Create admin client for user management

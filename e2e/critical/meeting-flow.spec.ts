@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 const test = baseTest.extend({});
 
 test.describe('Meeting Flow', () => {
-  let supabaseAdmin: any;
-  let testUser: any;
+  let supabaseAdmin: { id: string; email: string };
+  let testUser: { id: string; email: string };
   let teamId: string;
 
   test.beforeEach(async () => {

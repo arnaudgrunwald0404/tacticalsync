@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 const test = baseTest.extend({});
 
 test.describe('Meeting Instance Priorities', () => {
-  let supabaseAdmin: any;
-  let testUser: any;
+  let supabaseAdmin: ReturnType<typeof createClient>;
+  let testUser: { id: string; email: string };
   let teamId: string;
   let meetingSeriesId: string;
   let meetingInstanceId: string;

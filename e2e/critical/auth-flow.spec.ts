@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const test = baseTest.extend({});
 
 test.describe('Authentication Flow', () => {
-  let supabaseAdmin: any;
+  let supabaseAdmin: { id: string; email: string };
 
   test.beforeEach(async () => {
     // Create admin client for user management

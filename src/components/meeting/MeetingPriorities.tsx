@@ -142,6 +142,10 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [groupedPriorities, setGroupedPriorities] = useState<{ [key: string]: Priority[] }>({});
 
+  // Debug logging
+  console.log('MeetingPriorities received items:', items);
+  console.log('MeetingPriorities items length:', items?.length || 0);
+
   useEffect(() => {
     if (teamId) {
       fetchMembers();

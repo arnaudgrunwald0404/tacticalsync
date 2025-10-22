@@ -12,6 +12,8 @@ import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Arrow } from "@radix-ui/react-tooltip";
 import { formatNameWithInitial } from "@/lib/nameUtils";
 import { cn } from "@/lib/utils";
+import { Topic } from "@/types/topics";
+import { CompletionStatus } from "@/types/priorities";
 import {
   DndContext,
   closestCenter,
@@ -30,21 +32,15 @@ import {
 } from "@dnd-kit/sortable";
 
 interface TeamTopicsProps {
-  items: Array<{
-    id: string;
-    title: string;
-    notes?: string;
-    assigned_to?: string;
-    time_minutes?: number;
-    is_completed?: boolean;
-  }>;
+  items: Topic[];
   meetingId: string;
   teamId: string;
   teamName: string;
   onUpdate: () => void;
 }
 
-interface TeamMember {
+interface DropdownMember {
+  id: string;
   user_id: string;
   profiles?: {
     full_name?: string;
@@ -58,7 +54,7 @@ interface TeamMember {
 
 interface SortableTopicRowProps {
   item: TeamTopicsProps['items'][0];
-  members: TeamMember[];
+  members: DropdownMember[];
   onToggleComplete: (checked: boolean) => void;
   onDelete: (id: string) => void;
 }
@@ -95,7 +91,7 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
           <GripVertical className="h-4 w-4" />
         </div>
         <Checkbox
-          checked={item.is_completed}
+          checked={item.completion_status === 'completed'}
           onCheckedChange={onToggleComplete}
         />
         <div className="text-base truncate">{item.title}</div>
@@ -152,7 +148,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [members, setMembers] = useState<DropdownMember[]>([]);
   const [newTopic, setNewTopic] = useState({
     title: "",
     assigned_to: "",
@@ -194,16 +190,35 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
   };
 
   const fetchMembers = async () => {
-    const { data } = await supabase
+    // Fetch team members first
+    const { data: teamMembers } = await supabase
       .from("team_members")
-      .select(`
-        id,
-        user_id,
-        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
-      `)
+      .select("id, user_id")
       .eq("team_id", teamId);
     
-    setMembers(data || []);
+    if (!teamMembers || teamMembers.length === 0) {
+      setMembers([]);
+      return;
+    }
+    
+    // Fetch profiles for all team members
+    const userIds = teamMembers.map(member => member.user_id);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+      .in("id", userIds);
+    
+    // Combine team members with their profiles
+    const membersWithProfiles = teamMembers.map(member => {
+      const profile = profiles?.find(p => p.id === member.user_id);
+      return {
+        id: member.id,
+        user_id: member.user_id,
+        profiles: profile || null
+      };
+    });
+    
+    setMembers(membersWithProfiles);
   };
 
   const handleAdd = async () => {
@@ -222,10 +237,9 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       if (!user) throw new Error("Not authenticated");
 
       const { error } = await supabase
-        .from("meeting_items")
+        .from("meeting_instance_topics")
         .insert({
-          meeting_id: meetingId,
-          type: "team_topic",
+          instance_id: meetingId,
           title: newTopic.title,
           assigned_to: newTopic.assigned_to || null,
           time_minutes: newTopic.time_minutes,
@@ -269,7 +283,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
 
   const handleDelete = async (itemId: string) => {
     const { error } = await supabase
-      .from("meeting_items")
+      .from("meeting_instance_topics")
       .delete()
       .eq("id", itemId);
 
@@ -309,33 +323,25 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     // Update order_index for all affected items
     const updates = reorderedItems.map((item, index) => ({
       id: item.id,
-      meeting_id: meetingId,
-      order_index: index,
-      title: item.title,
-      type: "team_topic" as const,
-      notes: item.notes || null,
-      assigned_to: item.assigned_to || null,
-      time_minutes: item.time_minutes || 5,
-      is_completed: item.is_completed || false
+      order_index: index
     }));
 
-    const { error } = await supabase
-      .from("meeting_items")
-      .upsert(updates, { onConflict: "id" });
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update item order",
-        variant: "destructive",
-      });
-      return;
+    // Update each item individually
+    for (const update of updates) {
+      const { error } = await supabase
+        .from("meeting_instance_topics")
+        .update({ order_index: update.order_index })
+        .eq("id", update.id);
+      
+      if (error) {
+        throw error;
+      }
     }
 
     onUpdate();
   };
 
-  const getDisplayName = (member: TeamMember) => {
+  const getDisplayName = (member: DropdownMember) => {
     const firstName = member.profiles?.first_name || "";
     const lastName = member.profiles?.last_name || "";
     const email = member.profiles?.email || "";
@@ -370,8 +376,8 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                   members={members}
                   onToggleComplete={async (checked) => {
                     const { error } = await supabase
-                      .from("meeting_items")
-                      .update({ is_completed: Boolean(checked) })
+                      .from("meeting_instance_topics")
+                      .update({ completion_status: checked ? 'completed' : 'not_completed' })
                       .eq("id", item.id);
                     
                     if (!error) {

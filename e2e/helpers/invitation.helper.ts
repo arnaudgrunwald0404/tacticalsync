@@ -44,6 +44,7 @@ export async function createInvitation(
       team_id: teamId,
       email,
       invited_by: invitedBy,
+      role: 'member',
       status: 'pending',
     })
     .select()

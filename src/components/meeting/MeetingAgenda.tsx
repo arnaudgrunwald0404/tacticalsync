@@ -55,10 +55,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // Get the recurring meeting ID for this meeting instance
+      // Get the series ID for this meeting instance
       const { data: meetingData, error: meetingError } = await supabase
         .from("meeting_instances")
-        .select("recurring_meeting_id")
+        .select("series_id")
         .eq("id", meetingId)
         .single();
 
@@ -68,13 +68,13 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       const { error: deleteError } = await supabase
         .from("meeting_series_agenda")
         .delete()
-        .eq("series_id", meetingData.recurring_meeting_id);
+        .eq("series_id", meetingData.series_id);
 
       if (deleteError) throw deleteError;
 
       // Create agenda items from template
       const items = template.items.map((item: any, index: number) => ({
-        series_id: meetingData.recurring_meeting_id,
+        series_id: meetingData.series_id,
         title: item.title,
         notes: "",
         time_minutes: item.duration_minutes,
@@ -205,10 +205,10 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       const newItems = state.editingItems.filter(item => item.id.startsWith('temp-'));
       const existingItems = state.editingItems.filter(item => !item.id.startsWith('temp-'));
 
-      // Get the recurring meeting ID
+      // Get the series ID
       const { data: meetingData, error: meetingError } = await supabase
         .from("meeting_instances")
-        .select("recurring_meeting_id")
+        .select("series_id")
         .eq("id", meetingId)
         .single();
 
@@ -217,7 +217,7 @@ const MeetingAgenda = forwardRef<MeetingAgendaRef, MeetingAgendaProps>((props, r
       // Insert new items
       if (newItems.length > 0) {
         const itemsToInsert: AgendaItemInsert[] = newItems.map(item => ({
-          series_id: meetingData.recurring_meeting_id,
+          series_id: meetingData.series_id,
           title: item.title,
           notes: item.notes || null,
           assigned_to: item.assigned_to,

@@ -32,8 +32,21 @@ import { formatNameWithInitial } from "@/lib/nameUtils";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import CommentsDialog from "./CommentsDialog";
 import { ActionItem, ActionItemInsert } from "@/types/action-items";
-import { TeamMember } from "@/types/meeting";
+// import { TeamMember } from "@/types/common";
 import { CompletionStatus } from "@/types/priorities";
+
+interface DropdownMember {
+  id: string;
+  user_id: string;
+  profiles?: {
+    full_name?: string;
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    avatar_url?: string;
+    avatar_name?: string;
+  };
+}
 
 interface MeetingActionItemsProps {
   items: ActionItem[];
@@ -141,7 +154,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     })
   );
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
-  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [members, setMembers] = useState<DropdownMember[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     title: "",
@@ -168,18 +181,35 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
   }));
 
   const fetchMembers = async () => {
-    const { data } = await supabase
+    // Fetch team members first
+    const { data: teamMembers } = await supabase
       .from("team_members")
-      .select(`
-        id,
-        user_id,
-        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
-      `)
+      .select("id, user_id")
       .eq("team_id", teamId);
     
-    if (data) {
-      setMembers(data);
+    if (!teamMembers || teamMembers.length === 0) {
+      setMembers([]);
+      return;
     }
+    
+    // Fetch profiles for all team members
+    const userIds = teamMembers.map(member => member.user_id);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+      .in("id", userIds);
+    
+    // Combine team members with their profiles
+    const membersWithProfiles = teamMembers.map(member => {
+      const profile = profiles?.find(p => p.id === member.user_id);
+      return {
+        id: member.id,
+        user_id: member.user_id,
+        profiles: profile || null
+      };
+    });
+    
+    setMembers(membersWithProfiles);
   };
 
   const fetchCurrentUser = async () => {
@@ -339,7 +369,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     }
   };
 
-  const getDisplayName = (member: TeamMember) => {
+  const getDisplayName = (member: DropdownMember) => {
     if (!member.profiles) return "Unknown";
     const firstName = member.profiles.first_name || "";
     const lastName = member.profiles.last_name || "";
@@ -661,7 +691,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         <CommentsDialog
           itemId={selectedItem.id}
           itemTitle={selectedItem.title}
-          itemType="action_item"
           open={!!selectedItem}
           onOpenChange={(open) => !open && setSelectedItem(null)}
         />

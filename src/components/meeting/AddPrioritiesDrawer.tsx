@@ -172,10 +172,9 @@ const AddPrioritiesDrawer = ({
       if (!user) throw new Error("Not authenticated");
 
       const { error } = await supabase
-        .from("meeting_items")
+        .from("meeting_instance_topics")
         .insert({
-          meeting_id: meetingId,
-          type: "team_topic",
+          instance_id: meetingId,
           title: newTopic.title,
           assigned_to: newTopic.assigned_to || null,
           time_minutes: newTopic.time_minutes,
@@ -223,25 +222,30 @@ const AddPrioritiesDrawer = ({
       // Insert into meeting_instance_priorities table
       const prioritiesToInsert = filledPriorities.map((priority, index) => ({
         instance_id: meetingId,
+        title: priority.priority,        // Title field (required)
         outcome: priority.priority,      // Desired outcome
         activities: priority.notes || "", // Supporting activities
-              assigned_to: priority.assigned_to || null,
+        assigned_to: priority.assigned_to || null,
+        completion_status: 'not_started' as const,
         order_index: index,
-              created_by: user.id
+        created_by: user.id
       }));
 
       console.log('Data to insert:', prioritiesToInsert);
 
       // Insert new priorities
       if (prioritiesToInsert.length > 0) {
-        const { error } = await supabase
+        const { data: insertedData, error } = await supabase
           .from("meeting_instance_priorities")
-          .insert(prioritiesToInsert);
+          .insert(prioritiesToInsert)
+          .select();
         
         if (error) {
           console.error('Insert error:', error);
           throw error;
         }
+        
+        console.log('Successfully inserted priorities:', insertedData);
       }
 
       const totalChanges = prioritiesToInsert.length;
