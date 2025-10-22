@@ -97,7 +97,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       {/* Floating Toolbar */}
       {(isFocused || isToolbarHovered) && (
         <div 
-          className="absolute bg-white border shadow-lg rounded-lg -top-12 right-0 p-2 flex gap-1 z-[100]"
+          className="absolute bg-white border shadow-lg rounded-lg -top-14 right-0 p-2 flex gap-1 z-[9999]"
           onMouseEnter={() => setIsToolbarHovered(true)}
           onMouseLeave={() => setIsToolbarHovered(false)}
         >

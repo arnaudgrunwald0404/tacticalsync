@@ -64,6 +64,7 @@ const TeamMeeting = () => {
   const [priorityItems, setPriorityItems] = useState<any[]>([]);
   const [teamTopicItems, setTeamTopicItems] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any[]>([]);
+  const [currentSeriesId, setCurrentSeriesId] = useState<string | null>(null);
   const [teamAdmin, setTeamAdmin] = useState<TeamAdmin | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -311,6 +312,9 @@ const TeamMeeting = () => {
         console.error("Meeting not found:", meetingId);
         return;
       }
+
+      // Store the series_id for use in ActionItems
+      setCurrentSeriesId(meetingData.series_id);
 
       // Fetch agenda items from meeting_series_agenda
       const { data: agendaData, error: agendaError } = await supabase
@@ -879,7 +883,7 @@ const TeamMeeting = () => {
                 <ActionItems
                 ref={actionItemsRef}
                 items={actionItems}
-                meetingId={meeting?.id}
+                meetingId={currentSeriesId || ""}
                 teamId={teamId}
                 onUpdate={() => fetchMeetingItems(meeting?.id)}
               />

@@ -404,7 +404,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
         {/* Desktop Table View */}
         <div className="hidden sm:block border rounded-lg overflow-hidden relative">
-          <div className="sticky top-0 z-20 bg-background">
+          <div className="sticky top-0 z-5 bg-background">
             <div className={`bg-muted/50 px-4 py-2 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 text-sm font-medium text-muted-foreground`}>
               <div>Who</div>
               {showPreviousPeriod && (

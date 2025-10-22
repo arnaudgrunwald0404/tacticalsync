@@ -240,6 +240,16 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       return;
     }
 
+    // Check if due date is in the past
+    if (newItem.due_date && newItem.due_date < new Date()) {
+      toast({
+        title: "Invalid Due Date",
+        description: "Action items cannot be set for a past date",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -533,6 +543,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                       mode="single"
                       selected={newItem.due_date || undefined}
                       onSelect={(date) => setNewItem(prev => ({ ...prev, due_date: date }))}
+                      disabled={(date) => date < new Date()}
                       initialFocus
                     />
                   </PopoverContent>
@@ -664,6 +675,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                       mode="single"
                       selected={newItem.due_date || undefined}
                       onSelect={(date) => setNewItem(prev => ({ ...prev, due_date: date }))}
+                      disabled={(date) => date < new Date()}
                       initialFocus
                     />
                   </PopoverContent>

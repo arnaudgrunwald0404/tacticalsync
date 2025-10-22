@@ -55,6 +55,7 @@ export function AgendaSidebar({
   const { debouncedSave, immediateSave } = useDebouncedAutosave({
     delay: 2000,
     onSave: (itemId, content) => {
+      console.log('Autosaving notes for item:', itemId, 'content:', content);
       const plainText = htmlToPlainText(content);
       actions.handleUpdateNotes(itemId, plainText);
     }
@@ -422,6 +423,7 @@ export function AgendaSidebar({
                                   <RichTextEditor
                                     content={notesContent[item.id] || item.notes || ""}
                                     onChange={(content) => {
+                                      console.log('Notes onChange for item:', item.id, 'content:', content);
                                       // Track content changes locally
                                       setNotesContent(prev => ({
                                         ...prev,
@@ -431,6 +433,7 @@ export function AgendaSidebar({
                                       debouncedSave(item.id, content);
                                     }}
                                     onBlur={(content) => {
+                                      console.log('Notes onBlur for item:', item.id, 'content:', content);
                                       // Save immediately on blur
                                       immediateSave(item.id, content);
                                     }}
