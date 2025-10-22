@@ -132,10 +132,11 @@ const MeetingSettings = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("meeting_series")
         .update({ name: meetingName })
-        .eq("id", meetingId);
+        .eq("id", meetingId)
+        .select();
 
       if (error) throw error;
 
