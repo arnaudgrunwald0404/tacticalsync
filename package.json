@@ -16,7 +16,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:validate": "node scripts/validate-migrations.js",
+    "db:health": "node scripts/check-db-health.js",
+    "db:reset": "supabase db reset",
+    "db:check": "npm run db:validate && npm run db:health",
+    "predev": "npm run db:check"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

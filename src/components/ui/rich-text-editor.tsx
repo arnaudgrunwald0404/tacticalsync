@@ -16,12 +16,13 @@ import { useState, useEffect } from 'react'
 interface RichTextEditorProps {
   content?: string
   onChange?: (content: string) => void
+  onBlur?: (content: string) => void
   placeholder?: string
   className?: string
   readOnly?: boolean
 }
 
-const RichTextEditor = ({ content = '', onChange, placeholder, className = '', readOnly = false }: RichTextEditorProps) => {
+const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className = '', readOnly = false }: RichTextEditorProps) => {
   // Clean up empty lines when displaying existing content
   const cleanContent = content ? content.replace(/(<p><\/p>)+/g, '') : content;
   const [isFocused, setIsFocused] = useState(false)
@@ -44,6 +45,9 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '', r
     },
     onFocus: () => setIsFocused(true),
     onBlur: ({ editor }) => {
+      // Call onBlur callback with current content
+      onBlur?.(editor.getHTML())
+      
       // Delay hiding toolbar to allow for toolbar interactions
       setTimeout(() => {
         if (!isToolbarHovered) {
@@ -57,6 +61,13 @@ const RichTextEditor = ({ content = '', onChange, placeholder, className = '', r
       },
     },
   })
+
+  // Update editor content when prop changes
+  useEffect(() => {
+    if (editor && cleanContent !== editor.getHTML()) {
+      editor.commands.setContent(cleanContent)
+    }
+  }, [editor, cleanContent])
 
   if (!editor) {
     return null

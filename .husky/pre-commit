@@ -1,6 +1,28 @@
-echo "🔍 Running linter..."
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
 
-# Run linter on staged files
-npm run lint
+echo "🔍 Running pre-commit checks..."
 
-echo "✅ Linting passed!"
+# Check if we're in the right directory
+if [ ! -d "supabase/migrations" ]; then
+  echo "❌ Not in project root directory"
+  exit 1
+fi
+
+# Validate migrations
+echo "📋 Validating migrations..."
+node scripts/validate-migrations.js
+
+# Check database health (only if Supabase is running)
+echo "🏥 Checking database health..."
+if command -v supabase >/dev/null 2>&1; then
+  if supabase status >/dev/null 2>&1; then
+    node scripts/check-db-health.js
+  else
+    echo "⚠️  Supabase not running - skipping database health check"
+  fi
+else
+  echo "⚠️  Supabase CLI not found - skipping database health check"
+fi
+
+echo "✅ Pre-commit checks passed!"

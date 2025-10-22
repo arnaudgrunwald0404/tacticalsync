@@ -46,11 +46,7 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
                       const member = teamMembers.find(m => m.user_id === topic.assigned_to);
                       if (!member?.profiles) return null;
                       
-                      const displayName = formatNameWithInitial(
-                        member.profiles.first_name,
-                        member.profiles.last_name,
-                        member.profiles.email
-                      );
+                      const displayName = member.profiles?.first_name;
 
                       return (
                         <>
@@ -78,11 +74,8 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
             </SelectTrigger>
             <SelectContent>
               {teamMembers.map((member) => {
-                const displayName = formatNameWithInitial(
-                  member.profiles?.first_name,
-                  member.profiles?.last_name,
-                  member.profiles?.email
-                );
+                const displayName = member.profiles?.first_name
+                ;
                 
                 return (
                   <SelectItem key={member.user_id} value={member.user_id}>
@@ -163,11 +156,7 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
           </SelectTrigger>
           <SelectContent>
             {teamMembers.map((member) => {
-              const displayName = formatNameWithInitial(
-                member.profiles?.first_name,
-                member.profiles?.last_name,
-                member.profiles?.email
-              );
+              const displayName = member.profiles?.first_name;
               
               return (
                 <SelectItem key={member.user_id} value={member.user_id}>

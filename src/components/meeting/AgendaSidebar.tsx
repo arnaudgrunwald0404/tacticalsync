@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
 import { htmlToPlainText } from "@/lib/htmlUtils";
+import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { AgendaItem, AgendaItemWithProfile } from "@/types/agenda";
 import { TeamMember } from "@/types/common";
 import { MeetingDataActions } from "@/types/meeting";
@@ -46,8 +47,18 @@ export function AgendaSidebar({
   const displayItems = isEditingAgenda ? editingItems : items;
   console.log('AgendaSidebar state:', { isEditingAgenda, editingItems, items, displayItems });
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
+  const [notesContent, setNotesContent] = useState<Record<string, string>>({});
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Debounced autosave for notes
+  const { debouncedSave, immediateSave } = useDebouncedAutosave({
+    delay: 2000,
+    onSave: (itemId, content) => {
+      const plainText = htmlToPlainText(content);
+      actions.handleUpdateNotes(itemId, plainText);
+    }
+  });
 
   const shouldShowNotes = (item: AgendaItemWithProfile) => {
     // Don't show notes when creating from scratch (item has a temp id)
@@ -56,11 +67,20 @@ export function AgendaSidebar({
   };
 
   const handleNotesToggle = (itemId: string) => {
-    setExpandedNotes(prev => 
-      prev.includes(itemId) 
-        ? prev.filter(id => id !== itemId)
-        : [...prev, itemId]
-    );
+    setExpandedNotes(prev => {
+      const isCurrentlyExpanded = prev.includes(itemId);
+      
+      if (isCurrentlyExpanded) {
+        // Save notes immediately when closing
+        const currentContent = notesContent[itemId];
+        if (currentContent !== undefined) {
+          immediateSave(itemId, currentContent);
+        }
+        return prev.filter(id => id !== itemId);
+      } else {
+        return [...prev, itemId];
+      }
+    });
   };
 
   // Auto-collapse empty notes after save
@@ -74,6 +94,19 @@ export function AgendaSidebar({
       );
     }
   }, [isEditingAgenda, items]);
+
+  // Initialize notes content when notes are opened
+  useEffect(() => {
+    expandedNotes.forEach(itemId => {
+      const item = items.find(i => i.id === itemId);
+      if (item) {
+        setNotesContent(prev => ({
+          ...prev,
+          [itemId]: item.notes || ""
+        }));
+      }
+    });
+  }, [expandedNotes, items]);
 
   const toggleTimer = () => {
     if (timerStarted) {
@@ -387,11 +420,19 @@ export function AgendaSidebar({
                               {!isEditingAgenda && shouldShowNotes(item) && (
                                 <div className="mt-3 pt-3 border-t">
                                   <RichTextEditor
-                                    content={item.notes || ""}
+                                    content={notesContent[item.id] || item.notes || ""}
                                     onChange={(content) => {
-                                      // Convert HTML to plain text when saving
-                                      const plainText = htmlToPlainText(content);
-                                      actions.handleUpdateNotes(item.id, plainText);
+                                      // Track content changes locally
+                                      setNotesContent(prev => ({
+                                        ...prev,
+                                        [item.id]: content
+                                      }));
+                                      // Trigger debounced autosave
+                                      debouncedSave(item.id, content);
+                                    }}
+                                    onBlur={(content) => {
+                                      // Save immediately on blur
+                                      immediateSave(item.id, content);
                                     }}
                                     placeholder="Add notes..."
                                     className="overflow-hidden text-sm border-none focus-visible:ring-0"
