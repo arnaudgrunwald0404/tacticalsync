@@ -113,23 +113,23 @@ export function useMeetingData(props: MeetingAgendaProps): {
         if (!refreshedSession) throw new Error('No session available');
       }
 
-      // Now try to update the item
+      // Update the agenda item in the correct table with the correct column
       const { error } = await supabase
-        .from("meeting_items")
+        .from("meeting_series_agenda")
         .update({ 
-          is_completed: newStatus
+          completion_status: newStatus ? 'completed' : 'not_started'
         })
-        .eq("id", itemId)
-        .eq("type", "agenda");
+        .eq("id", itemId);
 
       if (error) throw error;
 
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating agenda item:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update item";
       toast({
         title: "Error",
-        description: error.message || "Failed to update item",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -137,7 +137,7 @@ export function useMeetingData(props: MeetingAgendaProps): {
 
   const handleUpdateNotes = async (itemId: string, notes: string) => {
     const { error } = await supabase
-      .from("meeting_items")
+      .from("meeting_series_agenda")
       .update({ notes })
       .eq("id", itemId);
 

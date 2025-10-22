@@ -304,7 +304,12 @@ const TeamMeeting = () => {
       if (agendaError) {
         console.error("Error fetching agenda items:", agendaError);
       } else {
-        setAgendaItems(agendaData || []);
+        // Transform the data to include is_completed field for compatibility
+        const transformedAgendaData = (agendaData || []).map(item => ({
+          ...item,
+          is_completed: item.completion_status === 'completed'
+        }));
+        setAgendaItems(transformedAgendaData);
       }
 
       // Fetch priorities from meeting_instance_priorities
