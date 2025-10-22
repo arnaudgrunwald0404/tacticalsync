@@ -278,7 +278,7 @@ export function AgendaSidebar({
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="space-y-2"
+                  className="space-y-1.5"
                 >
                   {displayItems.map((item: AgendaItemWithProfile, index) => (
                     <Draggable
@@ -291,7 +291,7 @@ export function AgendaSidebar({
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`border rounded-lg p-4 bg-background transition-colors ${
+                          className={`border rounded-lg p-3 bg-background transition-colors ${
                             snapshot.isDragging ? 'shadow-lg border-primary' : 'hover:border-primary/50'
                           }`}
                         >
@@ -308,10 +308,10 @@ export function AgendaSidebar({
                               <Checkbox
                                 checked={item.is_completed}
                                 onCheckedChange={() => actions.handleToggleComplete(item.id, item.is_completed)}
-                                className="mt-2"
+                                className="mt-0.5"
                               />
                             )}
-                            <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex-1 min-w-0 space-y-1.5">
                               {/* Row 1: Title and Delete */}
                               <div className="flex items-center gap-3">
                                 {isEditingAgenda ? (
@@ -418,7 +418,7 @@ export function AgendaSidebar({
 
                               {/* Notes Section */}
                               {!isEditingAgenda && shouldShowNotes(item) && (
-                                <div className="mt-3 pt-3 border-t">
+                                <div className="mt-2 pt-2 border-t">
                                   <RichTextEditor
                                     content={notesContent[item.id] || item.notes || ""}
                                     onChange={(content) => {
