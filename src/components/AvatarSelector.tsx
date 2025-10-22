@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,7 +28,7 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   className = "" 
 }) => {
   // Use user's full name as the base for avatar generation
-  const userFullName = `${userFirstName} ${userLastName}`;
+  const userFullName = `${userFirstName} ${userLastName}`.trim();
   const [selectedName, setSelectedName] = useState(currentName || userFullName);
   const [isGenerating, setIsGenerating] = useState(false);
   const [seedNumber, setSeedNumber] = useState(0);
@@ -60,6 +60,13 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       await onAvatarUpload(file);
     }
   };
+
+  // Keep the preview initials in sync with the current first/last name
+  useEffect(() => {
+    // Preserve current seed so visual pattern stays consistent while editing
+    const seedSuffix = seedNumber ? String(seedNumber) : "";
+    setSelectedName(`${userFullName}${seedSuffix}`);
+  }, [userFullName, seedNumber]);
 
   return (
     <Card className={`w-full ${className}`}>

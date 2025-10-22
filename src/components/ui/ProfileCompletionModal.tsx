@@ -117,8 +117,12 @@ export function ProfileCompletionModal({
             <div className="space-y-2">
               <Label>Choose Your Avatar</Label>
               <AvatarSelector
-                selectedAvatar={avatarName}
-                onSelect={setAvatarName}
+                currentName={avatarName}
+                userFirstName={firstName || "User"}
+                userLastName={lastName || ""}
+                onAvatarChange={(newName) => setAvatarName(newName)}
+                onAvatarUpload={async () => { /* upload not supported in this modal */ }}
+                uploading={false}
                 className="w-full"
               />
             </div>
