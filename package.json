@@ -65,6 +65,7 @@
     "@tiptap/extension-link": "^3.6.6",
     "@tiptap/extension-list-item": "^3.6.6",
     "@tiptap/extension-ordered-list": "^3.6.6",
+    "@tiptap/extension-placeholder": "^3.7.2",
     "@tiptap/extension-text-style": "^3.6.6",
     "@tiptap/extension-underline": "^3.6.6",
     "@tiptap/react": "^3.6.6",

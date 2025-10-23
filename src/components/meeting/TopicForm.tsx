@@ -46,7 +46,11 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
                       const member = teamMembers.find(m => m.user_id === topic.assigned_to);
                       if (!member?.profiles) return null;
                       
-                      const displayName = member.profiles?.first_name;
+                      const displayName = formatNameWithInitial(
+                        member.profiles.first_name,
+                        member.profiles.last_name,
+                        member.profiles.email
+                      );
 
                       return (
                         <>

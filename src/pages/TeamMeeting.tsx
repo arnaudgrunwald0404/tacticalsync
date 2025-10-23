@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Settings, Plus, Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +63,7 @@ const TeamMeeting = () => {
   const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
   const [agendaItems, setAgendaItems] = useState<any[]>([]);
   const [priorityItems, setPriorityItems] = useState<any[]>([]);
+  const [previousPriorityItems, setPreviousPriorityItems] = useState<any[]>([]);
   const [teamTopicItems, setTeamTopicItems] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any[]>([]);
   const [currentSeriesId, setCurrentSeriesId] = useState<string | null>(null);
@@ -79,6 +81,7 @@ const TeamMeeting = () => {
     actionItems: false,
   });
   const [showPreviousPeriod, setShowPreviousPeriod] = useState(false);
+  const [showMineOnly, setShowMineOnly] = useState(false);
 
   useEffect(() => {
     if (teamId && meetingId) {
@@ -352,8 +355,39 @@ const TeamMeeting = () => {
       if (prioritiesError) {
         console.error("Error fetching priorities:", prioritiesError);
       } else {
-        console.log("Fetched priorities data:", prioritiesData);
+        console.log("Fetched priorities data for meetingId:", meetingId, "data:", prioritiesData);
         setPriorityItems(prioritiesData || []);
+      }
+
+      // Fetch previous period's priorities
+      const { data: previousMeeting } = await supabase
+        .from("meeting_instances")
+        .select("id")
+        .eq("series_id", meetingData.series_id)
+        .lt("start_date", meetingData.start_date)
+        .order("start_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousMeeting) {
+        const { data: previousPrioritiesData, error: previousPrioritiesError } = await supabase
+          .from("meeting_instance_priorities")
+          .select(`
+            *,
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+          `)
+          .eq("instance_id", previousMeeting.id)
+          .order("order_index");
+
+        if (previousPrioritiesError) {
+          console.error("Error fetching previous priorities:", previousPrioritiesError);
+        } else {
+          console.log("Fetched previous priorities data:", previousPrioritiesData);
+          setPreviousPriorityItems(previousPrioritiesData || []);
+        }
+      } else {
+        setPreviousPriorityItems([]);
       }
 
       // Fetch topics from meeting_instance_topics
@@ -776,7 +810,7 @@ const TeamMeeting = () => {
           {/* Main Content */}
           <div className="flex-1 lg:pl-8 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
-                <div className="space-y-4 mb-4 sm:mb-6">
+                <div className="space-y-4 mb-2 sm:mb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
@@ -795,32 +829,75 @@ const TeamMeeting = () => {
                           </Button>
                           <h2 className="text-lg sm:text-xl font-semibold" data-testid="priorities-section">Priorities</h2>
                         </div>
-                        {previousMeetingId && (
-                          <div className="flex items-center gap-2">
-                            <label className="text-sm text-muted-foreground">Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}</label>
-                            <Switch
-                              checked={showPreviousPeriod}
-                              onCheckedChange={setShowPreviousPeriod}
-                            />
-                          </div>
-                        )}
                       </div>
                     </div>
+                    
+                    {previousMeetingId && (
+                      <div className="flex items-center gap-4 pt-2">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="show-previous"
+                            checked={showPreviousPeriod}
+                            onCheckedChange={(checked) => setShowPreviousPeriod(checked === true)}
+                          />
+                          <label htmlFor="show-previous" className="text-sm text-muted-foreground">
+                            Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="show-mine-only"
+                            checked={showMineOnly}
+                            onCheckedChange={(checked) => setShowMineOnly(checked === true)}
+                          />
+                          <label htmlFor="show-mine-only" className="text-sm text-muted-foreground">
+                            Show mine only
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    
                     <Button
                       onClick={() => meetingPrioritiesRef.current?.startCreating()}
                       size="sm"
-                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      variant={priorityItems.length > 0 ? "ghost" : "default"}
+                      className={`text-xs sm:text-sm h-8 sm:h-9 ${
+                        priorityItems.length > 0 
+                          ? "text-primary hover:text-primary/80 hover:bg-transparent" 
+                          : ""
+                      }`}
                     >
-                      <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">{priorityItems.length > 0 ? "Edit Priorities" : "Add Priorities"}</span>
-                      <span className="sm:hidden">{priorityItems.length > 0 ? "Edit" : "Add"}</span>
+                      {priorityItems.length > 0 ? (
+                        <Edit2 className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                      ) : (
+                        <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {priorityItems.length > 0 
+                          ? (showPreviousPeriod ? "Edit this Week's Priorities" : "Edit Priorities") 
+                          : "Add Priorities"
+                        }
+                      </span>
+                      <span className="sm:hidden">
+                        {priorityItems.length > 0 
+                          ? (showPreviousPeriod ? "Edit This Week" : "Edit") 
+                          : "Add"
+                        }
+                      </span>
                     </Button>
                   </div>
                 </div>
               {!sectionsCollapsed.priorities && (
                 <MeetingPriorities
                 ref={meetingPrioritiesRef}
-                items={priorityItems}
+                items={showMineOnly && currentUserId 
+                  ? priorityItems.filter(item => item.assigned_to === currentUserId)
+                  : priorityItems
+                }
+                previousItems={showMineOnly && currentUserId 
+                  ? previousPriorityItems.filter(item => item.assigned_to === currentUserId)
+                  : previousPriorityItems
+                }
                 meetingId={meeting?.id}
                 teamId={teamId}
                 onUpdate={async () => {

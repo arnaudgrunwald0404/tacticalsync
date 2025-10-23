@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { PriorityForm } from "./PriorityForm";
 import { TopicForm } from "./TopicForm";
+import { htmlToPlainText } from "@/lib/htmlUtils";
 import { 
   PriorityRow,
   AddPrioritiesDrawerProps 
@@ -41,6 +42,9 @@ const AddPrioritiesDrawer = ({
 
   useEffect(() => {
     if (isOpen) {
+      console.log('AddPrioritiesDrawer received existingPriorities:', existingPriorities);
+      console.log('AddPrioritiesDrawer existingPriorities length:', existingPriorities?.length || 0);
+      console.log('AddPrioritiesDrawer meetingId:', meetingId);
       fetchTeamMembers();
       fetchCurrentUser();
       
@@ -48,7 +52,7 @@ const AddPrioritiesDrawer = ({
       if (existingPriorities.length > 0) {
         const existingPriorityRows = existingPriorities.map((priority) => ({
           id: priority.id,
-          priority: priority.outcome || "",
+          priority: htmlToPlainText(priority.outcome || ""),
           assigned_to: priority.assigned_to || "",
           activities: priority.activities || "",
           time_minutes: null
@@ -269,7 +273,7 @@ const AddPrioritiesDrawer = ({
           outcome: priority.priority,
           activities: priority.activities || "",
           assigned_to: priority.assigned_to || null,
-          completion_status: 'not_completed' as const,
+          completion_status: 'pending' as const,
           order_index: currentExistingPriorities.length + index,
           created_by: user.id
         }));
@@ -315,9 +319,9 @@ const AddPrioritiesDrawer = ({
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] flex flex-col h-full">
         <SheetHeader className="pb-4 flex-none">
-          <SheetTitle className="text-xl sm:text-2xl">Set This Period's Priorities</SheetTitle>
+          <SheetTitle className="text-xl sm:text-2xl">Edit This Week's Priorities</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
-            Set your priorities for the upcoming period. You can add up to three priorities.
+            Edit your priorities for the current period. You can add up to three priorities.
           </SheetDescription>
         </SheetHeader>
         

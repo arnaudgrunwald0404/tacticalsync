@@ -1,6 +1,6 @@
 -- Phase 1: Type Safety and Validation
 DO $$ BEGIN
-  CREATE TYPE completion_status_enum AS ENUM ('completed', 'not_completed');
+  CREATE TYPE completion_status_enum AS ENUM ('completed', 'not_completed', 'pending');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;

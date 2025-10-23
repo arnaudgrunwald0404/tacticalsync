@@ -1,4 +1,4 @@
-export type CompletionStatus = 'completed' | 'not_completed';
+export type CompletionStatus = 'completed' | 'not_completed' | 'pending';
 
 export interface MeetingSeriesAgenda {
   id: string;

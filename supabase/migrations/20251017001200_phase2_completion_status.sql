@@ -20,17 +20,17 @@ BEGIN
       ALTER COLUMN completion_status TYPE completion_status_enum 
       USING CASE 
         WHEN TRIM(completion_status::text) = 'completed' THEN 'completed'::completion_status_enum 
-        ELSE 'not_completed'::completion_status_enum 
+        ELSE 'pending'::completion_status_enum 
       END;
     
     -- Set the new default
     ALTER TABLE meeting_instance_priorities
-      ALTER COLUMN completion_status SET DEFAULT 'not_completed'::completion_status_enum;
+      ALTER COLUMN completion_status SET DEFAULT 'pending'::completion_status_enum;
   ELSE
     -- Add new column if it doesn't exist
     ALTER TABLE meeting_instance_priorities
       ADD COLUMN completion_status completion_status_enum 
-      DEFAULT 'not_completed'::completion_status_enum NOT NULL;
+      DEFAULT 'pending'::completion_status_enum NOT NULL;
   END IF;
 END $$;
 
@@ -55,17 +55,17 @@ BEGIN
       ALTER COLUMN completion_status TYPE completion_status_enum 
       USING CASE 
         WHEN TRIM(completion_status::text) = 'completed' THEN 'completed'::completion_status_enum 
-        ELSE 'not_completed'::completion_status_enum 
+        ELSE 'pending'::completion_status_enum 
       END;
     
     -- Set the new default
     ALTER TABLE meeting_instance_topics
-      ALTER COLUMN completion_status SET DEFAULT 'not_completed'::completion_status_enum;
+      ALTER COLUMN completion_status SET DEFAULT 'pending'::completion_status_enum;
   ELSE
     -- Add new column if it doesn't exist
     ALTER TABLE meeting_instance_topics
       ADD COLUMN completion_status completion_status_enum 
-      DEFAULT 'not_completed'::completion_status_enum NOT NULL;
+      DEFAULT 'pending'::completion_status_enum NOT NULL;
   END IF;
 END $$;
 
@@ -90,16 +90,16 @@ BEGIN
       ALTER COLUMN completion_status TYPE completion_status_enum 
       USING CASE 
         WHEN TRIM(completion_status::text) = 'completed' THEN 'completed'::completion_status_enum 
-        ELSE 'not_completed'::completion_status_enum 
+        ELSE 'pending'::completion_status_enum 
       END;
     
     -- Set the new default
     ALTER TABLE meeting_series_action_items
-      ALTER COLUMN completion_status SET DEFAULT 'not_completed'::completion_status_enum;
+      ALTER COLUMN completion_status SET DEFAULT 'pending'::completion_status_enum;
   ELSE
     -- Add new column if it doesn't exist
     ALTER TABLE meeting_series_action_items
       ADD COLUMN completion_status completion_status_enum 
-      DEFAULT 'not_completed'::completion_status_enum NOT NULL;
+      DEFAULT 'pending'::completion_status_enum NOT NULL;
   END IF;
 END $$;

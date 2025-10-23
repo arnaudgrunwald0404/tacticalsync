@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
+import { formatNameWithInitial } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { AgendaItem, AgendaItemWithProfile } from "@/types/agenda";
 import { TeamMember } from "@/types/common";
@@ -364,7 +365,11 @@ export function AgendaSidebar({
                                     <option value="">All</option>
                                     {teamMembers.map((member) => (
                                       <option key={member.id} value={member.user_id}>
-                                        {member.profiles.first_name || member.profiles.full_name || member.profiles.email}
+                                        {formatNameWithInitial(
+                                          member.profiles.first_name,
+                                          member.profiles.last_name,
+                                          member.profiles.email
+                                        )}
                                       </option>
                                     ))}
                                   </select>

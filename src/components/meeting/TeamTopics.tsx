@@ -82,20 +82,22 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border rounded-lg p-3 bg-white",
+        "border-b border-blue-200/50 px-3 py-1 bg-white",
         isDragging && "shadow-lg"
       )}
     >
-      <div className="grid grid-cols-[auto_auto_2fr_auto_auto_2fr_auto] gap-4 items-center">
-        <div {...attributes} {...listeners} className="cursor-grab hover:text-foreground/80">
+      <div className="grid grid-cols-24 gap-4 items-center">
+        <div {...attributes} {...listeners} className="col-span-1 cursor-grab hover:text-foreground/80">
           <GripVertical className="h-4 w-4" />
         </div>
-        <Checkbox
-          checked={item.completion_status === 'completed'}
-          onCheckedChange={onToggleComplete}
-        />
-        <div className="text-base truncate">{item.title}</div>
-        <div className="flex items-center gap-2">
+        <div className="col-span-1">
+          <Checkbox
+            checked={item.completion_status === 'completed'}
+            onCheckedChange={onToggleComplete}
+          />
+        </div>
+        <div className="col-span-9 text-base truncate">{item.title}</div>
+        <div className="col-span-3 flex items-center gap-2">
           {assignedMember?.profiles?.avatar_name ? (
             <FancyAvatar 
               name={assignedMember.profiles.avatar_name} 
@@ -114,27 +116,37 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
               </AvatarFallback>
             </Avatar>
           )}
-          <span className="text-base">{assignedMember?.profiles?.first_name || "Unassigned"}</span>
+          <span className="text-base">
+            {assignedMember?.profiles ? 
+              formatNameWithInitial(
+                assignedMember.profiles.first_name,
+                assignedMember.profiles.last_name,
+                assignedMember.profiles.email
+              ) : "Unassigned"
+            }
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 text-base whitespace-nowrap">
+        <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
           <Clock className="h-4 w-4" />
           <span>{item.time_minutes} min</span>
         </div>
-        <div className="text-base truncate text-muted-foreground">
+        <div className="col-span-6 text-base truncate text-muted-foreground">
           {item.notes ? (
             <div dangerouslySetInnerHTML={{ __html: item.notes }} />
           ) : (
             "No notes"
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(item.id)}
-          className="text-destructive hover:text-destructive"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="col-span-1 flex justify-end ">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(item.id)}
+            className="text-destructive hover:text-destructive"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -350,9 +362,11 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       return `${firstName} ${lastName}`;
     } else if (firstName) {
       return firstName;
-    } else {
-      return email;
+    } else if (email) {
+      // Extract the part before @ in email address
+      return email.split('@')[0];
     }
+    return "Unknown";
   };
 
   return (
@@ -403,8 +417,8 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
         <h4 className="text-sm font-medium text-muted-foreground">Add Topic</h4>
         
         {/* Desktop Layout */}
-        <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_2fr_40px] gap-3 items-start">
-          <div>
+        <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start">
+          <div className="col-span-8">
             <Input
               placeholder="Topic title..."
               value={newTopic.title}
@@ -412,7 +426,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               className="h-10"
             />
           </div>
-          <div>
+          <div className="col-span-4">
             <Select
               value={newTopic.assigned_to}
               onValueChange={(value) => setNewTopic({ ...newTopic, assigned_to: value })}
@@ -488,7 +502,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               </SelectContent>
             </Select>
           </div>
-          <div className="relative">
+          <div className="col-span-4 relative">
             <Input
               type="number"
               placeholder="Duration"
@@ -503,7 +517,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             </span>
           </div>
           {/* Notes field for desktop */}
-        <div className="hidden sm:block">
+        <div className="col-span-6 hidden sm:block">
           <RichTextEditor
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
@@ -511,7 +525,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             className="min-h-[16px]"
           />
         </div>
-          <div>
+          <div className="col-span-2">
             <Button
               onClick={handleAdd}
               disabled={adding || !newTopic.title.trim()}
@@ -625,12 +639,12 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
             placeholder="Notes..."
-            className="min-h-[32px]"
+            className="min-h-[16px]"
           />
           <Button
             onClick={handleAdd}
             disabled={adding || !newTopic.title.trim()}
-            className="w-full"
+            className="h-10 w-10"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Topic

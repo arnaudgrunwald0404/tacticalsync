@@ -63,9 +63,11 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
       return `${firstName} ${lastName}`;
     } else if (firstName) {
       return firstName;
-    } else {
-      return email;
+    } else if (email) {
+      // Extract the part before @ in email address
+      return email.split('@')[0];
     }
+    return "Unknown";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

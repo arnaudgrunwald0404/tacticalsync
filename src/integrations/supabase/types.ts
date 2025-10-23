@@ -225,6 +225,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_meeting_instance_priorities_created_by"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meeting_instance_priorities_instance_id_fkey"
             columns: ["instance_id"]
             isOneToOne: false
@@ -277,6 +284,13 @@ export type Database = {
           {
             foreignKeyName: "fk_meeting_instance_topics_assigned_to"
             columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_meeting_instance_topics_created_by"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -409,6 +423,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_meeting_series_action_items_created_by"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meeting_series_action_items_series_id_fkey"
             columns: ["series_id"]
             isOneToOne: false
@@ -461,6 +482,13 @@ export type Database = {
           {
             foreignKeyName: "fk_meeting_series_agenda_assigned_to"
             columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_meeting_series_agenda_created_by"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -552,6 +580,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_team_members_user_id_profiles"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "team_members_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -605,7 +640,7 @@ export type Database = {
       }
     }
     Enums: {
-      completion_status_enum: "completed" | "not_completed"
+      completion_status_enum: "completed" | "not_completed" | "pending"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -736,7 +771,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      completion_status_enum: ["completed", "not_completed"],
+      completion_status_enum: ["completed", "not_completed", "pending"],
     },
   },
 } as const

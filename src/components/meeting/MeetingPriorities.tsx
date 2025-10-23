@@ -35,6 +35,7 @@ import { TeamMember } from "@/types/meeting";
 
 interface MeetingPrioritiesProps {
   items: Priority[];
+  previousItems?: Priority[];
   meetingId: string;
   teamId: string;
   onUpdate: () => void;
@@ -135,12 +136,13 @@ const SortablePriorityRow = ({
   );
 };
 
-const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false }, ref) => {
+const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false }, ref) => {
   const { toast } = useToast();
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [groupedPriorities, setGroupedPriorities] = useState<{ [key: string]: Priority[] }>({});
+  const [groupedPreviousPriorities, setGroupedPreviousPriorities] = useState<{ [key: string]: Priority[] }>({});
 
   // Debug logging
   console.log('MeetingPriorities received items:', items);
@@ -170,6 +172,25 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
     setGroupedPriorities(grouped);
   }, [items]);
+
+  useEffect(() => {
+    // Group previous priorities by assigned_to
+    const grouped = previousItems.reduce((acc, item) => {
+      const assignedTo = item.assigned_to || 'unassigned';
+      if (!acc[assignedTo]) {
+        acc[assignedTo] = [];
+      }
+      acc[assignedTo].push(item);
+      return acc;
+    }, {} as { [key: string]: Priority[] });
+
+    // Sort priorities within each group by order_index
+    Object.keys(grouped).forEach(key => {
+      grouped[key].sort((a, b) => a.order_index - b.order_index);
+    });
+
+    setGroupedPreviousPriorities(grouped);
+  }, [previousItems]);
 
   useImperativeHandle(ref, () => ({
     startCreating,
@@ -381,6 +402,30 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
     }
   };
 
+  const handlePreviousPriorityCompletion = async (priorityId: string, status: CompletionStatus) => {
+    try {
+      const { error } = await supabase
+        .from('meeting_instance_priorities')
+        .update({ completion_status: status })
+        .eq('id', priorityId);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Status updated",
+        description: `Priority marked as ${status === 'completed' ? 'complete' : 'not complete'}`,
+      });
+      
+      onUpdate(); // Refresh data
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update completion status",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Group items by week
   const groupedByWeek: Record<string, { weekStart: Date; items: Priority[] }> = items.reduce((acc, item) => {
     // Use current date if created_at is missing or invalid
@@ -407,18 +452,6 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   return (
     <>
       <div className="space-y-4">
-        {/* Edit Priorities Button */}
-        {items.length > 0 && (
-          <div className="flex justify-end">
-            <Button
-              onClick={() => setIsDrawerOpen(true)}
-              variant="outline"
-              size="sm"
-            >
-              Edit Priorities
-            </Button>
-          </div>
-        )}
 
         {/* Desktop Table View */}
         <div className="hidden sm:block border rounded-lg overflow-hidden relative">
@@ -438,93 +471,101 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
               <div key={item.id || index} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-center border-t relative z-0`}>
                 {/* User Column */}
                 <div>
-                  <Select
-                    value={item.assigned_to || ""}
-                    onValueChange={(value) => handleChangeAssignment(item.id, value)}
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Who?">
-                        {item.assigned_to ? (
-                          (() => {
-                            const member = members.find(m => m.user_id === item.assigned_to);
-                            if (!member?.profiles) return "Unknown";
-                            
-                            const displayName = formatNameWithInitial(
-                              member.profiles.first_name,
-                              member.profiles.last_name,
-                              member.profiles.email
-                            );
-                            
-                            return (
-                              <div className="flex items-center gap-2">
-                                {member.profiles.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={member.profiles.avatar_name} 
-                                    displayName={displayName}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6 rounded-full">
-                                    <AvatarImage src={member.profiles.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <span className="text-sm truncate">{displayName}</span>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          "Who?"
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {members.map((member) => {
-                        const displayName = formatNameWithInitial(
-                          member.profiles?.first_name,
-                          member.profiles?.last_name,
-                          member.profiles?.email
-                        );
-                        
-                        return (
-                          <SelectItem key={member.user_id} value={member.user_id}>
-                            <div className="flex items-center gap-2">
-                              {member.profiles?.avatar_name ? (
-                                <FancyAvatar 
-                                  name={member.profiles.avatar_name} 
-                                  displayName={displayName}
-                                  size="sm" 
-                                />
-                              ) : (
-                                <Avatar className="h-6 w-6 rounded-full">
-                                  <AvatarImage src={member.profiles?.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || '?'}
-                                  </AvatarFallback>
-                                </Avatar>
-                              )}
-                              <span className="truncate">{displayName}</span>
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  {item.assigned_to ? (
+                    (() => {
+                      const member = members.find(m => m.user_id === item.assigned_to);
+                      if (!member?.profiles) return <span className="text-sm text-muted-foreground">Unknown</span>;
+                      
+                      const displayName = formatNameWithInitial(
+                        member.profiles.first_name,
+                        member.profiles.last_name,
+                        member.profiles.email
+                      );
+                      
+                      return (
+                        <div className="flex items-center gap-2">
+                          {member.profiles.avatar_name ? (
+                            <FancyAvatar 
+                              name={member.profiles.avatar_name} 
+                              displayName={displayName}
+                              size="sm" 
+                            />
+                          ) : (
+                            <Avatar className="h-6 w-6 rounded-full">
+                              <AvatarImage src={member.profiles.avatar_url} />
+                              <AvatarFallback className="text-xs">
+                                {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                          <span className="text-sm truncate">{displayName}</span>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Unassigned</span>
+                  )}
                 </div>
 
                 {/* Previous Period Content */}
                 {showPreviousPeriod && (
-                  <div className="space-y-1">
-                    <div className="text-muted-foreground italic text-sm">No previous priority</div>
+                  <div className="space-y-2">
+                    {(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).map((prevPriority) => (
+                      <div 
+                        key={prevPriority.id}
+                        className={cn(
+                          "p-3 rounded-md border flex justify-between items-start",
+                          prevPriority.completion_status === 'completed' && "bg-green-50 border-green-200",
+                          prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200",
+                          (prevPriority.completion_status === 'pending' || !prevPriority.completion_status) && "bg-gray-50 border-gray-200"
+                        )}
+                      >
+                        <div className="flex-1 pr-3">
+                          <div 
+                            className="text-sm" 
+                            dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevPriority.outcome).map(item => item.content).join('') }} 
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'completed')}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              prevPriority.completion_status === 'completed' 
+                                ? "bg-green-600 text-white border-green-600 hover:bg-green-700" 
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            )}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'not_completed')}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              prevPriority.completion_status === 'not_completed' 
+                                ? "bg-red-600 text-white border-red-600 hover:bg-red-700" 
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            )}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).length && (
+                      <div className="text-muted-foreground italic text-sm">No previous priority</div>
+                    )}
                   </div>
                 )}
 
                 {/* Current Period Content - Read-only text */}
                 <div className="space-y-1">
                   <div 
-                    className="font-bold"
+                    className="text-sm font-semibold"
                     dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.outcome).map(item => item.content).join('') }}
                   />
                   {item.activities && (
@@ -635,10 +676,66 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                   </Select>
                 </div>
 
+                {/* Previous Period Content - Mobile */}
+                {showPreviousPeriod && (
+                  <div className="space-y-2">
+                    {(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).map((prevPriority) => (
+                      <div 
+                        key={prevPriority.id}
+                        className={cn(
+                          "p-3 rounded-md border flex justify-between items-start",
+                          prevPriority.completion_status === 'completed' && "bg-green-50 border-green-200",
+                          prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200",
+                          (prevPriority.completion_status === 'pending' || !prevPriority.completion_status) && "bg-gray-50 border-gray-200"
+                        )}
+                      >
+                        <div className="flex-1 pr-3">
+                          <div className="text-xs text-muted-foreground mb-1">Previous {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priority:</div>
+                          <div 
+                            className="text-sm" 
+                            dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevPriority.outcome).map(item => item.content).join('') }} 
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'completed')}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              prevPriority.completion_status === 'completed' 
+                                ? "bg-green-600 text-white border-green-600 hover:bg-green-700" 
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            )}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'not_completed')}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              prevPriority.completion_status === 'not_completed' 
+                                ? "bg-red-600 text-white border-red-600 hover:bg-red-700" 
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            )}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).length && (
+                      <div className="text-muted-foreground italic text-sm">No previous priority</div>
+                    )}
+                  </div>
+                )}
+
                 {/* Priority Content - Read-only text */}
                 <div className="space-y-3">
                   <div 
-                    className="font-bold"
+                    className="text-sm font-semibold"
                     dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.outcome).map(item => item.content).join('') }}
                   />
                   {item.activities && (
@@ -666,13 +763,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
           )}
         </div>
 
-        {items.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground border rounded-lg">
-            <p className="text-sm">
-              No priorities set yet for this {frequency === "monthly" ? "month" : frequency === "weekly" ? "week" : frequency === "quarter" ? "quarter" : "period"}.
-            </p>
-          </div>
-        )}
+
       </div>
 
       {selectedItem && (

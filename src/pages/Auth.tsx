@@ -25,6 +25,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
+  const [activeTab, setActiveTab] = useState("signin");
 
   useEffect(() => {
     // Check for invite code in URL
@@ -208,12 +209,18 @@ const Auth = () => {
                   </Button>
                 </div>
                 {!isForgotPassword ? (
-                  <Tabs defaultValue="signin" className="w-full">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-4 h-12 sm:h-14">
-                      <TabsTrigger value="signin" onClick={() => setIsSignUp(false)} className="text-base sm:text-lg">
+                      <TabsTrigger value="signin" onClick={() => {
+                        setIsSignUp(false);
+                        setActiveTab("signin");
+                      }} className="text-base sm:text-lg">
                         Sign In
                       </TabsTrigger>
-                      <TabsTrigger value="signup" onClick={() => setIsSignUp(true)} className="text-base sm:text-lg">
+                      <TabsTrigger value="signup" onClick={() => {
+                        setIsSignUp(true);
+                        setActiveTab("signup");
+                      }} className="text-base sm:text-lg">
                         Sign Up
                       </TabsTrigger>
                     </TabsList>
@@ -297,7 +304,7 @@ const Auth = () => {
                 <AnimatePresence mode="wait">
                   {!showEmailForm ? (
                   <motion.div
-                    className="space-y-6"
+                    className="space-y-4"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
@@ -306,7 +313,7 @@ const Auth = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base sm:text-lg font-normal bg-white text-gray-900 border-2 border-gray-300 hover:bg-gray-50"
+                      className="w-full h-12 text-base sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
                       onClick={handleGoogleSignIn}
                       disabled={loading}
                     >
@@ -333,15 +340,35 @@ const Auth = () => {
                       </div>
                     </Button>
 
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="w-full text-base text-muted-foreground hover:text-primary"
-                      onClick={() => setShowEmailForm(true)}
-                      disabled={loading}
-                    >
-                      Want to use your email and password?
-                    </Button>
+                    <div className="space-y-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
+                        onClick={() => {
+                          setShowEmailForm(true);
+                          setIsSignUp(false);
+                          setActiveTab("signin");
+                        }}
+                        disabled={loading}
+                      >
+                        Log in with my email and my password
+                      </Button>
+                      
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
+                        onClick={() => {
+                          setShowEmailForm(true);
+                          setIsSignUp(true);
+                          setActiveTab("signup");
+                        }}
+                        disabled={loading}
+                      >
+                        I am new here & need to register
+                      </Button>
+                    </div>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -353,7 +380,7 @@ const Auth = () => {
                     {!isForgotPassword && (
                       <div className="mb-6">
                         <h3 className="text-lg font-semibold mb-1">
-                          {isSignUp ? "Create your account" : "Sign in to your account"}
+                          {isSignUp ? "Create your account" : "Welcome back!"}
                         </h3>
                         <p className="text-sm text-muted-foreground">
                           {isSignUp ? "Enter your details below to create your account" : "Enter your email and password to sign in"}
@@ -404,7 +431,7 @@ const Auth = () => {
 
                     {/* Secondary Actions */}
                     <div className="space-y-2 pt-2">
-                      {!isForgotPassword && (
+                      {!isForgotPassword && !isSignUp && (
                         <Button
                           type="button"
                           variant="link"

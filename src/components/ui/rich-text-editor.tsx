@@ -1,6 +1,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
+import Placeholder from '@tiptap/extension-placeholder'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { 
@@ -38,6 +39,9 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
           class: 'text-blue-600 underline cursor-pointer',
         },
       }),
+      Placeholder.configure({
+        placeholder: placeholder || 'Start typing...',
+      }),
     ],
     content: cleanContent,
     editable: true,
@@ -58,7 +62,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-[32px] p-2 bg-background',
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[16px] p-2 bg-background',
       },
     },
   })
@@ -190,10 +194,9 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       )}
 
       {/* Editor Content */}
-      <div className="relative border rounded-md min-h-[32px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
+      <div className="relative border rounded-md min-h-[16px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
         <EditorContent 
           editor={editor} 
-          placeholder={placeholder}
         />
       </div>
     </div>

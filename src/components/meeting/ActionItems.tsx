@@ -87,20 +87,22 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActi
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border rounded-lg p-3 bg-white",
+        "border-b border-blue-200/50 px-3 py-1 bg-white",
         isDragging && "shadow-lg"
       )}
     >
-      <div className="grid grid-cols-[auto_auto_2fr_auto_auto_2fr_auto] gap-4 items-center">
-        <div {...attributes} {...listeners} className="cursor-grab hover:text-foreground/80">
+      <div className="grid grid-cols-24 gap-4 items-center">
+        <div {...attributes} {...listeners} className="col-span-1 cursor-grab hover:text-foreground/80">
           <GripVertical className="h-4 w-4" />
         </div>
-        <Checkbox
-          checked={item.completion_status === 'completed'}
-          onCheckedChange={(checked) => onSetCompletion(checked ? 'completed' : 'not_completed')}
-        />
-        <div className="text-base truncate">{item.title}</div>
-        <div className="flex items-center gap-2">
+        <div className="col-span-1">
+          <Checkbox
+            checked={item.completion_status === 'completed'}
+            onCheckedChange={(checked) => onSetCompletion(checked ? 'completed' : 'not_completed')}
+          />
+        </div>
+        <div className="col-span-9 text-base truncate">{item.title}</div>
+        <div className="col-span-3 flex items-center gap-2">
           {item.assigned_to_profile?.avatar_name ? (
             <FancyAvatar 
               name={item.assigned_to_profile.avatar_name} 
@@ -119,27 +121,37 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActi
               </AvatarFallback>
             </Avatar>
           )}
-          <span className="text-base">{item.assigned_to_profile?.first_name || "Unassigned"}</span>
+          <span className="text-base">
+            {item.assigned_to_profile ? 
+              formatNameWithInitial(
+                item.assigned_to_profile.first_name,
+                item.assigned_to_profile.last_name,
+                item.assigned_to_profile.email
+              ) : "Unassigned"
+            }
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 text-base whitespace-nowrap">
+        <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
           <CalendarIcon className="h-4 w-4" />
           <span>{item.due_date ? format(new Date(item.due_date), "MM/dd") : "No date"}</span>
         </div>
-        <div className="text-base truncate text-muted-foreground">
+        <div className="col-span-6 text-base truncate text-muted-foreground">
           {item.notes ? (
             <div dangerouslySetInnerHTML={{ __html: item.notes }} />
           ) : (
             "No notes"
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(item.id)}
-          className="text-destructive hover:text-destructive"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="col-span-1 flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(item.id)}
+            className="text-destructive hover:text-destructive"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -260,7 +272,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         notes: newItem.notes.trim(),
         assigned_to: newItem.assigned_to,
         due_date: newItem.due_date ? format(newItem.due_date, "yyyy-MM-dd") : null,
-        completion_status: 'not_completed',
+        completion_status: 'pending',
         order_index: items.length,
         created_by: user.id
       };
@@ -389,9 +401,11 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       return `${firstName} ${lastName}`;
     } else if (firstName) {
       return firstName;
-    } else {
-      return email;
+    } else if (email) {
+      // Extract the part before @ in email address
+      return email.split('@')[0];
     }
+    return "Unknown";
   };
 
   return (
@@ -433,9 +447,9 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
             <h4 className="text-sm font-medium text-muted-foreground">Add Action Item</h4>
             
             {/* Desktop Layout */}
-            <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_2fr_40px] gap-3 items-start">
+            <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start">
               {/* Title Input */}
-              <div>
+              <div className="col-span-8">
                 <Input
                   id="new-action-item-title"
                   value={newItem.title}
@@ -446,7 +460,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Who Selector */}
-              <div>
+              <div className="col-span-4">
                 <Select 
                   value={newItem.assigned_to || ""} 
                   onValueChange={(value) => setNewItem(prev => ({ ...prev, assigned_to: value }))}
@@ -524,7 +538,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Due Date Picker */}
-              <div className="relative">
+              <div className="col-span-4 relative">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -551,7 +565,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Notes Input */}
-              <div>
+              <div className="col-span-6">
                 <RichTextEditor
                   content={newItem.notes}
                   onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
@@ -561,12 +575,12 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Add Button */}
-              <div>
+              <div className="col-span-2">
                 <Button
                   onClick={handleAddItem}
                   disabled={!newItem.title.trim()}
                   size="icon"
-                  className="h-10 w-full"
+                  className="h-10 w-10"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -685,7 +699,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                 content={newItem.notes}
                 onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
                 placeholder="Notes..."
-                className="min-h-[100px]"
+                className="min-h-[16px]"
               />
               <Button
                 onClick={handleAddItem}

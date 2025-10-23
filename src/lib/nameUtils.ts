@@ -4,7 +4,8 @@ export const formatNameWithInitial = (firstName?: string, lastName?: string, ema
   } else if (firstName) {
     return firstName;
   } else if (email) {
-    return email;
+    // Extract the part before @ in email address
+    return email.split('@')[0];
   }
   return 'Unknown';
 };
