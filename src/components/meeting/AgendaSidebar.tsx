@@ -438,7 +438,7 @@ export function AgendaSidebar({
                                       immediateSave(item.id, content);
                                     }}
                                     placeholder="Add notes..."
-                                    className="overflow-hidden text-sm border-none focus-visible:ring-0"
+                                    className="text-sm border-none focus-visible:ring-0"
                                   />
                                 </div>
                               )}

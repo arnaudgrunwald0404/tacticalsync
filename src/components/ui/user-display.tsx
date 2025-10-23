@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
+import { Profile } from "@/types/common";
 
 interface UserDisplayProps {
+  user?: Profile | null;
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
@@ -8,9 +10,41 @@ interface UserDisplayProps {
   size?: "sm" | "md";
 }
 
-export function UserDisplay({ firstName, lastName, email, className, size = "sm" }: UserDisplayProps) {
-  const initials = "AG";
-  const displayName = "Arnaudf G.";
+export function UserDisplay({ user, firstName, lastName, email, className, size = "sm" }: UserDisplayProps) {
+  // Use user prop if provided, otherwise fall back to individual props
+  const finalFirstName = user?.first_name || firstName;
+  const finalLastName = user?.last_name || lastName;
+  const finalEmail = user?.email || email;
+  // Generate initials from firstName and lastName, fallback to email
+  const getInitials = () => {
+    if (finalFirstName && finalLastName) {
+      return `${finalFirstName[0]}${finalLastName[0]}`.toUpperCase();
+    }
+    if (finalFirstName) {
+      return finalFirstName[0].toUpperCase();
+    }
+    if (finalEmail) {
+      return finalEmail[0].toUpperCase();
+    }
+    return "?";
+  };
+
+  // Generate display name from available data
+  const getDisplayName = () => {
+    if (finalFirstName && finalLastName) {
+      return `${finalFirstName} ${finalLastName[0]}.`;
+    }
+    if (finalFirstName) {
+      return finalFirstName;
+    }
+    if (finalEmail) {
+      return finalEmail.split('@')[0];
+    }
+    return "Unknown User";
+  };
+
+  const initials = getInitials();
+  const displayName = getDisplayName();
 
   return (
     <div className={cn("flex items-center gap-2", className)}>

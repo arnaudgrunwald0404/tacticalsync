@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageSquare, X, Plus, GripVertical, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +29,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { UserDisplay } from "@/components/ui/user-display";
 import { formatNameWithInitial } from "@/lib/nameUtils";
 import { Priority, CompletionStatus } from "@/types/priorities";
 import { TeamMember } from "@/types/meeting";
@@ -176,20 +176,38 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   }));
 
   const fetchMembers = async () => {
-    const { data } = await supabase
+    // Fetch team members first
+    const { data: teamMembers } = await supabase
       .from("team_members")
-      .select(`
-        id,
-        user_id,
-        profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
-      `)
+      .select("id, team_id, user_id, role, created_at")
       .eq("team_id", teamId);
     
-    if (data) {
-      setMembers(data);
-    } else {
+    if (!teamMembers || teamMembers.length === 0) {
       setMembers([]);
+      return;
     }
+    
+    // Fetch profiles for all team members
+    const userIds = teamMembers.map(member => member.user_id);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+      .in("id", userIds);
+    
+    // Combine team members with their profiles
+    const membersWithProfiles = teamMembers.map(member => {
+      const profile = profiles?.find(p => p.id === member.user_id);
+      return {
+        id: member.id,
+        team_id: member.team_id,
+        user_id: member.user_id,
+        role: member.role,
+        created_at: member.created_at,
+        profiles: profile || null
+      };
+    });
+    
+    setMembers(membersWithProfiles);
   };
 
   const startCreating = () => {
@@ -419,12 +437,81 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
             items.map((item, index) => (
               <div key={item.id || index} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-center border-t relative z-0`}>
                 {/* User Column */}
-                <div className="flex items-center gap-2">
-                  {item.assigned_to_profile ? (
-                    <UserDisplay user={item.assigned_to_profile} />
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Unassigned</div>
-                  )}
+                <div>
+                  <Select
+                    value={item.assigned_to || ""}
+                    onValueChange={(value) => handleChangeAssignment(item.id, value)}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Who?">
+                        {item.assigned_to ? (
+                          (() => {
+                            const member = members.find(m => m.user_id === item.assigned_to);
+                            if (!member?.profiles) return "Unknown";
+                            
+                            const displayName = formatNameWithInitial(
+                              member.profiles.first_name,
+                              member.profiles.last_name,
+                              member.profiles.email
+                            );
+                            
+                            return (
+                              <div className="flex items-center gap-2">
+                                {member.profiles.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={member.profiles.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6 rounded-full">
+                                    <AvatarImage src={member.profiles.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-sm truncate">{displayName}</span>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          "Who?"
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map((member) => {
+                        const displayName = formatNameWithInitial(
+                          member.profiles?.first_name,
+                          member.profiles?.last_name,
+                          member.profiles?.email
+                        );
+                        
+                        return (
+                          <SelectItem key={member.user_id} value={member.user_id}>
+                            <div className="flex items-center gap-2">
+                              {member.profiles?.avatar_name ? (
+                                <FancyAvatar 
+                                  name={member.profiles.avatar_name} 
+                                  displayName={displayName}
+                                  size="sm" 
+                                />
+                              ) : (
+                                <Avatar className="h-6 w-6 rounded-full">
+                                  <AvatarImage src={member.profiles?.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <span className="truncate">{displayName}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Previous Period Content */}
@@ -440,8 +527,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                     {htmlToPlainText(item.outcome)}
                   </div>
                   {item.activities && (
-                    <div className="pl-4 space-y-1 text-sm mt-1">
-                      {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
+                    <div className="text-sm mt-1 text-muted-foreground">
+                      {htmlToPlainText(item.activities).split('\n').filter(line => line.trim()).map((line, idx) => (
                         <div key={idx} className="flex items-start gap-2">
                           <span className="text-muted-foreground">•</span>
                           <span>{line.trim()}</span>
@@ -467,12 +554,81 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
             items.map((item, index) => (
               <div key={item.id || index} className="border rounded-lg p-4 space-y-3 bg-white">
                 {/* User Header */}
-                <div className="flex items-center gap-2 px-1">
-                  {item.assigned_to_profile ? (
-                    <UserDisplay user={item.assigned_to_profile} />
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Unassigned</div>
-                  )}
+                <div className="px-1">
+                  <Select
+                    value={item.assigned_to || ""}
+                    onValueChange={(value) => handleChangeAssignment(item.id, value)}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Who?">
+                        {item.assigned_to ? (
+                          (() => {
+                            const member = members.find(m => m.user_id === item.assigned_to);
+                            if (!member?.profiles) return "Unknown";
+                            
+                            const displayName = formatNameWithInitial(
+                              member.profiles.first_name,
+                              member.profiles.last_name,
+                              member.profiles.email
+                            );
+                            
+                            return (
+                              <div className="flex items-center gap-2">
+                                {member.profiles.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={member.profiles.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6 rounded-full">
+                                    <AvatarImage src={member.profiles.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-sm truncate">{displayName}</span>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          "Who?"
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map((member) => {
+                        const displayName = formatNameWithInitial(
+                          member.profiles?.first_name,
+                          member.profiles?.last_name,
+                          member.profiles?.email
+                        );
+                        
+                        return (
+                          <SelectItem key={member.user_id} value={member.user_id}>
+                            <div className="flex items-center gap-2">
+                              {member.profiles?.avatar_name ? (
+                                <FancyAvatar 
+                                  name={member.profiles.avatar_name} 
+                                  displayName={displayName}
+                                  size="sm" 
+                                />
+                              ) : (
+                                <Avatar className="h-6 w-6 rounded-full">
+                                  <AvatarImage src={member.profiles?.avatar_url} />
+                                  <AvatarFallback className="text-xs">
+                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || '?'}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <span className="truncate">{displayName}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Priority Content - Read-only text */}
@@ -481,8 +637,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                     {htmlToPlainText(item.outcome)}
                   </div>
                   {item.activities && (
-                    <div className="pl-4 space-y-1 text-sm">
-                      {item.activities.split('\n').filter(line => line.trim()).map((line, idx) => (
+                    <div className="text-sm text-muted-foreground">
+                      {htmlToPlainText(item.activities).split('\n').filter(line => line.trim()).map((line, idx) => (
                         <div key={idx} className="flex items-start gap-2">
                           <span className="text-muted-foreground">•</span>
                           <span>{line.trim()}</span>
@@ -515,7 +671,6 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
         <CommentsDialog
           itemId={selectedItem.id}
           itemTitle={selectedItem.title}
-          itemType="priority"
           open={!!selectedItem}
           onOpenChange={(open) => !open && setSelectedItem(null)}
         />

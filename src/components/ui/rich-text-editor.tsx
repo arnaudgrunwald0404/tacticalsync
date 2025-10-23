@@ -28,6 +28,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
   const [isFocused, setIsFocused] = useState(false)
   const [isToolbarHovered, setIsToolbarHovered] = useState(false)
   
+  
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -97,7 +98,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       {/* Floating Toolbar */}
       {(isFocused || isToolbarHovered) && (
         <div 
-          className="absolute bg-white border shadow-lg rounded-lg -top-14 right-0 p-2 flex gap-1 z-[9999]"
+          className="absolute -top-12 left-0 bg-background border shadow-lg rounded-lg p-2 flex gap-1 z-50"
           onMouseEnter={() => setIsToolbarHovered(true)}
           onMouseLeave={() => setIsToolbarHovered(false)}
         >

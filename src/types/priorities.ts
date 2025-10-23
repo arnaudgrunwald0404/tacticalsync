@@ -42,6 +42,15 @@ export interface PriorityFormData {
   assigned_to: string | null;
 }
 
+// Local UI row representation used in the AddPrioritiesDrawer flow
+export interface PriorityRow {
+  id: string;
+  priority: string; // desired outcome (rich text)
+  activities: string; // supporting activities (rich text)
+  assigned_to: string; // user id (empty string means unassigned)
+  time_minutes: number | null;
+}
+
 export interface AddPrioritiesDrawerProps {
   isOpen: boolean;
   onClose: () => void;

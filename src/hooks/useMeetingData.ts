@@ -107,7 +107,7 @@ export function useMeetingData(props: MeetingAgendaProps): {
       const { error } = await supabase
         .from("meeting_series_agenda")
         .update({ 
-          completion_status: newStatus ? 'completed' : 'not_started'
+          completion_status: newStatus ? 'completed' : 'not_completed'
         })
         .eq("id", itemId);
 

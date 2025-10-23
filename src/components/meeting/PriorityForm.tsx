@@ -26,7 +26,7 @@ export function PriorityForm({
   showRemove = false 
 }: PriorityFormProps) {
   return (
-    <div className="grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-start">
+    <>
       <div>
         <Select
           value={priority.assigned_to || ""}
@@ -161,6 +161,6 @@ export function PriorityForm({
           </Button>
         )}
       </div>
-    </div>
+    </>
   );
 }

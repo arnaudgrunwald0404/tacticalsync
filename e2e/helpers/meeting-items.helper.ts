@@ -109,7 +109,7 @@ export async function updateMeetingItem(itemId: string, updates: {
       
       // Handle completion status
       if (updates.isCompleted !== undefined) {
-        updateData.completion_status = updates.isCompleted ? 'completed' : 'not_started';
+        updateData.completion_status = updates.isCompleted ? 'completed' : 'not_completed';
       }
       
       const { error: updateError } = await supabase
