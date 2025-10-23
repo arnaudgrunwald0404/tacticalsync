@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
-import { htmlToPlainText } from "@/lib/htmlUtils";
+import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { AgendaItem, AgendaItemWithProfile } from "@/types/agenda";
 import { TeamMember } from "@/types/common";
@@ -345,9 +345,10 @@ export function AgendaSidebar({
                                   </>
                                 ) : (
                                   <div className="flex-1">
-                                    <p className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}>
-                                      {htmlToPlainText(item.title)}
-                                    </p>
+                                    <p 
+                                      className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}
+                                      dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.title).map(item => item.content).join('') }}
+                                    />
                                   </div>
                                 )}
                               </div>

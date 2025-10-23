@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import CommentsDialog from "./CommentsDialog";
 import AddPrioritiesDrawer from "./AddPrioritiesDrawer";
 import { startOfWeek, endOfWeek, format, getWeek, addDays } from "date-fns";
-import { htmlToPlainText } from "@/lib/htmlUtils";
+import { htmlToPlainText, htmlToDisplayItems, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import {
   DndContext,
   closestCenter,
@@ -523,15 +523,19 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
                 {/* Current Period Content - Read-only text */}
                 <div className="space-y-1">
-                  <div className="font-bold">
-                    {htmlToPlainText(item.outcome)}
-                  </div>
+                  <div 
+                    className="font-bold"
+                    dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.outcome).map(item => item.content).join('') }}
+                  />
                   {item.activities && (
                     <div className="text-sm mt-1 text-muted-foreground">
-                      {htmlToPlainText(item.activities).split('\n').filter(line => line.trim()).map((line, idx) => (
+                      {htmlToFormattedDisplayItems(item.activities).map((displayItem, idx) => (
                         <div key={idx} className="flex items-start gap-2">
-                          <span className="text-muted-foreground">•</span>
-                          <span>{line.trim()}</span>
+                          {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
+                          <span 
+                            className={displayItem.isListItem ? "" : "block"}
+                            dangerouslySetInnerHTML={{ __html: displayItem.content }}
+                          />
                         </div>
                       ))}
                     </div>
@@ -633,15 +637,19 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
                 {/* Priority Content - Read-only text */}
                 <div className="space-y-3">
-                  <div className="font-bold">
-                    {htmlToPlainText(item.outcome)}
-                  </div>
+                  <div 
+                    className="font-bold"
+                    dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.outcome).map(item => item.content).join('') }}
+                  />
                   {item.activities && (
                     <div className="text-sm text-muted-foreground">
-                      {htmlToPlainText(item.activities).split('\n').filter(line => line.trim()).map((line, idx) => (
+                      {htmlToFormattedDisplayItems(item.activities).map((displayItem, idx) => (
                         <div key={idx} className="flex items-start gap-2">
-                          <span className="text-muted-foreground">•</span>
-                          <span>{line.trim()}</span>
+                          {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
+                          <span 
+                            className={displayItem.isListItem ? "" : "block"}
+                            dangerouslySetInnerHTML={{ __html: displayItem.content }}
+                          />
                         </div>
                       ))}
                     </div>
