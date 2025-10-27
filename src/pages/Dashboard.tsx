@@ -165,12 +165,13 @@ const Dashboard = () => {
           .select("team_id")
           .eq("user_id", userData.user.id);
         
+        // Always fetch invitations for all users, even if they have no teams
+        await fetchPendingInvitations();
+        
         if (userTeams && userTeams.length > 0) {
-          await fetchPendingInvitations();
           await fetchTeams();
         } else {
           // User has no teams, set empty arrays
-          setPendingInvitations([]);
           setTeams([]);
           setMeetings({});
         }
