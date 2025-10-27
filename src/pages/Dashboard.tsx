@@ -40,6 +40,7 @@ const Dashboard = () => {
   interface UserProfile {
     first_name?: string;
     last_name?: string;
+    full_name?: string;
     avatar_name?: string;
     avatar_url?: string;
     email?: string;
@@ -128,7 +129,7 @@ const Dashboard = () => {
       } else {
         const { data: newProfile } = await supabase
           .from("profiles")
-          .select("first_name, last_name, avatar_name, avatar_url, email")
+          .select("first_name, last_name, full_name, avatar_name, avatar_url, email")
           .eq("id", session.user.id)
           .maybeSingle();
         profile = newProfile || null;
@@ -141,22 +142,38 @@ const Dashboard = () => {
       setProfile(profile);
     }
 
-    // Only fetch data if user has teams
+    // Check if user is super admin or has teams
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user?.id) {
-      const { data: userTeams } = await supabase
-        .from("team_members")
-        .select("team_id")
-        .eq("user_id", userData.user.id);
+      // Check if user is super admin
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_super_admin")
+        .eq("id", userData.user.id)
+        .single();
       
-      if (userTeams && userTeams.length > 0) {
+      const isSuperAdmin = !profileError && (profileData as any)?.is_super_admin === true;
+      
+      if (isSuperAdmin) {
+        // Super admin can see all teams
         await fetchPendingInvitations();
         await fetchTeams();
       } else {
-        // User has no teams, set empty arrays
-        setPendingInvitations([]);
-        setTeams([]);
-        setMeetings({});
+        // Regular user - check if they have teams
+        const { data: userTeams } = await supabase
+          .from("team_members")
+          .select("team_id")
+          .eq("user_id", userData.user.id);
+        
+        if (userTeams && userTeams.length > 0) {
+          await fetchPendingInvitations();
+          await fetchTeams();
+        } else {
+          // User has no teams, set empty arrays
+          setPendingInvitations([]);
+          setTeams([]);
+          setMeetings({});
+        }
       }
     }
     setLoading(false);
@@ -171,18 +188,59 @@ const Dashboard = () => {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("team_members")
-        .select(`
-          *,
-          teams:team_id (
+      // Check if user is super admin
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_super_admin")
+        .eq("id", userData.user.id)
+        .single();
+      
+      const isSuperAdmin = !profileError && (profileData as any)?.is_super_admin === true;
+
+      let data;
+      let error;
+
+      if (isSuperAdmin) {
+        // Super admin: fetch all teams directly
+        const result = await supabase
+          .from("teams")
+          .select(`
             id,
             name,
             created_at,
             invite_code
-          )
-        `)
-        .eq("user_id", userData.user.id);
+          `);
+        
+        data = result.data;
+        error = result.error;
+
+        if (!error && data) {
+          // Transform data to match expected format (wrap in team_members structure)
+          data = data.map(team => ({
+            team_id: team.id,
+            user_id: userData.user.id,
+            role: 'admin', // Super admin has admin access to all teams
+            teams: team
+          }));
+        }
+      } else {
+        // Regular user: use existing team_members query
+        const result = await supabase
+          .from("team_members")
+          .select(`
+            *,
+            teams:team_id (
+              id,
+              name,
+              created_at,
+              invite_code
+            )
+          `)
+          .eq("user_id", userData.user.id);
+        
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) {
         console.error("Error fetching teams:", error);

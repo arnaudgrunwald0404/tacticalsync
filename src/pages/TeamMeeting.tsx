@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Settings, Plus, Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda from "@/components/meeting/MeetingAgenda";
-import type { MeetingAgendaRef } from "@/types/meeting";
 import MeetingPriorities from "@/components/meeting/MeetingPriorities";
 import type { MeetingPrioritiesRef } from "@/components/meeting/MeetingPriorities";
 import TeamTopics from "@/components/meeting/TeamTopics";
@@ -73,7 +72,6 @@ const TeamMeeting = () => {
   const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
   const meetingPrioritiesRef = useRef<MeetingPrioritiesRef>(null);
   const actionItemsRef = useRef<ActionItemsRef>(null);
-  const meetingAgendaRef = useRef<MeetingAgendaRef>(null);
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
     priorities: false,
@@ -126,7 +124,7 @@ const TeamMeeting = () => {
         .single();
 
       if (recurringError) throw recurringError;
-      setRecurringMeeting(recurringData);
+      setRecurringMeeting(recurringData as RecurringMeeting);
 
       // Get or create current period's meeting
       const today = new Date();
@@ -614,28 +612,8 @@ const TeamMeeting = () => {
 
       if (error) throw error;
 
-      // Copy agenda items from current meeting
-      const { data: currentItems } = await supabase
-        .from("meeting_items")
-        .select("*")
-        .eq("meeting_id", meeting.id)
-        .eq("type", "agenda");
-
-      if (currentItems && currentItems.length > 0) {
-        const userId = (await supabase.auth.getUser()).data.user?.id;
-        for (let i = 0; i < currentItems.length; i++) {
-          const item = currentItems[i];
-          await supabase.from("meeting_items").insert({
-            meeting_id: newMeeting.id,
-            type: "agenda",
-            title: item.title,
-            order_index: i,
-            created_by: userId,
-            assigned_to: item.assigned_to,
-            time_minutes: item.time_minutes,
-          });
-        }
-      }
+      // Copy agenda items from current meeting series to next meeting instance
+      // Note: Agenda items are linked to the series, so they're already available for the new instance
 
       // Refresh meetings and navigate to new one
       await fetchAllMeetings(meetingId);
@@ -792,7 +770,6 @@ const TeamMeeting = () => {
           <div className="hidden lg:block w-72 xl:w-80 shrink-0">
             <div className="fixed w-72 xl:w-80">
               <MeetingAgenda
-                ref={meetingAgendaRef}
                 items={agendaItems}
                 meetingId={meeting?.id}
                 teamId={teamId}

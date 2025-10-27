@@ -71,41 +71,60 @@ Deno.serve(async (req) => {
       console.log(`Found ${teamMembers?.length || 0} teams for ${profile.first_name}`);
 
       for (const member of teamMembers || []) {
-        // Get or create this week's meeting (Monday start)
+        // Get or create this week's meeting instance (Monday start)
         const weekStart = new Date(today);
         const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
         const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Days to subtract to get to Monday
         weekStart.setDate(today.getDate() - daysToMonday);
         const weekStartStr = weekStart.toISOString().split('T')[0];
 
-        const { data: meeting, error: meetingError } = await supabase
-          .from('weekly_meetings')
+        // Find a recurring meeting for this team
+        const { data: recurringMeeting, error: recurringError } = await supabase
+          .from('recurring_meetings')
           .select('id')
           .eq('team_id', member.team_id)
-          .eq('week_start_date', weekStartStr)
+          .eq('frequency', 'weekly')
           .maybeSingle();
 
-        // Create meeting if it doesn't exist
-        if (!meeting) {
-          const { data: newMeeting, error: createError } = await supabase
-            .from('weekly_meetings')
-            .insert({ team_id: member.team_id, week_start_date: weekStartStr })
+        if (recurringError || !recurringMeeting) {
+          console.error('Error finding recurring meeting:', recurringError);
+          continue;
+        }
+
+        // Get or create meeting instance for this week
+        const { data: meetingInstance, error: instanceError } = await supabase
+          .from('meeting_instances')
+          .select('id')
+          .eq('recurring_meeting_id', recurringMeeting.id)
+          .eq('start_date', weekStartStr)
+          .maybeSingle();
+
+        let meetingId;
+        if (!meetingInstance) {
+          // Create meeting instance if it doesn't exist
+          const { data: newInstance, error: createError } = await supabase
+            .from('meeting_instances')
+            .insert({ 
+              recurring_meeting_id: recurringMeeting.id, 
+              start_date: weekStartStr 
+            })
             .select('id')
             .single();
 
           if (createError) {
-            console.error('Error creating meeting:', createError);
+            console.error('Error creating meeting instance:', createError);
             continue;
           }
-          meeting = newMeeting;
+          meetingId = newInstance.id;
+        } else {
+          meetingId = meetingInstance.id;
         }
 
         // Check if birthday topic already exists for this person this week
         const { data: existingTopic } = await supabase
-          .from('meeting_items')
+          .from('meeting_instance_topics')
           .select('id')
-          .eq('meeting_id', meeting.id)
-          .eq('type', 'topic')
+          .eq('instance_id', meetingId)
           .ilike('title', `%${profile.first_name}%birthday%`)
           .maybeSingle();
 
@@ -116,10 +135,9 @@ Deno.serve(async (req) => {
 
         // Get next order index
         const { data: lastItem } = await supabase
-          .from('meeting_items')
+          .from('meeting_instance_topics')
           .select('order_index')
-          .eq('meeting_id', meeting.id)
-          .eq('type', 'topic')
+          .eq('instance_id', meetingId)
           .order('order_index', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -131,12 +149,11 @@ Deno.serve(async (req) => {
         const randomEmoji = birthdayEmojis[Math.floor(Math.random() * birthdayEmojis.length)];
         
         const { error: topicError } = await supabase
-          .from('meeting_items')
+          .from('meeting_instance_topics')
           .insert({
-            meeting_id: meeting.id,
-            type: 'topic',
+            instance_id: meetingId,
             title: `${randomEmoji} ${profile.first_name}'s Birthday!`,
-            description: `Today is ${profile.first_name} ${profile.last_name}'s birthday! Let's take a moment to celebrate.`,
+            notes: `Today is ${profile.first_name} ${profile.last_name}'s birthday! Let's take a moment to celebrate.`,
             time_minutes: 2,
             order_index: nextOrder,
             created_by: profile.id,
