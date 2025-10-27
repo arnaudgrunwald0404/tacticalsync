@@ -388,13 +388,17 @@ const Dashboard = () => {
         return;
       }
 
+      console.log("Fetching invitations for email:", user.email);
+
       // First check if invitations table exists and has data
       const { data: invitations, error } = await supabase
         .from("invitations")
         .select("*")
-        .eq("email", user.email.toLowerCase())
         .eq("status", "pending")
         .gt("expires_at", new Date().toISOString());
+
+      console.log("All pending invitations:", invitations);
+      console.log("Filtering for email:", user.email.toLowerCase());
 
       if (error) {
         console.error("Error fetching invitations:", error);
@@ -402,8 +406,15 @@ const Dashboard = () => {
         return;
       }
 
-      // If no invitations, set empty array and return
-      if (!invitations || invitations.length === 0) {
+      // Filter invitations by email (case-insensitive)
+      const matchingInvitations = invitations?.filter(inv => 
+        inv.email.toLowerCase() === user.email.toLowerCase()
+      ) || [];
+
+      console.log("Matching invitations:", matchingInvitations);
+
+      // If no matching invitations, set empty array and return
+      if (matchingInvitations.length === 0) {
         setPendingInvitations([]);
         return;
       }
@@ -417,9 +428,11 @@ const Dashboard = () => {
       const memberTeamIds = new Set(memberTeams?.map(m => m.team_id) || []);
 
       // Filter out invitations for teams user is already a member of
-      const validInvitations = invitations.filter(
+      const validInvitations = matchingInvitations.filter(
         inv => !memberTeamIds.has(inv.team_id)
       );
+
+      console.log("Valid invitations (not already member):", validInvitations);
 
       // If no valid invitations, set empty array
       if (validInvitations.length === 0) {
