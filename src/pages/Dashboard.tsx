@@ -444,6 +444,13 @@ const Dashboard = () => {
       // Fetch meetings for each invited team
       const invitationsWithMeetings = await Promise.all(
         validInvitations.map(async (invitation) => {
+          // Fetch team info
+          const { data: teamData } = await supabase
+            .from("teams")
+            .select("*")
+            .eq("id", invitation.team_id)
+            .single();
+
           const { data: teamMeetings } = await supabase
             .from("meeting_series")
             .select("*")
@@ -452,6 +459,7 @@ const Dashboard = () => {
 
           return {
             ...invitation,
+            teams: teamData,
             meetings: teamMeetings || [],
           };
         })
