@@ -195,13 +195,16 @@ const Dashboard = () => {
         .eq("id", userData.user.id)
         .single();
       
+      console.log("Profile data:", profileData, "Error:", profileError);
       const isSuperAdmin = !profileError && (profileData as any)?.is_super_admin === true;
+      console.log("Is super admin:", isSuperAdmin);
 
       let data;
       let error;
 
       if (isSuperAdmin) {
         // Super admin: fetch all teams directly
+        console.log("Fetching all teams for super admin...");
         const result = await supabase
           .from("teams")
           .select(`
@@ -213,6 +216,7 @@ const Dashboard = () => {
         
         data = result.data;
         error = result.error;
+        console.log("Teams result:", data, "Error:", error);
 
         if (!error && data) {
           // Transform data to match expected format (wrap in team_members structure)
@@ -222,6 +226,7 @@ const Dashboard = () => {
             role: 'admin', // Super admin has admin access to all teams
             teams: team
           }));
+          console.log("Transformed teams data:", data);
         }
       } else {
         // Regular user: use existing team_members query
