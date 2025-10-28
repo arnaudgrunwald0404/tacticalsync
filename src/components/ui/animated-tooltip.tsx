@@ -58,7 +58,7 @@ export const AnimatedTooltip = ({ items }: AnimatedTooltipProps) => {
               initial={{ opacity: 0, y: 5, scale: 0.8 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 5, scale: 0.8 }}
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-black text-white px-4 py-2 rounded-lg shadow-xl pointer-events-none z-50 whitespace-nowrap"
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-black text-white px-3 py-2 rounded-lg shadow-xl pointer-events-none z-50 whitespace-nowrap min-w-max"
               transition={{
                 duration: 0.2,
                 ease: "easeOut"
@@ -69,7 +69,7 @@ export const AnimatedTooltip = ({ items }: AnimatedTooltipProps) => {
                 <p className="text-xs text-gray-300">{item.designation}</p>
               </div>
               {/* Tooltip arrow */}
-              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-0.5 w-2 h-2 bg-black rotate-45" />
+              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-black rotate-45" />
             </motion.div>
           )}
         </div>
