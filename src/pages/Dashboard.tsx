@@ -265,7 +265,7 @@ const Dashboard = () => {
               .eq("team_id", teamMember.teams.id);
 
             // Fetch team members with their profiles
-            const { data: teamMembers } = await supabase
+            const { data: teamMembers, error: teamMembersError } = await supabase
               .from("team_members")
               .select(`
                 *,
@@ -277,6 +277,8 @@ const Dashboard = () => {
                 )
               `)
               .eq("team_id", teamMember.teams.id);
+            
+            console.log("Team members query result:", { teamMembers, teamMembersError });
 
             // Fetch meeting series for this team
             const { data: teamMeetings } = await supabase
