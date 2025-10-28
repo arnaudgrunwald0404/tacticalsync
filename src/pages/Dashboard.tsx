@@ -230,7 +230,7 @@ const Dashboard = () => {
           .from("team_members")
           .select(`
             *,
-            teams:team_id (
+            teams!inner (
               id,
               name,
               created_at,
