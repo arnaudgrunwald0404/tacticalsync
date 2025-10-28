@@ -39,6 +39,7 @@ const TeamMeeting = () => {
     id: string;
     name: string;
     frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
+    created_by?: string;
   }
 
   interface Meeting {
@@ -79,7 +80,9 @@ const TeamMeeting = () => {
     actionItems: false,
   });
   const [showPreviousPeriod, setShowPreviousPeriod] = useState(false);
-  const [showMineOnly, setShowMineOnly] = useState(false);
+  const [showMineOnly, setShowMineOnly] = useState(true);
+  const myPrioritiesThisPeriod = currentUserId ? priorityItems.filter(item => item.assigned_to === currentUserId) : [];
+  const hasMyPriorities = myPrioritiesThisPeriod.length > 0;
 
   useEffect(() => {
     if (teamId && meetingId) {
@@ -118,7 +121,7 @@ const TeamMeeting = () => {
       // Fetch meeting series
       const { data: recurringData, error: recurringError } = await supabase
         .from('meeting_series')
-        .select('id,name,frequency')
+        .select('id,name,frequency,created_by')
         .filter('id', 'eq', meetingId)
         .limit(1)
         .single();
@@ -336,6 +339,7 @@ const TeamMeeting = () => {
           ...item,
           is_completed: item.completion_status === 'completed'
         }));
+        console.log("Fetched agenda items:", transformedAgendaData);
         setAgendaItems(transformedAgendaData);
       }
 
@@ -773,13 +777,13 @@ const TeamMeeting = () => {
                 items={agendaItems}
                 meetingId={meeting?.id}
                 teamId={teamId}
-                onUpdate={() => {
+                onUpdate={async () => {
                   if (meeting?.id) {
-                    fetchMeetingItems(meeting.id);
+                    await fetchMeetingItems(meeting.id);
                   }
                 }}
                 currentUserId={currentUserId || undefined}
-                isAdmin={currentUserRole === "admin" || false}
+                isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
               />
             </div>
           </div>
@@ -809,8 +813,8 @@ const TeamMeeting = () => {
                       </div>
                     </div>
                     
-                    {previousMeetingId && (
-                      <div className="flex items-center gap-4 pt-2">
+                    <div className="flex items-center gap-4 pt-2">
+                      {previousMeetingId && (
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id="show-previous"
@@ -821,42 +825,42 @@ const TeamMeeting = () => {
                             Include previous {recurringMeeting?.frequency === "monthly" ? "month" : recurringMeeting?.frequency === "weekly" ? "week" : recurringMeeting?.frequency === "quarter" ? "quarter" : "period"}
                           </label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="show-mine-only"
-                            checked={showMineOnly}
-                            onCheckedChange={(checked) => setShowMineOnly(checked === true)}
-                          />
-                          <label htmlFor="show-mine-only" className="text-sm text-muted-foreground">
-                            Show mine only
-                          </label>
-                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="show-mine-only"
+                          checked={showMineOnly}
+                          onCheckedChange={(checked) => setShowMineOnly(checked === true)}
+                        />
+                        <label htmlFor="show-mine-only" className="text-sm text-muted-foreground">
+                          Show mine only
+                        </label>
                       </div>
-                    )}
+                    </div>
                     
                     <Button
                       onClick={() => meetingPrioritiesRef.current?.startCreating()}
                       size="sm"
-                      variant={priorityItems.length > 0 ? "ghost" : "default"}
+                      variant={hasMyPriorities ? "ghost" : "default"}
                       className={`text-xs sm:text-sm h-8 sm:h-9 ${
-                        priorityItems.length > 0 
+                        hasMyPriorities 
                           ? "text-primary hover:text-primary/80 hover:bg-transparent" 
                           : ""
                       }`}
                     >
-                      {priorityItems.length > 0 ? (
+                      {hasMyPriorities ? (
                         <Edit2 className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
                       ) : (
                         <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
                       )}
                       <span className="hidden sm:inline">
-                        {priorityItems.length > 0 
+                        {hasMyPriorities 
                           ? (showPreviousPeriod ? "Edit this Week's Priorities" : "Edit Priorities") 
-                          : "Add Priorities"
+                          : "Add my priorities"
                         }
                       </span>
                       <span className="sm:hidden">
-                        {priorityItems.length > 0 
+                        {hasMyPriorities 
                           ? (showPreviousPeriod ? "Edit This Week" : "Edit") 
                           : "Add"
                         }
@@ -867,6 +871,7 @@ const TeamMeeting = () => {
               {!sectionsCollapsed.priorities && (
                 <MeetingPriorities
                 ref={meetingPrioritiesRef}
+                currentUserId={currentUserId || undefined}
                 items={showMineOnly && currentUserId 
                   ? priorityItems.filter(item => item.assigned_to === currentUserId)
                   : priorityItems

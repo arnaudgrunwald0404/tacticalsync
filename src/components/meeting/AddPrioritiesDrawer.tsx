@@ -72,8 +72,15 @@ const AddPrioritiesDrawer = ({
         
         setPriorities(existingPriorityRows);
       } else {
-        // Start with empty array - only create priorities when user explicitly adds them
-        setPriorities([]);
+        // Initialize with three empty rows for first-time users
+        const emptyRows: PriorityRow[] = [0,1,2].map((idx) => ({
+          id: `new-${idx + 1}`,
+          priority: "",
+          assigned_to: "",
+          activities: "",
+          time_minutes: null
+        }));
+        setPriorities(emptyRows);
       }
     }
   }, [isOpen, existingPriorities]);

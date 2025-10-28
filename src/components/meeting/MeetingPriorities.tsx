@@ -43,6 +43,7 @@ interface MeetingPrioritiesProps {
   hasAgendaItems?: boolean;
   frequency?: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
   showPreviousPeriod?: boolean;
+  currentUserId?: string;
 }
 
 export interface MeetingPrioritiesRef {
@@ -136,7 +137,7 @@ const SortablePriorityRow = ({
   );
 };
 
-const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false }, ref) => {
+const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false, currentUserId }, ref) => {
   const { toast } = useToast();
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -534,7 +535,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                           {/* Previous Period Column - single row per index */}
                           {showPreviousPeriod && (
                             <div className="space-y-2">
-                              {prevItem ? (
+                        {prevItem ? (
                                 <div
                                   className={cn(
                                     "p-3 rounded-md border flex justify-between items-start",
@@ -553,26 +554,30 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => handlePreviousPriorityCompletion(prevItem.id, 'completed')}
+                                      onClick={() => (currentUserId && prevItem.assigned_to !== currentUserId) ? undefined : handlePreviousPriorityCompletion(prevItem.id, 'completed')}
                                       className={cn(
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'completed'
                                           ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
-                                          : "bg-white border-gray-300 hover:bg-gray-50"
+                                          : "bg-white border-gray-300 hover:bg-gray-50",
+                                        (currentUserId && prevItem.assigned_to !== currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
+                                      disabled={!!(currentUserId && prevItem.assigned_to !== currentUserId)}
                                     >
                                       <Check className="h-4 w-4" />
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => handlePreviousPriorityCompletion(prevItem.id, 'not_completed')}
+                                      onClick={() => (currentUserId && prevItem.assigned_to !== currentUserId) ? undefined : handlePreviousPriorityCompletion(prevItem.id, 'not_completed')}
                                       className={cn(
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'not_completed'
                                           ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
-                                          : "bg-white border-gray-300 hover:bg-gray-50"
+                                          : "bg-white border-gray-300 hover:bg-gray-50",
+                                        (currentUserId && prevItem.assigned_to !== currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
+                                      disabled={!!(currentUserId && prevItem.assigned_to !== currentUserId)}
                                     >
                                       <X className="h-4 w-4" />
                                     </Button>
@@ -635,7 +640,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                 <div className="px-1">
                   <Select
                     value={item.assigned_to || ""}
-                    onValueChange={(value) => handleChangeAssignment(item.id, value)}
+                    onValueChange={(value) => (currentUserId && item.assigned_to !== currentUserId) ? undefined : handleChangeAssignment(item.id, value)}
                   >
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Who?">
@@ -684,7 +689,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                         );
                         
                         return (
-                          <SelectItem key={member.user_id} value={member.user_id}>
+                          <SelectItem key={member.user_id} value={member.user_id} disabled={!!(currentUserId && item.assigned_to !== currentUserId)}>
                             <div className="flex items-center gap-2">
                               {member.profiles?.avatar_name ? (
                                 <FancyAvatar 
@@ -814,7 +819,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
         meetingId={meetingId}
         teamId={teamId}
         onSave={onUpdate}
-        existingPriorities={items}
+        existingPriorities={currentUserId ? items.filter(i => i.assigned_to === currentUserId) : items}
         frequency={frequency}
       />
     </>
