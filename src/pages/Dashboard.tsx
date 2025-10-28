@@ -276,7 +276,7 @@ const Dashboard = () => {
               const userIds = teamMembers.map(member => member.user_id);
               const { data: profiles } = await supabase
                 .from("profiles")
-                .select("id, full_name, avatar_url, avatar_name")
+                .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
                 .in("id", userIds);
               
               // Create a map for easy lookup
@@ -287,10 +287,17 @@ const Dashboard = () => {
             }
 
             // Attach profiles to team members
-            const teamMembersWithProfiles = teamMembers?.map(member => ({
-              ...member,
-              profile: profilesById[member.user_id] || null
-            })) || [];
+            const teamMembersWithProfiles = teamMembers?.map(member => {
+              const p = profilesById[member.user_id] || null;
+              const displayName = (p?.full_name && p.full_name.trim())
+                || `${(p?.first_name || "")} ${(p?.last_name || "")}`.trim()
+                || (p?.email ? (p.email.split("@")[0] || "") : "")
+                || (p?.avatar_name || "");
+              return {
+                ...member,
+                profile: p ? { ...p, display_name: displayName } : null,
+              };
+            }) || [];
 
             // Fetch meeting series for this team
             const { data: teamMeetings } = await supabase
@@ -760,10 +767,10 @@ const Dashboard = () => {
                           <AnimatedTooltip 
                             items={teamMember.teamMembers.map((member: any, index: number) => ({
                               id: index,
-                              name: member.profile?.full_name || "Unknown",
+                              name: member.profile?.display_name || member.profile?.full_name || "Unknown",
                               designation: member.role === "admin" ? "Admin" : "Member",
                               image: member.profile?.avatar_url || null,
-                              avatarName: member.profile?.avatar_name || member.profile?.full_name || "Unknown"
+                              avatarName: member.profile?.avatar_name || member.profile?.display_name || member.profile?.full_name || "Unknown"
                             }))}
                           />
                         </div>
