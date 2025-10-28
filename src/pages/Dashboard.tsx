@@ -241,6 +241,7 @@ const Dashboard = () => {
         
         data = result.data;
         error = result.error;
+        console.log("Regular user teams query result:", { data, error });
       }
 
       if (error) {
