@@ -782,6 +782,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
         teamId={teamId}
         onSave={onUpdate}
         existingPriorities={items}
+        frequency={frequency}
       />
     </>
   );

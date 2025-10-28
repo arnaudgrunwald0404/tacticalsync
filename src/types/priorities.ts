@@ -58,4 +58,5 @@ export interface AddPrioritiesDrawerProps {
   teamId: string;
   onSave: () => void;
   existingPriorities?: Priority[];
+  frequency?: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
 }

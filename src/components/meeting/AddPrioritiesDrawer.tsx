@@ -26,7 +26,8 @@ const AddPrioritiesDrawer = ({
   meetingId, 
   teamId, 
   onSave, 
-  existingPriorities = [] 
+  existingPriorities = [],
+  frequency = "weekly"
 }: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
   const [priorities, setPriorities] = useState<PriorityRow[]>([]);
@@ -319,7 +320,7 @@ const AddPrioritiesDrawer = ({
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] flex flex-col h-full">
         <SheetHeader className="pb-4 flex-none">
-          <SheetTitle className="text-xl sm:text-2xl">Edit This Week's Priorities</SheetTitle>
+          <SheetTitle className="text-xl sm:text-2xl">{`Edit This ${frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities`}</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
             Edit your priorities for the current period. You can add up to three priorities.
           </SheetDescription>
