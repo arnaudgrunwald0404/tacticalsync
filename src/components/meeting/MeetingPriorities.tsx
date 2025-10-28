@@ -465,125 +465,158 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
             </div>
           </div>
           
-          {/* Display all priorities */}
-          {items.length > 0 ? (
-            items.map((item, index) => (
-              <div key={item.id || index} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-center border-t relative z-0`}>
-                {/* User Column */}
-                <div>
-                  {item.assigned_to ? (
-                    (() => {
-                      const member = members.find(m => m.user_id === item.assigned_to);
-                      if (!member?.profiles) return <span className="text-sm text-muted-foreground">Unknown</span>;
-                      
-                      const displayName = formatNameWithInitial(
-                        member.profiles.first_name,
-                        member.profiles.last_name,
-                        member.profiles.email
-                      );
-                      
+          {/* Display priorities grouped by person and aligned by index */}
+          {Object.keys(groupedPriorities).length > 0 || Object.keys(groupedPreviousPriorities).length > 0 ? (
+            (() => {
+              const allUserIds = Array.from(new Set([
+                ...Object.keys(groupedPriorities),
+                ...Object.keys(groupedPreviousPriorities)
+              ]));
+
+              const getDisplayName = (userId: string | null) => {
+                if (!userId || userId === 'unassigned') return 'Unassigned';
+                const member = members.find(m => m.user_id === userId);
+                if (!member?.profiles) return 'Unknown';
+                return formatNameWithInitial(
+                  member.profiles.first_name,
+                  member.profiles.last_name,
+                  member.profiles.email
+                );
+              };
+
+              const sortedUserIds = allUserIds.sort((a, b) => {
+                const nameA = getDisplayName(a).toLowerCase();
+                const nameB = getDisplayName(b).toLowerCase();
+                return nameA.localeCompare(nameB);
+              });
+
+              return (
+                <>
+                  {sortedUserIds.map((userId) => {
+                    const current = (groupedPriorities[userId] || []).sort((a, b) => a.order_index - b.order_index);
+                    const previous = (groupedPreviousPriorities[userId] || []).sort((a, b) => a.order_index - b.order_index);
+                    const rows = Math.max(current.length, showPreviousPeriod ? previous.length : 0, 1);
+
+                    const member = userId && userId !== 'unassigned' ? members.find(m => m.user_id === userId) : undefined;
+                    const displayName = getDisplayName(userId as string);
+
+                    return Array.from({ length: rows }).map((_, i) => {
+                      const currItem = current[i];
+                      const prevItem = showPreviousPeriod ? previous[i] : undefined;
+
                       return (
-                        <div className="flex items-center gap-2">
-                          {member.profiles.avatar_name ? (
-                            <FancyAvatar 
-                              name={member.profiles.avatar_name} 
-                              displayName={displayName}
-                              size="sm" 
-                            />
-                          ) : (
-                            <Avatar className="h-6 w-6 rounded-full">
-                              <AvatarImage src={member.profiles.avatar_url} />
-                              <AvatarFallback className="text-xs">
-                                {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
-                              </AvatarFallback>
-                            </Avatar>
+                        <div key={`${userId}-${i}`} className={`px-4 py-3 grid ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4 items-start border-t relative z-0`}>
+                          {/* User Column - name shown on every row */}
+                          <div>
+                            {userId && userId !== 'unassigned' && member?.profiles ? (
+                              <div className="flex items-center gap-2">
+                                {member.profiles.avatar_name ? (
+                                  <FancyAvatar 
+                                    name={member.profiles.avatar_name} 
+                                    displayName={displayName}
+                                    size="sm" 
+                                  />
+                                ) : (
+                                  <Avatar className="h-6 w-6 rounded-full">
+                                    <AvatarImage src={member.profiles.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-sm truncate">{displayName}</span>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{displayName}</span>
+                            )}
+                          </div>
+
+                          {/* Previous Period Column - single row per index */}
+                          {showPreviousPeriod && (
+                            <div className="space-y-2">
+                              {prevItem ? (
+                                <div
+                                  className={cn(
+                                    "p-3 rounded-md border flex justify-between items-start",
+                                    prevItem.completion_status === 'completed' && "bg-green-50 border-green-200",
+                                    prevItem.completion_status === 'not_completed' && "bg-red-50 border-red-200",
+                                    (prevItem.completion_status === 'pending' || !prevItem.completion_status) && "bg-gray-50 border-gray-200"
+                                  )}
+                                >
+                                  <div className="flex-1 pr-3">
+                                    <div
+                                      className="text-sm"
+                                      dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevItem.outcome).map(it => it.content).join('') }}
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handlePreviousPriorityCompletion(prevItem.id, 'completed')}
+                                      className={cn(
+                                        "h-8 w-8 p-0",
+                                        prevItem.completion_status === 'completed'
+                                          ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                                          : "bg-white border-gray-300 hover:bg-gray-50"
+                                      )}
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handlePreviousPriorityCompletion(prevItem.id, 'not_completed')}
+                                      className={cn(
+                                        "h-8 w-8 p-0",
+                                        prevItem.completion_status === 'not_completed'
+                                          ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
+                                          : "bg-white border-gray-300 hover:bg-gray-50"
+                                      )}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground italic text-sm">&nbsp;</div>
+                              )}
+                            </div>
                           )}
-                          <span className="text-sm truncate">{displayName}</span>
+
+                          {/* Current Period Column - single row per index */}
+                          <div className="space-y-1">
+                            {currItem ? (
+                              <>
+                                <div
+                                  className="text-sm font-semibold"
+                                  dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(currItem.outcome).map(it => it.content).join('') }}
+                                />
+                                {currItem.activities && (
+                                  <div className="text-sm mt-1 text-muted-foreground">
+                                    {htmlToFormattedDisplayItems(currItem.activities).map((displayItem, idx) => (
+                                      <div key={idx} className="flex items-start gap-2">
+                                        {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
+                                        <span
+                                          className={displayItem.isListItem ? "" : "block"}
+                                          dangerouslySetInnerHTML={{ __html: displayItem.content }}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-muted-foreground italic text-sm">&nbsp;</div>
+                            )}
+                          </div>
                         </div>
                       );
-                    })()
-                  ) : (
-                    <span className="text-sm text-muted-foreground">Unassigned</span>
-                  )}
-                </div>
-
-                {/* Previous Period Content */}
-                {showPreviousPeriod && (
-                  <div className="space-y-2">
-                    {(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).map((prevPriority) => (
-                      <div 
-                        key={prevPriority.id}
-                        className={cn(
-                          "p-3 rounded-md border flex justify-between items-start",
-                          prevPriority.completion_status === 'completed' && "bg-green-50 border-green-200",
-                          prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200",
-                          (prevPriority.completion_status === 'pending' || !prevPriority.completion_status) && "bg-gray-50 border-gray-200"
-                        )}
-                      >
-                        <div className="flex-1 pr-3">
-                          <div 
-                            className="text-sm" 
-                            dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevPriority.outcome).map(item => item.content).join('') }} 
-                          />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'completed')}
-                            className={cn(
-                              "h-8 w-8 p-0",
-                              prevPriority.completion_status === 'completed' 
-                                ? "bg-green-600 text-white border-green-600 hover:bg-green-700" 
-                                : "bg-white border-gray-300 hover:bg-gray-50"
-                            )}
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePreviousPriorityCompletion(prevPriority.id, 'not_completed')}
-                            className={cn(
-                              "h-8 w-8 p-0",
-                              prevPriority.completion_status === 'not_completed' 
-                                ? "bg-red-600 text-white border-red-600 hover:bg-red-700" 
-                                : "bg-white border-gray-300 hover:bg-gray-50"
-                            )}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    {!(groupedPreviousPriorities[item.assigned_to || 'unassigned'] || []).length && (
-                      <div className="text-muted-foreground italic text-sm">No previous priority</div>
-                    )}
-                  </div>
-                )}
-
-                {/* Current Period Content - Read-only text */}
-                <div className="space-y-1">
-                  <div 
-                    className="text-sm font-semibold"
-                    dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.outcome).map(item => item.content).join('') }}
-                  />
-                  {item.activities && (
-                    <div className="text-sm mt-1 text-muted-foreground">
-                      {htmlToFormattedDisplayItems(item.activities).map((displayItem, idx) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
-                          <span 
-                            className={displayItem.isListItem ? "" : "block"}
-                            dangerouslySetInnerHTML={{ __html: displayItem.content }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
+                    });
+                  })}
+                </>
+              );
+            })()
           ) : (
             <div className={`px-4 py-8 text-center text-muted-foreground ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4`}>
               <div className="col-span-full">
