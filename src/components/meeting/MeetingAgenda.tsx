@@ -128,8 +128,8 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
 
       if (deleteError) throw deleteError;
 
-      // Create a single empty agenda item to start with
-      const { error: insertError } = await supabase
+      // Create a single empty agenda item to start with and capture its id
+      const { data: inserted, error: insertError } = await supabase
         .from("meeting_series_agenda")
         .insert({
           series_id: meetingData.series_id,
@@ -139,22 +139,24 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
           created_by: props.currentUserId,
           assigned_to: null,
           time_minutes: null,
-        });
+        })
+        .select("id, title, notes, order_index, assigned_to, time_minutes")
+        .single();
 
       if (insertError) throw insertError;
 
       // Refresh the items
       onUpdate();
 
-      // Start editing mode with the empty item
+      // Start editing mode using the actual DB item id (avoids temp id issues)
       const emptyItem = {
-        id: `temp-${Date.now()}`,
-        title: "",
+        id: inserted.id as string,
+        title: inserted.title ?? "",
         is_completed: false,
-        assigned_to: null,
-        notes: null,
-        order_index: 0,
-        time_minutes: null,
+        assigned_to: inserted.assigned_to ?? null,
+        notes: inserted.notes ?? null,
+        order_index: inserted.order_index ?? 0,
+        time_minutes: inserted.time_minutes ?? null,
         desired_outcomes: null,
         activities: null,
       };

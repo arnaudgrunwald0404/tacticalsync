@@ -343,10 +343,24 @@ export function AgendaSidebar({
                                   </>
                                 ) : (
                                   <div className="flex-1">
-                                    <p 
-                                      className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}
-                                      dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(item.title).map(item => item.content).join('') }}
-                                    />
+                                    {(() => {
+                                      const formattedHtml = htmlToFormattedDisplayItems(item.title).map(p => p.content).join('');
+                                      const plainFallback = htmlToPlainText(item.title);
+                                      const hasFormattedContent = (formattedHtml || '').replace(/<[^>]*>/g, '').trim().length > 0;
+                                      if (hasFormattedContent) {
+                                        return (
+                                          <p 
+                                            className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}
+                                            dangerouslySetInnerHTML={{ __html: formattedHtml }}
+                                          />
+                                        );
+                                      }
+                                      return (
+                                        <p className={`text-sm font-medium ${item.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                                          {plainFallback || (item.title || '')}
+                                        </p>
+                                      );
+                                    })()}
                                   </div>
                                 )}
                               </div>
