@@ -2,7 +2,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Edit2, Save, X, Timer, GripVertical, Sparkles } from "lucide-react";
+import { MessageSquare, Edit2, X, Timer, GripVertical, Sparkles } from "lucide-react";
+import SaveButton from "@/components/ui/SaveButton";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import { formatNameWithInitial } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
@@ -174,18 +175,15 @@ export function AgendaSidebar({
             <div className="flex items-center -ml-2">
               {isEditingAgenda ? (
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
+                    <SaveButton
                       size="sm"
-                      className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
+                      variant="ghost"
+                      className="p-1 h-7 hover:bg-muted/50"
                       onClick={async () => {
                         await onSaveEdit();
                         actions.setEditing(false);
                       }}
-                    >
-                      <Save className="h-4 w-4" />
-                      <span className="text-sm">Save</span>
-                    </Button>
+                    />
                     <Button
                       variant="ghost"
                       size="sm"
