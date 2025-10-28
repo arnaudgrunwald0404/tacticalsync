@@ -2,8 +2,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Edit2, X, Timer, GripVertical, Sparkles } from "lucide-react";
+import { MessageSquare, X, Timer, GripVertical, Sparkles } from "lucide-react";
 import SaveButton from "@/components/ui/SaveButton";
+import EditButton from "@/components/ui/EditButton";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import { formatNameWithInitial } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
@@ -166,44 +167,41 @@ export function AgendaSidebar({
   }, [editingItems, isEditingAgenda, actions]);
 
   return (
-    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-0">
+    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-0 group">
       {/* Sidebar Header */}
       <div className="flex items-center justify-between pt-16 pb-4 px-4 sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <h2 className="font-semibold text-xl pl-4" data-testid="agenda-section">Agenda</h2>
-          {isAdmin && (isEditingAgenda || items.length > 0) && (
-            <div className="flex items-center -ml-2">
-              {isEditingAgenda ? (
-                  <div className="flex items-center gap-2">
-                    <SaveButton
-                      size="sm"
-                      variant="ghost"
-                      className="p-1 h-7 hover:bg-muted/50"
-                      onClick={async () => {
-                        await onSaveEdit();
-                        actions.setEditing(false);
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
-                      onClick={() => onCancelEdit()}
-                    >
-                      <X className="h-4 w-4" />
-                      <span className="text-sm">Cancel</span>
-                    </Button>
-                  </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-1 h-6 w-6 hover:bg-transparent"
-                  onClick={onStartEdit}
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-              )}
+        <div className="flex items-center gap-2">
+          <h2 className="font-semibold text-xl pl-4 flex items-center" data-testid="agenda-section">
+            Agenda
+          </h2>
+          {!isEditingAgenda && isAdmin && (
+            <EditButton
+              variant="ghost"
+              size="sm"
+              className="p-1 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={onStartEdit}
+            />
+          )}
+          {isAdmin && isEditingAgenda && (
+            <div className="flex items-center gap-2 ml-2">
+              <SaveButton
+                size="sm"
+                variant="ghost"
+                className="p-1 h-7 hover:bg-muted/50"
+                onClick={async () => {
+                  await onSaveEdit();
+                  actions.setEditing(false);
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
+                onClick={() => onCancelEdit()}
+              >
+                <X className="h-4 w-4" />
+                <span className="text-sm">Cancel</span>
+              </Button>
             </div>
           )}
         </div>
@@ -291,10 +289,11 @@ export function AgendaSidebar({
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`border rounded-lg p-3 bg-background transition-colors ${
+                          className={`border rounded-lg p-3 bg-background transition-colors relative group ${
                             snapshot.isDragging ? 'shadow-lg border-primary' : 'hover:border-primary/50'
                           }`}
                         >
+                          {/* per-header pen now handles edit entry; row-level pen removed */}
                           <div className="flex items-start gap-3">
                             {isEditingAgenda && (
                               <div
