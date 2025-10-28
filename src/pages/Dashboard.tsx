@@ -241,7 +241,6 @@ const Dashboard = () => {
         
         data = result.data;
         error = result.error;
-        console.log("Regular user teams query result:", { data, error });
       }
 
       if (error) {
@@ -259,26 +258,39 @@ const Dashboard = () => {
       const teamsWithData = await Promise.all(
         data.map(async (teamMember) => {
           try {
+            // Fetch team members count
             const { count } = await supabase
               .from("team_members")
-              .select("*", { count: "exact", head: true })
+              .select("id", { count: "exact" })
               .eq("team_id", teamMember.teams.id);
 
-            // Fetch team members with their profiles
+            // Fetch team members (without profiles join)
             const { data: teamMembers, error: teamMembersError } = await supabase
               .from("team_members")
-              .select(`
-                *,
-                profiles (
-                  id,
-                  full_name,
-                  avatar_url,
-                  avatar_name
-                )
-              `)
+              .select("*")
               .eq("team_id", teamMember.teams.id);
-            
-            console.log("Team members query result:", { teamMembers, teamMembersError });
+
+            // Fetch profiles separately for all team members
+            let profilesById = {};
+            if (teamMembers && teamMembers.length > 0) {
+              const userIds = teamMembers.map(member => member.user_id);
+              const { data: profiles } = await supabase
+                .from("profiles")
+                .select("id, full_name, avatar_url, avatar_name")
+                .in("id", userIds);
+              
+              // Create a map for easy lookup
+              profilesById = profiles?.reduce((acc, profile) => {
+                acc[profile.id] = profile;
+                return acc;
+              }, {}) || {};
+            }
+
+            // Attach profiles to team members
+            const teamMembersWithProfiles = teamMembers?.map(member => ({
+              ...member,
+              profile: profilesById[member.user_id] || null
+            })) || [];
 
             // Fetch meeting series for this team
             const { data: teamMeetings } = await supabase
@@ -309,7 +321,7 @@ const Dashboard = () => {
               memberCount: count || 0,
               invitedCount: invitedCount,
               invitedEmails: invitations.map(inv => inv.email) || [],
-              teamMembers: teamMembers || [],
+              teamMembers: teamMembersWithProfiles,
               meetings: teamMeetings || [],
             };
           } catch (error) {
@@ -748,10 +760,10 @@ const Dashboard = () => {
                           <AnimatedTooltip 
                             items={teamMember.teamMembers.map((member: any, index: number) => ({
                               id: index,
-                              name: member.profiles?.full_name || "Unknown",
+                              name: member.profile?.full_name || "Unknown",
                               designation: member.role === "admin" ? "Admin" : "Member",
-                              image: member.profiles?.avatar_url || null,
-                              avatarName: member.profiles?.avatar_name || member.profiles?.full_name || "Unknown"
+                              image: member.profile?.avatar_url || null,
+                              avatarName: member.profile?.avatar_name || member.profile?.full_name || "Unknown"
                             }))}
                           />
                         </div>
