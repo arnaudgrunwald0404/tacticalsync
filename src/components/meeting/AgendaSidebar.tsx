@@ -167,7 +167,7 @@ export function AgendaSidebar({
   }, [editingItems, isEditingAgenda, actions]);
 
   return (
-    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-0 group">
+    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-10 group">
       {/* Sidebar Header */}
       <div className="flex items-center justify-between pt-16 pb-4 px-4 sticky top-0 z-10">
         <div className="flex items-center gap-2">

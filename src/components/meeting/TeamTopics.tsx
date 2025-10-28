@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Save, Send, Clock, X, GripVertical } from "lucide-react";
+import { Plus, Check, Clock, X, GripVertical, Pencil, Trash } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Arrow } from "@radix-ui/react-tooltip";
@@ -57,9 +57,10 @@ interface SortableTopicRowProps {
   members: DropdownMember[];
   onToggleComplete: (checked: boolean) => void;
   onDelete: (id: string) => void;
+  onRefresh: () => void;
 }
 
-const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: SortableTopicRowProps) => {
+const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh }: SortableTopicRowProps) => {
   const {
     attributes,
     listeners,
@@ -75,6 +76,67 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
     zIndex: isDragging ? 1 : undefined,
   };
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editValues, setEditValues] = useState({
+    title: item.title || "",
+    assigned_to: item.assigned_to || "",
+    time_minutes: item.time_minutes || 5,
+    notes: item.notes || "",
+  });
+
+  useEffect(() => {
+    setEditValues({
+      title: item.title || "",
+      assigned_to: item.assigned_to || "",
+      time_minutes: item.time_minutes || 5,
+      notes: item.notes || "",
+    });
+  }, [item]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from("meeting_instance_topics")
+        .update({
+          title: editValues.title.trim(),
+          assigned_to: editValues.assigned_to || null,
+          time_minutes: Number(editValues.time_minutes) || 5,
+          notes: editValues.notes || null,
+        })
+        .eq("id", item.id);
+      if (error) throw error;
+      setIsEditing(false);
+      onRefresh();
+    } catch (e) {
+      // handled at parent via onUpdate toast patterns typically
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExit = () => {
+    setEditValues({
+      title: item.title || "",
+      assigned_to: item.assigned_to || "",
+      time_minutes: item.time_minutes || 5,
+      notes: item.notes || "",
+    });
+    setIsEditing(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleExit();
+    }
+  };
+
   const assignedMember = members.find(m => m.user_id === item.assigned_to);
 
   return (
@@ -82,11 +144,11 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-blue-200/50 px-3 py-1 bg-white",
+        "border-b border-blue-200/50 px-3 py-1 bg-white group",
         isDragging && "shadow-lg"
       )}
     >
-      <div className="grid grid-cols-24 gap-4 items-center">
+      <div className="grid grid-cols-24 gap-4 items-center" onKeyDown={onKeyDown}>
         <div {...attributes} {...listeners} className="col-span-1 cursor-grab hover:text-foreground/80">
           <GripVertical className="h-4 w-4" />
         </div>
@@ -96,57 +158,145 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete }: Sortabl
             onCheckedChange={onToggleComplete}
           />
         </div>
-        <div className="col-span-9 text-base truncate">{item.title}</div>
-        <div className="col-span-3 flex items-center gap-2">
-          {assignedMember?.profiles?.avatar_name ? (
-            <FancyAvatar 
-              name={assignedMember.profiles.avatar_name} 
-              displayName={formatNameWithInitial(
-                assignedMember.profiles.first_name,
-                assignedMember.profiles.last_name,
-                assignedMember.profiles.email
+        {isEditing ? (
+          <>
+            <div className="col-span-9">
+              <Input
+                autoFocus
+                aria-label="Edit topic title"
+                value={editValues.title}
+                onChange={(e) => setEditValues(v => ({ ...v, title: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div className="col-span-3">
+              <Select
+                value={editValues.assigned_to}
+                onValueChange={(value) => setEditValues(v => ({ ...v, assigned_to: value }))}
+              >
+                <SelectTrigger className="h-9" aria-label="Edit assignee">
+                  <SelectValue placeholder="Who?" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((member) => {
+                    const displayName = formatNameWithInitial(
+                      member.profiles?.first_name,
+                      member.profiles?.last_name,
+                      member.profiles?.email
+                    );
+                    return (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        <div className="flex items-center gap-2">
+                          {member.profiles?.avatar_name ? (
+                            <FancyAvatar 
+                              name={member.profiles.avatar_name} 
+                              displayName={displayName}
+                              size="sm" 
+                            />
+                          ) : (
+                            <Avatar className="h-6 w-6 rounded-full">
+                              <AvatarImage src={member.profiles?.avatar_url} />
+                              <AvatarFallback className="text-xs">
+                                {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                          <span className="truncate">{displayName}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-3 relative">
+              <Input
+                type="number"
+                aria-label="Edit duration in minutes"
+                value={editValues.time_minutes}
+                onChange={(e) => setEditValues(v => ({ ...v, time_minutes: parseInt(e.target.value) || 5 }))}
+                className="h-9 pr-10"
+                min="1"
+                max="60"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">min</span>
+            </div>
+            <div className="col-span-6">
+              <RichTextEditor
+                content={editValues.notes}
+                onChange={(content) => setEditValues(v => ({ ...v, notes: content }))}
+                placeholder="Notes..."
+                className="min-h-[16px]"
+              />
+            </div>
+            <div className="col-span-1 flex flex-col justify-center items-end gap-0.5">
+              <Button aria-label="Save" size="icon" variant="ghost" onClick={handleSave} disabled={saving} className="h-7 w-7 p-0">
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button aria-label="Exit edit" size="icon" variant="ghost" onClick={handleExit} className="h-7 w-7 p-0">
+                <X className="h-4 w-4" />
+              </Button>
+              <Button aria-label="Delete" size="icon" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => onDelete(item.id)}>
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="col-span-9 text-base truncate">{item.title}</div>
+            <div className="col-span-3 flex items-center gap-2">
+              {assignedMember?.profiles?.avatar_name ? (
+                <FancyAvatar 
+                  name={assignedMember.profiles.avatar_name} 
+                  displayName={formatNameWithInitial(
+                    assignedMember.profiles.first_name,
+                    assignedMember.profiles.last_name,
+                    assignedMember.profiles.email
+                  )}
+                  size="sm" 
+                />
+              ) : (
+                <Avatar className="h-6 w-6 rounded-full">
+                  <AvatarImage src={assignedMember?.profiles?.avatar_url} />
+                  <AvatarFallback className="text-xs">
+                    {(assignedMember?.profiles?.first_name || assignedMember?.profiles?.email || '?').charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
               )}
-              size="sm" 
-            />
-          ) : (
-            <Avatar className="h-6 w-6 rounded-full">
-              <AvatarImage src={assignedMember?.profiles?.avatar_url} />
-              <AvatarFallback className="text-xs">
-                {(assignedMember?.profiles?.first_name || assignedMember?.profiles?.email || '?').charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          )}
-          <span className="text-base">
-            {assignedMember?.profiles ? 
-              formatNameWithInitial(
-                assignedMember.profiles.first_name,
-                assignedMember.profiles.last_name,
-                assignedMember.profiles.email
-              ) : "Unassigned"
-            }
-          </span>
-        </div>
-        <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
-          <Clock className="h-4 w-4" />
-          <span>{item.time_minutes} min</span>
-        </div>
-        <div className="col-span-6 text-base truncate text-muted-foreground">
-          {item.notes ? (
-            <div dangerouslySetInnerHTML={{ __html: item.notes }} />
-          ) : (
-            "No notes"
-          )}
-        </div>
-        <div className="col-span-1 flex justify-end ">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(item.id)}
-            className="text-destructive hover:text-destructive"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+              <span className="text-base">
+                {assignedMember?.profiles ? 
+                  formatNameWithInitial(
+                    assignedMember.profiles.first_name,
+                    assignedMember.profiles.last_name,
+                    assignedMember.profiles.email
+                  ) : "Unassigned"
+                }
+              </span>
+            </div>
+            <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
+              <Clock className="h-4 w-4" />
+              <span>{item.time_minutes} min</span>
+            </div>
+            <div className="col-span-6 text-base truncate text-muted-foreground">
+              {item.notes ? (
+                <div dangerouslySetInnerHTML={{ __html: item.notes }} />
+              ) : (
+                "No notes"
+              )}
+            </div>
+            <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                aria-label="Edit topic"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 p-0"
+                onClick={() => setIsEditing(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -399,6 +549,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                     }
                   }}
                   onDelete={handleDelete}
+                  onRefresh={onUpdate}
                 />
               ))}
             </SortableContext>

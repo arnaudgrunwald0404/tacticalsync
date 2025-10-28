@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, X, Plus, CalendarIcon, GripVertical } from "lucide-react";
+import { MessageSquare, X, Plus, CalendarIcon, GripVertical, Pencil, Check, Trash } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DndContext,
@@ -64,9 +64,10 @@ interface SortableActionItemRowProps {
   item: ActionItem;
   onDelete: (id: string) => void;
   onSetCompletion: (status: CompletionStatus) => void;
+  onRefresh: () => void;
 }
 
-const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActionItemRowProps) => {
+const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh }: SortableActionItemRowProps) => {
   const {
     attributes,
     listeners,
@@ -82,16 +83,77 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActi
     zIndex: isDragging ? 1 : undefined,
   };
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editValues, setEditValues] = useState({
+    title: item.title || "",
+    assigned_to: item.assigned_to || null as string | null,
+    due_date: item.due_date ? new Date(item.due_date) : null as Date | null,
+    notes: item.notes || "",
+  });
+
+  useEffect(() => {
+    setEditValues({
+      title: item.title || "",
+      assigned_to: item.assigned_to || null,
+      due_date: item.due_date ? new Date(item.due_date) : null,
+      notes: item.notes || "",
+    });
+  }, [item]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from("meeting_series_action_items")
+        .update({
+          title: editValues.title.trim(),
+          assigned_to: editValues.assigned_to,
+          due_date: editValues.due_date ? format(editValues.due_date, "yyyy-MM-dd") : null,
+          notes: editValues.notes || null,
+        })
+        .eq("id", item.id);
+      if (error) throw error;
+      setIsEditing(false);
+      onRefresh();
+    } catch (e) {
+      // toast handled in parent generally
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExit = () => {
+    setEditValues({
+      title: item.title || "",
+      assigned_to: item.assigned_to || null,
+      due_date: item.due_date ? new Date(item.due_date) : null,
+      notes: item.notes || "",
+    });
+    setIsEditing(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleExit();
+    }
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-blue-200/50 px-3 py-1 bg-white",
+        "border-b border-blue-200/50 px-3 py-1 bg-white group",
         isDragging && "shadow-lg"
       )}
     >
-      <div className="grid grid-cols-24 gap-4 items-center">
+      <div className="grid grid-cols-24 gap-4 items-center" onKeyDown={onKeyDown}>
         <div {...attributes} {...listeners} className="col-span-1 cursor-grab hover:text-foreground/80">
           <GripVertical className="h-4 w-4" />
         </div>
@@ -101,57 +163,126 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion }: SortableActi
             onCheckedChange={(checked) => onSetCompletion(checked ? 'completed' : 'not_completed')}
           />
         </div>
-        <div className="col-span-9 text-base truncate">{item.title}</div>
-        <div className="col-span-3 flex items-center gap-2">
-          {item.assigned_to_profile?.avatar_name ? (
-            <FancyAvatar 
-              name={item.assigned_to_profile.avatar_name} 
-              displayName={formatNameWithInitial(
-                item.assigned_to_profile.first_name,
-                item.assigned_to_profile.last_name,
-                item.assigned_to_profile.email
+        {isEditing ? (
+          <>
+            <div className="col-span-9">
+              <Input
+                autoFocus
+                aria-label="Edit action item title"
+                value={editValues.title}
+                onChange={(e) => setEditValues(v => ({ ...v, title: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div className="col-span-3">
+              <Select
+                value={editValues.assigned_to || ""}
+                onValueChange={(value) => setEditValues(v => ({ ...v, assigned_to: value }))}
+              >
+                <SelectTrigger className="h-9" aria-label="Edit assignee">
+                  <SelectValue placeholder="Who?" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* options supplied by parent list, but not available here, so we keep basic UI */}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-3">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-9",
+                      !editValues.due_date && "text-muted-foreground"
+                    )}
+                    aria-label="Edit due date"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {editValues.due_date ? format(editValues.due_date, "MM/dd") : <span>Due Date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={editValues.due_date || undefined}
+                    onSelect={(date) => setEditValues(v => ({ ...v, due_date: date }))}
+                    disabled={(date) => date < new Date()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="col-span-6">
+              <RichTextEditor
+                content={editValues.notes}
+                onChange={(content) => setEditValues(v => ({ ...v, notes: content }))}
+                placeholder="Notes..."
+                className="min-h-[16px]"
+              />
+            </div>
+            <div className="col-span-1 flex flex-col justify-center items-end gap-0.5">
+              <Button aria-label="Save" size="icon" variant="ghost" onClick={handleSave} disabled={saving} className="h-7 w-7 p-0">
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button aria-label="Exit edit" size="icon" variant="ghost" onClick={() => handleExit()} className="h-7 w-7 p-0">
+                <X className="h-4 w-4" />
+              </Button>
+              <Button aria-label="Delete" size="icon" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => onDelete(item.id)}>
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="col-span-9 text-base truncate">{item.title}</div>
+            <div className="col-span-3 flex items-center gap-2">
+              {item.assigned_to_profile?.avatar_name ? (
+                <FancyAvatar 
+                  name={item.assigned_to_profile.avatar_name} 
+                  displayName={formatNameWithInitial(
+                    item.assigned_to_profile.first_name,
+                    item.assigned_to_profile.last_name,
+                    item.assigned_to_profile.email
+                  )}
+                  size="sm" 
+                />
+              ) : (
+                <Avatar className="h-6 w-6 rounded-full">
+                  <AvatarImage src={item.assigned_to_profile?.avatar_url} />
+                  <AvatarFallback className="text-xs">
+                    {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
               )}
-              size="sm" 
-            />
-          ) : (
-            <Avatar className="h-6 w-6 rounded-full">
-              <AvatarImage src={item.assigned_to_profile?.avatar_url} />
-              <AvatarFallback className="text-xs">
-                {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          )}
-          <span className="text-base">
-            {item.assigned_to_profile ? 
-              formatNameWithInitial(
-                item.assigned_to_profile.first_name,
-                item.assigned_to_profile.last_name,
-                item.assigned_to_profile.email
-              ) : "Unassigned"
-            }
-          </span>
-        </div>
-        <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
-          <CalendarIcon className="h-4 w-4" />
-          <span>{item.due_date ? format(new Date(item.due_date), "MM/dd") : "No date"}</span>
-        </div>
-        <div className="col-span-6 text-base truncate text-muted-foreground">
-          {item.notes ? (
-            <div dangerouslySetInnerHTML={{ __html: item.notes }} />
-          ) : (
-            "No notes"
-          )}
-        </div>
-        <div className="col-span-1 flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(item.id)}
-            className="text-destructive hover:text-destructive"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+              <span className="text-base">
+                {item.assigned_to_profile ? 
+                  formatNameWithInitial(
+                    item.assigned_to_profile.first_name,
+                    item.assigned_to_profile.last_name,
+                    item.assigned_to_profile.email
+                  ) : "Unassigned"
+                }
+              </span>
+            </div>
+            <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
+              <CalendarIcon className="h-4 w-4" />
+              <span>{item.due_date ? format(new Date(item.due_date), "MM/dd") : "No date"}</span>
+            </div>
+            <div className="col-span-6 text-base truncate text-muted-foreground">
+              {item.notes ? (
+                <div dangerouslySetInnerHTML={{ __html: item.notes }} />
+              ) : (
+                "No notes"
+              )}
+            </div>
+            <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button aria-label="Edit action item" variant="ghost" size="icon" className="h-7 w-7 p-0" onClick={() => setIsEditing(true)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -429,6 +560,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                     item={item}
                     onDelete={handleDelete}
                     onSetCompletion={(status) => handleSetCompletion(item.id, status)}
+                    onRefresh={onUpdate}
                   />
                 ))}
               </SortableContext>

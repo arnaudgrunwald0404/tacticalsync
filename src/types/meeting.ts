@@ -64,7 +64,7 @@ export interface MeetingAgendaProps {
   items: AgendaItem[];
   meetingId: string;
   teamId: string;
-  onUpdate: () => void;
+  onUpdate: () => Promise<void> | void;
   currentUserId?: string;
   isAdmin?: boolean;
 }

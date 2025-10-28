@@ -89,7 +89,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
 
       if (error) throw error;
 
-      onUpdate();
+      await Promise.resolve(onUpdate());
       toast({
         title: "Template adopted",
         description: "The agenda has been set up with the selected template.",
@@ -146,7 +146,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       if (insertError) throw insertError;
 
       // Refresh the items
-      onUpdate();
+      await Promise.resolve(onUpdate());
 
       // Start editing mode using the actual DB item id (avoids temp id issues)
       const emptyItem = {
@@ -204,9 +204,22 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // Separate items into new and existing
-      const newItems = state.editingItems.filter(item => item.id.startsWith('temp-'));
-      const existingItems = state.editingItems.filter(item => !item.id.startsWith('temp-'));
+      // Build upsert payload (existing keep id, new omit id)
+      const upsertRows = state.editingItems.map(item => {
+        const base = {
+          series_id: undefined as any, // to be filled below
+          title: item.title,
+          notes: item.notes || null,
+          assigned_to: item.assigned_to || null,
+          time_minutes: item.time_minutes ?? null,
+          order_index: item.order_index,
+          created_by: user.id,
+        } as any;
+        if (!item.id.startsWith('temp-')) {
+          base.id = item.id;
+        }
+        return base;
+      });
 
       // Get the series ID
       const { data: meetingData, error: meetingError } = await supabase
@@ -218,50 +231,39 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       if (meetingError) throw meetingError;
       if (!meetingData) throw new Error("Meeting not found");
 
-      // Insert new items
-      if (newItems.length > 0) {
-        const itemsToInsert = newItems.map(item => ({
-          series_id: meetingData.series_id,
-          title: item.title,
-          notes: item.notes || null,
-          assigned_to: item.assigned_to,
-          time_minutes: item.time_minutes,
-          order_index: item.order_index,
-          created_by: user.id
-        }));
-
-        const { error: insertError } = await supabase
-          .from("meeting_series_agenda")
-          .insert(itemsToInsert);
-
-        if (insertError) throw insertError;
+      // Fill series_id now that we have it
+      for (const row of upsertRows) {
+        row.series_id = meetingData.series_id;
       }
 
-      // Update existing items
-      for (const item of existingItems) {
-        const { error } = await supabase
-          .from("meeting_series_agenda")
-          .update({
-            title: item.title,
-            notes: item.notes,
-            assigned_to: item.assigned_to,
-            time_minutes: item.time_minutes,
-            order_index: item.order_index
-          })
-          .eq("id", item.id);
+      // Upsert all rows at once
+      const { data: upserted, error: upsertError } = await supabase
+        .from("meeting_series_agenda")
+        .upsert(upsertRows, { onConflict: 'id' })
+        .select('id');
+      if (upsertError) throw upsertError;
 
-        if (error) throw error;
-      }
+      // Prune rows not present anymore
+      const keepIds = upserted?.map(r => r.id) || state.editingItems.filter(i => !i.id.startsWith('temp-')).map(i => i.id);
+      const { error: pruneError } = await supabase
+        .from("meeting_series_agenda")
+        .delete()
+        .eq('series_id', meetingData.series_id)
+        .not('id', 'in', `(${keepIds.join(',') || 'NULL'})`);
+      if (pruneError) throw pruneError;
 
       state.isEditingAgenda = false;
       state.editingItems = [];
       state.lastSavedAt = Date.now();
-      onUpdate();
+      await Promise.resolve(onUpdate());
+      console.log("Post-save refresh triggered (upsert)");
       
       toast({
         title: "Success",
         description: "Agenda saved successfully",
       });
+      // Ensure UI reflects the latest server state even if local state is stale
+      await Promise.resolve(onUpdate());
     } catch (error: unknown) {
       handleError(error);
       throw error;
