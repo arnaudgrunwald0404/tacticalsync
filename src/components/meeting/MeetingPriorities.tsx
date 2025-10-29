@@ -142,6 +142,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [groupedPriorities, setGroupedPriorities] = useState<{ [key: string]: Priority[] }>({});
   const [groupedPreviousPriorities, setGroupedPreviousPriorities] = useState<{ [key: string]: Priority[] }>({});
 
@@ -152,6 +154,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   useEffect(() => {
     if (teamId) {
       fetchMembers();
+      fetchPermissions();
     }
   }, [teamId]);
 
@@ -230,6 +233,32 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
     });
     
     setMembers(membersWithProfiles);
+  };
+
+  const fetchPermissions = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Super admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', user.id)
+        .single();
+      setIsSuperAdmin(!!(profile as any)?.is_super_admin);
+
+      // Team admin
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('role')
+        .eq('team_id', teamId)
+        .eq('user_id', user.id)
+        .single();
+      setIsTeamAdmin((membership as any)?.role === 'admin');
+    } catch (e) {
+      // ignore
+    }
   };
 
   const startCreating = () => {
@@ -554,30 +583,36 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => (currentUserId && prevItem.assigned_to !== currentUserId) ? undefined : handlePreviousPriorityCompletion(prevItem.id, 'completed')}
+                                      onClick={() => {
+                                        const canModify = isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId;
+                                        if (canModify) handlePreviousPriorityCompletion(prevItem.id, 'completed');
+                                      }}
                                       className={cn(
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'completed'
                                           ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
                                           : "bg-white border-gray-300 hover:bg-gray-50",
-                                        (currentUserId && prevItem.assigned_to !== currentUserId) && "opacity-50 cursor-not-allowed"
+                                        !(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
-                                      disabled={!!(currentUserId && prevItem.assigned_to !== currentUserId)}
+                                      disabled={!(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId)}
                                     >
                                       <Check className="h-4 w-4" />
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => (currentUserId && prevItem.assigned_to !== currentUserId) ? undefined : handlePreviousPriorityCompletion(prevItem.id, 'not_completed')}
+                                      onClick={() => {
+                                        const canModify = isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId;
+                                        if (canModify) handlePreviousPriorityCompletion(prevItem.id, 'not_completed');
+                                      }}
                                       className={cn(
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'not_completed'
                                           ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
                                           : "bg-white border-gray-300 hover:bg-gray-50",
-                                        (currentUserId && prevItem.assigned_to !== currentUserId) && "opacity-50 cursor-not-allowed"
+                                        !(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
-                                      disabled={!!(currentUserId && prevItem.assigned_to !== currentUserId)}
+                                      disabled={!(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId)}
                                     >
                                       <X className="h-4 w-4" />
                                     </Button>

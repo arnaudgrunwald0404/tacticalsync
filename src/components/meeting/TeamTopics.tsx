@@ -56,11 +56,12 @@ interface SortableTopicRowProps {
   item: TeamTopicsProps['items'][0];
   members: DropdownMember[];
   onToggleComplete: (checked: boolean) => void;
+  canModify: boolean;
   onDelete: (id: string) => void;
   onRefresh: () => void;
 }
 
-const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh }: SortableTopicRowProps) => {
+const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh, canModify }: SortableTopicRowProps) => {
   const {
     attributes,
     listeners,
@@ -155,7 +156,8 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh
         <div className="col-span-1">
           <Checkbox
             checked={item.completion_status === 'completed'}
-            onCheckedChange={onToggleComplete}
+            onCheckedChange={(checked) => canModify ? onToggleComplete(checked === true) : undefined}
+            disabled={!canModify}
           />
         </div>
         {isEditing ? (
@@ -311,6 +313,9 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     })
   );
   const [members, setMembers] = useState<DropdownMember[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [newTopic, setNewTopic] = useState({
     title: "",
     assigned_to: "",
@@ -323,6 +328,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setCurrentUserId(user.id);
 
       // Find current user in team members
       const { data: memberData } = await supabase
@@ -339,6 +345,21 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       if (memberData) {
         setNewTopic(prev => ({ ...prev, assigned_to: memberData.user_id }));
       }
+
+      // Permissions
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', user.id)
+        .single();
+      setIsSuperAdmin(!!(profile as any)?.is_super_admin);
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('role')
+        .eq('team_id', teamId)
+        .eq('user_id', user.id)
+        .single();
+      setIsTeamAdmin((membership as any)?.role === 'admin');
     } catch (error) {
       console.error("Error fetching current user:", error);
     }
@@ -538,7 +559,10 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                   key={item.id}
                   item={item}
                   members={members}
+                  canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
                   onToggleComplete={async (checked) => {
+                    const canModify = isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId;
+                    if (!canModify) return;
                     const { error } = await supabase
                       .from("meeting_instance_topics")
                       .update({ completion_status: checked ? 'completed' : 'not_completed' })

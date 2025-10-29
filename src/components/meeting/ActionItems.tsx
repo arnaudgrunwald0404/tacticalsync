@@ -65,9 +65,10 @@ interface SortableActionItemRowProps {
   onDelete: (id: string) => void;
   onSetCompletion: (status: CompletionStatus) => void;
   onRefresh: () => void;
+  canModify: boolean;
 }
 
-const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh }: SortableActionItemRowProps) => {
+const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh, canModify }: SortableActionItemRowProps) => {
   const {
     attributes,
     listeners,
@@ -160,7 +161,8 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh }: S
         <div className="col-span-1">
           <Checkbox
             checked={item.completion_status === 'completed'}
-            onCheckedChange={(checked) => onSetCompletion(checked ? 'completed' : 'not_completed')}
+            onCheckedChange={(checked) => canModify ? onSetCompletion(checked ? 'completed' : 'not_completed') : undefined}
+            disabled={!canModify}
           />
         </div>
         {isEditing ? (
@@ -299,6 +301,8 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [members, setMembers] = useState<DropdownMember[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [newItem, setNewItem] = useState({
     title: "",
     assigned_to: null as string | null,
@@ -354,6 +358,21 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       if (user) {
         setCurrentUserId(user.id);
         setNewItem(prev => ({ ...prev, assigned_to: user.id }));
+
+        // Permissions
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_super_admin')
+          .eq('id', user.id)
+          .single();
+        setIsSuperAdmin(!!(profile as any)?.is_super_admin);
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('team_id', teamId)
+          .eq('user_id', user.id)
+          .single();
+        setIsTeamAdmin((membership as any)?.role === 'admin');
       }
     } catch (error) {
       console.error("Error fetching current user:", error);
@@ -441,6 +460,10 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
   };
 
   const handleSetCompletion = async (itemId: string, status: CompletionStatus) => {
+    const item = items.find(i => i.id === itemId);
+    const isOwner = item && (item.assigned_to === currentUserId || item.created_by === currentUserId);
+    const canModify = isSuperAdmin || isTeamAdmin || !!isOwner;
+    if (!canModify) return;
     const { error } = await supabase
       .from("meeting_series_action_items")
       .update({ completion_status: status })
@@ -559,6 +582,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                     key={item.id}
                     item={item}
                     onDelete={handleDelete}
+                    canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
                     onSetCompletion={(status) => handleSetCompletion(item.id, status)}
                     onRefresh={onUpdate}
                   />
