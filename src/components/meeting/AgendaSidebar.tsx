@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, X, Timer, GripVertical, Sparkles } from "lucide-react";
 import SaveButton from "@/components/ui/SaveButton";
 import EditButton from "@/components/ui/EditButton";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import { formatNameWithInitial } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
@@ -398,13 +399,31 @@ export function AgendaSidebar({
                                 <div className="flex items-center gap-3">
                                   {item.assigned_to_profile ? (
                                     <div className="flex items-center gap-2">
-                                      <Avatar className="h-6 w-6">
-                                        <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                                        <AvatarFallback className="text-xs">
-                                          {item.assigned_to_profile.first_name?.[0]}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <span className="text-sm text-muted-foreground">{item.assigned_to_profile.first_name}</span>
+                                      {item.assigned_to_profile.avatar_name ? (
+                                        <FancyAvatar 
+                                          name={item.assigned_to_profile.avatar_name}
+                                          displayName={formatNameWithInitial(
+                                            item.assigned_to_profile.first_name,
+                                            item.assigned_to_profile.last_name,
+                                            item.assigned_to_profile.email
+                                          )}
+                                          size="sm"
+                                        />
+                                      ) : (
+                                        <Avatar className="h-6 w-6 rounded-full">
+                                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
+                                          <AvatarFallback className="text-xs">
+                                            {(item.assigned_to_profile.first_name || item.assigned_to_profile.email || '?').charAt(0).toUpperCase()}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      )}
+                                      <span className="text-sm text-muted-foreground">
+                                        {formatNameWithInitial(
+                                          item.assigned_to_profile.first_name,
+                                          item.assigned_to_profile.last_name,
+                                          item.assigned_to_profile.email
+                                        )}
+                                      </span>
                                     </div>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">All</span>
