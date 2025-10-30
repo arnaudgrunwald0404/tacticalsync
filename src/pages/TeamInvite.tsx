@@ -10,6 +10,8 @@ import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X } from "lucide-
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
+import { formatNameWithInitial } from "@/lib/nameUtils";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import {
@@ -154,7 +156,7 @@ const TeamInvite = () => {
       console.error("Update failed:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "An error occurred" || "Failed to update team",
+        description: error instanceof Error ? error.message : "Failed to update team",
         variant: "destructive",
       });
     } finally {
@@ -170,7 +172,7 @@ const TeamInvite = () => {
           id,
           user_id,
           role,
-          profiles:user_id(id, full_name, email, avatar_url)
+          profiles:user_id(id, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("team_id", teamId);
 
@@ -539,37 +541,56 @@ const TeamInvite = () => {
               <div className="space-y-3">
                 <Label className="text-sm font-bold">Current Members</Label>
                 <div className="space-y-2">
-                  {currentMembers.map((member) => (
-                    <div key={member.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={member.profiles?.avatar_url} />
-                        <AvatarFallback className="text-xs">
-                          {member.profiles?.full_name?.charAt(0) || "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">
-                          {member.profiles?.full_name || "Unknown User"}
+                  {currentMembers.map((member) => {
+                    const displayName = formatNameWithInitial(
+                      member.profiles?.first_name,
+                      member.profiles?.last_name,
+                      member.profiles?.email
+                    );
+                    const fullDisplayName = member.profiles?.first_name && member.profiles?.last_name
+                      ? `${member.profiles.first_name} ${member.profiles.last_name}`
+                      : member.profiles?.first_name || member.profiles?.email?.split('@')[0] || "Unknown User";
+                    
+                    return (
+                      <div key={member.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                        {member.profiles?.avatar_name ? (
+                          <FancyAvatar 
+                            name={member.profiles.avatar_name} 
+                            displayName={fullDisplayName}
+                            size="sm" 
+                          />
+                        ) : (
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={member.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.last_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">
+                            {fullDisplayName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.profiles?.email}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {member.profiles?.email}
-                        </div>
+                        <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs">
+                          {member.role === "admin" ? "Admin" : "Member"}
+                        </Badge>
+                        {member.role !== "admin" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleRemoveMember(member.id, fullDisplayName)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
-                      <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs">
-                        {member.role === "admin" ? "Admin" : "Member"}
-                      </Badge>
-                      {member.role !== "admin" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleRemoveMember(member.id, member.profiles?.full_name || "Unknown User")}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -10,6 +10,18 @@ CREATE TABLE IF NOT EXISTS meeting_series (
 );
 
 -- Fix the meeting_instances table to reference meeting_series instead of recurring_meetings
+-- Drop policies that depend on meeting_instances.recurring_meeting_id to allow schema change
+DROP POLICY IF EXISTS "Team members can view priorities" ON meeting_instance_priorities;
+DROP POLICY IF EXISTS "Team members can insert priorities" ON meeting_instance_priorities;
+DROP POLICY IF EXISTS "Team members can update own priorities" ON meeting_instance_priorities;
+DROP POLICY IF EXISTS "Team members can delete own priorities" ON meeting_instance_priorities;
+DROP POLICY IF EXISTS "Team members can view topics" ON meeting_instance_topics;
+DROP POLICY IF EXISTS "Team members can insert topics" ON meeting_instance_topics;
+DROP POLICY IF EXISTS "Team members can update own topics" ON meeting_instance_topics;
+DROP POLICY IF EXISTS "Team members can delete own topics" ON meeting_instance_topics;
+DROP POLICY IF EXISTS "Team members can view meeting instances" ON meeting_instances;
+DROP POLICY IF EXISTS "Team members can view meeting instance topics" ON meeting_instance_topics;
+
 ALTER TABLE meeting_instances 
 DROP COLUMN IF EXISTS recurring_meeting_id,
 ADD COLUMN IF NOT EXISTS series_id UUID NOT NULL REFERENCES meeting_series(id) ON DELETE CASCADE;

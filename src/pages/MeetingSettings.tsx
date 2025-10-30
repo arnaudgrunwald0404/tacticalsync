@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Trash2, Save, UserPlus, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import FancyAvatar from "@/components/ui/fancy-avatar";
 import Logo from "@/components/Logo";
 import GridBackground from "@/components/ui/grid-background";
 import { Badge } from "@/components/ui/badge";
@@ -98,7 +99,8 @@ const MeetingSettings = () => {
           email,
           first_name,
           last_name,
-          avatar_url
+          avatar_url,
+          avatar_name
         )
       `)
       .eq("team_id", teamId);
@@ -372,31 +374,45 @@ const MeetingSettings = () => {
             <div className="space-y-3">
               <Label className="text-sm sm:text-base">Current Members ({currentMembers.length})</Label>
               <div className="space-y-2">
-                {currentMembers.map((member: unknown) => (
-                  <div
-                    key={member.id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-slate-50 rounded-lg"
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={member.profiles?.avatar_url} />
-                      <AvatarFallback>
-                        {member.profiles?.first_name?.[0]}
-                        {member.profiles?.last_name?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-slate-900 text-sm sm:text-base">
-                        {member.profiles?.first_name} {member.profiles?.last_name}
+                {currentMembers.map((member: unknown) => {
+                  const fullDisplayName = member.profiles?.first_name && member.profiles?.last_name
+                    ? `${member.profiles.first_name} ${member.profiles.last_name}`
+                    : member.profiles?.first_name || member.profiles?.email?.split('@')[0] || "Unknown User";
+                  
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-slate-50 rounded-lg"
+                    >
+                      {member.profiles?.avatar_name ? (
+                        <FancyAvatar 
+                          name={member.profiles.avatar_name} 
+                          displayName={fullDisplayName}
+                          size="sm" 
+                        />
+                      ) : (
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={member.profiles?.avatar_url} />
+                          <AvatarFallback>
+                            {member.profiles?.first_name?.[0]?.toUpperCase()}
+                            {member.profiles?.last_name?.[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-900 text-sm sm:text-base">
+                          {fullDisplayName}
+                        </div>
+                        <div className="text-xs sm:text-sm text-slate-600 truncate">
+                          {member.profiles?.email}
+                        </div>
                       </div>
-                      <div className="text-xs sm:text-sm text-slate-600 truncate">
-                        {member.profiles?.email}
-                      </div>
+                      <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs w-fit">
+                        {member.role}
+                      </Badge>
                     </div>
-                    <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs w-fit">
-                      {member.role}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

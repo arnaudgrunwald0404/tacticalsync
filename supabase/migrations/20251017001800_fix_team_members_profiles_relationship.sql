@@ -10,9 +10,16 @@
 
 -- First, let's add a foreign key constraint to ensure data integrity
 -- This will ensure that every user_id in team_members has a corresponding profile
-ALTER TABLE team_members 
-ADD CONSTRAINT fk_team_members_user_id_profiles 
-FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fk_team_members_user_id_profiles'
+  ) THEN
+    ALTER TABLE team_members 
+    ADD CONSTRAINT fk_team_members_user_id_profiles 
+    FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 
 -- Add a comment to document the relationship
 COMMENT ON COLUMN team_members.user_id IS 'User ID that references profiles.id (not auth.users.id)';
