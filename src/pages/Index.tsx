@@ -13,14 +13,28 @@ const Index = () => {
 
   // Check for existing session or OAuth callback
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
+    // Check if there's a code parameter (PKCE/OAuth callback)
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const hasCode = !!code;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // If there's a code parameter, wait for auth state change to handle it
+    // Otherwise, check existing session immediately
+    if (!hasCode) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          navigate("/dashboard");
+        }
+      });
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Handle PKCE callback - code exchange happens automatically with detectSessionInUrl: true
       if (session) {
+        // Clean up URL by removing code parameter after successful auth
+        if (hasCode) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
         navigate("/dashboard");
       }
     });

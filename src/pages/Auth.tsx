@@ -28,23 +28,37 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState("signin");
 
   useEffect(() => {
-    // Check for invite code in URL
+    // Check for invite code and OAuth callback code in URL
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
+    const code = params.get('code');
+    const hasCode = !!code;
     
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        // If logged in and has invite code, redirect to join page
-        if (inviteCode) {
-          navigate(`/join/${inviteCode}`);
-        } else {
-          navigate("/dashboard");
+    // If there's a code parameter (PKCE/OAuth callback), wait for auth state change
+    // Otherwise, check existing session immediately
+    if (!hasCode) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          // If logged in and has invite code, redirect to join page
+          if (inviteCode) {
+            navigate(`/join/${inviteCode}`);
+          } else {
+            navigate("/dashboard");
+          }
         }
-      }
-    });
+      });
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
+        // Clean up URL by removing code parameter after successful auth
+        if (hasCode) {
+          const currentParams = new URLSearchParams(window.location.search);
+          const currentInviteCode = currentParams.get('invite');
+          const newUrl = currentInviteCode ? `/auth?invite=${currentInviteCode}` : '/auth';
+          window.history.replaceState({}, '', newUrl);
+        }
+        
         // Check for stored invite code after successful auth
         const storedInvite = localStorage.getItem('pendingInviteCode');
         if (storedInvite) {
