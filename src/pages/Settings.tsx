@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import Logo from "@/components/Logo";
+import { useRoles } from "@/hooks/useRoles";
 
 interface TemplateItem {
   id: string;
@@ -44,6 +46,13 @@ const Settings = () => {
   const [newItemTitle, setNewItemTitle] = useState("");
   const [newItemDuration, setNewItemDuration] = useState(5);
   const [saving, setSaving] = useState(false);
+  const { isSuperAdmin, isAdmin, loading: rolesLoading } = useRoles();
+  const [adminSearchEmail, setAdminSearchEmail] = useState("");
+  const [adminList, setAdminList] = useState<Array<{ id: string; email: string }>>([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
+  const [dbVerifiedSuperAdmin, setDbVerifiedSuperAdmin] = useState(false);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; email: string }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   
   // Testing mode state
   const [userEmail, setUserEmail] = useState("");
@@ -71,10 +80,25 @@ const Settings = () => {
 
       setUserEmail(user.email || "");
 
-      // Check if user is superadmin first
-      const isSuperAdmin = user.email === "agrunwald@clearcompany.com";
-      
-      if (!isSuperAdmin) {
+      // Re-check super admin using DB flag to avoid relying on hard-coded email
+      let dbIsSuperAdmin = isSuperAdmin;
+      try {
+        const { data: profileRow, error: profileErr } = await supabase
+          .from("profiles")
+          .select("is_super_admin")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!profileErr) {
+          dbIsSuperAdmin = Boolean((profileRow as any)?.is_super_admin);
+        }
+      } catch (e) {
+        // keep existing value
+      }
+
+      setDbVerifiedSuperAdmin(Boolean(dbIsSuperAdmin));
+
+      // If not super admin via DB roles, ensure user has some admin capability
+      if (!dbIsSuperAdmin) {
         // Check if user is an admin on any team
         const { data: teamMemberships, error: membershipError } = await supabase
           .from("team_members")
@@ -157,6 +181,113 @@ const Settings = () => {
     setTemplateName("");
     setTemplateItems([]);
     setShowTemplateDialog(true);
+  };
+
+  const fetchAdmins = async () => {
+    if (!isSuperAdmin && !dbVerifiedSuperAdmin) return;
+    setLoadingAdmins(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from("profiles")
+        .select("id,email")
+        .eq("is_admin", true);
+      if (error) throw error;
+      setAdminList((data || []).map((p: any) => ({ id: p.id, email: p.email })));
+    } catch (e) {
+      // noop toast minimal
+    } finally {
+      setLoadingAdmins(false);
+    }
+  };
+
+  const fetchAllUsers = async () => {
+    if (!isSuperAdmin && !dbVerifiedSuperAdmin) return;
+    setLoadingUsers(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from("profiles")
+        .select("id,email")
+        .order("email", { ascending: true });
+      if (error) throw error;
+      setAllUsers((data || []).map((p: any) => ({ id: p.id, email: p.email })));
+    } catch (e) {
+      console.error("Error fetching users:", e);
+      toast({
+        title: "Error",
+        description: "Failed to load users",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isSuperAdmin || dbVerifiedSuperAdmin) {
+      fetchAdmins();
+      fetchAllUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, dbVerifiedSuperAdmin]);
+
+  const grantAdminByEmail = async (email: string) => {
+    if (!email.trim()) return;
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: target, error: findErr } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .eq("email", email.trim())
+        .maybeSingle();
+      if (findErr) throw findErr;
+      if (!target) {
+        toast({ title: "User not found", description: "No profile with that email." , variant: "destructive"});
+        return;
+      }
+
+      const { error: updateErr } = await supabase
+        .from("profiles")
+        .update({ is_admin: true } as any)
+        .eq("id", target.id);
+      if (updateErr) throw updateErr;
+
+      // Send notification email via Edge Function (best-effort)
+      try {
+        const granterName = userEmail || currentUser?.email || "A super admin";
+        await fetch(`${(supabase as any)._restUrl?.replace('/rest/v1','') || ''}/functions/v1/send-admin-granted-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ email: target.email, granterName }),
+        });
+      } catch (e) {
+        // non-fatal
+        console.warn('Failed to trigger admin granted email:', e);
+      }
+      toast({ title: "Admin granted", description: `${target.email} is now an admin.` });
+      setAdminSearchEmail("");
+      fetchAdmins();
+      fetchAllUsers();
+    } catch (e: any) {
+      toast({ title: "Failed to grant admin", description: e.message || String(e), variant: "destructive" });
+    }
+  };
+
+  const revokeAdmin = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_admin: false } as any)
+        .eq("id", id);
+      if (error) throw error;
+      toast({ title: "Admin removed", description: "The user no longer has admin rights." });
+      fetchAdmins();
+      fetchAllUsers();
+    } catch (e: any) {
+      toast({ title: "Failed to remove admin", description: e.message || String(e), variant: "destructive" });
+    }
   };
 
   const handleEditTemplate = (template: Template) => {
@@ -519,7 +650,6 @@ const Settings = () => {
   }
 
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
-  const isSuperAdmin = userEmail === "agrunwald@clearcompany.com";
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
@@ -540,6 +670,7 @@ const Settings = () => {
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
         userEmail={userEmail}
+        showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
       />
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
@@ -588,6 +719,78 @@ const Settings = () => {
                     You may need to refresh pages to see the updated UI based on your new role.
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : activeSection === "admin-management" && (dbVerifiedSuperAdmin || isSuperAdmin) ? (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Admin Management</h2>
+                <p className="text-muted-foreground">Grant or revoke admin privileges. Admins can create teams and meetings.</p>
+              </div>
+            </div>
+
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="text-lg">Grant Admin by Email</CardTitle>
+                <CardDescription>Select a user from the dropdown to grant admin permissions.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-2">
+                  <Select
+                    value={adminSearchEmail}
+                    onValueChange={setAdminSearchEmail}
+                    disabled={loadingUsers}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select a user..."} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allUsers
+                        .filter(user => !adminList.some(admin => admin.id === user.id))
+                        .map((user) => (
+                          <SelectItem key={user.id} value={user.email}>
+                            {user.email}
+                          </SelectItem>
+                        ))}
+                      {allUsers.length > 0 && allUsers.filter(user => !adminList.some(admin => admin.id === user.id)).length === 0 && (
+                        <SelectItem value="" disabled>
+                          All users are already admins
+                        </SelectItem>
+                      )}
+                      {!loadingUsers && allUsers.length === 0 && (
+                        <SelectItem value="" disabled>
+                          No users found
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={() => grantAdminByEmail(adminSearchEmail)} disabled={!adminSearchEmail.trim() || loadingUsers}>Grant</Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Current Admins</CardTitle>
+                <CardDescription>Users with admin privileges.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingAdmins ? (
+                  <div className="text-sm text-muted-foreground">Loading admins...</div>
+                ) : adminList.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No admins yet.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {adminList.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between p-2 border rounded-md">
+                        <div className="text-sm">{u.email}</div>
+                        <Button variant="outline" size="sm" onClick={() => revokeAdmin(u.id)}>Remove</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -679,6 +882,13 @@ const Settings = () => {
           </div>
         )}
       </main>
+
+      {/* Debug badge for role detection (visible only to super admins to aid local dev) */}
+      {(dbVerifiedSuperAdmin || isSuperAdmin) && (
+        <div className="fixed bottom-3 right-3 text-xs text-muted-foreground bg-card/80 border rounded px-2 py-1">
+          SA hook: {isSuperAdmin ? "true" : "false"} · SA db: {dbVerifiedSuperAdmin ? "true" : "false"}
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!templateToDelete} onOpenChange={(open) => !open && setTemplateToDelete(null)}>

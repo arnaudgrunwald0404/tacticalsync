@@ -4,6 +4,8 @@ import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { 
   Bold, 
   Italic, 
@@ -28,6 +30,9 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
   const cleanContent = content ? content.replace(/(<p><\/p>)+/g, '') : content;
   const [isFocused, setIsFocused] = useState(false)
   const [isToolbarHovered, setIsToolbarHovered] = useState(false)
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkError, setLinkError] = useState('')
   
   
   const editor = useEditor({
@@ -79,26 +84,88 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
   }
 
   const setLink = () => {
-    const previousUrl = editor.getAttributes('link').href
-    const url = window.prompt('URL', previousUrl)
+    const previousUrl = editor.getAttributes('link').href || ''
+    setLinkUrl(previousUrl)
+    setLinkError('')
+    setIsLinkDialogOpen(true)
+  }
 
-    // cancelled
-    if (url === null) {
-      return
-    }
+  const normalizeUrl = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) return ''
+    if (/^https?:\/\//i.test(trimmed)) return trimmed
+    // If no protocol provided, default to https for safety
+    return `https://${trimmed}`
+  }
 
-    // empty
-    if (url === '') {
+  const handleSaveLink = () => {
+    const normalized = normalizeUrl(linkUrl)
+    if (!normalized) {
+      // Treat empty as removing the link
       editor.chain().focus().extendMarkRange('link').unsetLink().run()
+      setIsLinkDialogOpen(false)
       return
     }
+    try {
+      // Basic URL validation
+      // eslint-disable-next-line no-new
+      new URL(normalized)
+    } catch {
+      setLinkError('Please enter a valid URL (e.g., https://example.com)')
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: normalized }).run()
+    setIsLinkDialogOpen(false)
+  }
 
-    // update link
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+  const handleRemoveLink = () => {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    setIsLinkDialogOpen(false)
   }
 
   return (
     <div className={`relative ${className}`} data-testid="rich-text-editor">
+      <Dialog open={isLinkDialogOpen} onOpenChange={(open) => setIsLinkDialogOpen(open)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-atkinson-hyperlegible">Add a link</DialogTitle>
+            <DialogDescription className="font-public-sans">
+              Paste a URL to create or update the selected text.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="rte-link-input" className="text-sm">URL</label>
+            <Input
+              id="rte-link-input"
+              placeholder="https://example.com"
+              value={linkUrl}
+              onChange={(e) => {
+                setLinkUrl(e.target.value)
+                if (linkError) setLinkError('')
+              }}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleSaveLink()
+                }
+              }}
+            />
+            {linkError && (
+              <p className="text-sm text-destructive" role="alert">{linkError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            {editor.isActive('link') && (
+              <Button variant="outline" onClick={handleRemoveLink}>Remove link</Button>
+            )}
+            <div className="flex w-full justify-end gap-2 sm:w-auto">
+              <Button variant="ghost" onClick={() => setIsLinkDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveLink}>Save</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Floating Toolbar */}
       {(isFocused || isToolbarHovered) && (
         <div 

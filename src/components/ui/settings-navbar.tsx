@@ -5,14 +5,16 @@ interface SettingsNavbarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
   userEmail?: string;
+  showAdminManagement?: boolean;
 }
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
   
   const sections = [
     { id: "agenda-templates", label: "Agenda Templates" },
     ...(isTestUser ? [{ id: "testing-mode", label: "🧪 Testing Mode" }] : []),
+    ...(showAdminManagement ? [{ id: "admin-management", label: "Admin Management" }] : []),
     // Add more sections here as needed
   ];
 

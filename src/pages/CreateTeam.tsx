@@ -9,12 +9,14 @@ import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { useRoles } from "@/hooks/useRoles";
 
 const CreateTeam = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
+  const { isAdmin, isSuperAdmin, loading: rolesLoading } = useRoles();
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,22 +120,35 @@ const CreateTeam = () => {
             <CardTitle className="text-xl">Create New Team</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCreateTeam} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="teamName">Team Name</Label>
-                <Input
-                  id="teamName"
-                  placeholder="Enter your team name"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  required
-                />
-              </div>
+            {rolesLoading ? (
+              <div className="text-sm text-muted-foreground">Loading permissions...</div>
+            ) : isAdmin || isSuperAdmin ? (
+              <form onSubmit={handleCreateTeam} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="teamName">Team Name</Label>
+                  <Input
+                    id="teamName"
+                    placeholder="Enter your team name"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    required
+                  />
+                </div>
 
-              <Button type="submit" disabled={loading || !teamName.trim()} className="w-full">
-                {loading ? "Creating..." : "Create Team"}
-              </Button>
-            </form>
+                <Button type="submit" disabled={loading || !teamName.trim()} className="w-full">
+                  {loading ? "Creating..." : "Create Team"}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  You don’t have permission to create teams. Please contact a super admin to grant you admin access.
+                </div>
+                <div>
+                  <Button variant="secondary" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>

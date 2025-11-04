@@ -577,8 +577,8 @@ const Dashboard = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <header className="border-b bg-card/50 sticky top-0 z-10">
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           
@@ -586,7 +586,7 @@ const Dashboard = () => {
           <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <div className="flex items-center gap-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md px-3 py-2 transition-colors">
+                <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400" aria-label="Open account menu" role="button">
                   <FancyAvatar 
                     name={(profile?.avatar_name && profile.avatar_name.trim())
                       || `${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim()
@@ -811,7 +811,7 @@ const Dashboard = () => {
                       teamMeetings.map((meeting) => (
                         <Card
                           key={meeting.id}
-                          className="hover:shadow-large transition-all cursor-pointer group"
+                          className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
                           onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
                           <CardHeader className="p-4 sm:p-6">

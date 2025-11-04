@@ -645,8 +645,8 @@ const TeamMeeting = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50">
-              <header className="shadow-sm shadow-blue-200 bg-gradient-to-r from-blue-100 via-pink-200 to-blue-100 bg-opacity-10 sticky top-0 z-10">
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+              <header className="border-b bg-white">
                 <div className="container mx-auto px-4 py-3 sm:py-4">
                   {/* Top row: Logo, Title/Admin, Settings */}
                   <div className="flex items-center justify-between mb-3">

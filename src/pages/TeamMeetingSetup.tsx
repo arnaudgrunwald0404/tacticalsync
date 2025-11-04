@@ -10,6 +10,7 @@ import { Calendar, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { useRoles } from "@/hooks/useRoles";
 
 const TeamMeetingSetup = () => {
   const navigate = useNavigate();
@@ -22,6 +23,8 @@ const TeamMeetingSetup = () => {
   const [meetingName, setMeetingName] = useState<string>("");
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
   const [teamAbbreviatedName, setTeamAbbreviatedName] = useState<string>("");
+  const { isAdmin, isSuperAdmin, loading: rolesLoading } = useRoles();
+  const [isTeamMember, setIsTeamMember] = useState<boolean>(false);
 
   const generateMeetingName = (freq: string, type: string): string => {
     const frequencyLabels: Record<string, string> = {
@@ -60,6 +63,15 @@ const TeamMeetingSetup = () => {
         .single();
 
       if (error) throw error;
+
+      // Check membership (admins must be members; super admins can bypass)
+      const { data: membership } = await supabase
+        .from("team_members")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setIsTeamMember(Boolean(membership));
 
       // Set team abbreviated name and default values
       const abbreviatedName = team.abbreviated_name || "";
@@ -195,7 +207,7 @@ const TeamMeetingSetup = () => {
     }
   };
 
-  if (loading) {
+  if (loading || rolesLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg text-muted-foreground">Loading...</div>
@@ -203,9 +215,38 @@ const TeamMeetingSetup = () => {
     );
   }
 
+  if (!(isSuperAdmin || (isAdmin && isTeamMember))) {
+    return (
+      <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+        <header className="border-b bg-white">
+          <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
+              <ArrowLeft className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Back to Home</span>
+              <span className="sm:hidden">Back</span>
+            </Button>
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">
+          <Card>
+            <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6 space-y-3">
+              <div className="text-sm text-muted-foreground">
+                You don’t have permission to create meetings for this team. Admins must be team members; super admins can create for any team.
+              </div>
+              <div>
+                <Button variant="secondary" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </GridBackground>
+    );
+  }
+
   return (
-    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <header className="border-b bg-card/50 backdrop-blur-sm">
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">

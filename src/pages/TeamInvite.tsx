@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X } from "lucide-react";
+import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,6 +45,9 @@ const TeamInvite = () => {
   const [updatingName, setUpdatingName] = useState(false);
   const [currentMembers, setCurrentMembers] = useState<any[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<string[]>([]);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     fetchTeam();
@@ -71,6 +74,29 @@ const TeamInvite = () => {
       setOriginalTeamName(team.name);
       setOriginalAbbreviatedName(team.abbreviated_name || "");
       setInviteCode(team.invite_code);
+
+      // Fetch current user's role
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        // Check if user is super admin
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("is_super_admin")
+          .eq("id", currentUser.id)
+          .single();
+        
+        setIsSuperAdmin((profileData as any)?.is_super_admin === true);
+
+        // Get user's role in the team
+        const { data: memberData } = await supabase
+          .from("team_members")
+          .select("role")
+          .eq("team_id", teamId)
+          .eq("user_id", currentUser.id)
+          .single();
+        
+        setUserRole(memberData?.role || "");
+      }
 
       // Fetch current team members
       await fetchCurrentMembers();
@@ -451,6 +477,34 @@ const TeamInvite = () => {
     }
   };
 
+  const handleLeaveTeam = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("team_members")
+        .delete()
+        .eq("team_id", teamId)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Left team",
+        description: `You've left ${teamName}`,
+      });
+
+      navigate("/dashboard");
+    } catch (error: unknown) {
+      toast({
+        title: "Error leaving team",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleDeleteTeam = async () => {
     try {
       const { error } = await supabase
@@ -486,8 +540,8 @@ const TeamInvite = () => {
   const inviteLink = `${window.location.origin}/join/${inviteCode}`;
 
   return (
-    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <header className="border-b bg-card/50 backdrop-blur-sm">
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Logo variant="minimal" size="lg" />
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -496,7 +550,7 @@ const TeamInvite = () => {
           </Button>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
             <Users className="w-8 h-8 text-primary" />
@@ -504,37 +558,147 @@ const TeamInvite = () => {
           <h1 className="text-3xl font-bold mb-2">Set Up Your Team</h1>
         </div>
 
-        <Card className="mb-4">
-          <CardContent className="pt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="teamName">Team Name</Label>
-                      <Input
-                        id="teamName"
-                        value={teamName}
-                        onChange={(e) => setTeamName(e.target.value)}
-                        onBlur={(e) => handleTeamNameChange(e.target.value, abbreviatedName)}
-                        disabled={updatingName}
-                        placeholder="e.g., Executive Leadership Team"
-                      />
-            </div>
-            
-            <div className="space-y-2 ">
-              <Label htmlFor="abbreviatedName">Short Name (Optional)</Label>
-                      <Input
-                        id="abbreviatedName"
-                        value={abbreviatedName}
-                        onChange={(e) => setAbbreviatedName(e.target.value)}
-                        onBlur={(e) => handleTeamNameChange(teamName, e.target.value)}
-                        disabled={updatingName}
-                        placeholder="e.g., ELT"
-                        maxLength={10}
-                      />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column: Team Name and Danger Zone */}
+          <div className="space-y-6">
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="teamName">Team Name</Label>
+                  <Input
+                    id="teamName"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    onBlur={(e) => handleTeamNameChange(e.target.value, abbreviatedName)}
+                    disabled={updatingName}
+                    placeholder="e.g., Executive Leadership Team"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="abbreviatedName">Short Name (Optional)</Label>
+                  <Input
+                    id="abbreviatedName"
+                    value={abbreviatedName}
+                    onChange={(e) => setAbbreviatedName(e.target.value)}
+                    onBlur={(e) => handleTeamNameChange(teamName, e.target.value)}
+                    disabled={updatingName}
+                    placeholder="e.g., ELT"
+                    maxLength={10}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
-            </div>
-          </CardContent>
-        </Card>
+            {/* Show Danger Zone only if user is admin or super admin */}
+            {(userRole === "admin" || isSuperAdmin) && (
+              <Card className="border-destructive/40 bg-red-50">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-destructive" />
+                      <h2 className="font-semibold text-destructive">Danger Zone</h2>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="font-semibold">Delete Team</h3>
+                        <p className="text-sm text-muted-foreground">This action cannot be undone</p>
+                      </div>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm">
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete {teamName}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete all team data including meetings, topics, and member access.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <div className="py-4 space-y-2">
+                            <Label htmlFor="deleteConfirmation" className="text-sm font-medium">
+                              To confirm, type the team name: <span className="font-bold">{teamName}</span>
+                            </Label>
+                            <Input
+                              id="deleteConfirmation"
+                              value={deleteConfirmationInput}
+                              onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+                              placeholder="Enter team name"
+                            />
+                          </div>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setDeleteConfirmationInput("")}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => {
+                                handleDeleteTeam();
+                                setDeleteConfirmationInput("");
+                              }}
+                              disabled={deleteConfirmationInput !== teamName}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Delete Team
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-        <Card>
+            {/* Show Leave Team option for non-admins */}
+            {userRole !== "admin" && !isSuperAdmin && (
+              <Card className="border-orange-200 bg-orange-50">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-orange-600" />
+                      <h2 className="font-semibold text-orange-900">Leave Team</h2>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="font-semibold">Leave {teamName}</h3>
+                        <p className="text-sm text-muted-foreground">You will lose access to this team</p>
+                      </div>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="border-orange-300 text-orange-700 hover:bg-orange-100">
+                            <LogOut className="h-4 w-4 mr-2" />
+                            Leave Team
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Leave {teamName}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to leave this team? You will lose access to all team meetings and data.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={handleLeaveTeam}
+                              className="bg-orange-600 text-white hover:bg-orange-700"
+                            >
+                              Leave Team
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Right Column: Invitations */}
+          <div className="space-y-6">
+            <Card>
           <CardContent className="pt-6 space-y-6">
             {/* Current Members */}
             {currentMembers.length > 0 && (
@@ -701,56 +865,16 @@ const TeamInvite = () => {
             </div>
 
           </CardContent>
-        </Card>
+            </Card>
+          </div>
+        </div>
 
         <Button 
           onClick={handleContinue}
-          className="w-full mt-4"
+          className="w-full mt-6 max-w-2xl mx-auto block"
         >
           {fromDashboard ? "Save and Go Back to Dashboard" : "Continue to Meeting Setup"}
         </Button>
-
-        <Card className="mt-9 border-destructive/40 bg-red-50">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                <h2 className="font-semibold text-destructive">Danger Zone</h2>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold">Delete Team</h3>
-                  <p className="text-sm text-muted-foreground">This action cannot be undone</p>
-                </div>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm">
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete {teamName}?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete all team data including meetings, topics, and member access.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteTeam}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete Team
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </main>
     </GridBackground>
   );
