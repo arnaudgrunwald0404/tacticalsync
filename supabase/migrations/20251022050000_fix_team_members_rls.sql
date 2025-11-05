@@ -40,6 +40,14 @@ drop policy if exists "Team admins can delete members" on public.team_members;
 -- Keep existing INSERT policies that do not recurse (if present):
 --   "Users can join teams" and "Team creators can add themselves as admin"
 -- Recreate non-recursive SELECT/UPDATE/DELETE policies using helper functions
+
+-- Drop the policies we're about to create if they exist
+DROP POLICY IF EXISTS "Members can select team_members" ON public.team_members;
+DROP POLICY IF EXISTS "Admins can update team_members" ON public.team_members;
+DROP POLICY IF EXISTS "Admins can delete team_members" ON public.team_members;
+DROP POLICY IF EXISTS "Users can view team members" ON public.team_members;
+DROP POLICY IF EXISTS "Users can view team members of their teams" ON public.team_members;
+
 create policy "Members can select team_members"
   on public.team_members
   for select
