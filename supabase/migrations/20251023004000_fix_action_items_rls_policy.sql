@@ -7,6 +7,10 @@ DROP POLICY IF EXISTS "Team members can view action items" ON meeting_series_act
 DROP POLICY IF EXISTS "Team members can insert action items" ON meeting_series_action_items;
 DROP POLICY IF EXISTS "Team members can update own action items" ON meeting_series_action_items;
 DROP POLICY IF EXISTS "Team members can delete own action items" ON meeting_series_action_items;
+DROP POLICY IF EXISTS "Authenticated users can view action items" ON meeting_series_action_items;
+DROP POLICY IF EXISTS "Authenticated users can insert action items" ON meeting_series_action_items;
+DROP POLICY IF EXISTS "Users can update their own action items" ON meeting_series_action_items;
+DROP POLICY IF EXISTS "Users can delete their own action items" ON meeting_series_action_items;
 
 -- Create more permissive policies that work with the current data structure
 -- These policies allow any authenticated user to manage action items
