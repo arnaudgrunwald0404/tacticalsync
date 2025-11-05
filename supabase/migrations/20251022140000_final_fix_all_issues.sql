@@ -73,11 +73,13 @@ CREATE POLICY "Users can view their own teams" ON teams
     SELECT 1 FROM team_members WHERE team_id = teams.id AND user_id = auth.uid()
   ));
 
+DROP POLICY IF EXISTS "Users can view team members" ON team_members;
 CREATE POLICY "Users can view team members" ON team_members
   FOR SELECT USING (auth.uid() = user_id OR EXISTS (
     SELECT 1 FROM team_members tm WHERE tm.team_id = team_members.team_id AND tm.user_id = auth.uid()
   ));
 
+DROP POLICY IF EXISTS "Users can view invitations" ON invitations;
 CREATE POLICY "Users can view invitations" ON invitations
   FOR SELECT USING (auth.uid() = invited_by OR EXISTS (
     SELECT 1 FROM team_members tm WHERE tm.team_id = invitations.team_id AND tm.user_id = auth.uid()
