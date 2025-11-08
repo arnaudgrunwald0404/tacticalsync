@@ -321,18 +321,16 @@ const TeamMeeting = () => {
       setCurrentSeriesId(meetingData.series_id);
 
       // Fetch agenda items from meeting_series_agenda
+      // Simplified query without profile joins to avoid RLS issues
       const { data: agendaData, error: agendaError } = await supabase
         .from("meeting_series_agenda")
-        .select(`
-          *,
-          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
-        `)
+        .select("*")
         .eq("series_id", meetingData.series_id)
         .order("order_index");
 
       if (agendaError) {
         console.error("Error fetching agenda items:", agendaError);
+        console.error("Agenda error details:", JSON.stringify(agendaError, null, 2));
       } else {
         // Transform the data to include is_completed field for compatibility
         const transformedAgendaData = (agendaData || []).map(item => ({
@@ -340,6 +338,7 @@ const TeamMeeting = () => {
           is_completed: item.completion_status === 'completed'
         }));
         console.log("Fetched agenda items:", transformedAgendaData);
+        console.log("Number of agenda items:", agendaData?.length || 0);
         setAgendaItems(transformedAgendaData);
       }
 
@@ -393,20 +392,19 @@ const TeamMeeting = () => {
       }
 
       // Fetch topics from meeting_instance_topics
+      // Temporarily fetch without profile joins to verify RLS isn't blocking
       const { data: topicsData, error: topicsError } = await supabase
         .from("meeting_instance_topics")
-        .select(`
-          *,
-          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
-        `)
+        .select("*")
         .eq("instance_id", meetingId)
         .order("order_index");
 
       if (topicsError) {
         console.error("Error fetching topics:", topicsError);
+        console.error("Topics error details:", JSON.stringify(topicsError, null, 2));
       } else {
         console.log("Fetched topics data:", topicsData);
+        console.log("Number of topics:", topicsData?.length || 0);
         setTeamTopicItems(topicsData || []);
       }
 
@@ -646,7 +644,7 @@ const TeamMeeting = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-              <header className="border-b bg-white">
+              <header className="sticky top-0 z-50 border-b bg-white">
                 <div className="container mx-auto px-4 py-3 sm:py-4">
                   {/* Top row: Logo, Title/Admin, Settings */}
                   <div className="flex items-center justify-between mb-3">
@@ -778,8 +776,23 @@ const TeamMeeting = () => {
                 meetingId={meeting?.id}
                 teamId={teamId}
                 onUpdate={async () => {
-                  if (meeting?.id) {
-                    await fetchMeetingItems(meeting.id);
+                  // Only refetch agenda items, not all meeting data
+                  if (!meeting?.id || !currentSeriesId) return;
+
+                  const { data: agendaData, error: agendaError } = await supabase
+                    .from("meeting_series_agenda")
+                    .select("*")
+                    .eq("series_id", currentSeriesId)
+                    .order("order_index");
+
+                  if (agendaError) {
+                    console.error("Error fetching agenda items:", agendaError);
+                  } else {
+                    const transformedAgendaData = (agendaData || []).map(item => ({
+                      ...item,
+                      is_completed: item.completion_status === 'completed'
+                    }));
+                    setAgendaItems(transformedAgendaData);
                   }
                 }}
                 currentUserId={currentUserId || undefined}
@@ -883,8 +896,35 @@ const TeamMeeting = () => {
                 meetingId={meeting?.id}
                 teamId={teamId}
                 onUpdate={async () => {
-                  if (meeting?.id) {
-                    await fetchMeetingItems(meeting.id);
+                  // Refetch both current and previous priorities
+                  if (!meeting?.id) return;
+
+                  // Fetch current priorities
+                  const { data: prioritiesData, error: prioritiesError } = await supabase
+                    .from("meeting_instance_priorities")
+                    .select("*")
+                    .eq("instance_id", meeting.id)
+                    .order("order_index");
+
+                  if (prioritiesError) {
+                    console.error("Error fetching priorities:", prioritiesError);
+                  } else {
+                    setPriorityItems(prioritiesData || []);
+                  }
+
+                  // Fetch previous priorities if we have a previous meeting
+                  if (previousMeetingId) {
+                    const { data: previousPrioritiesData, error: previousPrioritiesError } = await supabase
+                      .from("meeting_instance_priorities")
+                      .select("*")
+                      .eq("instance_id", previousMeetingId)
+                      .order("order_index");
+
+                    if (previousPrioritiesError) {
+                      console.error("Error fetching previous priorities:", previousPrioritiesError);
+                    } else {
+                      setPreviousPriorityItems(previousPrioritiesData || []);
+                    }
                   }
                 }}
                 frequency={recurringMeeting?.frequency}
@@ -914,10 +954,26 @@ const TeamMeeting = () => {
               {!sectionsCollapsed.topics && (
                 <TeamTopics
                 items={teamTopicItems}
-                meetingId={meeting?.id}
+                meetingId={meeting?.id || ""}
                 teamId={teamId}
                 teamName={team?.abbreviated_name || team?.name || "Team"}
-                onUpdate={() => fetchMeetingItems(meeting?.id)}
+                onUpdate={async () => {
+                  // Only refetch topics, not all meeting data
+                  if (!meeting?.id) return;
+                  
+                  const { data: topicsData, error: topicsError } = await supabase
+                    .from("meeting_instance_topics")
+                    .select("*")
+                    .eq("instance_id", meeting.id)
+                    .order("order_index");
+
+                  if (topicsError) {
+                    console.error("Error fetching topics:", topicsError);
+                  } else {
+                    console.log("Fetched topics:", topicsData?.length || 0);
+                    setTeamTopicItems(topicsData || []);
+                  }
+                }}
               />
               )}
             </Card>
@@ -944,7 +1000,22 @@ const TeamMeeting = () => {
                 items={actionItems}
                 meetingId={currentSeriesId || ""}
                 teamId={teamId}
-                onUpdate={() => fetchMeetingItems(meeting?.id)}
+                onUpdate={async () => {
+                  // Only refetch action items, not all meeting data
+                  if (!meeting?.id || !currentSeriesId) return;
+                  
+                  const { data: actionItemsData, error: actionItemsError } = await supabase
+                    .from("meeting_series_action_items")
+                    .select("*")
+                    .eq("series_id", currentSeriesId)
+                    .order("order_index");
+
+                  if (actionItemsError) {
+                    console.error("Error fetching action items:", actionItemsError);
+                  } else {
+                    setActionItems(actionItemsData || []);
+                  }
+                }}
               />
               )}
             </Card>
