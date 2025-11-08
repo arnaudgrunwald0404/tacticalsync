@@ -7,12 +7,12 @@ import SaveButton from "@/components/ui/SaveButton";
 import EditButton from "@/components/ui/EditButton";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { AgendaItem, AgendaItemWithProfile } from "@/types/agenda";
 import { TeamMember } from "@/types/common";
 import { MeetingDataActions } from "@/types/meeting";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useHotkeys } from "react-hotkeys-hook";
 import RichTextEditor from "@/components/ui/rich-text-editor";
@@ -50,6 +50,10 @@ export function AgendaSidebar({
 }: AgendaSidebarProps) {
   const displayItems = isEditingAgenda ? editingItems : items;
   console.log('AgendaSidebar state:', { isEditingAgenda, editingItems, items, displayItems });
+  
+  // Generate smart name map
+  const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
+  
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [notesContent, setNotesContent] = useState<Record<string, string>>({});
   const [timerStarted, setTimerStarted] = useState(false);
@@ -191,7 +195,6 @@ export function AgendaSidebar({
                 className="p-1 h-7 hover:bg-muted/50"
                 onClick={async () => {
                   await onSaveEdit();
-                  actions.setEditing(false);
                 }}
               />
               <Button
@@ -377,11 +380,7 @@ export function AgendaSidebar({
                                     <option value="">All</option>
                                     {teamMembers.map((member) => (
                                       <option key={member.id} value={member.user_id}>
-                                        {formatNameWithInitial(
-                                          member.profiles.first_name,
-                                          member.profiles.last_name,
-                                          member.profiles.email
-                                        )}
+                                        {memberNames.get(member.user_id) || 'Unknown'}
                                       </option>
                                     ))}
                                   </select>
@@ -402,27 +401,19 @@ export function AgendaSidebar({
                                       {item.assigned_to_profile.avatar_name ? (
                                         <FancyAvatar 
                                           name={item.assigned_to_profile.avatar_name}
-                                          displayName={formatNameWithInitial(
-                                            item.assigned_to_profile.first_name,
-                                            item.assigned_to_profile.last_name,
-                                            item.assigned_to_profile.email
-                                          )}
+                                          displayName={getFullNameForAvatar(item.assigned_to_profile.first_name, item.assigned_to_profile.last_name, item.assigned_to_profile.email)}
                                           size="sm"
                                         />
                                       ) : (
                                         <Avatar className="h-6 w-6 rounded-full">
                                           <AvatarImage src={item.assigned_to_profile.avatar_url} />
                                           <AvatarFallback className="text-xs">
-                                            {(item.assigned_to_profile.first_name || item.assigned_to_profile.email || '?').charAt(0).toUpperCase()}
+                                            {item.assigned_to_profile.first_name?.[0]?.toUpperCase() || item.assigned_to_profile.email?.[0]?.toUpperCase() || ''}{item.assigned_to_profile.last_name?.[0]?.toUpperCase() || ''}
                                           </AvatarFallback>
                                         </Avatar>
                                       )}
                                       <span className="text-sm text-muted-foreground">
-                                        {formatNameWithInitial(
-                                          item.assigned_to_profile.first_name,
-                                          item.assigned_to_profile.last_name,
-                                          item.assigned_to_profile.email
-                                        )}
+                                        {memberNames.get(item.assigned_to) || 'Unknown'}
                                       </span>
                                     </div>
                                   ) : (

@@ -10,7 +10,7 @@ import { Plus, Check, Clock, X, GripVertical, Pencil, Trash } from "lucide-react
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { Arrow } from "@radix-ui/react-tooltip";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { cn } from "@/lib/utils";
 import { Topic } from "@/types/topics";
 import { CompletionStatus } from "@/types/priorities";
@@ -55,13 +55,14 @@ interface DropdownMember {
 interface SortableTopicRowProps {
   item: TeamTopicsProps['items'][0];
   members: DropdownMember[];
+  memberNames: Map<string, string>;
   onToggleComplete: (checked: boolean) => void;
   canModify: boolean;
   onDelete: (id: string) => void;
   onRefresh: () => void;
 }
 
-const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh, canModify }: SortableTopicRowProps) => {
+const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDelete, onRefresh, canModify }: SortableTopicRowProps) => {
   const {
     attributes,
     listeners,
@@ -181,25 +182,21 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh
                 </SelectTrigger>
                 <SelectContent>
                   {members.map((member) => {
-                    const displayName = formatNameWithInitial(
-                      member.profiles?.first_name,
-                      member.profiles?.last_name,
-                      member.profiles?.email
-                    );
+                const displayName = memberNames.get(member.user_id) || 'Unknown';
                     return (
                       <SelectItem key={member.user_id} value={member.user_id}>
                         <div className="flex items-center gap-2">
                           {member.profiles?.avatar_name ? (
                             <FancyAvatar 
                               name={member.profiles.avatar_name} 
-                              displayName={displayName}
+                              displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                               size="sm" 
                             />
                           ) : (
                             <Avatar className="h-6 w-6 rounded-full">
                               <AvatarImage src={member.profiles?.avatar_url} />
                               <AvatarFallback className="text-xs">
-                                {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                                {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                               </AvatarFallback>
                             </Avatar>
                           )}
@@ -245,35 +242,29 @@ const SortableTopicRow = ({ item, members, onToggleComplete, onDelete, onRefresh
           </>
         ) : (
           <>
-            <div className="col-span-9 text-base truncate">{item.title}</div>
+            <div className={cn("col-span-9 text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
             <div className="col-span-3 flex items-center gap-2">
-              {assignedMember?.profiles?.avatar_name ? (
-                <FancyAvatar 
-                  name={assignedMember.profiles.avatar_name} 
-                  displayName={formatNameWithInitial(
-                    assignedMember.profiles.first_name,
-                    assignedMember.profiles.last_name,
-                    assignedMember.profiles.email
+              {item.assigned_to && assignedMember ? (
+                <>
+                  {assignedMember.profiles?.avatar_name ? (
+                    <FancyAvatar 
+                      name={assignedMember.profiles.avatar_name} 
+                      displayName={getFullNameForAvatar(assignedMember.profiles.first_name, assignedMember.profiles.last_name, assignedMember.profiles.email)}
+                      size="sm" 
+                    />
+                  ) : (
+                    <Avatar className="h-6 w-6 rounded-full">
+                      <AvatarImage src={assignedMember.profiles?.avatar_url} />
+                      <AvatarFallback className="text-xs">
+                        {assignedMember.profiles?.first_name?.[0]?.toUpperCase() || assignedMember.profiles?.email?.[0]?.toUpperCase() || ''}{assignedMember.profiles?.last_name?.[0]?.toUpperCase() || ''}
+                      </AvatarFallback>
+                    </Avatar>
                   )}
-                  size="sm" 
-                />
-              ) : (
-                <Avatar className="h-6 w-6 rounded-full">
-                  <AvatarImage src={assignedMember?.profiles?.avatar_url} />
-                  <AvatarFallback className="text-xs">
-                    {(assignedMember?.profiles?.first_name || assignedMember?.profiles?.email || '?').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <span className="text-base">
-                {assignedMember?.profiles ? 
-                  formatNameWithInitial(
-                    assignedMember.profiles.first_name,
-                    assignedMember.profiles.last_name,
-                    assignedMember.profiles.email
-                  ) : "Unassigned"
-                }
-              </span>
+                  <span className="text-base">
+                    {memberNames.get(item.assigned_to) || 'Unknown'}
+                  </span>
+                </>
+              ) : null}
             </div>
             <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
               <Clock className="h-4 w-4" />
@@ -313,12 +304,13 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     })
   );
   const [members, setMembers] = useState<DropdownMember[]>([]);
+  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [newTopic, setNewTopic] = useState({
     title: "",
-    assigned_to: "",
+    assigned_to: null as string | null,
     time_minutes: 5,
     notes: ""
   });
@@ -327,39 +319,25 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
   const fetchCurrentUser = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setCurrentUserId(user.id);
+      if (user) {
+        setCurrentUserId(user.id);
+        setNewTopic(prev => ({ ...prev, assigned_to: user.id }));
 
-      // Find current user in team members
-      const { data: memberData } = await supabase
-        .from("team_members")
-        .select(`
-          id,
-          user_id,
-          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
-        `)
-        .eq("team_id", teamId)
-        .eq("user_id", user.id)
-        .single();
-      
-      if (memberData) {
-        setNewTopic(prev => ({ ...prev, assigned_to: memberData.user_id }));
+        // Permissions
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_super_admin')
+          .eq('id', user.id)
+          .single();
+        setIsSuperAdmin(!!(profile as any)?.is_super_admin);
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('team_id', teamId)
+          .eq('user_id', user.id)
+          .single();
+        setIsTeamAdmin((membership as any)?.role === 'admin');
       }
-
-      // Permissions
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_super_admin')
-        .eq('id', user.id)
-        .single();
-      setIsSuperAdmin(!!(profile as any)?.is_super_admin);
-      const { data: membership } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('team_id', teamId)
-        .eq('user_id', user.id)
-        .single();
-      setIsTeamAdmin((membership as any)?.role === 'admin');
     } catch (error) {
       console.error("Error fetching current user:", error);
     }
@@ -395,6 +373,10 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
     });
     
     setMembers(membersWithProfiles);
+    
+    // Generate smart name map
+    const nameMap = formatMemberNames(membersWithProfiles);
+    setMemberNames(nameMap);
   }, [teamId]);
 
   useEffect(() => {
@@ -419,7 +401,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("meeting_instance_topics")
         .insert({
           instance_id: meetingId,
@@ -429,9 +411,15 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
           notes: newTopic.notes || null,
           order_index: items.length,
           created_by: user.id,
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error adding topic:", error);
+        throw error;
+      }
+
+      console.log("Topic added successfully:", data);
 
       toast({
         title: "Topic added!",
@@ -439,20 +427,17 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       });
 
       // Reset form but keep the current user assigned
-      setNewTopic(prev => ({
+      setNewTopic({
         title: "",
-        assigned_to: prev.assigned_to, // Keep current user assigned
+        assigned_to: currentUserId,
         time_minutes: 5,
-        notes: "" // Empty string for RichTextEditor
-      }));
-      
-      // Reset RichTextEditor content through state
-      setNewTopic(prev => ({
-        ...prev,
         notes: ""
-      }));
+      });
 
-      onUpdate();
+      // Wait a moment to ensure the database transaction is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      await onUpdate();
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -559,6 +544,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                   key={item.id}
                   item={item}
                   members={members}
+                  memberNames={memberNames}
                   canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
                   onToggleComplete={async (checked) => {
                     const canModify = isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId;
@@ -614,25 +600,21 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                         const member = members.find(m => m.user_id === newTopic.assigned_to);
                         if (!member?.profiles) return null;
                         
-                        const displayName = formatNameWithInitial(
-                          member.profiles.first_name,
-                          member.profiles.last_name,
-                          member.profiles.email
-                        );
+                        const displayName = memberNames.get(newTopic.assigned_to) || 'Unknown';
 
                         return (
                           <>
                             {member.profiles.avatar_name ? (
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
-                                displayName={displayName}
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                 size="sm" 
                               />
                             ) : (
                               <Avatar className="h-6 w-6 rounded-full">
                                 <AvatarImage src={member.profiles.avatar_url} />
                                 <AvatarFallback className="text-xs">
-                                  {(member.profiles.first_name || member.profiles.email || '?').charAt(0).toUpperCase()}
+                                  {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                 </AvatarFallback>
                               </Avatar>
                             )}
@@ -646,11 +628,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               </SelectTrigger>
                 <SelectContent>
                 {members.map((member) => {
-                  const displayName = formatNameWithInitial(
-                    member.profiles?.first_name,
-                    member.profiles?.last_name,
-                    member.profiles?.email
-                  );
+                const displayName = memberNames.get(member.user_id) || 'Unknown';
                   
                   return (
                     <SelectItem key={member.user_id} value={member.user_id}>
@@ -706,6 +684,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               disabled={adding || !newTopic.title.trim()}
               className="h-10 w-full"
               size="sm"
+              aria-label="Add Topic"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -733,25 +712,21 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                         const member = members.find(m => m.user_id === newTopic.assigned_to);
                         if (!member?.profiles) return null;
                         
-                        const displayName = formatNameWithInitial(
-                          member.profiles.first_name,
-                          member.profiles.last_name,
-                          member.profiles.email
-                        );
+                        const displayName = memberNames.get(newTopic.assigned_to) || 'Unknown';
 
                         return (
                           <>
                             {member.profiles.avatar_name ? (
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
-                                displayName={displayName}
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                 size="sm" 
                               />
                             ) : (
                               <Avatar className="h-6 w-6 rounded-full">
                                 <AvatarImage src={member.profiles.avatar_url} />
                                 <AvatarFallback className="text-xs">
-                                  {(member.profiles.first_name || member.profiles.email || '?').charAt(0).toUpperCase()}
+                                  {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                 </AvatarFallback>
                               </Avatar>
                             )}
@@ -765,11 +740,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               </SelectTrigger>
                 <SelectContent>
                 {members.map((member) => {
-                  const displayName = formatNameWithInitial(
-                    member.profiles?.first_name,
-                    member.profiles?.last_name,
-                    member.profiles?.email
-                  );
+                const displayName = memberNames.get(member.user_id) || 'Unknown';
                   
                   return (
                     <SelectItem key={member.user_id} value={member.user_id}>
@@ -833,4 +804,5 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
 };
 
 export default TeamTopics;
+
 

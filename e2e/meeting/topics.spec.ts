@@ -1,54 +1,82 @@
 import { test, expect } from '@playwright/test';
-import { loginAsTestUser } from '../helpers/auth.helper';
-import { createTeam } from '../helpers/team.helper';
+import { loginAsTestUser, createVerifiedUser, deleteUser, generateTestEmail } from '../helpers/auth.helper';
+import { createTeam, addTeamMember } from '../helpers/team.helper';
+import { createRecurringMeeting, createWeeklyMeeting } from '../helpers/meeting.helper';
 import { createMeetingItem, updateMeetingItem, getMeetingItem, cleanupMeetingItems } from '../helpers/meeting-items.helper';
+import { supabase } from '../helpers/supabase.helper';
 import { format } from 'date-fns';
 
 test.describe('Topics', () => {
   let teamId: string;
   let meetingId: string;
+  let userId: string;
 
   test.beforeEach(async ({ page }) => {
-    await loginAsTestUser(page);
-    const team = await createTeam({ name: 'Test Team' });
+    // Create and login as test user with unique email
+    const uniqueEmail = generateTestEmail('topics-test');
+    const user = await createVerifiedUser(uniqueEmail, 'Test123456!');
+    userId = user.id;
+    
+    // Make user an admin (required for creating teams and meetings)
+    const { supabaseAdmin } = await import('../helpers/supabase.helper');
+    await supabaseAdmin
+      .from('profiles')
+      .update({ is_admin: true })
+      .eq('id', userId);
+    
+    await loginAsTestUser(page, user.email, user.password);
+    
+    // Create team
+    const team = await createTeam(userId, 'Test Team');
     teamId = team.id;
     
-    // Create a meeting for testing
-    const { data: meeting } = await supabase
-      .from('weekly_meetings')
-      .insert({
-        team_id: teamId,
-        recurring_meeting_id: 'test-meeting',
-        week_start_date: format(new Date(), 'yyyy-MM-dd')
-      })
-      .select()
-      .single();
+    // Add user to team as admin
+    await addTeamMember(teamId, userId, 'admin');
     
-    meetingId = meeting.id;
+    // Create meeting series and instance
+    const series = await createRecurringMeeting(teamId, 'Test Meeting', 'weekly', userId);
+    const instance = await createWeeklyMeeting(teamId, series.id);
+    meetingId = instance.id;
   });
 
   test.afterEach(async () => {
     await cleanupMeetingItems(meetingId);
+    // Clean up test user
+    if (userId) {
+      await deleteUser(userId);
+    }
   });
 
   test('should create a new topic', async ({ page }) => {
     await page.goto(`/team/${teamId}/meeting/${meetingId}`);
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for the topics section to load
+    await page.waitForSelector('text=Add Topic', { timeout: 10000 });
 
-    // Click the "Add Topic" button
-    await page.getByRole('button', { name: /Add Topic/i }).click();
+    // Fill in the topic details (the form is already visible on the page)
+    // Use .first() to target the first visible input (desktop layout takes precedence)
+    const titleInput = page.getByPlaceholder('Topic title...').first();
+    await titleInput.waitFor({ state: 'visible', timeout: 5000 });
+    await titleInput.fill('Test Topic');
+    
+    // Click the "Add Topic" button using the aria-label
+    const addButton = page.getByLabel('Add Topic').first();
+    await addButton.waitFor({ state: 'visible', timeout: 5000 });
+    await expect(addButton).toBeEnabled({ timeout: 5000 });
+    await addButton.click();
 
-    // Fill in the topic details
-    await page.getByPlaceholder('Topic title').fill('Test Topic');
-    await page.getByRole('button', { name: /Who\?/i }).click();
-    await page.getByRole('option', { name: /Test User/i }).click();
-    await page.getByPlaceholder('Notes (optional)').fill('Test notes');
-
-    // Click the add button
-    await page.getByRole('button', { name: '+' }).click();
-
-    // Verify the topic was added
-    await expect(page.getByText('Test Topic')).toBeVisible();
-    await expect(page.getByText('Test notes')).toBeVisible();
+    // Wait for the topic to appear in the list
+    await expect(page.getByText('Test Topic')).toBeVisible({ timeout: 10000 });
+    
+    // Verify in database
+    const { data: topics } = await supabase
+      .from('meeting_instance_topics')
+      .select('*')
+      .eq('instance_id', meetingId)
+      .eq('title', 'Test Topic');
+    
+    expect(topics).toHaveLength(1);
   });
 
   test('should edit an existing topic', async ({ page }) => {
@@ -116,9 +144,9 @@ test.describe('Topics', () => {
 
     // Verify order in database
     const { data: updatedTopics } = await supabase
-      .from('meeting_items')
+      .from('meeting_instance_topics')
       .select('title, order_index')
-      .eq('meeting_id', meetingId)
+      .eq('instance_id', meetingId)
       .order('order_index');
 
     expect(updatedTopics[0].title).toBe('Second Topic');
@@ -148,7 +176,7 @@ test.describe('Topics', () => {
 
     // Verify in database
     const { data } = await supabase
-      .from('meeting_items')
+      .from('meeting_instance_topics')
       .select()
       .eq('id', topic.id);
     expect(data).toHaveLength(0);

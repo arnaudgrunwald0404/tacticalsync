@@ -1,5 +1,5 @@
 import { Page } from '@playwright/test';
-import { supabaseAdmin } from './supabase.helper';
+import { supabaseAdmin, getTestDatabaseUrl } from './supabase.helper';
 import { testUsers, type TestUser } from '../fixtures/users';
 import { retryWithBackoff, waitForCondition, formatError } from '../setup/test-utils';
 
@@ -32,6 +32,29 @@ export async function createVerifiedUser(
     if (error) throw error;
     if (!user) throw new Error('User creation failed');
 
+    // Ensure profile exists (trigger might not fire in test environment)
+    try {
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          email: user.email || email,
+          full_name: user.email?.split('@')[0] || email.split('@')[0],
+          first_name: null,
+          last_name: null,
+        }, {
+          onConflict: 'id'
+        });
+
+      if (profileError) {
+        console.warn('Failed to create/update profile:', profileError);
+        // Don't throw - profile might already exist from trigger
+      }
+    } catch (profileError) {
+      console.warn('Error ensuring profile exists:', profileError);
+      // Don't throw - continue with user creation
+    }
+
     return {
       id: user.id,
       email,
@@ -49,10 +72,37 @@ export async function loginViaUI(
   password: string
 ): Promise<void> {
   try {
-    await page.goto('/auth/sign-in');
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
+    // Clear any existing sessions first
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    
+    // For test environments, use direct session creation via API instead of UI
+    // This is more reliable and faster than navigating the UI
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+    if (!data.session) throw new Error('No session returned from login');
+
+    // Inject the session into localStorage
+    const supabaseUrl = getTestDatabaseUrl();
+    await page.evaluate(({ session, url }) => {
+      // Construct the storage key matching Supabase's pattern
+      // For local: sb-127-auth-token (from http://127.0.0.1:54321)
+      const projectRef = url.split('://')[1].split('.')[0];
+      const storageKey = `sb-${projectRef}-auth-token`;
+      localStorage.setItem(storageKey, JSON.stringify(session));
+    }, { session: data.session, url: supabaseUrl });
+
+    // Navigate to dashboard and wait for it to load
+    await page.goto('/dashboard');
+    
+    // Wait for dashboard to be ready
     await waitForCondition(
       async () => {
         const url = page.url();
@@ -64,12 +114,43 @@ export async function loginViaUI(
     );
   } catch (error) {
     console.error('Login failed:', formatError(error));
-    await page.screenshot({ path: `login-error-${Date.now()}.png` });
+    try {
+      const currentUrl = page.url();
+      console.error('Current URL:', currentUrl);
+      await page.screenshot({ path: `login-error-${Date.now()}.png`, fullPage: true });
+    } catch (screenshotError) {
+      // Ignore screenshot errors if page is closed
+      console.error('Could not take screenshot:', screenshotError);
+    }
     throw error;
   }
 }
 
-export const loginAsTestUser = loginViaUI;
+export async function loginAsTestUser(
+  page: Page,
+  email?: string,
+  password?: string
+): Promise<void> {
+  const testEmail = email || testUsers.member.email;
+  const testPassword = password || testUsers.member.password;
+  
+  // If email/password are explicitly provided, assume user exists
+  // Otherwise, ensure the test user exists before trying to log in
+  if (!email || !password) {
+    try {
+      const { data: existingUser } = await supabaseAdmin.auth.admin.getUserByEmail(testEmail);
+      if (!existingUser?.user) {
+        // User doesn't exist, create it
+        await createVerifiedUser(testEmail, testPassword);
+      }
+    } catch (error) {
+      // User doesn't exist, create it
+      await createVerifiedUser(testEmail, testPassword);
+    }
+  }
+  
+  return loginViaUI(page, testEmail, testPassword);
+}
 
 export async function deleteUser(userId: string): Promise<void> {
   try {

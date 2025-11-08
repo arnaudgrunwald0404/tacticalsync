@@ -36,6 +36,23 @@ export function useSessionManager() {
   }, []);
 
   const checkSession = useCallback(async () => {
+    // Don't redirect if there's an access_token in the hash fragment
+    // Supabase will process it automatically with detectSessionInUrl: true
+    const hash = window.location.hash;
+    const hasAccessToken = hash.includes('access_token=');
+    
+    // Don't redirect if we're on the reset password page (user needs to set new password)
+    const isResetPasswordPage = window.location.pathname === '/reset-password';
+    
+    // Also check for recovery token in query params
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasRecoveryToken = searchParams.has('token') && searchParams.get('type') === 'recovery';
+    
+    if (hasAccessToken || isResetPasswordPage || hasRecoveryToken) {
+      // Wait for Supabase to process the token or let user complete password reset
+      return;
+    }
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       // Only redirect if we're not on the auth page already
@@ -73,11 +90,27 @@ export function useSessionManager() {
       window.addEventListener(event, updateLastActivity);
     });
 
-    // Start session check interval
-    checkInterval.current = window.setInterval(checkSession, CHECK_INTERVAL);
-
-    // Initial session check
-    checkSession();
+    // Check if there's an access_token in hash or if we're on reset password page
+    const hash = window.location.hash;
+    const hasAccessToken = hash.includes('access_token=');
+    const isResetPasswordPage = window.location.pathname === '/reset-password';
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasRecoveryToken = searchParams.has('token') && searchParams.get('type') === 'recovery';
+    
+    // If there's an access_token or we're on reset password page, wait before starting checks
+    // to let Supabase process the token first
+    if (hasAccessToken || isResetPasswordPage || hasRecoveryToken) {
+      setTimeout(() => {
+        checkInterval.current = window.setInterval(checkSession, CHECK_INTERVAL);
+        // Initial session check after delay
+        checkSession();
+      }, 2000); // Longer delay for password reset
+    } else {
+      // Start session check interval immediately
+      checkInterval.current = window.setInterval(checkSession, CHECK_INTERVAL);
+      // Initial session check
+      checkSession();
+    }
 
     return () => {
       // Cleanup

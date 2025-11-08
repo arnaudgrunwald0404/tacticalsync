@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Users, LogOut, Settings, User } from "lucide-react";
+import { Plus, Users, LogOut, Settings, User, Mail } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +23,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRoles } from "@/hooks/useRoles";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAdmin, isSuperAdmin } = useRoles();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -51,6 +53,36 @@ const Dashboard = () => {
 
   useEffect(() => {
     checkUser();
+    
+    // Clean up hash fragment with access_token after authentication
+    const hash = window.location.hash;
+    let authSubscription: any = null;
+    
+    if (hash.includes('access_token=')) {
+      // Listen for auth state change to detect when Supabase processes the token
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session) {
+          // Token has been processed (could be SIGNED_IN, TOKEN_REFRESHED, etc.)
+          console.log('[DEBUG] Auth state changed:', event, 'Session:', !!session);
+          // Clean up URL first
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+          // Re-check user to load profile and teams (ignore hash since it's now cleaned)
+          checkUser(true);
+          // Unsubscribe after handling
+          if (authSubscription) {
+            authSubscription.unsubscribe();
+          }
+        }
+      });
+      
+      authSubscription = subscription;
+    }
+    
+    return () => {
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -84,10 +116,25 @@ const Dashboard = () => {
      
   }, []);
 
-  const checkUser = async () => {
+  const checkUser = async (ignoreHash = false) => {
+    // Check if there's an access_token in the hash fragment
+    // If so, don't check session immediately - wait for onAuthStateChange
+    // Unless ignoreHash is true (when called after token is processed)
+    const hash = window.location.hash;
+    const hasAccessToken = hash.includes('access_token=');
+    
+    if (hasAccessToken && !ignoreHash) {
+      // Don't check session yet - wait for Supabase to process the token
+      // The useEffect will handle the auth state change
+      return;
+    }
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      navigate("/auth");
+      // Don't redirect if there's an access_token being processed
+      if (!hasAccessToken) {
+        navigate("/auth");
+      }
       return;
     }
     setUser(session.user);
@@ -125,7 +172,18 @@ const Dashboard = () => {
         });
 
       if (insertError) {
-        console.error("Error creating profile:", insertError);
+        // If it's a duplicate key error, profile already exists - try to fetch it again
+        if (insertError.code === '23505') {
+          console.log("Profile already exists, fetching it...");
+          const { data: existingProfile } = await supabase
+            .from("profiles")
+            .select("first_name, last_name, full_name, avatar_name, avatar_url, email")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          profile = existingProfile || null;
+        } else {
+          console.error("Error creating profile:", insertError);
+        }
       } else {
         const { data: newProfile } = await supabase
           .from("profiles")
@@ -608,10 +666,12 @@ const Dashboard = () => {
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/settings")}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </DropdownMenuItem>
+                {(isAdmin || isSuperAdmin) && (
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Settings
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="h-4 w-4 mr-2" />
@@ -632,7 +692,7 @@ const Dashboard = () => {
               Manage your tactical meetings and collaborate with your teams
             </p>
           </div>
-          {(teams.length > 0 || pendingInvitations.length > 0) && (
+          {(teams.length > 0 || pendingInvitations.length > 0) && (isAdmin || isSuperAdmin) && (
             <Button variant="outline" onClick={handleCreateTeam} size="sm" className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Create New Team
@@ -642,20 +702,34 @@ const Dashboard = () => {
 
         {teams.length === 0 && pendingInvitations.length === 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Card
-              className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
-              onClick={handleCreateTeam}
-            >
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
-                  <Plus className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold mb-1">Create New Team</h3>
-                <p className="text-sm text-muted-foreground text-center">
-                  Start a new tactical meeting
-                </p>
-              </CardContent>
-            </Card>
+            {(isAdmin || isSuperAdmin) ? (
+              <Card
+                className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
+                onClick={handleCreateTeam}
+              >
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
+                    <Plus className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-1">Create New Team</h3>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Start a new tactical meeting
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-2 border-muted">
+                <CardContent className="flex flex-col items-center justify-center py-12 px-6">
+                  <div className="rounded-full bg-muted/50 p-4 mb-4">
+                    <Mail className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2 text-center">Waiting for an Invitation</h3>
+                  <p className="text-sm text-muted-foreground text-center max-w-sm">
+                    You'll need to wait for an admin to invite you to a team. Once you're invited, you'll be able to see the team and access all meetings associated with it.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         ) : (
           <div className="space-y-8">

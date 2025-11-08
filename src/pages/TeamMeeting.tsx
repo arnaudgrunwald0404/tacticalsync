@@ -332,10 +332,29 @@ const TeamMeeting = () => {
         console.error("Error fetching agenda items:", agendaError);
         console.error("Agenda error details:", JSON.stringify(agendaError, null, 2));
       } else {
-        // Transform the data to include is_completed field for compatibility
+        // Fetch profiles for assigned_to users
+        const assignedUserIds = (agendaData || [])
+          .map(item => item.assigned_to)
+          .filter((id): id is string => id != null);
+        
+        let profilesById: Record<string, any> = {};
+        if (assignedUserIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+            .in("id", assignedUserIds);
+          
+          profilesById = (profiles || []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {} as Record<string, any>);
+        }
+
+        // Transform the data to include is_completed field and assigned_to_profile for compatibility
         const transformedAgendaData = (agendaData || []).map(item => ({
           ...item,
-          is_completed: item.completion_status === 'completed'
+          is_completed: item.completion_status === 'completed',
+          assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
         }));
         console.log("Fetched agenda items:", transformedAgendaData);
         console.log("Number of agenda items:", agendaData?.length || 0);

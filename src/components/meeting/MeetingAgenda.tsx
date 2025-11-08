@@ -96,9 +96,10 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       });
     } catch (error: unknown) {
       console.error("Error adopting template:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to adopt template";
       toast({
         title: "Error",
-        description: "Failed to adopt template",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -183,7 +184,6 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
 
   const handleError = (error: unknown) => {
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
-    state.error = errorMessage;
     toast({
       variant: "destructive",
       title: "Error",
@@ -196,9 +196,6 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       handleError(new Error("All agenda items must have a title"));
       return;
     }
-
-    state.isSaving = true;
-    state.error = null;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -252,9 +249,11 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         .not('id', 'in', `(${keepIds.join(',') || 'NULL'})`);
       if (pruneError) throw pruneError;
 
-      state.isEditingAgenda = false;
-      state.editingItems = [];
-      state.lastSavedAt = Date.now();
+      // Exit edit mode using proper React state setters
+      actions.setEditing(false);
+      actions.updateEditingItems([]);
+      
+      // Refetch the data to update the UI
       await Promise.resolve(onUpdate());
       console.log("Post-save refresh triggered (upsert)");
       
@@ -262,13 +261,9 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         title: "Success",
         description: "Agenda saved successfully",
       });
-      // Ensure UI reflects the latest server state even if local state is stale
-      await Promise.resolve(onUpdate());
     } catch (error: unknown) {
       handleError(error);
       throw error;
-    } finally {
-      state.isSaving = false;
     }
   };
 

@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import AvatarSelector from "@/components/AvatarSelector";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import Logo from "@/components/Logo";
+import GridBackground from "@/components/ui/grid-background";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -257,7 +258,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
       <header className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Logo variant="minimal" size="lg" />
@@ -470,7 +471,7 @@ const Profile = () => {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </GridBackground>
   );
 };
 

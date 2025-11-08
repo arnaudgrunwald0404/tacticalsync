@@ -28,7 +28,7 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import CommentsDialog from "./CommentsDialog";
 import { ActionItem, ActionItemInsert } from "@/types/action-items";
@@ -62,13 +62,16 @@ export interface MeetingActionItemsRef {
 
 interface SortableActionItemRowProps {
   item: ActionItem;
+  members: DropdownMember[];
+  memberNames: Map<string, string>;
   onDelete: (id: string) => void;
   onSetCompletion: (status: CompletionStatus) => void;
   onRefresh: () => void;
   canModify: boolean;
 }
 
-const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh, canModify }: SortableActionItemRowProps) => {
+const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetCompletion, onRefresh, canModify }: SortableActionItemRowProps) => {
+  const assignedMember = members.find(m => m.user_id === item.assigned_to);
   const {
     attributes,
     listeners,
@@ -237,35 +240,29 @@ const SortableActionItemRow = ({ item, onDelete, onSetCompletion, onRefresh, can
           </>
         ) : (
           <>
-            <div className="col-span-9 text-base truncate">{item.title}</div>
+            <div className={cn("col-span-9 text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
             <div className="col-span-3 flex items-center gap-2">
-              {item.assigned_to_profile?.avatar_name ? (
-                <FancyAvatar 
-                  name={item.assigned_to_profile.avatar_name} 
-                  displayName={formatNameWithInitial(
-                    item.assigned_to_profile.first_name,
-                    item.assigned_to_profile.last_name,
-                    item.assigned_to_profile.email
-                  )}
-                  size="sm" 
-                />
-              ) : (
-                <Avatar className="h-6 w-6 rounded-full">
-                  <AvatarImage src={item.assigned_to_profile?.avatar_url} />
-                  <AvatarFallback className="text-xs">
-                    {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <span className="text-base">
-                {item.assigned_to_profile ? 
-                  formatNameWithInitial(
-                    item.assigned_to_profile.first_name,
-                    item.assigned_to_profile.last_name,
-                    item.assigned_to_profile.email
-                  ) : "Unassigned"
-                }
-              </span>
+              {item.assigned_to && assignedMember?.profiles ? (
+                <>
+                {assignedMember.profiles.avatar_name ? (
+                  <FancyAvatar 
+                    name={assignedMember.profiles.avatar_name} 
+                    displayName={getFullNameForAvatar(assignedMember.profiles.first_name, assignedMember.profiles.last_name, assignedMember.profiles.email)}
+                    size="sm" 
+                  />
+                ) : (
+                  <Avatar className="h-6 w-6 rounded-full">
+                    <AvatarImage src={assignedMember.profiles.avatar_url} />
+                    <AvatarFallback className="text-xs">
+                      {assignedMember.profiles.first_name?.[0]?.toUpperCase() || assignedMember.profiles.email?.[0]?.toUpperCase() || ''}{assignedMember.profiles.last_name?.[0]?.toUpperCase() || ''}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <span className="text-base">
+                  {memberNames.get(item.assigned_to) || 'Unknown'}
+                </span>
+                </>
+              ) : null}
             </div>
             <div className="col-span-3 flex items-center gap-1.5 text-base whitespace-nowrap">
               <CalendarIcon className="h-4 w-4" />
@@ -300,6 +297,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
   );
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [members, setMembers] = useState<DropdownMember[]>([]);
+  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isTeamAdmin, setIsTeamAdmin] = useState(false);
@@ -350,6 +348,10 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     });
     
     setMembers(membersWithProfiles);
+    
+    // Generate smart name map
+    const nameMap = formatMemberNames(membersWithProfiles);
+    setMemberNames(nameMap);
   }, [teamId]);
 
   const fetchCurrentUser = useCallback(async () => {
@@ -422,14 +424,17 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         notes: newItem.notes.trim(),
         assigned_to: newItem.assigned_to,
         due_date: newItem.due_date ? format(newItem.due_date, "yyyy-MM-dd") : null,
-        completion_status: 'pending',
+        completion_status: 'not_completed',
         order_index: items.length,
         created_by: user.id
       };
 
-      const { error } = await supabase
+      // Use .select() to get the created item back - avoids unnecessary refetch
+      const { data, error } = await supabase
         .from("meeting_series_action_items")
-        .insert(actionItemToInsert);
+        .insert(actionItemToInsert)
+        .select()
+        .single();
 
       if (error) {
         console.error("Error adding action item:", error);
@@ -449,6 +454,8 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         due_date: null
       });
 
+      // Optimistically update local state instead of refetching everything
+      // Only call onUpdate() which will refetch just this component's data
       onUpdate();
     } catch (error: unknown) {
       toast({
@@ -581,6 +588,8 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   <SortableActionItemRow
                     key={item.id}
                     item={item}
+                    members={members}
+                    memberNames={memberNames}
                     onDelete={handleDelete}
                     canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
                     onSetCompletion={(status) => handleSetCompletion(item.id, status)}
@@ -628,25 +637,21 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                           const member = members.find(m => m.user_id === newItem.assigned_to);
                           if (!member?.profiles) return "Unknown";
                           
-                          const displayName = formatNameWithInitial(
-                            member.profiles.first_name,
-                            member.profiles.last_name,
-                            member.profiles.email
-                          );
+                          const displayName = memberNames.get(newItem.assigned_to) || 'Unknown';
                           
                           return (
                             <div className="flex items-center gap-2">
                               {member.profiles.avatar_name ? (
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
-                                  displayName={displayName}
+                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                   size="sm" 
                                 />
                               ) : (
                                 <Avatar className="h-6 w-6 rounded-full">
                                   <AvatarImage src={member.profiles.avatar_url} />
                                   <AvatarFallback className="text-xs">
-                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                   </AvatarFallback>
                                 </Avatar>
                               )}
@@ -661,11 +666,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   </SelectTrigger>
                   <SelectContent>
                     {members.map((member) => {
-                      const displayName = formatNameWithInitial(
-                        member.profiles?.first_name,
-                        member.profiles?.last_name,
-                        member.profiles?.email
-                      );
+                      const displayName = memberNames.get(member.user_id) || 'Unknown';
                       
                       return (
                         <SelectItem key={member.user_id} value={member.user_id}>
@@ -673,14 +674,14 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                             {member.profiles?.avatar_name ? (
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
-                                displayName={displayName}
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                 size="sm" 
                               />
                             ) : (
                               <Avatar className="h-6 w-6 rounded-full">
                                 <AvatarImage src={member.profiles?.avatar_url} />
                                 <AvatarFallback className="text-xs">
-                                  {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                                  {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                                 </AvatarFallback>
                               </Avatar>
                             )}
@@ -737,6 +738,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   disabled={!newItem.title.trim()}
                   size="icon"
                   className="h-10 w-10"
+                  aria-label="Add Action Item"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -764,25 +766,21 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                           const member = members.find(m => m.user_id === newItem.assigned_to);
                           if (!member?.profiles) return "Unknown";
                           
-                          const displayName = formatNameWithInitial(
-                            member.profiles.first_name,
-                            member.profiles.last_name,
-                            member.profiles.email
-                          );
+                          const displayName = memberNames.get(newItem.assigned_to) || 'Unknown';
                           
                           return (
                             <div className="flex items-center gap-2">
                               {member.profiles.avatar_name ? (
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
-                                  displayName={displayName}
+                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                   size="sm" 
                                 />
                               ) : (
                                 <Avatar className="h-6 w-6 rounded-full">
                                   <AvatarImage src={member.profiles.avatar_url} />
                                   <AvatarFallback className="text-xs">
-                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                   </AvatarFallback>
                                 </Avatar>
                               )}
@@ -797,11 +795,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   </SelectTrigger>
                   <SelectContent>
                     {members.map((member) => {
-                      const displayName = formatNameWithInitial(
-                        member.profiles?.first_name,
-                        member.profiles?.last_name,
-                        member.profiles?.email
-                      );
+                      const displayName = memberNames.get(member.user_id) || 'Unknown';
                       
                       return (
                         <SelectItem key={member.user_id} value={member.user_id}>
@@ -809,14 +803,14 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                             {member.profiles?.avatar_name ? (
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
-                                displayName={displayName}
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                 size="sm" 
                               />
                             ) : (
                               <Avatar className="h-6 w-6 rounded-full">
                                 <AvatarImage src={member.profiles?.avatar_url} />
                                 <AvatarFallback className="text-xs">
-                                  {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                                  {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                                 </AvatarFallback>
                               </Avatar>
                             )}

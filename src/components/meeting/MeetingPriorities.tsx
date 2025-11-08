@@ -29,7 +29,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { Priority, CompletionStatus } from "@/types/priorities";
 import { TeamMember } from "@/types/meeting";
 
@@ -125,7 +125,7 @@ const SortablePriorityRow = ({
         <Avatar className="h-6 w-6">
           <AvatarImage src={item.assigned_to_profile?.avatar_url} />
           <AvatarFallback className="text-xs">
-            {(item.assigned_to_profile?.first_name || item.assigned_to_profile?.email || '?').charAt(0).toUpperCase()}
+            {item.assigned_to_profile?.first_name?.[0]?.toUpperCase() || item.assigned_to_profile?.email?.[0]?.toUpperCase() || ''}{item.assigned_to_profile?.last_name?.[0]?.toUpperCase() || ''}
           </AvatarFallback>
         </Avatar>
         <span className="text-sm">{item.outcome}</span>
@@ -142,6 +142,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [groupedPriorities, setGroupedPriorities] = useState<{ [key: string]: Priority[] }>({});
@@ -233,6 +234,10 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
     });
     
     setMembers(membersWithProfiles);
+    
+    // Generate smart name map
+    const nameMap = formatMemberNames(membersWithProfiles);
+    setMemberNames(nameMap);
   };
 
   const fetchPermissions = async () => {
@@ -434,20 +439,32 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
 
   const handlePreviousPriorityCompletion = async (priorityId: string, status: CompletionStatus) => {
     try {
-      const { error } = await supabase
+      console.log('Updating priority:', priorityId, 'to status:', status);
+      
+      const { data, error } = await supabase
         .from('meeting_instance_priorities')
         .update({ completion_status: status })
-        .eq('id', priorityId);
+        .eq('id', priorityId)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
+      
+      console.log('Update successful:', data);
       
       toast({
         title: "Status updated",
         description: `Priority marked as ${status === 'completed' ? 'complete' : 'not complete'}`,
       });
       
-      onUpdate(); // Refresh data
+      // Wait a moment to ensure database transaction completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      await onUpdate(); // Refresh data
     } catch (error) {
+      console.error('Failed to update completion status:', error);
       toast({
         title: "Error",
         description: "Failed to update completion status",
@@ -507,11 +524,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                 if (!userId || userId === 'unassigned') return 'Unassigned';
                 const member = members.find(m => m.user_id === userId);
                 if (!member?.profiles) return 'Unknown';
-                return formatNameWithInitial(
-                  member.profiles.first_name,
-                  member.profiles.last_name,
-                  member.profiles.email
-                );
+                return memberNames.get(userId) || 'Unknown';
               };
 
               const sortedUserIds = allUserIds.sort((a, b) => {
@@ -550,7 +563,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                   <Avatar className="h-6 w-6 rounded-full">
                                     <AvatarImage src={member.profiles.avatar_url} />
                                     <AvatarFallback className="text-xs">
-                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                     </AvatarFallback>
                                   </Avatar>
                                 )}
@@ -569,8 +582,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                   className={cn(
                                     "p-3 rounded-md border flex justify-between items-start",
                                     prevItem.completion_status === 'completed' && "bg-green-50 border-green-200",
-                                    prevItem.completion_status === 'not_completed' && "bg-red-50 border-red-200",
-                                    (prevItem.completion_status === 'pending' || !prevItem.completion_status) && "bg-gray-50 border-gray-200"
+                                    prevItem.completion_status === 'not_completed' && "bg-red-50 border-red-200"
                                   )}
                                 >
                                   <div className="flex-1 pr-3">
@@ -591,6 +603,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'completed'
                                           ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                                          : (prevItem.completion_status === 'pending' || !prevItem.completion_status)
+                                          ? "bg-white border-green-600 hover:bg-green-50 text-green-600"
                                           : "bg-white border-gray-300 hover:bg-gray-50",
                                         !(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
@@ -609,6 +623,8 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                         "h-8 w-8 p-0",
                                         prevItem.completion_status === 'not_completed'
                                           ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
+                                          : (prevItem.completion_status === 'pending' || !prevItem.completion_status)
+                                          ? "bg-white border-red-600 hover:bg-red-50 text-red-600"
                                           : "bg-white border-gray-300 hover:bg-gray-50",
                                         !(isSuperAdmin || isTeamAdmin || prevItem.assigned_to === currentUserId || prevItem.created_by === currentUserId) && "opacity-50 cursor-not-allowed"
                                       )}
@@ -684,11 +700,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                             const member = members.find(m => m.user_id === item.assigned_to);
                             if (!member?.profiles) return "Unknown";
                             
-                            const displayName = formatNameWithInitial(
-                              member.profiles.first_name,
-                              member.profiles.last_name,
-                              member.profiles.email
-                            );
+                            const displayName = memberNames.get(item.assigned_to) || 'Unknown';
                             
                             return (
                               <div className="flex items-center gap-2">
@@ -702,7 +714,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                   <Avatar className="h-6 w-6 rounded-full">
                                     <AvatarImage src={member.profiles.avatar_url} />
                                     <AvatarFallback className="text-xs">
-                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || '?'}
+                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                                     </AvatarFallback>
                                   </Avatar>
                                 )}
@@ -717,11 +729,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                     </SelectTrigger>
                     <SelectContent>
                       {members.map((member) => {
-                        const displayName = formatNameWithInitial(
-                          member.profiles?.first_name,
-                          member.profiles?.last_name,
-                          member.profiles?.email
-                        );
+                        const displayName = memberNames.get(member.user_id) || 'Unknown';
                         
                         return (
                           <SelectItem key={member.user_id} value={member.user_id} disabled={!!(currentUserId && item.assigned_to !== currentUserId)}>
@@ -736,7 +744,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                 <Avatar className="h-6 w-6 rounded-full">
                                   <AvatarImage src={member.profiles?.avatar_url} />
                                   <AvatarFallback className="text-xs">
-                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || '?'}
+                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                                   </AvatarFallback>
                                 </Avatar>
                               )}
@@ -758,8 +766,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                         className={cn(
                           "p-3 rounded-md border flex justify-between items-start",
                           prevPriority.completion_status === 'completed' && "bg-green-50 border-green-200",
-                          prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200",
-                          (prevPriority.completion_status === 'pending' || !prevPriority.completion_status) && "bg-gray-50 border-gray-200"
+                          prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200"
                         )}
                       >
                         <div className="flex-1 pr-3">
@@ -777,7 +784,9 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                             className={cn(
                               "h-8 w-8 p-0",
                               prevPriority.completion_status === 'completed' 
-                                ? "bg-green-600 text-white border-green-600 hover:bg-green-700" 
+                                ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                                : (prevPriority.completion_status === 'pending' || !prevPriority.completion_status)
+                                ? "bg-white border-green-600 hover:bg-green-50 text-green-600"
                                 : "bg-white border-gray-300 hover:bg-gray-50"
                             )}
                           >
@@ -790,7 +799,9 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                             className={cn(
                               "h-8 w-8 p-0",
                               prevPriority.completion_status === 'not_completed' 
-                                ? "bg-red-600 text-white border-red-600 hover:bg-red-700" 
+                                ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
+                                : (prevPriority.completion_status === 'pending' || !prevPriority.completion_status)
+                                ? "bg-white border-red-600 hover:bg-red-50 text-red-600"
                                 : "bg-white border-gray-300 hover:bg-gray-50"
                             )}
                           >

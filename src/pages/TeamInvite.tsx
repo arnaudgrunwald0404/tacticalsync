@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames } from "@/lib/nameUtils";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import {
@@ -44,6 +44,7 @@ const TeamInvite = () => {
   const [copied, setCopied] = useState(false);
   const [updatingName, setUpdatingName] = useState(false);
   const [currentMembers, setCurrentMembers] = useState<any[]>([]);
+  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [pendingInvitations, setPendingInvitations] = useState<string[]>([]);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState("");
   const [userRole, setUserRole] = useState<string>("");
@@ -205,6 +206,12 @@ const TeamInvite = () => {
       if (error) throw error;
 
       setCurrentMembers(members || []);
+      
+      // Generate smart name map
+      if (members && members.length > 0) {
+        const nameMap = formatMemberNames(members);
+        setMemberNames(nameMap);
+      }
     } catch (error: unknown) {
       console.error("Error fetching current members:", error);
     }
@@ -706,11 +713,7 @@ const TeamInvite = () => {
                 <Label className="text-sm font-bold">Current Members</Label>
                 <div className="space-y-2">
                   {currentMembers.map((member) => {
-                    const displayName = formatNameWithInitial(
-                      member.profiles?.first_name,
-                      member.profiles?.last_name,
-                      member.profiles?.email
-                    );
+                    const displayName = memberNames.get(member.user_id) || 'Unknown';
                     const fullDisplayName = member.profiles?.first_name && member.profiles?.last_name
                       ? `${member.profiles.first_name} ${member.profiles.last_name}`
                       : member.profiles?.first_name || member.profiles?.email?.split('@')[0] || "Unknown User";
@@ -727,7 +730,7 @@ const TeamInvite = () => {
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={member.profiles?.avatar_url} />
                             <AvatarFallback className="text-xs">
-                              {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.last_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || "?"}
+                              {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                             </AvatarFallback>
                           </Avatar>
                         )}

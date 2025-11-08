@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { PriorityRow } from "@/types/priorities";
 import { TeamMember } from "@/types/meeting";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 
 interface PriorityFormProps {
   priority: PriorityRow;
@@ -25,6 +26,9 @@ export function PriorityForm({
   onRemove,
   showRemove = false 
 }: PriorityFormProps) {
+  // Generate smart name map
+  const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
+  
   return (
     <>
       <div>
@@ -39,25 +43,21 @@ export function PriorityForm({
                   const member = teamMembers.find(m => m.user_id === priority.assigned_to);
                   if (!member?.profiles) return null;
                   
-                  const displayName = formatNameWithInitial(
-                    member.profiles.first_name,
-                    member.profiles.last_name,
-                    member.profiles.email
-                  );
+                  const displayName = memberNames.get(priority.assigned_to) || 'Unknown';
                   
                   return (
                     <div className="flex items-center gap-2">
                       {member.profiles.avatar_name ? (
                         <FancyAvatar 
                           name={member.profiles.avatar_name} 
-                          displayName={displayName}
+                          displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                           size="sm" 
                         />
                       ) : (
                         <Avatar className="h-6 w-6">
                           <AvatarImage src={member.profiles.avatar_url} />
                           <AvatarFallback className="text-xs">
-                            {displayName.charAt(0).toUpperCase()}
+                            {member.profiles.first_name?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                           </AvatarFallback>
                         </Avatar>
                       )}
@@ -77,11 +77,7 @@ export function PriorityForm({
                   {currentUser.profiles?.avatar_name ? (
                     <FancyAvatar 
                       name={currentUser.profiles.avatar_name} 
-                      displayName={formatNameWithInitial(
-                        currentUser.profiles.first_name,
-                        currentUser.profiles.last_name,
-                        currentUser.profiles.email
-                      )}
+                      displayName={getFullNameForAvatar(currentUser.profiles.first_name, currentUser.profiles.last_name, currentUser.profiles.email)}
                       size="sm" 
                     />
                   ) : (
@@ -99,11 +95,7 @@ export function PriorityForm({
             {teamMembers
               .filter(member => member.user_id !== currentUser?.user_id)
               .map((member) => {
-                const displayName = formatNameWithInitial(
-                  member.profiles?.first_name,
-                  member.profiles?.last_name,
-                  member.profiles?.email
-                );
+                const displayName = memberNames.get(member.user_id) || 'Unknown';
                 
                 return (
                   <SelectItem key={member.user_id} value={member.user_id}>
@@ -111,14 +103,14 @@ export function PriorityForm({
                       {member.profiles?.avatar_name ? (
                         <FancyAvatar 
                           name={member.profiles.avatar_name} 
-                          displayName={displayName}
+                          displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                           size="sm" 
                         />
                       ) : (
                         <Avatar className="h-6 w-6">
                           <AvatarImage src={member.profiles?.avatar_url} />
                           <AvatarFallback className="text-xs">
-                            {displayName.charAt(0).toUpperCase()}
+                            {member.profiles?.first_name?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                           </AvatarFallback>
                         </Avatar>
                       )}

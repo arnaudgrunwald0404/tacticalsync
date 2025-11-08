@@ -34,9 +34,13 @@ const Auth = () => {
     const code = params.get('code');
     const hasCode = !!code;
     
+    // Check for hash fragment with access_token (email verification/magic link)
+    const hash = window.location.hash;
+    const hasAccessToken = hash.includes('access_token=');
+    
     // If there's a code parameter (PKCE/OAuth callback), wait for auth state change
     // Otherwise, check existing session immediately
-    if (!hasCode) {
+    if (!hasCode && !hasAccessToken) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           // If logged in and has invite code, redirect to join page
@@ -51,8 +55,8 @@ const Auth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        // Clean up URL by removing code parameter after successful auth
-        if (hasCode) {
+        // Clean up URL by removing code parameter and hash fragment after successful auth
+        if (hasCode || hasAccessToken) {
           const currentParams = new URLSearchParams(window.location.search);
           const currentInviteCode = currentParams.get('invite');
           const newUrl = currentInviteCode ? `/auth?invite=${currentInviteCode}` : '/auth';
@@ -109,10 +113,163 @@ const Auth = () => {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: `${window.location.origin}/auth`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
       toast.success("Password reset email sent! Check your inbox.");
+      
+      // Try to get password reset link (works in both local and production)
+      try {
+        // Check if we're running locally based on window.location
+        const isAppLocal = window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' ||
+                          window.location.hostname.includes('localhost');
+        
+        // Check if Supabase is local
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const isSupabaseLocal = supabaseUrl && (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1'));
+        
+        console.log('[DEBUG] Application hostname:', window.location.hostname);
+        console.log('[DEBUG] Supabase URL:', supabaseUrl);
+        console.log('[DEBUG] Is app local:', isAppLocal);
+        console.log('[DEBUG] Is Supabase local:', isSupabaseLocal);
+        
+        // Only use local email service if BOTH app and Supabase are local
+        if (isAppLocal && isSupabaseLocal) {
+          // Local development: try to fetch from email service
+          const url = new URL(supabaseUrl);
+          const emailServiceUrl = `${url.protocol}//${url.hostname}:54324/emails`;
+          console.log('[DEBUG] Attempting to fetch password reset emails from:', emailServiceUrl);
+          
+          // Try multiple times with increasing delays
+          const tryFetchEmail = async (attempt: number, delay: number) => {
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            try {
+              console.log(`[DEBUG] Password reset fetch attempt ${attempt}...`);
+              const response = await fetch(emailServiceUrl);
+              
+              if (!response.ok) {
+                console.log(`[DEBUG] Response not OK: ${response.status} ${response.statusText}`);
+                if (attempt < 5) {
+                  tryFetchEmail(attempt + 1, delay * 1.5);
+                } else {
+                  console.log('%c⚠️ Could not fetch emails after 5 attempts.', 'color: #FF9800; font-size: 12px;');
+                }
+                return;
+              }
+              
+              const emails = await response.json();
+              console.log(`[DEBUG] Found ${emails?.length || 0} emails total`);
+              
+              if (!emails || !Array.isArray(emails)) {
+                console.log('[DEBUG] Unexpected email response format:', emails);
+                return;
+              }
+              
+              // Find password reset emails for this user
+              const userEmails = emails.filter((email: any) => {
+                const emailTo = (email.to?.toLowerCase() || email.recipient?.toLowerCase() || '');
+                const subject = (email.subject?.toLowerCase() || '');
+                return emailTo === trimmedEmail.toLowerCase() && 
+                       (subject.includes('reset') || subject.includes('password'));
+              });
+              
+              console.log(`[DEBUG] Found ${userEmails.length} password reset emails for ${trimmedEmail}`);
+              
+              if (userEmails.length === 0) {
+                console.log('%c⚠️ No password reset email found for', 'color: #FF9800;', trimmedEmail);
+                console.log('Available emails:', emails.slice(0, 5).map((e: any) => ({ 
+                  to: e.to || e.recipient, 
+                  subject: e.subject,
+                  created: e.created_at || e.createdAt
+                })));
+                
+                if (attempt < 5) {
+                  tryFetchEmail(attempt + 1, delay * 1.5);
+                }
+                return;
+              }
+              
+              const userEmail = userEmails.sort((a: any, b: any) => {
+                const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+                const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+                return dateB - dateA;
+              })[0];
+              
+              console.log('[DEBUG] Most recent password reset email:', { 
+                subject: userEmail.subject,
+                to: userEmail.to || userEmail.recipient
+              });
+              
+              // Extract reset link from email HTML or text
+              const htmlContent = userEmail.html || userEmail.text || userEmail.body || '';
+              
+              // Try multiple patterns to find the reset link
+              const patterns = [
+                /href=["']([^"']*reset[^"']*token=[^"']*)["']/i,
+                /href=["']([^"']*password[^"']*token=[^"']*)["']/i,
+                /href=["']([^"']*\/auth\/v1\/.*recover[^"']*)["']/i,
+                /href=["']([^"']*\/auth\/v1\/.*reset[^"']*)["']/i,
+                /(https?:\/\/[^\s<>"']*reset[^\s<>"']*token=[^\s<>"']*)/i,
+                /(https?:\/\/[^\s<>"']*password[^\s<>"']*token=[^\s<>"']*)/i,
+                /(https?:\/\/[^\s<>"']*\/auth\/v1\/.*recover[^\s<>"']*)/i,
+              ];
+              
+              let resetLink: string | null = null;
+              
+              for (const pattern of patterns) {
+                const match = htmlContent.match(pattern);
+                if (match && match[1]) {
+                  resetLink = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+                  break;
+                }
+              }
+              
+              if (resetLink) {
+                console.log('%c🔗 PASSWORD RESET LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
+                console.log('%c' + resetLink, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
+                console.log('%c📋 Copy this link to reset your password (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+              } else {
+                // Try to find any URL in the email
+                const urlMatch = htmlContent.match(/(https?:\/\/[^\s<>"']+)/i);
+                if (urlMatch) {
+                  console.log('%c🔗 Possible password reset link found:', 'background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+                  console.log('%c' + urlMatch[1], 'color: #2196F3; font-size: 12px; word-break: break-all;');
+                } else {
+                  console.log('%c⚠️ Could not extract password reset link from email.', 'color: #FF9800; font-size: 12px;');
+                  console.log('Email service URL:', emailServiceUrl);
+                  console.log('Email subject:', userEmail.subject);
+                  console.log('Email preview (first 500 chars):', htmlContent.substring(0, 500));
+                  console.log('%c💡 Tip: Check Supabase Studio at http://localhost:54323 or terminal logs for the reset link', 'color: #2196F3; font-size: 11px;');
+                }
+              }
+            } catch (emailErr: any) {
+              console.log(`[DEBUG] Password reset fetch error on attempt ${attempt}:`, emailErr);
+              if (attempt < 5) {
+                tryFetchEmail(attempt + 1, delay * 1.5);
+              } else {
+                console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr?.message || emailErr);
+                console.log('Email service URL:', emailServiceUrl);
+                console.log('%c💡 Tip: Make sure Supabase is running locally and email service is on port 54324', 'color: #2196F3; font-size: 11px;');
+                console.log('%c💡 Check Supabase logs or Studio at http://localhost:54323 for the reset link', 'color: #2196F3; font-size: 11px;');
+              }
+            }
+          };
+          
+          // Start fetching with initial delay
+          tryFetchEmail(1, 500);
+        } else {
+          // Production: password reset email is already sent by Supabase via resetPasswordForEmail
+          // No need to generate link - Supabase handles it automatically
+          console.log('[DEBUG] Production mode: password reset email sent by Supabase');
+          console.log('%c💡 Password reset email has been sent. Please check your inbox.', 'color: #2196F3; font-size: 11px;');
+          console.log('%cNote: For security reasons, Supabase sends the email even if the user doesn\'t exist.', 'color: #666; font-size: 10px; font-style: italic;');
+        }
+      } catch (err: any) {
+        console.log('[DEBUG] Error setting up password reset email fetch:', err?.message || err);
+      }
+      
       setIsForgotPassword(false);
       setEmail("");
     } catch (error: unknown) {
@@ -148,19 +305,325 @@ const Auth = () => {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        console.log("[DEBUG] Starting signup for:", trimmedEmail);
+        const { data, error } = await supabase.auth.signUp({
           email: trimmedEmail,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
-        if (error) throw error;
         
-        // Show verification banner instead of toast
-        setVerificationEmail(trimmedEmail);
-        setShowVerificationBanner(true);
-        setPassword("");
+        console.log("[DEBUG] SignUp response:", { 
+          hasSession: !!data.session, 
+          hasUser: !!data.user,
+          userEmail: data.user?.email,
+          userConfirmed: data.user?.email_confirmed_at,
+          error: error?.message 
+        });
+        
+        if (error) throw error;
+
+        // Try to get verification link (works in both local and production)
+        if (data.user && !data.session) {
+          try {
+            // Check if we're running locally based on window.location
+            const isAppLocal = window.location.hostname === 'localhost' || 
+                              window.location.hostname === '127.0.0.1' ||
+                              window.location.hostname.includes('localhost');
+            
+            // Check if Supabase is local
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const isSupabaseLocal = supabaseUrl && (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1'));
+            
+            console.log('[DEBUG] Application hostname:', window.location.hostname);
+            console.log('[DEBUG] Supabase URL:', supabaseUrl);
+            console.log('[DEBUG] Is app local:', isAppLocal);
+            console.log('[DEBUG] Is Supabase local:', isSupabaseLocal);
+            
+            // Only use local email service if BOTH app and Supabase are local
+            if (isAppLocal && isSupabaseLocal) {
+              // Local development: try to fetch from email service
+              const url = new URL(supabaseUrl);
+              const emailServiceUrl = `${url.protocol}//${url.hostname}:54324/emails`;
+              console.log('[DEBUG] Attempting to fetch emails from:', emailServiceUrl);
+              
+              // Try multiple times with increasing delays
+              const tryFetchEmail = async (attempt: number, delay: number) => {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                try {
+                  console.log(`[DEBUG] Fetch attempt ${attempt}...`);
+                  const response = await fetch(emailServiceUrl);
+                  
+                  if (!response.ok) {
+                    console.log(`[DEBUG] Response not OK: ${response.status} ${response.statusText}`);
+                    if (attempt < 5) {
+                      // Retry with longer delay
+                      tryFetchEmail(attempt + 1, delay * 1.5);
+                    } else {
+                      console.log('%c⚠️ Could not fetch emails after 5 attempts. Check if Supabase email service is running on port 54324.', 'color: #FF9800; font-size: 12px;');
+                    }
+                    return;
+                  }
+                  
+                  const emails = await response.json();
+                  console.log(`[DEBUG] Found ${emails?.length || 0} emails total`);
+                  
+                  if (!emails || !Array.isArray(emails)) {
+                    console.log('[DEBUG] Unexpected email response format:', emails);
+                    return;
+                  }
+                  
+                  // Find the most recent email for this user
+                  const userEmails = emails.filter((email: any) => {
+                    const emailTo = email.to?.toLowerCase() || email.recipient?.toLowerCase() || '';
+                    return emailTo === trimmedEmail.toLowerCase();
+                  });
+                  
+                  console.log(`[DEBUG] Found ${userEmails.length} emails for ${trimmedEmail}`);
+                  
+                  if (userEmails.length === 0) {
+                    console.log('%c⚠️ No email found for', 'color: #FF9800;', trimmedEmail);
+                    console.log('Available emails:', emails.slice(0, 5).map((e: any) => ({ 
+                      to: e.to || e.recipient, 
+                      subject: e.subject,
+                      created: e.created_at || e.createdAt
+                    })));
+                    
+                    if (attempt < 3) {
+                      // Retry with longer delay
+                      tryFetchEmail(attempt + 1, delay * 1.5);
+                    } else {
+                      // Fallback to Edge Function after 3 attempts
+                      console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
+                      tryGetLinkFromFunction();
+                    }
+                    return;
+                  }
+                  
+                  const userEmail = userEmails.sort((a: any, b: any) => {
+                    const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+                    const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+                    return dateB - dateA;
+                  })[0];
+                  
+                  console.log('[DEBUG] Most recent email:', { 
+                    subject: userEmail.subject,
+                    to: userEmail.to || userEmail.recipient,
+                    hasHtml: !!userEmail.html,
+                    hasText: !!userEmail.text
+                  });
+                  
+                  // Extract verification link from email HTML or text
+                  const htmlContent = userEmail.html || userEmail.text || userEmail.body || '';
+                  
+                  // Try multiple patterns to find the verification link
+                  const patterns = [
+                    /href=["']([^"']*confirmation[^"']*token=[^"']*)["']/i,
+                    /href=["']([^"']*verify[^"']*token=[^"']*)["']/i,
+                    /href=["']([^"']*\/auth\/v1\/verify[^"']*)["']/i,
+                    /href=["']([^"']*\/auth\/v1\/.*token=[^"']*)["']/i,
+                    /(https?:\/\/[^\s<>"']*confirmation[^\s<>"']*token=[^\s<>"']*)/i,
+                    /(https?:\/\/[^\s<>"']*verify[^\s<>"']*token=[^\s<>"']*)/i,
+                    /(https?:\/\/[^\s<>"']*\/auth\/v1\/verify[^\s<>"']*)/i,
+                  ];
+                  
+                  let verificationLink: string | null = null;
+                  
+                  for (const pattern of patterns) {
+                    const match = htmlContent.match(pattern);
+                    if (match && match[1]) {
+                      verificationLink = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+                      break;
+                    }
+                  }
+                  
+                  if (verificationLink) {
+                    console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
+                    console.log('%c' + verificationLink, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
+                    console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+                  } else {
+                    // Try to find any URL in the email
+                    const urlMatch = htmlContent.match(/(https?:\/\/[^\s<>"']+)/i);
+                    if (urlMatch) {
+                      console.log('%c🔗 Possible verification link found:', 'background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+                      console.log('%c' + urlMatch[1], 'color: #2196F3; font-size: 12px; word-break: break-all;');
+                    } else {
+                      console.log('%c⚠️ Could not extract verification link from email.', 'color: #FF9800; font-size: 12px;');
+                      console.log('Email service URL:', emailServiceUrl);
+                      console.log('Email subject:', userEmail.subject);
+                      console.log('Email preview (first 500 chars):', htmlContent.substring(0, 500));
+                      console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
+                      // Fallback to Edge Function
+                      tryGetLinkFromFunction();
+                    }
+                  }
+                } catch (emailErr: any) {
+                  console.log(`[DEBUG] Fetch error on attempt ${attempt}:`, emailErr);
+                  if (attempt < 5) {
+                    // Retry with longer delay
+                    tryFetchEmail(attempt + 1, delay * 1.5);
+                  } else {
+                    console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr?.message || emailErr);
+                    console.log('Email service URL:', emailServiceUrl);
+                    console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
+                    // Fallback to Edge Function
+                    tryGetLinkFromFunction();
+                  }
+                }
+              };
+              
+              // Function to get link from Edge Function (fallback)
+              async function tryGetLinkFromFunction() {
+                try {
+                  console.log('[DEBUG] Attempting to get verification link from Edge Function...');
+                  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                  const response = await fetch(`${supabaseUrl}/functions/v1/get-verification-link`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${supabaseAnonKey}`,
+                    },
+                    body: JSON.stringify({
+                      userId: data.user.id,
+                      email: trimmedEmail,
+                      type: 'signup',
+                      redirectTo: `${window.location.origin}/dashboard`
+                    }),
+                  });
+
+                  const responseData = await response.json();
+                  
+                  if (response.ok && responseData?.link) {
+                    console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
+                    console.log('%c' + responseData.link, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
+                    if (responseData.note) {
+                      console.log('%c📝 ' + responseData.note, 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+                    }
+                    console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+                  } else {
+                    console.log('%c⚠️ Could not get verification link:', 'color: #FF9800; font-size: 12px; font-weight: bold;');
+                    console.log('%c' + (responseData?.error || 'Unknown error'), 'color: #FF5722; font-size: 12px;');
+                    console.log('[DEBUG] Response status:', response.status);
+                    console.log('[DEBUG] Response data:', responseData);
+                    
+                    if (responseData?.userExists !== undefined) {
+                      console.log('[DEBUG] User exists:', responseData.userExists);
+                    }
+                    if (responseData?.userConfirmed !== undefined) {
+                      console.log('[DEBUG] User confirmed:', responseData.userConfirmed);
+                    }
+                    if (responseData?.userProviders && responseData.userProviders.length > 0) {
+                      console.log('[DEBUG] User providers:', responseData.userProviders);
+                      console.log('%c💡 This email is already registered with:', 'color: #2196F3; font-size: 11px;', responseData.userProviders.join(', '));
+                      console.log('%c💡 Try signing in with that provider instead, or use password reset if you have a password set.', 'color: #2196F3; font-size: 11px;');
+                    }
+                    
+                    if (responseData?.details) {
+                      console.log('[DEBUG] Error details:', responseData.details);
+                    }
+                    console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
+                  }
+                } catch (err: any) {
+                  console.log('[DEBUG] Error calling get-verification-link function:', err?.message || err);
+                  console.log('[DEBUG] Full error:', err);
+                  console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
+                }
+              }
+              
+              // Start fetching with initial delay
+              tryFetchEmail(1, 500);
+            } else {
+              // Production: use Edge Function to generate verification link
+              console.log('[DEBUG] Production mode: using Edge Function to get verification link');
+              try {
+                // Use fetch directly to get better error details
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const response = await fetch(`${supabaseUrl}/functions/v1/get-verification-link`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                  },
+                  body: JSON.stringify({
+                    userId: data.user.id,
+                    email: trimmedEmail,
+                    type: 'signup',
+                    redirectTo: `${window.location.origin}/dashboard`
+                  }),
+                });
+
+                const responseData = await response.json();
+                
+                if (response.ok && responseData?.link) {
+                  console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
+                  console.log('%c' + responseData.link, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
+                  if (responseData.note) {
+                    console.log('%c📝 ' + responseData.note, 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+                  }
+                  console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
+                } else {
+                  console.log('%c⚠️ Could not get verification link:', 'color: #FF9800; font-size: 12px; font-weight: bold;');
+                  console.log('%c' + (responseData?.error || 'Unknown error'), 'color: #FF5722; font-size: 12px;');
+                  console.log('[DEBUG] Response status:', response.status);
+                  console.log('[DEBUG] Response data:', responseData);
+                  
+                  if (responseData?.userExists !== undefined) {
+                    console.log('[DEBUG] User exists:', responseData.userExists);
+                  }
+                  if (responseData?.userConfirmed !== undefined) {
+                    console.log('[DEBUG] User confirmed:', responseData.userConfirmed);
+                  }
+                  if (responseData?.userProviders && responseData.userProviders.length > 0) {
+                    console.log('[DEBUG] User providers:', responseData.userProviders);
+                    console.log('%c💡 This email is already registered with:', 'color: #2196F3; font-size: 11px;', responseData.userProviders.join(', '));
+                    console.log('%c💡 Try signing in with that provider instead, or use password reset if you have a password set.', 'color: #2196F3; font-size: 11px;');
+                  }
+                  
+                  if (responseData?.details) {
+                    console.log('[DEBUG] Error details:', responseData.details);
+                  }
+                  console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
+                }
+              } catch (err: any) {
+                console.log('[DEBUG] Error calling get-verification-link function:', err?.message || err);
+                console.log('[DEBUG] Full error:', err);
+                console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
+              }
+            }
+          } catch (err: any) {
+            console.log('[DEBUG] Error setting up email fetch:', err?.message || err);
+          }
+        }
+        
+        const session = data.session;
+        
+        if (session) {
+          console.log("[DEBUG] Session found! Redirecting to dashboard...");
+          toast.success("Account created successfully!");
+          // Check for invite code
+          const params = new URLSearchParams(window.location.search);
+          const inviteCode = params.get('invite');
+          const storedInvite = localStorage.getItem('pendingInviteCode');
+          
+          if (storedInvite) {
+            localStorage.removeItem('pendingInviteCode');
+            navigate(`/join/${storedInvite}`);
+          } else if (inviteCode) {
+            navigate(`/join/${inviteCode}`);
+          } else {
+            navigate("/dashboard");
+          }
+        } else {
+          console.log("[DEBUG] No session found - showing verification banner");
+          // No session means email verification is required
+          setVerificationEmail(trimmedEmail);
+          setShowVerificationBanner(true);
+          setPassword("");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
@@ -177,7 +640,7 @@ const Auth = () => {
   };
 
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-3 sm:px-4 py-8">
+    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-blue-50 overscroll-none px-3 sm:px-4 py-8">
       <div className="w-full max-w-full  space-y-6">
        
 
@@ -402,6 +865,20 @@ const Auth = () => {
                       </div>
                     )}
                     <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-5">
+                      {/* Hidden username field for accessibility (password forms should have username fields) */}
+                      {!isForgotPassword && (
+                        <input
+                          type="text"
+                          name="username"
+                          autoComplete="username"
+                          value={email}
+                          readOnly
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}
+                        />
+                      )}
+                      
                       <div className="space-y-2">
                         <Label htmlFor="email" className="text-base sm:text-base font-medium">Email address</Label>
                         <Input
@@ -412,6 +889,7 @@ const Auth = () => {
                           onChange={(e) => setEmail(e.target.value)}
                           disabled={loading}
                           className="h-12 sm:h-12 text-base sm:text-base"
+                          autoComplete={isForgotPassword ? "email" : isSignUp ? "email" : "username"}
                           required
                         />
                       </div>
@@ -427,6 +905,7 @@ const Auth = () => {
                             onChange={(e) => setPassword(e.target.value)}
                             disabled={loading}
                             className="h-12 sm:h-12 text-base sm:text-base"
+                            autoComplete={isSignUp ? "new-password" : "current-password"}
                             required
                             minLength={6}
                           />

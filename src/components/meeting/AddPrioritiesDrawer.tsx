@@ -30,7 +30,12 @@ const AddPrioritiesDrawer = ({
   frequency = "weekly"
 }: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
-  const [priorities, setPriorities] = useState<PriorityRow[]>([]);
+  // Initialize with 3 empty rows to avoid flash of empty state
+  const [priorities, setPriorities] = useState<PriorityRow[]>([
+    { id: 'new-1', priority: "", assigned_to: "", activities: "", time_minutes: null },
+    { id: 'new-2', priority: "", assigned_to: "", activities: "", time_minutes: null },
+    { id: 'new-3', priority: "", assigned_to: "", activities: "", time_minutes: null }
+  ]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -42,60 +47,60 @@ const AddPrioritiesDrawer = ({
   });
 
   useEffect(() => {
+    console.log('Drawer isOpen changed:', isOpen);
     if (isOpen) {
-      console.log('AddPrioritiesDrawer received existingPriorities:', existingPriorities);
-      console.log('AddPrioritiesDrawer existingPriorities length:', existingPriorities?.length || 0);
-      console.log('AddPrioritiesDrawer meetingId:', meetingId);
-      fetchTeamMembers();
+      // Fetch user and team members first
+      console.log('Fetching current user and team members');
       fetchCurrentUser();
-      
-      // Load existing priorities if editing, otherwise start with empty priorities
-      if (existingPriorities.length > 0) {
-        const existingPriorityRows = existingPriorities.map((priority) => ({
-          id: priority.id,
-          priority: htmlToPlainText(priority.outcome || ""),
-          assigned_to: priority.assigned_to || "",
-          activities: priority.activities || "",
-          time_minutes: null
-        }));
-        
-        // Ensure we have at least 3 rows for consistency
-        while (existingPriorityRows.length < 3) {
-          existingPriorityRows.push({
-            id: `new-${existingPriorityRows.length + 1}`,
-            priority: "",
-            assigned_to: "",
-            activities: "",
-            time_minutes: null
-          });
-        }
-        
-        setPriorities(existingPriorityRows);
-      } else {
-        // Initialize with three empty rows for first-time users
-        const emptyRows: PriorityRow[] = [0,1,2].map((idx) => ({
-          id: `new-${idx + 1}`,
-          priority: "",
-          assigned_to: "",
-          activities: "",
-          time_minutes: null
-        }));
-        setPriorities(emptyRows);
-      }
+      fetchTeamMembers();
     }
-  }, [isOpen, existingPriorities]);
+  }, [isOpen]);
 
-  // Set current user as default when currentUser is loaded
+  // Initialize priorities when drawer opens AND current user is available
   useEffect(() => {
-    if (currentUser) {
-      setPriorities(prevPriorities => 
-        prevPriorities.map(priority => ({
-          ...priority,
-          assigned_to: priority.assigned_to === "" ? currentUser.user_id : priority.assigned_to
-        }))
-      );
+    console.log('Priority init useEffect triggered:', { isOpen, currentUser: !!currentUser, existingPrioritiesLength: existingPriorities.length });
+    if (isOpen && currentUser) {
+      console.log('Initializing priorities with currentUser:', currentUser.user_id);
+      const defaultAssignee = currentUser.user_id;
+      
+      // Always update all empty assigned_to fields with current user
+      setPriorities(prevPriorities => {
+        console.log('prevPriorities:', prevPriorities);
+        // If we have existing priorities from the database, use those
+        if (existingPriorities.length > 0) {
+          const existingPriorityRows = existingPriorities.map((priority) => ({
+            id: priority.id,
+            priority: htmlToPlainText(priority.outcome || ""),
+            assigned_to: priority.assigned_to || defaultAssignee,
+            activities: priority.activities || "",
+            time_minutes: null
+          }));
+          
+          // Ensure we have at least 3 rows for consistency
+          while (existingPriorityRows.length < 3) {
+            existingPriorityRows.push({
+              id: `new-${existingPriorityRows.length + 1}`,
+              priority: "",
+              assigned_to: defaultAssignee,
+              activities: "",
+              time_minutes: null
+            });
+          }
+          
+          console.log('Returning existing priority rows:', existingPriorityRows);
+          return existingPriorityRows;
+        } else {
+          // Update the initial 3 rows with the current user as assignee
+          const updatedRows = prevPriorities.map(priority => ({
+            ...priority,
+            assigned_to: priority.assigned_to || defaultAssignee
+          }));
+          console.log('Returning updated rows:', updatedRows);
+          return updatedRows;
+        }
+      });
     }
-  }, [currentUser]);
+  }, [isOpen, currentUser, existingPriorities]);
 
   const fetchTeamMembers = async () => {
     // Fetch team members then profiles to avoid type issues in join
@@ -125,22 +130,45 @@ const AddPrioritiesDrawer = ({
   };
 
   const fetchCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      // Find current user in team members
-      const { data: memberData } = await supabase
-        .from("team_members")
-        .select(`
-          id,
-          user_id,
-          profiles:user_id(full_name, first_name, last_name, email, avatar_url, avatar_name)
-        `)
-        .eq("team_id", teamId)
-        .eq("user_id", user.id)
-        .single();
-      
-      setCurrentUser(memberData);
+    try {
+      console.log('fetchCurrentUser called, teamId:', teamId);
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Got auth user:', user?.id);
+      if (user) {
+        // Find current user in team members (without profile join to avoid ambiguity)
+        const { data: memberData, error: memberError } = await supabase
+          .from("team_members")
+          .select("id, user_id")
+          .eq("team_id", teamId)
+          .eq("user_id", user.id)
+          .single();
+        
+        console.log('Team member data:', memberData, 'error:', memberError);
+        
+        if (memberData) {
+          // Fetch profile separately
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("full_name, first_name, last_name, email, avatar_url, avatar_name")
+            .eq("id", user.id)
+            .single();
+          
+          const userData = {
+            ...memberData,
+            profiles: profileData
+          };
+          
+          console.log('Setting currentUser:', userData);
+          setCurrentUser(userData);
+          return userData;
+        } else {
+          console.warn('No team member data found for user');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
     }
+    return null;
   };
 
   const addPriorityRow = () => {
@@ -155,6 +183,10 @@ const AddPrioritiesDrawer = ({
   };
 
   const removePriorityRow = (id: string) => {
+    // Always keep at least 3 rows
+    if (priorities.length <= 3) {
+      return;
+    }
     setPriorities(priorities.filter(priority => priority.id !== id));
   };
 
@@ -286,6 +318,9 @@ const AddPrioritiesDrawer = ({
           created_by: user.id
         }));
 
+        console.log('Inserting priorities with meetingId:', meetingId);
+        console.log('Priorities to insert:', prioritiesToInsert);
+
         const { data: insertedData, error } = await supabase
           .from("meeting_instance_priorities")
           .insert(prioritiesToInsert)
@@ -293,6 +328,7 @@ const AddPrioritiesDrawer = ({
         
         if (error) {
           console.error('Insert error:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           throw error;
         }
         
@@ -329,62 +365,53 @@ const AddPrioritiesDrawer = ({
         <SheetHeader className="pb-4 flex-none">
           <SheetTitle className="text-xl sm:text-2xl">{`Edit This ${frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities`}</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
-            Edit your priorities for the current period. You can add up to three priorities.
+            Edit your priorities for the current period. Start with three, add more if needed.
           </SheetDescription>
         </SheetHeader>
         
         <div className="flex-1 overflow-y-auto min-h-0 pr-6">
           <div className="space-y-4">
-          {priorities.length === 0 ? (
-            <div className="text-center py-12 border rounded-lg bg-muted/20">
-              <p className="text-muted-foreground mb-4">No priorities added yet</p>
-              <Button onClick={addPriorityRow} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Priority
-              </Button>
+            {/* Debug info */}
+            <div className="text-xs text-muted-foreground">Priorities count: {priorities.length}</div>
+            
+            {/* Desktop Table View */}
+            <div className="hidden sm:block border rounded-lg overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
+                <div>Who</div>
+                <div>Desired Outcome</div>
+                <div>Supporting Activities</div>
+                <div></div>
+              </div>
+              
+              {priorities.length > 0 ? priorities.map((priority) => (
+                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-start">
+                  <PriorityForm
+                    priority={priority}
+                    teamMembers={teamMembers}
+                    currentUser={currentUser}
+                    onUpdate={updatePriority}
+                    onRemove={() => removePriorityRow(priority.id)}
+                    showRemove={priorities.length > 3}
+                  />
+              </div>
+            )) : <div className="p-4 text-muted-foreground">No priorities in array</div>}
             </div>
-          ) : (
-            <>
-              {/* Desktop Table View */}
-              <div className="hidden sm:block border rounded-lg overflow-hidden">
-                <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
-                  <div>Who</div>
-                  <div>Desired Outcome</div>
-                  <div>Supporting Activities</div>
-                  <div></div>
-                </div>
-                
-                {priorities.map((priority) => (
-                  <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-start">
-                    <PriorityForm
-                      priority={priority}
-                      teamMembers={teamMembers}
-                      currentUser={currentUser}
-                      onUpdate={updatePriority}
-                      onRemove={() => removePriorityRow(priority.id)}
-                      showRemove={true}
-                    />
+
+            {/* Mobile Card View */}
+            <div className="sm:hidden space-y-3">
+              {priorities.map((priority) => (
+                <div key={priority.id} className="border rounded-lg p-4 space-y-3 bg-white">
+                  <PriorityForm
+                    priority={priority}
+                    teamMembers={teamMembers}
+                    currentUser={currentUser}
+                    onUpdate={updatePriority}
+                    onRemove={() => removePriorityRow(priority.id)}
+                    showRemove={priorities.length > 3}
+                  />
                 </div>
               ))}
-              </div>
-
-              {/* Mobile Card View */}
-              <div className="sm:hidden space-y-3">
-                {priorities.map((priority) => (
-                  <div key={priority.id} className="border rounded-lg p-4 space-y-3 bg-white">
-                    <PriorityForm
-                      priority={priority}
-                      teamMembers={teamMembers}
-                      currentUser={currentUser}
-                      onUpdate={updatePriority}
-                      onRemove={() => removePriorityRow(priority.id)}
-                      showRemove={true}
-                    />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            </div>
           </div>
           </div>
           

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,7 +7,7 @@ import FancyAvatar from "@/components/ui/fancy-avatar";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Plus } from "lucide-react";
 import { TeamMember } from "@/types/meeting";
-import { formatNameWithInitial } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 
 interface TopicFormProps {
   topic: {
@@ -22,6 +23,9 @@ interface TopicFormProps {
 }
 
 export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = true }: TopicFormProps) {
+  // Generate smart name map
+  const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
+  
   if (isDesktop) {
     return (
       <div className="grid grid-cols-[2fr_1fr_1fr_2fr_40px] gap-3 items-start">
@@ -46,25 +50,21 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
                       const member = teamMembers.find(m => m.user_id === topic.assigned_to);
                       if (!member?.profiles) return null;
                       
-                      const displayName = formatNameWithInitial(
-                        member.profiles.first_name,
-                        member.profiles.last_name,
-                        member.profiles.email
-                      );
+                      const displayName = memberNames.get(topic.assigned_to) || 'Unknown';
 
                       return (
                         <>
                           {member.profiles.avatar_name ? (
                             <FancyAvatar 
                               name={member.profiles.avatar_name} 
-                              displayName={displayName}
+                              displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                               size="sm" 
                             />
                           ) : (
                             <Avatar className="h-6 w-6 rounded-full">
                               <AvatarImage src={member.profiles.avatar_url} />
                               <AvatarFallback className="text-xs">
-                                {(member.profiles.first_name || member.profiles.email || '?').charAt(0).toUpperCase()}
+                                {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
                               </AvatarFallback>
                             </Avatar>
                           )}
@@ -78,8 +78,7 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
             </SelectTrigger>
             <SelectContent>
               {teamMembers.map((member) => {
-                const displayName = member.profiles?.first_name
-                ;
+                const displayName = memberNames.get(member.user_id) || 'Unknown';
                 
                 return (
                   <SelectItem key={member.user_id} value={member.user_id}>
@@ -87,14 +86,14 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
                       {member.profiles?.avatar_name ? (
                         <FancyAvatar 
                           name={member.profiles.avatar_name} 
-                          displayName={displayName}
+                          displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                           size="sm" 
                         />
                       ) : (
                         <Avatar className="h-6 w-6 rounded-full">
                           <AvatarImage src={member.profiles?.avatar_url} />
                           <AvatarFallback className="text-xs">
-                            {(member.profiles?.first_name || member.profiles?.email || '?').charAt(0).toUpperCase()}
+                            {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
                           </AvatarFallback>
                         </Avatar>
                       )}
@@ -160,7 +159,7 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
           </SelectTrigger>
           <SelectContent>
             {teamMembers.map((member) => {
-              const displayName = member.profiles?.first_name;
+              const displayName = memberNames.get(member.user_id) || 'Unknown';
               
               return (
                 <SelectItem key={member.user_id} value={member.user_id}>
@@ -168,7 +167,7 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
                     {member.profiles?.avatar_name ? (
                       <FancyAvatar 
                         name={member.profiles.avatar_name} 
-                        displayName={displayName}
+                        displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                         size="sm" 
                       />
                     ) : (
