@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface SettingsNavbarProps {
   activeSection: string;
@@ -11,31 +12,32 @@ interface SettingsNavbarProps {
 const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
   
+  // Reordered: User Management first, then Agenda Templates, then Testing Mode last
   const sections = [
+    ...(showAdminManagement ? [{ id: "user-management", label: "User Management" }] : []),
     { id: "agenda-templates", label: "Agenda Templates" },
     ...(isTestUser ? [{ id: "testing-mode", label: "🧪 Testing Mode" }] : []),
-    ...(showAdminManagement ? [{ id: "admin-management", label: "Admin Management" }] : []),
-    // Add more sections here as needed
   ];
 
   return (
-    <div className="border-b bg-card/50 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-2">
-        <nav className="flex space-x-1">
-          {sections.map((section) => (
-            <Button
-              key={section.id}
-              variant={activeSection === section.id ? "default" : "ghost"}
-              size="sm"
-              onClick={() => onSectionChange(section.id)}
-              className="h-8 px-3"
-            >
-              {section.label}
-            </Button>
-          ))}
-        </nav>
+    <nav className="w-64 border-r bg-card/50 backdrop-blur-sm min-h-[calc(100vh-73px)]">
+      <div className="p-4 space-y-1">
+        {sections.map((section) => (
+          <Button
+            key={section.id}
+            variant={activeSection === section.id ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => onSectionChange(section.id)}
+            className={cn(
+              "w-full justify-start",
+              activeSection === section.id && "bg-secondary font-medium"
+            )}
+          >
+            {section.label}
+          </Button>
+        ))}
       </div>
-    </div>
+    </nav>
   );
 };
 
