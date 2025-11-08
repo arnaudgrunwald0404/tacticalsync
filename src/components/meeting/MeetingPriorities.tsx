@@ -556,7 +556,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                 {member.profiles.avatar_name ? (
                                   <FancyAvatar 
                                     name={member.profiles.avatar_name} 
-                                    displayName={displayName}
+                                    displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                     size="sm" 
                                   />
                                 ) : (
@@ -707,7 +707,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                 {member.profiles.avatar_name ? (
                                   <FancyAvatar 
                                     name={member.profiles.avatar_name} 
-                                    displayName={displayName}
+                                    displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                     size="sm" 
                                   />
                                 ) : (
@@ -737,7 +737,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                               {member.profiles?.avatar_name ? (
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
-                                  displayName={displayName}
+                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                                   size="sm" 
                                 />
                               ) : (

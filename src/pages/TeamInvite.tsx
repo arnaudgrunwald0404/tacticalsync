@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import { formatMemberNames } from "@/lib/nameUtils";
+import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import {
@@ -723,7 +723,7 @@ const TeamInvite = () => {
                         {member.profiles?.avatar_name ? (
                           <FancyAvatar 
                             name={member.profiles.avatar_name} 
-                            displayName={fullDisplayName}
+                            displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
                             size="sm" 
                           />
                         ) : (
