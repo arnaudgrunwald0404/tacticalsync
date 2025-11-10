@@ -34,6 +34,7 @@ import CommentsDialog from "./CommentsDialog";
 import { ActionItem, ActionItemInsert } from "@/types/action-items";
 // import { TeamMember } from "@/types/common";
 import { CompletionStatus } from "@/types/priorities";
+import { useMeetingContext } from "@/contexts/MeetingContext";
 
 interface DropdownMember {
   id: string;
@@ -241,7 +242,7 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
         ) : (
           <>
             <div className={cn("col-span-9 text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
-            <div className="col-span-3 flex items-center gap-2">
+            <div className="col-span-3 flex items-center gap-2 min-w-0">
               {item.assigned_to && assignedMember?.profiles ? (
                 <>
                 {assignedMember.profiles.avatar_name ? (
@@ -258,7 +259,7 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
                     </AvatarFallback>
                   </Avatar>
                 )}
-                <span className="text-base">
+                <span className="text-base truncate min-w-0">
                   {memberNames.get(item.assigned_to) || 'Unknown'}
                 </span>
                 </>
@@ -289,6 +290,8 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
 
 const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsProps>(({ items, meetingId, teamId, onUpdate, hasAgendaItems = true }, ref) => {
   const { toast } = useToast();
+  const { currentUserId, isSuperAdmin, isTeamAdmin, teamMembers: members, memberNames } = useMeetingContext();
+  
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -296,17 +299,19 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     })
   );
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
-  const [members, setMembers] = useState<DropdownMember[]>([]);
-  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [newItem, setNewItem] = useState({
     title: "",
-    assigned_to: null as string | null,
+    assigned_to: currentUserId || null as string | null,
     notes: "",
     due_date: null as Date | null
   });
+
+  // Update newItem.assigned_to when currentUserId changes
+  useEffect(() => {
+    if (currentUserId && !newItem.assigned_to) {
+      setNewItem(prev => ({ ...prev, assigned_to: currentUserId }));
+    }
+  }, [currentUserId]);
 
   useImperativeHandle(ref, () => ({
     startCreating: () => {
@@ -317,81 +322,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       }
     },
   }));
-
-  const fetchMembers = useCallback(async () => {
-    // Fetch team members first
-    const { data: teamMembers } = await supabase
-      .from("team_members")
-      .select("id, user_id")
-      .eq("team_id", teamId);
-    
-    if (!teamMembers || teamMembers.length === 0) {
-      setMembers([]);
-      return;
-    }
-    
-    // Fetch profiles for all team members
-    const userIds = teamMembers.map(member => member.user_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-      .in("id", userIds);
-    
-    // Combine team members with their profiles
-    const membersWithProfiles = teamMembers.map(member => {
-      const profile = profiles?.find(p => p.id === member.user_id);
-      return {
-        id: member.id,
-        user_id: member.user_id,
-        profiles: profile || null
-      };
-    });
-    
-    setMembers(membersWithProfiles);
-    
-    // Generate smart name map
-    const nameMap = formatMemberNames(membersWithProfiles);
-    setMemberNames(nameMap);
-  }, [teamId]);
-
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        setNewItem(prev => ({ ...prev, assigned_to: user.id }));
-
-        // Permissions
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_super_admin')
-          .eq('id', user.id)
-          .single();
-        setIsSuperAdmin(!!(profile as any)?.is_super_admin);
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('role')
-          .eq('team_id', teamId)
-          .eq('user_id', user.id)
-          .single();
-        setIsTeamAdmin((membership as any)?.role === 'admin');
-      }
-    } catch (error) {
-      console.error("Error fetching current user:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch current user",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    if (teamId) {
-      fetchMembers();
-      fetchCurrentUser();
-    }
-  }, [teamId, fetchMembers, fetchCurrentUser]);
 
   const handleAddItem = async () => {
     if (!newItem.title.trim()) return;

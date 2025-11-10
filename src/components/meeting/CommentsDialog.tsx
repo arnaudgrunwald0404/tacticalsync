@@ -41,7 +41,7 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
         .from("comments")
         .select(`
           *,
-          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
+          profiles!fk_comments_created_by_profiles(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("item_id", itemId)
         .order("created_at", { ascending: true });

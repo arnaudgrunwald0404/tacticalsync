@@ -94,7 +94,7 @@ const MeetingSettings = () => {
         id,
         role,
         title,
-        profiles:user_id (
+        profiles!fk_team_members_user_id_profiles (
           id,
           email,
           first_name,

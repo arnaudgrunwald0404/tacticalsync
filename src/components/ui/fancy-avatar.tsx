@@ -324,7 +324,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
 
   return (
     <div 
-      className={`relative rounded-full overflow-hidden ${sizeClasses[size]} ${className}`} 
+      className={`relative rounded-full overflow-hidden flex-shrink-0 ${sizeClasses[size]} ${className}`} 
       style={{ 
         zIndex: 1, 
         imageRendering: 'crisp-edges',

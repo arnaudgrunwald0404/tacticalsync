@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { Priority, CompletionStatus } from "@/types/priorities";
 import { TeamMember } from "@/types/meeting";
+import { useMeetingContext } from "@/contexts/MeetingContext";
 
 interface MeetingPrioritiesProps {
   items: Priority[];
@@ -100,7 +101,7 @@ const SortablePriorityRow = ({
         .from("comments")
         .select(`
           *,
-          profiles:user_id(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
+          profiles!fk_comments_created_by_profiles(id, full_name, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("item_id", item.id)
         .eq("item_type", "priority")
@@ -121,14 +122,14 @@ const SortablePriorityRow = ({
       style={style}
       className="flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/30"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         <Avatar className="h-6 w-6">
           <AvatarImage src={item.assigned_to_profile?.avatar_url} />
           <AvatarFallback className="text-xs">
             {item.assigned_to_profile?.first_name?.[0]?.toUpperCase() || item.assigned_to_profile?.email?.[0]?.toUpperCase() || ''}{item.assigned_to_profile?.last_name?.[0]?.toUpperCase() || ''}
           </AvatarFallback>
         </Avatar>
-        <span className="text-sm">{item.outcome}</span>
+        <span className="text-sm truncate min-w-0">{item.outcome}</span>
       </div>
       <Button variant="ghost" size="sm" onClick={() => onDelete(item.id)}>
         <X className="h-4 w-4" />
@@ -139,25 +140,16 @@ const SortablePriorityRow = ({
 
 const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false, currentUserId }, ref) => {
   const { toast } = useToast();
+  const { isSuperAdmin, isTeamAdmin, teamMembers: members, memberNames } = useMeetingContext();
+  
   const [selectedItem, setSelectedItem] = useState<{ id: string; title: string } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [groupedPriorities, setGroupedPriorities] = useState<{ [key: string]: Priority[] }>({});
   const [groupedPreviousPriorities, setGroupedPreviousPriorities] = useState<{ [key: string]: Priority[] }>({});
 
   // Debug logging
   console.log('MeetingPriorities received items:', items);
   console.log('MeetingPriorities items length:', items?.length || 0);
-
-  useEffect(() => {
-    if (teamId) {
-      fetchMembers();
-      fetchPermissions();
-    }
-  }, [teamId]);
 
   useEffect(() => {
     // Group priorities by assigned_to
@@ -200,71 +192,6 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
   useImperativeHandle(ref, () => ({
     startCreating,
   }));
-
-  const fetchMembers = async () => {
-    // Fetch team members first
-    const { data: teamMembers } = await supabase
-      .from("team_members")
-      .select("id, team_id, user_id, role, created_at")
-      .eq("team_id", teamId);
-    
-    if (!teamMembers || teamMembers.length === 0) {
-      setMembers([]);
-      return;
-    }
-    
-    // Fetch profiles for all team members
-    const userIds = teamMembers.map(member => member.user_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-      .in("id", userIds);
-    
-    // Combine team members with their profiles
-    const membersWithProfiles = teamMembers.map(member => {
-      const profile = profiles?.find(p => p.id === member.user_id);
-      return {
-        id: member.id,
-        team_id: member.team_id,
-        user_id: member.user_id,
-        role: member.role,
-        created_at: member.created_at,
-        profiles: profile || null
-      };
-    });
-    
-    setMembers(membersWithProfiles);
-    
-    // Generate smart name map
-    const nameMap = formatMemberNames(membersWithProfiles);
-    setMemberNames(nameMap);
-  };
-
-  const fetchPermissions = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Super admin
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_super_admin')
-        .eq('id', user.id)
-        .single();
-      setIsSuperAdmin(!!(profile as any)?.is_super_admin);
-
-      // Team admin
-      const { data: membership } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('team_id', teamId)
-        .eq('user_id', user.id)
-        .single();
-      setIsTeamAdmin((membership as any)?.role === 'admin');
-    } catch (e) {
-      // ignore
-    }
-  };
 
   const startCreating = () => {
     setIsDrawerOpen(true);
@@ -552,7 +479,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                           {/* User Column - name shown on every row */}
                           <div>
                             {userId && userId !== 'unassigned' && member?.profiles ? (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 {member.profiles.avatar_name ? (
                                   <FancyAvatar 
                                     name={member.profiles.avatar_name} 
@@ -567,7 +494,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                     </AvatarFallback>
                                   </Avatar>
                                 )}
-                                <span className="text-sm truncate">{displayName}</span>
+                                <span className="text-sm truncate min-w-0">{displayName}</span>
                               </div>
                             ) : (
                               <span className="text-sm text-muted-foreground">{displayName}</span>
@@ -703,7 +630,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                             const displayName = memberNames.get(item.assigned_to) || 'Unknown';
                             
                             return (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 {member.profiles.avatar_name ? (
                                   <FancyAvatar 
                                     name={member.profiles.avatar_name} 
@@ -718,7 +645,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                     </AvatarFallback>
                                   </Avatar>
                                 )}
-                                <span className="text-sm truncate">{displayName}</span>
+                                <span className="text-sm truncate min-w-0">{displayName}</span>
                               </div>
                             );
                           })()
@@ -733,7 +660,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                         
                         return (
                           <SelectItem key={member.user_id} value={member.user_id} disabled={!!(currentUserId && item.assigned_to !== currentUserId)}>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
                               {member.profiles?.avatar_name ? (
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
@@ -748,7 +675,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                   </AvatarFallback>
                                 </Avatar>
                               )}
-                              <span className="truncate">{displayName}</span>
+                              <span className="truncate min-w-0">{displayName}</span>
                             </div>
                           </SelectItem>
                         );

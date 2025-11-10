@@ -19,6 +19,7 @@ import {
 } from "@/types/priorities";
 // Team member shape used locally for dropdowns
 import { TeamMember } from "@/types/meeting";
+import { useMeetingContext } from "@/contexts/MeetingContext";
 
 const AddPrioritiesDrawer = ({ 
   isOpen, 
@@ -30,14 +31,14 @@ const AddPrioritiesDrawer = ({
   frequency = "weekly"
 }: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
+  const { currentUserId, teamMembers } = useMeetingContext();
+  
   // Initialize with 3 empty rows to avoid flash of empty state
   const [priorities, setPriorities] = useState<PriorityRow[]>([
     { id: 'new-1', priority: "", assigned_to: "", activities: "", time_minutes: null },
     { id: 'new-2', priority: "", assigned_to: "", activities: "", time_minutes: null },
     { id: 'new-3', priority: "", assigned_to: "", activities: "", time_minutes: null }
   ]);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [newTopic, setNewTopic] = useState({
     title: "",
@@ -46,22 +47,12 @@ const AddPrioritiesDrawer = ({
     notes: ""
   });
 
-  useEffect(() => {
-    console.log('Drawer isOpen changed:', isOpen);
-    if (isOpen) {
-      // Fetch user and team members first
-      console.log('Fetching current user and team members');
-      fetchCurrentUser();
-      fetchTeamMembers();
-    }
-  }, [isOpen]);
-
   // Initialize priorities when drawer opens AND current user is available
   useEffect(() => {
-    console.log('Priority init useEffect triggered:', { isOpen, currentUser: !!currentUser, existingPrioritiesLength: existingPriorities.length });
-    if (isOpen && currentUser) {
-      console.log('Initializing priorities with currentUser:', currentUser.user_id);
-      const defaultAssignee = currentUser.user_id;
+    console.log('Priority init useEffect triggered:', { isOpen, currentUserId: !!currentUserId, existingPrioritiesLength: existingPriorities.length });
+    if (isOpen && currentUserId) {
+      console.log('Initializing priorities with currentUserId:', currentUserId);
+      const defaultAssignee = currentUserId;
       
       // Always update all empty assigned_to fields with current user
       setPriorities(prevPriorities => {
@@ -100,87 +91,21 @@ const AddPrioritiesDrawer = ({
         }
       });
     }
-  }, [isOpen, currentUser, existingPriorities]);
-
-  const fetchTeamMembers = async () => {
-    // Fetch team members then profiles to avoid type issues in join
-    const { data: teamMembers } = await supabase
-      .from("team_members")
-      .select("id, user_id")
-      .eq("team_id", teamId);
-
-    if (!teamMembers || teamMembers.length === 0) {
-      setTeamMembers([]);
-      return;
-    }
-
-    const userIds = teamMembers.map((m) => m.user_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-      .in("id", userIds);
-
-    const combined = teamMembers.map((m) => ({
-      id: m.id,
-      user_id: m.user_id,
-      profiles: profiles?.find((p) => p.id === m.user_id) || null,
-    }));
-
-    setTeamMembers(combined);
-  };
-
-  const fetchCurrentUser = async () => {
-    try {
-      console.log('fetchCurrentUser called, teamId:', teamId);
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('Got auth user:', user?.id);
-      if (user) {
-        // Find current user in team members (without profile join to avoid ambiguity)
-        const { data: memberData, error: memberError } = await supabase
-          .from("team_members")
-          .select("id, user_id")
-          .eq("team_id", teamId)
-          .eq("user_id", user.id)
-          .single();
-        
-        console.log('Team member data:', memberData, 'error:', memberError);
-        
-        if (memberData) {
-          // Fetch profile separately
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("full_name, first_name, last_name, email, avatar_url, avatar_name")
-            .eq("id", user.id)
-            .single();
-          
-          const userData = {
-            ...memberData,
-            profiles: profileData
-          };
-          
-          console.log('Setting currentUser:', userData);
-          setCurrentUser(userData);
-          return userData;
-        } else {
-          console.warn('No team member data found for user');
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching current user:', error);
-    }
-    return null;
-  };
+  }, [isOpen, currentUserId, existingPriorities]);
 
   const addPriorityRow = () => {
     const newId = `temp-${Date.now()}-${priorities.length + 1}`;
     setPriorities([...priorities, { 
       id: newId, 
       priority: "", 
-      assigned_to: currentUser?.user_id || "", 
+      assigned_to: currentUserId || "", 
       activities: "", 
       time_minutes: null 
     }]);
   };
+  
+  // Derive current user object from context data
+  const currentUser = teamMembers.find(m => m.user_id === currentUserId) || null;
 
   const removePriorityRow = (id: string) => {
     // Always keep at least 3 rows

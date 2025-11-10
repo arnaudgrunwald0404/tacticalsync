@@ -199,7 +199,7 @@ const TeamInvite = () => {
           id,
           user_id,
           role,
-          profiles:user_id(id, first_name, last_name, email, avatar_url, avatar_name)
+          profiles!fk_team_members_user_id_profiles(id, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("team_id", teamId);
 

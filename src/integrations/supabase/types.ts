@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -127,7 +107,15 @@ export type Database = {
           item_type?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_comments_created_by_profiles"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invitations: {
         Row: {
@@ -135,10 +123,10 @@ export type Database = {
           email: string
           expires_at: string | null
           id: string
-          invite_code: string
-          invited_by: string
+          invite_code: string | null
+          invited_by: string | null
           role: string
-          status: string
+          status: Database["public"]["Enums"]["invitation_status"] | null
           team_id: string
           updated_at: string | null
         }
@@ -147,10 +135,10 @@ export type Database = {
           email: string
           expires_at?: string | null
           id?: string
-          invite_code?: string
-          invited_by: string
-          role: string
-          status?: string
+          invite_code?: string | null
+          invited_by?: string | null
+          role?: string
+          status?: Database["public"]["Enums"]["invitation_status"] | null
           team_id: string
           updated_at?: string | null
         }
@@ -159,14 +147,21 @@ export type Database = {
           email?: string
           expires_at?: string | null
           id?: string
-          invite_code?: string
-          invited_by?: string
+          invite_code?: string | null
+          invited_by?: string | null
           role?: string
-          status?: string
+          status?: Database["public"]["Enums"]["invitation_status"] | null
           team_id?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invitations_team_id_fkey"
             columns: ["team_id"]
@@ -509,11 +504,13 @@ export type Database = {
           birthday: string | null
           blue_percentage: number | null
           created_at: string | null
-          email: string | null
+          email: string
           first_name: string | null
-          full_name: string | null
+          full_name: string
           green_percentage: number | null
           id: string
+          is_admin: boolean | null
+          is_super_admin: boolean | null
           last_name: string | null
           red_percentage: number | null
           updated_at: string | null
@@ -525,11 +522,13 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email?: string | null
+          email: string
           first_name?: string | null
-          full_name?: string | null
+          full_name: string
           green_percentage?: number | null
           id: string
+          is_admin?: boolean | null
+          is_super_admin?: boolean | null
           last_name?: string | null
           red_percentage?: number | null
           updated_at?: string | null
@@ -541,11 +540,13 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email?: string | null
+          email?: string
           first_name?: string | null
-          full_name?: string | null
+          full_name?: string
           green_percentage?: number | null
           id?: string
+          is_admin?: boolean | null
+          is_super_admin?: boolean | null
           last_name?: string | null
           red_percentage?: number | null
           updated_at?: string | null
@@ -553,30 +554,86 @@ export type Database = {
         }
         Relationships: []
       }
-      team_members: {
+      recurring_meetings: {
         Row: {
           created_at: string | null
+          created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"]
           id: string
-          role: string
+          name: string
           team_id: string
           updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name: string
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name?: string
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_meetings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      super_admins: {
+        Row: {
+          created_at: string | null
           user_id: string
         }
         Insert: {
           created_at?: string | null
-          id?: string
-          role: string
-          team_id: string
-          updated_at?: string | null
           user_id: string
         }
         Update: {
           created_at?: string | null
-          id?: string
-          role?: string
-          team_id?: string
-          updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      team_members: {
+        Row: {
+          created_at: string | null
+          custom_avatar_url: string | null
+          id: string
+          role: Database["public"]["Enums"]["member_role"]
+          team_id: string | null
+          title: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_avatar_url?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          team_id?: string | null
+          title?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_avatar_url?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          team_id?: string | null
+          title?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -593,43 +650,116 @@ export type Database = {
             referencedRelation: "teams"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "team_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       teams: {
         Row: {
           abbreviated_name: string | null
           created_at: string | null
-          created_by: string
+          created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"] | null
           id: string
-          invite_code: string | null
+          invite_code: string
           name: string
+          standing_agenda_items: Json | null
           updated_at: string | null
         }
         Insert: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by: string
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
-          invite_code?: string | null
+          invite_code?: string
           name: string
+          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Update: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by?: string
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
-          invite_code?: string | null
+          invite_code?: string
           name?: string
+          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Relationships: []
+      }
+      topic_status: {
+        Row: {
+          created_at: string | null
+          id: string
+          status: string
+          topic_id: string
+          updated_at: string | null
+          updated_by: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          status: string
+          topic_id: string
+          updated_at?: string | null
+          updated_by: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          status?: string
+          topic_id?: string
+          updated_at?: string | null
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_status_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      check_team_member_role: {
+        Args: {
+          _required_role: Database["public"]["Enums"]["member_role"]
+          _team_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      get_recurring_meeting: {
+        Args: { meeting_id: string }
+        Returns: {
+          frequency: string
+          id: string
+          name: string
+        }[]
+      }
+      get_user_login_info: {
+        Args: { user_id: string }
+        Returns: {
+          has_logged_in: boolean
+          last_active: string
+        }[]
+      }
+      is_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
       is_team_admin: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
@@ -641,6 +771,10 @@ export type Database = {
     }
     Enums: {
       completion_status_enum: "completed" | "not_completed" | "pending"
+      invitation_status: "pending" | "accepted" | "expired" | "declined"
+      item_type: "agenda" | "topic" | "priority" | "team_topic" | "action_item"
+      meeting_frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
+      member_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -766,13 +900,13 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       completion_status_enum: ["completed", "not_completed", "pending"],
+      invitation_status: ["pending", "accepted", "expired", "declined"],
+      item_type: ["agenda", "topic", "priority", "team_topic", "action_item"],
+      meeting_frequency: ["daily", "weekly", "bi-weekly", "monthly"],
+      member_role: ["admin", "member"],
     },
   },
 } as const
-

@@ -172,11 +172,11 @@ export function AgendaSidebar({
   }, [editingItems, isEditingAgenda, actions]);
 
   return (
-    <div className="w-full md:w-80 fixed top-[137px] bottom-0 left-10 group">
+    <div className="w-full h-full group">
       {/* Sidebar Header */}
-      <div className="flex items-center justify-between pt-16 pb-4 px-4 sticky top-0 z-10">
+      <div className="flex items-center justify-between pb-4 pl-2 pr-4 sticky top-0 z-10 bg-blue-50">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-xl pl-4 flex items-center" data-testid="agenda-section">
+          <h2 className="font-semibold text-xl pl-1 flex items-center" data-testid="agenda-section">
             Agenda
           </h2>
           {!isEditingAgenda && isAdmin && (
@@ -212,7 +212,7 @@ export function AgendaSidebar({
       </div>
       
       {/* Sidebar Content */}
-      <div className="px-4 space-y-2 overflow-y-auto h-[calc(100%-57px)]">
+      <div className="pl-2 pr-4 space-y-2 overflow-y-auto max-h-[calc(100vh-250px)]">
         {items.length === 0 && !isEditingAgenda ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -395,9 +395,9 @@ export function AgendaSidebar({
                                   />
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
                                   {item.assigned_to_profile ? (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
                                       {item.assigned_to_profile.avatar_name ? (
                                         <FancyAvatar 
                                           name={item.assigned_to_profile.avatar_name}
@@ -412,7 +412,7 @@ export function AgendaSidebar({
                                           </AvatarFallback>
                                         </Avatar>
                                       )}
-                                      <span className="text-sm text-muted-foreground">
+                                      <span className="text-sm text-muted-foreground truncate min-w-0">
                                         {memberNames.get(item.assigned_to) || 'Unknown'}
                                       </span>
                                     </div>

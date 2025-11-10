@@ -14,6 +14,7 @@ import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { cn } from "@/lib/utils";
 import { Topic } from "@/types/topics";
 import { CompletionStatus } from "@/types/priorities";
+import { useMeetingContext } from "@/contexts/MeetingContext";
 import {
   DndContext,
   closestCenter,
@@ -243,7 +244,7 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
         ) : (
           <>
             <div className={cn("col-span-9 text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
-            <div className="col-span-3 flex items-center gap-2">
+            <div className="col-span-3 flex items-center gap-2 min-w-0">
               {item.assigned_to && assignedMember ? (
                 <>
                   {assignedMember.profiles?.avatar_name ? (
@@ -260,7 +261,7 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
                       </AvatarFallback>
                     </Avatar>
                   )}
-                  <span className="text-base">
+                  <span className="text-base truncate min-w-0">
                     {memberNames.get(item.assigned_to) || 'Unknown'}
                   </span>
                 </>
@@ -297,94 +298,28 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
 
 const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopicsProps) => {
   const { toast } = useToast();
+  const { currentUserId, isSuperAdmin, isTeamAdmin, teamMembers: members, memberNames } = useMeetingContext();
+  
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  const [members, setMembers] = useState<DropdownMember[]>([]);
-  const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [newTopic, setNewTopic] = useState({
     title: "",
-    assigned_to: null as string | null,
+    assigned_to: currentUserId || null as string | null,
     time_minutes: 5,
     notes: ""
   });
   const [adding, setAdding] = useState(false);
 
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        setNewTopic(prev => ({ ...prev, assigned_to: user.id }));
-
-        // Permissions
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_super_admin')
-          .eq('id', user.id)
-          .single();
-        setIsSuperAdmin(!!(profile as any)?.is_super_admin);
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('role')
-          .eq('team_id', teamId)
-          .eq('user_id', user.id)
-          .single();
-        setIsTeamAdmin((membership as any)?.role === 'admin');
-      }
-    } catch (error) {
-      console.error("Error fetching current user:", error);
-    }
-  }, [teamId]);
-
-  const fetchMembers = useCallback(async () => {
-    // Fetch team members first
-    const { data: teamMembers } = await supabase
-      .from("team_members")
-      .select("id, user_id")
-      .eq("team_id", teamId);
-    
-    if (!teamMembers || teamMembers.length === 0) {
-      setMembers([]);
-      return;
-    }
-    
-    // Fetch profiles for all team members
-    const userIds = teamMembers.map(member => member.user_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-      .in("id", userIds);
-    
-    // Combine team members with their profiles
-    const membersWithProfiles = teamMembers.map(member => {
-      const profile = profiles?.find(p => p.id === member.user_id);
-      return {
-        id: member.id,
-        user_id: member.user_id,
-        profiles: profile || null
-      };
-    });
-    
-    setMembers(membersWithProfiles);
-    
-    // Generate smart name map
-    const nameMap = formatMemberNames(membersWithProfiles);
-    setMemberNames(nameMap);
-  }, [teamId]);
-
+  // Update newTopic.assigned_to when currentUserId changes
   useEffect(() => {
-    if (teamId) {
-      fetchMembers();
-      fetchCurrentUser();
+    if (currentUserId && !newTopic.assigned_to) {
+      setNewTopic(prev => ({ ...prev, assigned_to: currentUserId }));
     }
-  }, [teamId, fetchMembers, fetchCurrentUser]);
+  }, [currentUserId]);
 
   const handleAdd = async () => {
     if (!newTopic.title.trim()) {
@@ -595,7 +530,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               <SelectTrigger className="h-10">
                 <SelectValue placeholder="Who?">
                   {newTopic.assigned_to && members.find(m => m.user_id === newTopic.assigned_to) && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const member = members.find(m => m.user_id === newTopic.assigned_to);
                         if (!member?.profiles) return null;
@@ -618,7 +553,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                                 </AvatarFallback>
                               </Avatar>
                             )}
-                            <span>{displayName}</span>
+                            <span className="truncate min-w-0">{displayName}</span>
                           </>
                         );
                       })()}
@@ -707,7 +642,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               <SelectTrigger className="h-10">
                 <SelectValue placeholder="Who?">
                   {newTopic.assigned_to && members.find(m => m.user_id === newTopic.assigned_to) && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const member = members.find(m => m.user_id === newTopic.assigned_to);
                         if (!member?.profiles) return null;
@@ -730,7 +665,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                                 </AvatarFallback>
                               </Avatar>
                             )}
-                            <span>{displayName}</span>
+                            <span className="truncate min-w-0">{displayName}</span>
                           </>
                         );
                       })()}

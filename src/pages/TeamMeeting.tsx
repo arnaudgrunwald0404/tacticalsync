@@ -20,6 +20,7 @@ import { format, getWeek, addDays, startOfWeek } from "date-fns";
 import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, getISODateString, getMeetingEndDate } from "../lib/dateUtils";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { MeetingProvider } from "@/contexts/MeetingContext";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -239,7 +240,7 @@ const TeamMeeting = () => {
         .select(`
           id,
           role,
-          profiles:user_id (
+          profiles!fk_team_members_user_id_profiles (
             full_name,
             first_name,
             last_name
@@ -661,8 +662,13 @@ const TeamMeeting = () => {
     );
   }
 
+  if (!teamId) {
+    return null;
+  }
+
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <MeetingProvider teamId={teamId}>
+      <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
               <header className="sticky top-0 z-50 border-b bg-white">
                 <div className="container mx-auto px-4 py-3 sm:py-4">
                   {/* Top row: Logo, Title/Admin, Settings */}
@@ -786,10 +792,10 @@ const TeamMeeting = () => {
               </header>
 
       <main className="container mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        <div className="flex">
-          {/* Fixed Agenda Sidebar - Hide on small screens */}
-          <div className="hidden lg:block w-72 xl:w-80 shrink-0">
-            <div className="fixed w-72 xl:w-80">
+        <div className="flex gap-6">
+          {/* Sticky Agenda Sidebar - Hide on small screens */}
+          <div className="hidden lg:block w-64 xl:w-72 shrink-0">
+            <div className="sticky top-24 h-[calc(100vh-140px)]">
               <MeetingAgenda
                 items={agendaItems}
                 meetingId={meeting?.id}
@@ -841,7 +847,7 @@ const TeamMeeting = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 lg:pl-8 space-y-6 sm:space-y-8">
+          <div className="flex-1 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
                 <div className="space-y-4 mb-2 sm:mb-3">
                   <div className="flex items-center justify-between">
@@ -1062,6 +1068,7 @@ const TeamMeeting = () => {
         </div>
       </main>
     </GridBackground>
+    </MeetingProvider>
   );
 };
 

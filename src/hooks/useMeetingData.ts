@@ -103,13 +103,13 @@ export function useMeetingData(props: MeetingAgendaProps): {
         if (!refreshedSession) throw new Error('No session available');
       }
 
-      // Update the agenda item in the correct table with the correct column
-      const { error } = await supabase
-        .from("meeting_series_agenda")
-        .update({ 
-          completion_status: newStatus ? 'completed' : 'not_completed'
-        })
-        .eq("id", itemId);
+    // Update the agenda item in the correct table with the correct column
+    const { error } = await supabase
+      .from("meeting_series_agenda")
+      .update({ 
+        completion_status: newStatus ? 'completed' : 'not_started'
+      })
+      .eq("id", itemId);
 
       if (error) throw error;
 

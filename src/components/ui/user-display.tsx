@@ -47,16 +47,16 @@ export function UserDisplay({ user, firstName, lastName, email, className, size 
   const displayName = getDisplayName();
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2 min-w-0", className)}>
       <div className={cn(
-        "bg-rose-100 text-rose-900 rounded-full flex items-center justify-center",
+        "bg-rose-100 text-rose-900 rounded-full flex items-center justify-center flex-shrink-0",
         size === "sm" ? "h-5 w-5 text-xs" : "h-6 w-6 text-sm",
         "font-medium"
       )}>
         {initials}
       </div>
       <span className={cn(
-        "truncate",
+        "truncate min-w-0",
         size === "sm" ? "text-sm" : "text-base"
       )}>
         {displayName}

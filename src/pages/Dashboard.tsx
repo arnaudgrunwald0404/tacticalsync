@@ -312,105 +312,106 @@ const Dashboard = () => {
         return;
       }
 
-      // Fetch member counts, team members, and meetings for each team
-      const teamsWithData = await Promise.all(
-        data.map(async (teamMember) => {
-          try {
-            // Fetch team members count
-            const { count } = await supabase
-              .from("team_members")
-              .select("id", { count: "exact" })
-              .eq("team_id", teamMember.teams.id);
+      // Batch fetch all data for all teams to minimize API calls
+      const teamIds = data.map(teamMember => teamMember.teams.id);
 
-            // Fetch team members (without profiles join)
-            const { data: teamMembers, error: teamMembersError } = await supabase
-              .from("team_members")
-              .select("*")
-              .eq("team_id", teamMember.teams.id);
+      // Fetch all team members for all teams in one query
+      const { data: allTeamMembers } = await supabase
+        .from("team_members")
+        .select("*")
+        .in("team_id", teamIds);
 
-            // Fetch profiles separately for all team members
-            let profilesById = {};
-            if (teamMembers && teamMembers.length > 0) {
-              const userIds = teamMembers.map(member => member.user_id);
-              const { data: profiles } = await supabase
-                .from("profiles")
-                .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-                .in("id", userIds);
-              
-              // Create a map for easy lookup
-              profilesById = profiles?.reduce((acc, profile) => {
-                acc[profile.id] = profile;
-                return acc;
-              }, {}) || {};
-            }
+      // Get unique user IDs and fetch all profiles in one query
+      const userIds = Array.from(new Set(allTeamMembers?.map(member => member.user_id) || []));
+      const { data: allProfiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+        .in("id", userIds);
 
-            // Attach profiles to team members
-            const teamMembersWithProfiles = teamMembers?.map(member => {
-              const p = profilesById[member.user_id] || null;
-              const displayName = (p?.full_name && p.full_name.trim())
-                || `${(p?.first_name || "")} ${(p?.last_name || "")}`.trim()
-                || (p?.email ? (p.email.split("@")[0] || "") : "")
-                || (p?.avatar_name || "");
-              return {
-                ...member,
-                profile: p ? { ...p, display_name: displayName } : null,
-              };
-            }) || [];
+      // Create profile lookup map
+      const profilesById = allProfiles?.reduce((acc, profile) => {
+        acc[profile.id] = profile;
+        return acc;
+      }, {} as Record<string, any>) || {};
 
-            // Fetch meeting series for this team
-            const { data: teamMeetings } = await supabase
-              .from("meeting_series")
-              .select("*")
-              .eq("team_id", teamMember.teams.id)
-              .order("created_at", { ascending: true });
+      // Fetch all meeting series for all teams in one query
+      const { data: allMeetingSeries } = await supabase
+        .from("meeting_series")
+        .select("*")
+        .in("team_id", teamIds)
+        .order("created_at", { ascending: true });
 
-            // Fetch pending invitations with emails (handle errors gracefully)
-            let invitations = [];
-            let invitedCount = 0;
-            try {
-              const { data: invitationsData, count: invitedCountData } = await supabase
-                .from("invitations")
-                .select("email", { count: "exact" })
-                .eq("team_id", teamMember.teams.id)
-                .eq("status", "pending")
-                .gt("expires_at", new Date().toISOString());
-              
-              invitations = invitationsData || [];
-              invitedCount = invitedCountData || 0;
-            } catch (invitationError) {
-              console.warn("Error fetching invitations for team:", teamMember.teams.id, invitationError);
-            }
+      // Fetch all invitations for all teams in one query
+      let allInvitations: any[] = [];
+      try {
+        const { data: invitationsData } = await supabase
+          .from("invitations")
+          .select("email, team_id")
+          .in("team_id", teamIds)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString());
+        allInvitations = invitationsData || [];
+      } catch (invitationError) {
+        console.warn("Error fetching invitations:", invitationError);
+      }
 
-            return {
-              ...teamMember,
-              memberCount: count || 0,
-              invitedCount: invitedCount,
-              invitedEmails: invitations.map(inv => inv.email) || [],
-              teamMembers: teamMembersWithProfiles,
-              meetings: teamMeetings || [],
-            };
-          } catch (error) {
-            console.error("Error processing team member:", teamMember.teams.id, error);
-            return {
-              ...teamMember,
-              memberCount: 0,
-              invitedCount: 0,
-              invitedEmails: [],
-              teamMembers: [],
-              meetings: [],
-            };
-          }
-        })
-      );
+      // Group data by team
+      const membersByTeam = (allTeamMembers || []).reduce((acc, member) => {
+        if (!acc[member.team_id]) acc[member.team_id] = [];
+        acc[member.team_id].push(member);
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      const meetingsByTeam = (allMeetingSeries || []).reduce((acc, meeting) => {
+        if (!acc[meeting.team_id]) acc[meeting.team_id] = [];
+        acc[meeting.team_id].push(meeting);
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      const invitationsByTeam = allInvitations.reduce((acc, invitation) => {
+        if (!acc[invitation.team_id]) acc[invitation.team_id] = [];
+        acc[invitation.team_id].push(invitation);
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      // Map teams with their data
+      const teamsWithData = data.map((teamMember) => {
+        const teamId = teamMember.teams.id;
+        const teamMembers = membersByTeam[teamId] || [];
+        
+        // Attach profiles to team members
+        const teamMembersWithProfiles = teamMembers.map(member => {
+          const p = profilesById[member.user_id] || null;
+          const displayName = (p?.full_name && p.full_name.trim())
+            || `${(p?.first_name || "")} ${(p?.last_name || "")}`.trim()
+            || (p?.email ? (p.email.split("@")[0] || "") : "")
+            || (p?.avatar_name || "");
+          return {
+            ...member,
+            profile: p ? { ...p, display_name: displayName } : null,
+          };
+        });
+
+        const invitations = invitationsByTeam[teamId] || [];
+        
+        return {
+          ...teamMember,
+          memberCount: teamMembers.length,
+          invitedCount: invitations.length,
+          invitedEmails: invitations.map(inv => inv.email),
+          teamMembers: teamMembersWithProfiles,
+          meetings: meetingsByTeam[teamId] || [],
+        };
+      });
 
       setTeams(teamsWithData);
 
-      // Organize meetings by team
-      const meetingsByTeam: Record<string, any[]> = {};
+      // Organize meetings by team for state
+      const meetingsForState: Record<string, any[]> = {};
       teamsWithData.forEach((team) => {
-        meetingsByTeam[team.teams.id] = team.meetings;
+        meetingsForState[team.teams.id] = team.meetings;
       });
-      setMeetings(meetingsByTeam);
+      setMeetings(meetingsForState);
     } catch (error: unknown) {
       console.error("Error in fetchTeams:", error);
       setTeams([]);
@@ -557,16 +558,27 @@ const Dashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      console.log("Accepting invitation for team:", invitation.team_id);
+      console.log("User ID:", user.id);
+
       // Check if user is already a member
-      const { data: existingMember } = await supabase
+      const { data: existingMember, error: checkError } = await supabase
         .from("team_members")
         .select("*")
         .eq("team_id", invitation.team_id)
         .eq("user_id", user.id)
         .single();
 
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error("Error checking existing member:", checkError);
+        throw checkError;
+      }
+
+      console.log("Existing member:", existingMember);
+
       // Only add user to team if they're not already a member
       if (!existingMember) {
+        console.log("Adding user to team...");
         const { error: memberError } = await supabase
           .from("team_members")
           .insert({
@@ -575,16 +587,25 @@ const Dashboard = () => {
             role: "member",
           });
 
-        if (memberError) throw memberError;
+        if (memberError) {
+          console.error("Error adding to team:", memberError);
+          throw memberError;
+        }
+        console.log("Successfully added to team");
       }
 
       // Update invitation status
+      console.log("Updating invitation status...");
       const { error: inviteError } = await supabase
         .from("invitations")
         .update({ status: "accepted" })
         .eq("id", invitation.id);
 
-      if (inviteError) throw inviteError;
+      if (inviteError) {
+        console.error("Error updating invitation:", inviteError);
+        throw inviteError;
+      }
+      console.log("Successfully updated invitation");
 
       toast({
         title: "Invitation accepted!",
@@ -594,6 +615,7 @@ const Dashboard = () => {
       // Refresh data
       await Promise.all([fetchTeams(), fetchPendingInvitations()]);
     } catch (error: unknown) {
+      console.error("Error accepting invitation:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "An error occurred",
@@ -654,8 +676,8 @@ const Dashboard = () => {
                     size="sm"
                     className="flex-shrink-0"
                   />
-                  <div className="flex flex-col items-start">
-                    <span className="text-sm leading-none">
+                  <div className="flex flex-col items-start min-w-0 overflow-hidden">
+                    <span className="text-sm leading-none truncate max-w-full">
                       {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
                     </span>
                   </div>
@@ -894,9 +916,9 @@ const Dashboard = () => {
                               {meeting.frequency.replace('-', ' ')}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="p-4 sm:p-6 pt-0">
-                            <Button variant="default" size="sm" className="w-full group-hover:bg-primary/90 text-xs sm:text-sm">
-                              Access Meeting →
+                          <CardContent className="p-4 sm:p-6 pt-0 flex justify-end">
+                            <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
+                              Go to meetings →
                             </Button>
                           </CardContent>
                         </Card>
