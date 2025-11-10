@@ -864,60 +864,62 @@ const TeamMeeting = () => {
           {/* Sticky Agenda Sidebar - Hide on small screens */}
           <div className="hidden lg:block w-64 xl:w-72 shrink-0">
             <div className="sticky top-24 h-[calc(100vh-140px)]">
-              <MeetingAgenda
-                items={agendaItems}
-                meetingId={meeting?.id}
-                teamId={teamId}
-                onUpdate={async () => {
-                  // Only refetch agenda items, not all meeting data
-                  if (!meeting?.id || !currentSeriesId) return;
+              <Card className="p-4 sm:p-6 h-full">
+                <MeetingAgenda
+                  items={agendaItems}
+                  meetingId={meeting?.id}
+                  teamId={teamId}
+                  onUpdate={async () => {
+                    // Only refetch agenda items, not all meeting data
+                    if (!meeting?.id || !currentSeriesId) return;
 
-                  const { data: agendaData, error: agendaError } = await supabase
-                    .from("meeting_series_agenda")
-                    .select("*")
-                    .eq("series_id", currentSeriesId)
-                    .order("order_index");
+                    const { data: agendaData, error: agendaError } = await supabase
+                      .from("meeting_series_agenda")
+                      .select("*")
+                      .eq("series_id", currentSeriesId)
+                      .order("order_index");
 
-                  if (agendaError) {
-                    console.error("Error fetching agenda items:", agendaError);
-                  } else {
-                    // Fetch profiles for assigned_to users
-                    const assignedUserIds = (agendaData || [])
-                      .map(item => item.assigned_to)
-                      .filter((id): id is string => id != null);
-                    
-                    let profilesById: Record<string, any> = {};
-                    if (assignedUserIds.length > 0) {
-                      const { data: profiles } = await supabase
-                        .from("profiles")
-                        .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-                        .in("id", assignedUserIds);
+                    if (agendaError) {
+                      console.error("Error fetching agenda items:", agendaError);
+                    } else {
+                      // Fetch profiles for assigned_to users
+                      const assignedUserIds = (agendaData || [])
+                        .map(item => item.assigned_to)
+                        .filter((id): id is string => id != null);
                       
-                      profilesById = (profiles || []).reduce((acc, profile) => {
-                        acc[profile.id] = profile;
-                        return acc;
-                      }, {} as Record<string, any>);
-                    }
+                      let profilesById: Record<string, any> = {};
+                      if (assignedUserIds.length > 0) {
+                        const { data: profiles } = await supabase
+                          .from("profiles")
+                          .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+                          .in("id", assignedUserIds);
+                        
+                        profilesById = (profiles || []).reduce((acc, profile) => {
+                          acc[profile.id] = profile;
+                          return acc;
+                        }, {} as Record<string, any>);
+                      }
 
-                    // Transform the data to include is_completed field and assigned_to_profile
-                    const transformedAgendaData = (agendaData || []).map(item => ({
-                      ...item,
-                      is_completed: item.completion_status === 'completed',
-                      assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
-                    }));
-                    setAgendaItems(transformedAgendaData);
-                  }
-                }}
-                currentUserId={currentUserId || undefined}
-                isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
-              />
+                      // Transform the data to include is_completed field and assigned_to_profile
+                      const transformedAgendaData = (agendaData || []).map(item => ({
+                        ...item,
+                        is_completed: item.completion_status === 'completed',
+                        assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
+                      }));
+                      setAgendaItems(transformedAgendaData);
+                    }
+                  }}
+                  currentUserId={currentUserId || undefined}
+                  isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
+                />
+              </Card>
             </div>
           </div>
 
           {/* Main Content */}
           <div className="flex-1 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
-                <div className="space-y-4 mb-2 sm:mb-3">
+                <div className="space-y-4 mb-4">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
@@ -934,7 +936,7 @@ const TeamMeeting = () => {
                               <ChevronDown className="h-5 w-5" />
                             )}
                           </Button>
-                          <h2 className="text-lg sm:text-xl font-semibold" data-testid="priorities-section">Priorities</h2>
+                          <h2 className="font-bold text-2xl text-gray-900" data-testid="priorities-section">Priorities</h2>
                         </div>
                       </div>
                     </div>
@@ -1047,7 +1049,7 @@ const TeamMeeting = () => {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
@@ -1061,7 +1063,7 @@ const TeamMeeting = () => {
                       <ChevronDown className="h-5 w-5" />
                     )}
                   </Button>
-                  <h2 className="text-lg sm:text-xl font-semibold" data-testid="topics-section">Topics for Today</h2>
+                  <h2 className="font-bold text-2xl text-gray-900" data-testid="topics-section">Topics for Today</h2>
                 </div>
               </div>
               {!sectionsCollapsed.topics && (
@@ -1092,7 +1094,7 @@ const TeamMeeting = () => {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-4 sm:mb-6">
+              <div className="flex items-center gap-2 mb-4">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1105,7 +1107,7 @@ const TeamMeeting = () => {
                     <ChevronDown className="h-5 w-5" />
                   )}
                 </Button>
-                <h2 className="text-lg sm:text-xl font-semibold" data-testid="action-items-section">Action Items</h2>
+                <h2 className="font-bold text-2xl text-gray-900" data-testid="action-items-section">Action Items</h2>
               </div>
               {!sectionsCollapsed.actionItems && (
                 <ActionItems
