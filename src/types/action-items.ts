@@ -9,6 +9,7 @@ export interface ActionItem {
   assigned_to?: string | null;
   due_date?: string | null;
   completion_status: CompletionStatus;
+  completed_at?: string | null; // Timestamp when marked as completed
   order_index: number;
   created_by: string;
   created_at: string;

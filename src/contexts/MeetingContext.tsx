@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatMemberNames } from '@/lib/nameUtils';
 
@@ -32,6 +32,21 @@ interface MeetingContextData {
   refetch: () => Promise<void>;
 }
 
+// OPTIMIZED: Module-level cache to prevent duplicate fetches across component remounts
+interface CacheEntry {
+  data: {
+    currentUserId: string;
+    isSuperAdmin: boolean;
+    isTeamAdmin: boolean;
+    teamMembers: TeamMember[];
+    memberNames: Map<string, string>;
+  };
+  timestamp: number;
+}
+
+const contextCache = new Map<string, CacheEntry>();
+const CACHE_DURATION = 30000; // 30 seconds cache
+
 const MeetingContext = createContext<MeetingContextData | null>(null);
 
 export function useMeetingContext() {
@@ -54,15 +69,37 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false); // Prevent concurrent fetches
 
-  const fetchData = async () => {
+  const fetchData = async (forceRefresh = false) => {
+    // OPTIMIZED: Check cache first
+    const cacheKey = teamId;
+    const cached = contextCache.get(cacheKey);
+    const now = Date.now();
+
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_DURATION)) {
+      // Use cached data
+      setCurrentUserId(cached.data.currentUserId);
+      setIsSuperAdmin(cached.data.isSuperAdmin);
+      setIsTeamAdmin(cached.data.isTeamAdmin);
+      setTeamMembers(cached.data.teamMembers);
+      setMemberNames(cached.data.memberNames);
+      setLoading(false);
+      return;
+    }
+
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
       setLoading(true);
       
-      // Get current user
+      // Get current user (cached by Supabase client)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
+        isFetchingRef.current = false;
         return;
       }
       
@@ -87,11 +124,16 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
           .eq('team_id', teamId)
       ]);
 
-      // Set permissions
-      setIsSuperAdmin(!!(profileResult.data as any)?.is_super_admin);
-      setIsTeamAdmin((membershipResult.data as any)?.role === 'admin');
+      const superAdmin = !!(profileResult.data as any)?.is_super_admin;
+      const teamAdmin = (membershipResult.data as any)?.role === 'admin';
+      
+      setIsSuperAdmin(superAdmin);
+      setIsTeamAdmin(teamAdmin);
 
       // Fetch profiles for all team members
+      let members: TeamMember[] = [];
+      let nameMap = new Map<string, string>();
+      
       if (teamMembersResult.data && teamMembersResult.data.length > 0) {
         const userIds = teamMembersResult.data.map(member => member.user_id);
         const { data: profiles } = await supabase
@@ -100,24 +142,35 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
           .in('id', userIds);
 
         // Combine team members with profiles
-        const membersWithProfiles = teamMembersResult.data.map(member => ({
+        members = teamMembersResult.data.map(member => ({
           ...member,
           profiles: profiles?.find(p => p.id === member.user_id) || null
         }));
 
-        setTeamMembers(membersWithProfiles);
-
         // Generate smart name map
-        const nameMap = formatMemberNames(membersWithProfiles);
-        setMemberNames(nameMap);
-      } else {
-        setTeamMembers([]);
-        setMemberNames(new Map());
+        nameMap = formatMemberNames(members);
       }
+
+      setTeamMembers(members);
+      setMemberNames(nameMap);
+
+      // OPTIMIZED: Store in cache
+      contextCache.set(cacheKey, {
+        data: {
+          currentUserId: user.id,
+          isSuperAdmin: superAdmin,
+          isTeamAdmin: teamAdmin,
+          teamMembers: members,
+          memberNames: nameMap,
+        },
+        timestamp: Date.now()
+      });
+
     } catch (error) {
       console.error('Error fetching meeting context data:', error);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -135,7 +188,7 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
     teamMembers,
     memberNames,
     loading,
-    refetch: fetchData,
+    refetch: () => fetchData(true), // Force refresh on manual refetch
   };
 
   return (

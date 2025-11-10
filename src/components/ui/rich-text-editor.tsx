@@ -261,7 +261,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       )}
 
       {/* Editor Content */}
-      <div className="relative border rounded-t-md h-auto min-h-[40px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
+      <div className="relative border h-auto min-h-[40px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
         <EditorContent 
           editor={editor} 
         />

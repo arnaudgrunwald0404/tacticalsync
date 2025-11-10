@@ -29,7 +29,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
-import RichTextEditor from "@/components/ui/rich-text-editor";
+import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import CommentsDialog from "./CommentsDialog";
 import { ActionItem, ActionItemInsert } from "@/types/action-items";
 // import { TeamMember } from "@/types/common";

@@ -601,10 +601,10 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
               );
             })()
           ) : (
-            <div className={`px-4 py-8 text-center text-muted-foreground ${showPreviousPeriod ? 'grid-cols-[200px_1fr_1fr]' : 'grid-cols-[200px_1fr]'} gap-4`}>
-              <div className="col-span-full">
+            <div className="text-center py-8 text-muted-foreground ">
+              <p className="text-sm">
                 No priorities set yet for this {frequency === "monthly" ? "month" : frequency === "weekly" ? "week" : frequency === "quarter" ? "quarter" : "period"}.
-              </div>
+              </p>
             </div>
           )}
         </div>
@@ -766,7 +766,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
               </div>
             ))
           ) : (
-            <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            <div className="text-center py-2 text-muted-foreground mb-4">
               <p className="text-sm">
                 No priorities set yet for this {frequency === "monthly" ? "month" : frequency === "weekly" ? "week" : frequency === "quarter" ? "quarter" : "period"}.
               </p>
