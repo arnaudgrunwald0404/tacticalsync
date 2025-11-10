@@ -168,7 +168,10 @@
 .ProseMirror {
   outline: none;
   min-height: 24px;
-  padding: 0;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
 }
 
 .ProseMirror p {
@@ -220,4 +223,21 @@
 
 .ProseMirror u {
   text-decoration: underline;
+}
+
+/* Parking Lot Editor Styles */
+.parking-lot-editor {
+  padding-top: 3.5rem;
+  position: relative;
+}
+
+.parking-lot-editor > div > div {
+  height: 200px !important;
+  min-height: 200px !important;
+}
+
+.parking-lot-editor .ProseMirror {
+  min-height: 200px !important;
+  max-height: 200px !important;
+  overflow-y: auto !important;
 }

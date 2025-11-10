@@ -207,7 +207,7 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
                     aria-label="Edit due date"
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {editValues.due_date ? format(editValues.due_date, "MM/dd") : <span>Due Date</span>}
+                    {editValues.due_date ? format(editValues.due_date, "MM/dd") : <span>By...</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -636,7 +636,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {newItem.due_date ? format(newItem.due_date, "MM/dd") : <span>Due Date</span>}
+                      {newItem.due_date ? format(newItem.due_date, "MM/dd") : <span>By...</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">

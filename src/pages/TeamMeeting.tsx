@@ -489,7 +489,7 @@ const TeamMeeting = () => {
         setTeamTopicItems(topicsData || []);
       }
 
-      // Fetch action items from meeting_series_action_items
+      // Fetch action items from meeting_series_action_items (exclude completed items)
       const { data: actionItemsData, error: actionItemsError } = await supabase
         .from("meeting_series_action_items")
         .select(`
@@ -498,6 +498,7 @@ const TeamMeeting = () => {
           created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
         `)
         .eq("series_id", meetingData.series_id)
+        .neq("completion_status", "completed")
         .order("order_index");
 
       if (actionItemsError) {
@@ -1117,13 +1118,14 @@ const TeamMeeting = () => {
                 meetingId={currentSeriesId || ""}
                 teamId={teamId}
                 onUpdate={async () => {
-                  // Only refetch action items, not all meeting data
+                  // Only refetch action items, not all meeting data (exclude completed items)
                   if (!meeting?.id || !currentSeriesId) return;
                   
                   const { data: actionItemsData, error: actionItemsError } = await supabase
                     .from("meeting_series_action_items")
                     .select("*")
                     .eq("series_id", currentSeriesId)
+                    .neq("completion_status", "completed")
                     .order("order_index");
 
                   if (actionItemsError) {

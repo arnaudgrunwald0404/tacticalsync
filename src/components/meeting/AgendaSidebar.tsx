@@ -517,11 +517,13 @@ export function AgendaSidebar({
         {/* Parking Lot Section */}
         <div className="mt-6 pt-4 border-t">
           <h3 className="text-sm font-medium mb-2 text-muted-foreground">Parking Lot</h3>
-          <RichTextEditor
-            content={parkingLotContent}
-            onChange={(content) => setParkingLotContent(content)}
-            placeholder="Add notes, ideas, or topics to revisit later..."
-          />
+          <div className="parking-lot-editor">
+            <RichTextEditor
+              content={parkingLotContent}
+              onChange={(content) => setParkingLotContent(content)}
+              placeholder="Add notes, ideas, or topics to revisit later..."
+            />
+          </div>
         </div>
       </div>
     </div>

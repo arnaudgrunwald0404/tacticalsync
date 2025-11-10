@@ -67,7 +67,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
     },
     editorProps: {
       attributes: {
-        class: 'max-w-none focus:outline-none px-3 py-2 bg-background text-base md:text-sm leading-tight',
+        class: 'max-w-none focus:outline-none bg-background text-base md:text-sm',
       },
     },
   })
@@ -261,7 +261,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       )}
 
       {/* Editor Content */}
-      <div className="relative border rounded-md h-auto min-h-[40px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
+      <div className="relative border rounded-t-md h-auto min-h-[40px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
         <EditorContent 
           editor={editor} 
         />

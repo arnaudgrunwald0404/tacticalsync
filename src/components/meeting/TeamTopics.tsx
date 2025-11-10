@@ -617,8 +617,8 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             <Button
               onClick={handleAdd}
               disabled={adding || !newTopic.title.trim()}
-              className="h-10 w-full"
-              size="sm"
+              className="h-10 w-10"
+              size="icon"
               aria-label="Add Topic"
             >
               <Plus className="h-4 w-4" />
@@ -724,7 +724,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
           <Button
             onClick={handleAdd}
             disabled={adding || !newTopic.title.trim()}
-            className="h-10 w-10"
+            className="w-full"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Topic
