@@ -520,7 +520,7 @@ export function AgendaSidebar({
             value={parkingLotContent}
             onChange={(e) => setParkingLotContent(e.target.value)}
             placeholder="Add notes, ideas, or topics to revisit later..."
-            className="min-h-[200px] resize-none"
+            className="min-h-[200px] resize-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
       </div>
