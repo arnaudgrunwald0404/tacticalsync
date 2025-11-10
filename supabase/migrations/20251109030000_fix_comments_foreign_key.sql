@@ -16,3 +16,4 @@ COMMENT ON COLUMN comments.created_by IS 'User who created this comment (referen
 CREATE INDEX IF NOT EXISTS idx_comments_created_by ON comments(created_by);
 
 
+

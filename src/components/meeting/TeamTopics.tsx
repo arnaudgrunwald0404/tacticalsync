@@ -226,7 +226,6 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
                 content={editValues.notes}
                 onChange={(content) => setEditValues(v => ({ ...v, notes: content }))}
                 placeholder="Notes..."
-                className="min-h-[16px]"
               />
             </div>
             <div className="col-span-1 flex flex-col justify-center items-end gap-0.5">
@@ -610,7 +609,6 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
             placeholder="Notes..."
-            className="min-h-[16px]"
           />
         </div>
           <div className="col-span-2">
@@ -720,7 +718,6 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
             placeholder="Notes..."
-            className="min-h-[16px]"
           />
           <Button
             onClick={handleAdd}

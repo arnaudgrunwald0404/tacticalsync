@@ -138,6 +138,7 @@ const TeamMeeting = () => {
     meetingId: meeting?.id,
     seriesId: currentSeriesId || undefined,
     teamId: teamId,
+    previousMeetingId: previousMeetingId || undefined,
     onPriorityChange: handleRealtimeUpdate,
     onTopicChange: handleRealtimeUpdate,
     onActionItemChange: handleRealtimeUpdate,

@@ -910,13 +910,13 @@ const Dashboard = () => {
                           className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
                           onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
-                          <CardHeader className="p-4 sm:p-6">
+                          <CardHeader className="p-3 sm:p-5">
                             <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
                             <CardDescription className="capitalize text-xs sm:text-sm">
                               {meeting.frequency.replace('-', ' ')}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="p-4 sm:p-6 pt-0 flex justify-end">
+                          <CardContent className="p-3 sm:p-5 pt-0 flex justify-end">
                             <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
                               Go to meetings →
                             </Button>

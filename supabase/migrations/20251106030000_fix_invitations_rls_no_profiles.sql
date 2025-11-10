@@ -26,3 +26,4 @@ COMMENT ON POLICY "Users can view invitations sent to them" ON public.invitation
 'Allows users to view invitations sent to their email. Uses JWT email to avoid querying profiles table and causing RLS recursion.';
 
 
+

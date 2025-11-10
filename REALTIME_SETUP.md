@@ -5,7 +5,7 @@ This guide explains how to enable and use real-time synchronization in your Team
 ## Overview
 
 Real-time synchronization allows multiple team members to see updates instantly when anyone makes changes to:
-- **Priorities** - See when team members add, update, or complete priorities
+- **Priorities** - See when team members add, update, or complete priorities (including previous period priorities)
 - **Topics** - Real-time discussion updates
 - **Action Items** - Track action item changes as they happen
 - **Agenda Items** - See agenda updates immediately

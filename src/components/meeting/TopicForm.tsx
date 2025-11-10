@@ -124,7 +124,6 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
             content={topic.notes}
             onChange={(content) => onUpdate({ notes: content })}
             placeholder="Notes..."
-            className="min-h-[16px]"
           />
         </div>
         <div>
@@ -204,7 +203,6 @@ export function TopicForm({ topic, teamMembers, onUpdate, onSubmit, isDesktop = 
         content={topic.notes}
         onChange={(content) => onUpdate({ notes: content })}
         placeholder="Notes..."
-        className="min-h-[32px]"
       />
       <Button
         onClick={onSubmit}

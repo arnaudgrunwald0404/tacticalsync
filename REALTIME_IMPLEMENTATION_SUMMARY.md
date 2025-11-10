@@ -8,6 +8,7 @@ Real-time synchronization has been successfully implemented for your Team Tactic
 
 ### 1. **Real-Time Data Synchronization**
 - ✅ **Priorities** - Instant sync when priorities are added, updated, or completed
+- ✅ **Previous Period Priorities** - Real-time completion status updates for previous meeting priorities
 - ✅ **Topics** - Real-time updates to discussion topics
 - ✅ **Action Items** - Immediate propagation of action item changes
 - ✅ **Agenda Items** - Live updates to meeting agendas
@@ -145,6 +146,7 @@ UI Updates Automatically
 useMeetingRealtime({
   meetingId: meeting?.id,
   seriesId: currentSeriesId,
+  previousMeetingId: previousMeetingId,  // NEW: Enables sync for previous priorities
   onPriorityChange: () => refetchPriorities(),
   onTopicChange: () => refetchTopics(),
   onActionItemChange: () => refetchActionItems(),
@@ -158,6 +160,12 @@ usePresence({
   avatarUrl: currentUserAvatar,
 });
 ```
+
+**Note:** The hook now subscribes to **two separate priority channels**:
+1. Current meeting priorities (`instance_id=eq.${meetingId}`)
+2. Previous meeting priorities (`instance_id=eq.${previousMeetingId}`)
+
+This ensures that when users mark previous period priorities as complete/not complete, all viewing users see the update in real-time.
 
 ## 📊 Performance Metrics
 
@@ -269,6 +277,7 @@ useMeetingRealtimeWithNotifications({
 - [ ] Connection status shows "Connected"
 - [ ] Presence shows online users
 - [ ] Priorities sync in real-time
+- [ ] Previous period priority completion status syncs in real-time
 - [ ] Topics sync in real-time
 - [ ] Action items sync in real-time
 - [ ] Agenda items sync in real-time
@@ -365,4 +374,5 @@ For issues or questions:
 **Implementation Date:** November 10, 2025  
 **Technology:** Supabase Realtime + React Hooks  
 **Status:** ✅ Complete and Ready for Production
+
 

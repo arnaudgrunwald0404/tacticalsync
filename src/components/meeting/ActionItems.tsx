@@ -224,7 +224,6 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
                 content={editValues.notes}
                 onChange={(content) => setEditValues(v => ({ ...v, notes: content }))}
                 placeholder="Notes..."
-                className="min-h-[16px]"
               />
             </div>
             <div className="col-span-1 flex flex-col justify-center items-end gap-0.5">
@@ -657,7 +656,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   content={newItem.notes}
                   onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
                   placeholder="Notes..."
-                  className="min-h-[100px]"
                 />
               </div>
 
@@ -779,7 +777,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                 content={newItem.notes}
                 onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
                 placeholder="Notes..."
-                className="min-h-[16px]"
               />
               <Button
                 onClick={handleAddItem}

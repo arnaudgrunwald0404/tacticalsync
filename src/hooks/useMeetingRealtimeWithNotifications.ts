@@ -7,6 +7,7 @@ interface UseMeetingRealtimeOptions {
   meetingId?: string;
   seriesId?: string;
   teamId?: string;
+  previousMeetingId?: string;
   onPriorityChange?: () => void;
   onTopicChange?: () => void;
   onActionItemChange?: () => void;
@@ -24,6 +25,7 @@ export function useMeetingRealtimeWithNotifications({
   meetingId,
   seriesId,
   teamId,
+  previousMeetingId,
   onPriorityChange,
   onTopicChange,
   onActionItemChange,
@@ -47,7 +49,7 @@ export function useMeetingRealtimeWithNotifications({
     }
   }, [showNotifications, toast, currentUserId]);
 
-  // Priorities subscription
+  // Current meeting priorities subscription
   useRealtimeSubscription({
     table: 'meeting_instance_priorities',
     filter: meetingId ? `instance_id=eq.${meetingId}` : undefined,
@@ -67,6 +69,18 @@ export function useMeetingRealtimeWithNotifications({
       onPriorityChange?.();
     }, [onPriorityChange, showUpdateNotification]),
     enabled: enabled && !!meetingId,
+  });
+
+  // Previous meeting priorities subscription (for completion status updates)
+  useRealtimeSubscription({
+    table: 'meeting_instance_priorities',
+    filter: previousMeetingId ? `instance_id=eq.${previousMeetingId}` : undefined,
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+      console.log('[Realtime] Previous priority updated:', payload.new);
+      showUpdateNotification('Previous priority', 'updated', payload.new.created_by);
+      onPriorityChange?.();
+    }, [onPriorityChange, showUpdateNotification]),
+    enabled: enabled && !!previousMeetingId,
   });
 
   // Topics subscription

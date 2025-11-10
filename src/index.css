@@ -167,8 +167,12 @@
 /* Rich Text Editor Styles */
 .ProseMirror {
   outline: none;
-  min-height: 80px;
-  padding: 12px;
+  min-height: 24px;
+  padding: 0;
+}
+
+.ProseMirror p {
+  margin: 0;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {

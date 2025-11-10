@@ -128,7 +128,6 @@ export function PriorityForm({
           content={priority.priority}
           onChange={(content) => onUpdate(priority.id, "priority", content)}
           placeholder="Enter desired outcome..."
-          className="min-h-[80px]"
         />
       </div>
       
@@ -137,7 +136,6 @@ export function PriorityForm({
           content={priority.activities}
           onChange={(content) => onUpdate(priority.id, "activities", content)}
           placeholder="Enter supporting activities..."
-          className="min-h-[80px]"
         />
       </div>
       
