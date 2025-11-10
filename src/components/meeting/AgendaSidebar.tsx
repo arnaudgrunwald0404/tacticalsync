@@ -174,9 +174,9 @@ export function AgendaSidebar({
   return (
     <div className="w-full h-full group">
       {/* Sidebar Header */}
-      <div className="flex items-center justify-between pb-4 pl-2 pr-4 sticky top-0 z-10 bg-blue-50">
+      <div className="flex items-center justify-between pb-4 mb-4 sticky top-0 z-10 bg-white">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-xl pl-1 flex items-center" data-testid="agenda-section">
+          <h2 className="font-bold text-2xl text-gray-900 flex items-center" data-testid="agenda-section">
             Agenda
           </h2>
           {!isEditingAgenda && isAdmin && (
@@ -212,10 +212,10 @@ export function AgendaSidebar({
       </div>
       
       {/* Sidebar Content */}
-      <div className="pl-2 pr-4 space-y-2 overflow-y-auto max-h-[calc(100vh-250px)]">
+      <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
         {items.length === 0 && !isEditingAgenda ? (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-gray-600">
               Select a template or create your own agenda.
             </p>
             
@@ -224,15 +224,15 @@ export function AgendaSidebar({
               {systemTemplates.map((template) => (
                 <div 
                   key={template.id} 
-                  className="border rounded-lg p-3 bg-card hover:border-primary/50 transition-colors"
+                  className="border rounded-xl p-4 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all border-gray-200"
                 >
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="p-1.5 rounded-md bg-primary/10">
-                      <Sparkles className="h-4 w-4 text-primary" />
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100">
+                      <Sparkles className="h-5 w-5 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium mb-0.5">{template.name}</h3>
-                      <p className="text-xs text-muted-foreground">{template.description}</p>
+                      <h3 className="text-sm font-semibold mb-1 text-gray-900">{template.name}</h3>
+                      <p className="text-xs text-gray-600">{template.description}</p>
                     </div>
                   </div>
                   <div className="space-y-1 mb-3">
@@ -280,7 +280,7 @@ export function AgendaSidebar({
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="space-y-1.5"
+                  className="space-y-3"
                 >
                   {displayItems.map((item: AgendaItemWithProfile, index) => (
                     <Draggable
@@ -293,8 +293,10 @@ export function AgendaSidebar({
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`border rounded-lg p-3 bg-background transition-colors relative group ${
-                            snapshot.isDragging ? 'shadow-lg border-primary' : 'hover:border-primary/50'
+                          className={`border rounded-xl p-4 bg-white transition-all relative group ${
+                            snapshot.isDragging 
+                              ? 'shadow-2xl border-blue-400 scale-[1.02]' 
+                              : 'shadow-sm hover:shadow-md hover:border-blue-300 border-gray-200'
                           }`}
                         >
                           {/* per-header pen now handles edit entry; row-level pen removed */}

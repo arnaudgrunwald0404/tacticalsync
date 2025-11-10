@@ -919,7 +919,7 @@ const TeamMeeting = () => {
           {/* Main Content */}
           <div className="flex-1 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
-                <div className="space-y-4 mb-4">
+                <div className="space-y-4 mb-4 sm:mb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
@@ -1049,7 +1049,7 @@ const TeamMeeting = () => {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-2 sm:mb-4">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
@@ -1094,7 +1094,7 @@ const TeamMeeting = () => {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-4 sm:mb-6">
                 <Button
                   variant="ghost"
                   size="sm"
