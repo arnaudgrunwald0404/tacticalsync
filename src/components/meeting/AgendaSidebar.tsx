@@ -15,7 +15,6 @@ import { MeetingDataActions } from "@/types/meeting";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useHotkeys } from "react-hotkeys-hook";
-import RichTextEditor from "@/components/ui/rich-text-editor";
 
 interface AgendaSidebarProps {
   items: AgendaItemWithProfile[];
@@ -517,13 +516,12 @@ export function AgendaSidebar({
         {/* Parking Lot Section */}
         <div className="mt-6 pt-4 border-t">
           <h3 className="text-sm font-medium mb-2 text-muted-foreground">Parking Lot</h3>
-          <div className="parking-lot-editor">
-            <RichTextEditor
-              content={parkingLotContent}
-              onChange={(content) => setParkingLotContent(content)}
-              placeholder="Add notes, ideas, or topics to revisit later..."
-            />
-          </div>
+          <Textarea
+            value={parkingLotContent}
+            onChange={(e) => setParkingLotContent(e.target.value)}
+            placeholder="Add notes, ideas, or topics to revisit later..."
+            className="min-h-[200px] resize-none"
+          />
         </div>
       </div>
     </div>
