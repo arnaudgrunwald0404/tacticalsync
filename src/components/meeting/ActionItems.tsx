@@ -69,9 +69,10 @@ interface SortableActionItemRowProps {
   onSetCompletion: (status: CompletionStatus) => void;
   onRefresh: () => void;
   canModify: boolean;
+  isLast: boolean;
 }
 
-const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetCompletion, onRefresh, canModify }: SortableActionItemRowProps) => {
+const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetCompletion, onRefresh, canModify, isLast }: SortableActionItemRowProps) => {
   const assignedMember = members.find(m => m.user_id === item.assigned_to);
   const {
     attributes,
@@ -154,7 +155,8 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-blue-200/50 px-3 py-1 bg-white group",
+        "px-3 py-1 bg-white group",
+        !isLast && "border-b border-blue-200/50",
         isDragging && "shadow-lg"
       )}
     >
@@ -500,55 +502,54 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
 
   return (
     <>
-      <div className="space-y-4">
-        {/* Action Items List */}
-        {items.length > 0 && (
-          <div className="space-y-2">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
+      {/* Action Items List */}
+      {items.length > 0 && (
+        <div className="space-y-2 mb-4">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={items.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <SortableContext
-                items={items.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {items.map((item) => (
-                  <SortableActionItemRow
-                    key={item.id}
-                    item={item}
-                    members={members}
-                    memberNames={memberNames}
-                    onDelete={handleDelete}
-                    canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
-                    onSetCompletion={(status) => handleSetCompletion(item.id, status)}
-                    onRefresh={onUpdate}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          </div>
-        )}
+              {items.map((item, index) => (
+                <SortableActionItemRow
+                  key={item.id}
+                  item={item}
+                  members={members}
+                  memberNames={memberNames}
+                  onDelete={handleDelete}
+                  canModify={isSuperAdmin || isTeamAdmin || item.assigned_to === currentUserId || item.created_by === currentUserId}
+                  onSetCompletion={(status) => handleSetCompletion(item.id, status)}
+                  onRefresh={onUpdate}
+                  isLast={index === items.length - 1}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
 
-        {items.length === 0 && (
-          <div className="text-center py-2 text-muted-foreground">
-            <p className="text-sm">No action items yet.</p>
-          </div>
-        )}
+      {items.length === 0 && (
+        <div className="text-center py-2 text-muted-foreground mb-4">
+          <p className="text-sm">No action items yet.</p>
+        </div>
+      )}
 
-        {/* Add New Action Item Form */}
-        <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Add Action Item</h4>
+      {/* Add New Action Item Form */}
+      <div className="bg-blue-200 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
             
             {/* Desktop Layout */}
-            <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start">
+            <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-6">
               {/* Title Input */}
               <div className="col-span-8">
                 <Input
                   id="new-action-item-title"
                   value={newItem.title}
                   onChange={(e) => setNewItem(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Action item"
+                  placeholder="Add new action item here..."
                   className="h-10"
                 />
               </div>
@@ -674,7 +675,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
             </div>
 
             {/* Mobile Layout */}
-            <div className="sm:hidden space-y-3">
+            <div className="sm:hidden space-y-3 px-4 sm:px-6 pb-4 sm:pb-6">
               <Input
                 id="new-action-item-title"
                 value={newItem.title}
@@ -788,7 +789,6 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </Button>
             </div>
           </div>
-      </div>
 
       {selectedItem && (
         <CommentsDialog
