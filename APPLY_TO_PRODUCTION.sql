@@ -231,3 +231,4 @@ CREATE POLICY "Users manage own template items" ON public.agenda_template_items
 
 SELECT 'All migrations applied successfully!' as status;
 
+

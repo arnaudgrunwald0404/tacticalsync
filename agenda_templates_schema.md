@@ -89,3 +89,4 @@ COMMENT ON COLUMN agenda_templates.is_system IS 'System templates are managed by
 COMMENT ON COLUMN agenda_templates.user_id IS 'NULL for system templates, user ID for user-created templates';
 ```
 
+
