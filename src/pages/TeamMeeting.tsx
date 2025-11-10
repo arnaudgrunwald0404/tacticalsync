@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,9 @@ import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, ge
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import { MeetingProvider } from "@/contexts/MeetingContext";
+import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
+import { usePresence } from "@/hooks/usePresence";
+import { PresenceIndicator } from "@/components/realtime/PresenceIndicator";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 

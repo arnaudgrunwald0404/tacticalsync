@@ -31,3 +31,9 @@ dist-ssr
 .env.test
 *.env
 .env.local
+
+# Screenshots and error images
+login-error-*.png
+*.png
+!public/**/*.png
+!src/**/*.png
