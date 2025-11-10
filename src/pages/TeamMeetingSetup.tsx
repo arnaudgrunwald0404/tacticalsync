@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import { useRoles } from "@/hooks/useRoles";
+import { getMeetingStartDate, getISODateString } from "@/lib/dateUtils";
 
 const TeamMeetingSetup = () => {
   const navigate = useNavigate();
@@ -126,15 +127,10 @@ const TeamMeetingSetup = () => {
 
       if (error) throw error;
 
-      // Calculate start date based on frequency
+      // Calculate start date based on frequency using proper utility function
       const today = new Date();
-      const startDate = frequency === "weekly" || frequency === "bi-weekly" 
-        ? new Date(today.setDate(today.getDate() - today.getDay() + 1)) // Monday of current week
-        : frequency === "monthly"
-        ? new Date(today.getFullYear(), today.getMonth(), 1) // First of month
-        : today;
-      
-      const startDateStr = startDate.toISOString().split('T')[0];
+      const startDate = getMeetingStartDate(frequency, today);
+      const startDateStr = getISODateString(startDate);
 
       // Create first meeting instance (or get existing one)
       // First, check if it already exists

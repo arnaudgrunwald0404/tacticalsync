@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import RichTextEditor from "@/components/ui/rich-text-editor";
+import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Check, Clock, X, GripVertical, Pencil, Trash } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -61,9 +61,10 @@ interface SortableTopicRowProps {
   canModify: boolean;
   onDelete: (id: string) => void;
   onRefresh: () => void;
+  isLast: boolean;
 }
 
-const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDelete, onRefresh, canModify }: SortableTopicRowProps) => {
+const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDelete, onRefresh, canModify, isLast }: SortableTopicRowProps) => {
   const {
     attributes,
     listeners,
@@ -147,7 +148,8 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-blue-200/50 px-3 py-1 bg-white group",
+        "px-3 py-1 bg-white group",
+        !isLast && "border-b border-blue-200/50",
         isDragging && "shadow-lg"
       )}
     >
@@ -226,7 +228,6 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
                 content={editValues.notes}
                 onChange={(content) => setEditValues(v => ({ ...v, notes: content }))}
                 placeholder="Notes..."
-                className="min-h-[16px]"
               />
             </div>
             <div className="col-span-1 flex flex-col justify-center items-end gap-0.5">
@@ -461,10 +462,10 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
   };
 
   return (
-    <div className="space-y-4">
+    <>
       {/* Existing Topics */}
       {items.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2 mb-4">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -474,7 +475,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
               items={items.map((item) => item.id)}
               strategy={verticalListSortingStrategy}
             >
-              {items.map((item) => (
+              {items.map((item, index) => (
                 <SortableTopicRow
                   key={item.id}
                   item={item}
@@ -495,6 +496,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
                   }}
                   onDelete={handleDelete}
                   onRefresh={onUpdate}
+                  isLast={index === items.length - 1}
                 />
               ))}
             </SortableContext>
@@ -503,20 +505,19 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       )}
 
       {items.length === 0 && (
-        <div className="text-center py-2 text-muted-foreground">
-          <p className="text-sm">No team topics yet for this meeting.</p>
+        <div className="text-center py-2 text-muted-foreground mb-4">
+          <p className="text-sm">No topics yet for this meeting.</p>
         </div>
       )}
 
       {/* Add New Topic Form */}
-      <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
-        <h4 className="text-sm font-medium text-muted-foreground">Add Topic</h4>
+      <div className="bg-blue-200 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
         
         {/* Desktop Layout */}
-        <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start">
+        <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-4">
           <div className="col-span-8">
             <Input
-              placeholder="Topic title..."
+              placeholder="Add new topic here..."
               value={newTopic.title}
               onChange={(e) => setNewTopic({ ...newTopic, title: e.target.value })}
               className="h-10"
@@ -610,15 +611,14 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
             placeholder="Notes..."
-            className="min-h-[16px]"
           />
         </div>
           <div className="col-span-2">
             <Button
               onClick={handleAdd}
               disabled={adding || !newTopic.title.trim()}
-              className="h-10 w-full"
-              size="sm"
+              className="h-10 w-10"
+              size="icon"
               aria-label="Add Topic"
             >
               <Plus className="h-4 w-4" />
@@ -627,7 +627,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
         </div>
 
         {/* Mobile Layout */}
-        <div className="sm:hidden space-y-3">
+        <div className="sm:hidden space-y-3 px-4 sm:px-6 pb-4 sm:pb-6">
           <Input
             placeholder="Topic title..."
             value={newTopic.title}
@@ -720,12 +720,11 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             content={newTopic.notes}
             onChange={(content) => setNewTopic({ ...newTopic, notes: content })}
             placeholder="Notes..."
-            className="min-h-[16px]"
           />
           <Button
             onClick={handleAdd}
             disabled={adding || !newTopic.title.trim()}
-            className="h-10 w-10"
+            className="w-full"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Topic
@@ -734,7 +733,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
 
         
       </div>
-    </div>
+    </>
   );
 };
 

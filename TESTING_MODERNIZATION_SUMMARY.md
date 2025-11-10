@@ -401,3 +401,4 @@ npm run test:e2e -- auth-flow.spec.ts
 **Branch:** `modernize-testing-infrastructure`  
 **Commits:** 3 (Phase 1, 2, 3)
 
+

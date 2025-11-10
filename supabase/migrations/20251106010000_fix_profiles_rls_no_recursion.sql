@@ -97,3 +97,4 @@ CREATE POLICY "Users can update their own profile" ON public.profiles
 -- 4. No infinite recursion errors occur
 
 
+

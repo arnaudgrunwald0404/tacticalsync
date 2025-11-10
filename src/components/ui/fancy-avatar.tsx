@@ -50,17 +50,15 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
       "#FF00FF", "#DA70D6", "#BA55D3", "#9370DB", "#8A2BE2", "#9400D3", "#9932CC", "#8B008B", "#FF1493", "#C71585"
     ];
     
-    // Generate 4 unique colors for each avatar
+    // Generate 2 unique colors for each avatar
     const colorIndices = [
       Math.abs(hash1) % allColors.length,
-      Math.abs(hash2) % allColors.length,
-      Math.abs(hash3) % allColors.length,
-      Math.abs((hash1 + hash2) % 1000) % allColors.length
+      Math.abs(hash2) % allColors.length
     ];
     
     // Ensure colors are different
     const uniqueColors = [...new Set(colorIndices.map(i => allColors[i]))];
-    while (uniqueColors.length < 4) {
+    while (uniqueColors.length < 2) {
       const newIndex = Math.abs((hash1 + uniqueColors.length * 7) % 1000) % allColors.length;
       if (!uniqueColors.includes(allColors[newIndex])) {
         uniqueColors.push(allColors[newIndex]);
@@ -70,13 +68,13 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
     const patterns = [
       "triangles", "circles", "hexagons", "squares", "diamonds", 
       "waves", "chevrons", "stars", "polygons", "spirals", "dots", "lines",
-      "grid", "diagonal", "radial", "concentric"
+      "grid", "diagonal", "radial"
     ];
     
     const rotations = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225];
     
     return {
-      colors: uniqueColors.slice(0, 4),
+      colors: uniqueColors.slice(0, 2),
       pattern: patterns[Math.abs(hash2) % patterns.length],
       rotation: rotations[Math.abs(hash3) % rotations.length]
     };
@@ -111,7 +109,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
   const initials = getInitials(displayName || cleanNameForInitials(name));
   
   const sizeClasses = {
-    sm: "w-8 h-8 text-sm",
+    sm: "w-7 h-7 text-sm",
     md: "w-12 h-12 text-lg", 
     lg: "w-16 h-16 text-2xl"
   };
@@ -228,7 +226,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               <pattern id={`dots-${name}`} patternUnits="userSpaceOnUse" width="15" height="15">
                 <circle cx="7.5" cy="7.5" r="3" fill={colors[0]} opacity="0.7"/>
                 <circle cx="2" cy="2" r="1.5" fill={colors[1]} opacity="0.9"/>
-                <circle cx="13" cy="13" r="2" fill={colors[2]} opacity="0.8"/>
+                <circle cx="13" cy="13" r="2" fill={colors[0]} opacity="0.8"/>
               </pattern>
             </defs>
             <rect width="100" height="100" fill={`url(#dots-${name})`}
@@ -289,7 +287,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
               <radialGradient id={`radial-${name}`} cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stopColor={colors[0]} stopOpacity="0.9"/>
                 <stop offset="50%" stopColor={colors[1]} stopOpacity="0.7"/>
-                <stop offset="100%" stopColor={colors[2]} stopOpacity="0.5"/>
+                <stop offset="100%" stopColor={colors[0]} stopOpacity="0.5"/>
               </radialGradient>
             </defs>
             <rect width="100" height="100" fill={`url(#radial-${name})`}
@@ -303,8 +301,8 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
           <svg viewBox="0 0 100 100" className="absolute inset-0">
             <circle cx="50" cy="50" r="45" fill={colors[0]} opacity="0.3"/>
             <circle cx="50" cy="50" r="35" fill={colors[1]} opacity="0.5"/>
-            <circle cx="50" cy="50" r="25" fill={colors[2]} opacity="0.7"/>
-            <circle cx="50" cy="50" r="15" fill={colors[3]} opacity="0.9"/>
+            <circle cx="50" cy="50" r="25" fill={colors[0]} opacity="0.7"/>
+            <circle cx="50" cy="50" r="15" fill={colors[1]} opacity="0.9"/>
           </svg>
         );
       
@@ -313,7 +311,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
           <div 
             className="absolute inset-0 rounded-full opacity-90"
             style={{
-              background: `linear-gradient(135deg, ${colors[0]}CC 0%, rgba(255,255,255,0.3) 25%, ${colors[1]}CC 50%, rgba(255,255,255,0.2) 75%, ${colors[2]}CC 100%)`,
+              background: `linear-gradient(135deg, ${colors[0]}CC 0%, rgba(255,255,255,0.3) 25%, ${colors[1]}CC 50%, rgba(255,255,255,0.2) 75%, ${colors[0]}CC 100%)`,
               transform: `rotate(${rotation}deg)`,
               filter: 'brightness(1.2) saturate(1.3)'
             }}
@@ -338,7 +336,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
       <div 
         className="absolute inset-0 rounded-full opacity-80"
         style={{
-          background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4) 0%, ${config.colors[2]}80 30%, transparent 70%), 
+          background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4) 0%, ${config.colors[1]}80 30%, transparent 70%), 
                        linear-gradient(45deg, ${config.colors[0]}CC 0%, ${config.colors[1]}CC 50%, rgba(255,255,255,0.3) 100%)`
         }}
       />
@@ -354,7 +352,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
       {/* Initials */}
       <div className="relative z-20 flex items-center justify-center h-full">
         <span 
-          className="font-black text-white drop-shadow-lg tracking-tighter"
+          className="font-bold text-white drop-shadow-lg tracking-tighter"
           style={{ 
             textShadow: '2px 2px 4px rgba(0,0,0,0.7), 0 0 10px rgba(255,255,255,0.3)',
             WebkitFontSmoothing: 'antialiased',

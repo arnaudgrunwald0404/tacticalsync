@@ -68,7 +68,8 @@ Before testing, ensure:
 - Update existing priority (change title, status, assignee)
 - Delete a priority
 - Reorder priorities (drag and drop)
-- Change completion status
+- Change completion status for current priorities
+- **Mark previous period priority as complete/not complete** - should sync in real-time across all users viewing the meeting
 
 ---
 

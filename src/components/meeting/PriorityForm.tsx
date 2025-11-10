@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import RichTextEditor from "@/components/ui/rich-text-editor";
+import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { PriorityRow } from "@/types/priorities";
@@ -128,7 +128,6 @@ export function PriorityForm({
           content={priority.priority}
           onChange={(content) => onUpdate(priority.id, "priority", content)}
           placeholder="Enter desired outcome..."
-          className="min-h-[80px]"
         />
       </div>
       
@@ -137,7 +136,6 @@ export function PriorityForm({
           content={priority.activities}
           onChange={(content) => onUpdate(priority.id, "activities", content)}
           placeholder="Enter supporting activities..."
-          className="min-h-[80px]"
         />
       </div>
       

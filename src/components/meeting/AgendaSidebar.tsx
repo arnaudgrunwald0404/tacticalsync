@@ -15,7 +15,6 @@ import { MeetingDataActions } from "@/types/meeting";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useHotkeys } from "react-hotkeys-hook";
-import RichTextEditor from "@/components/ui/rich-text-editor";
 
 interface AgendaSidebarProps {
   items: AgendaItemWithProfile[];
@@ -56,6 +55,11 @@ export function AgendaSidebar({
   
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [notesContent, setNotesContent] = useState<Record<string, string>>({});
+  const [parkingLotContent, setParkingLotContent] = useState<string>(() => {
+    // Load from localStorage on mount
+    const saved = localStorage.getItem('meeting-parking-lot');
+    return saved || "";
+  });
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
 
@@ -68,6 +72,13 @@ export function AgendaSidebar({
       actions.handleUpdateNotes(itemId, plainText);
     }
   });
+  
+  // Auto-save parking lot to localStorage
+  useEffect(() => {
+    if (parkingLotContent !== null) {
+      localStorage.setItem('meeting-parking-lot', parkingLotContent);
+    }
+  }, [parkingLotContent]);
 
   const shouldShowNotes = (item: AgendaItemWithProfile) => {
     // Don't show notes when creating from scratch (item has a temp id)
@@ -174,7 +185,7 @@ export function AgendaSidebar({
   return (
     <div className="w-full h-full group">
       {/* Sidebar Header */}
-      <div className="flex items-center justify-between pb-4 mb-4 sticky top-0 z-10 bg-white">
+      <div className="flex items-center justify-between pb-4 sticky top-0 z-10 bg-white">
         <div className="flex items-center gap-2">
           <h2 className="font-bold text-2xl text-gray-900 flex items-center" data-testid="agenda-section">
             Agenda
@@ -192,7 +203,7 @@ export function AgendaSidebar({
               <SaveButton
                 size="sm"
                 variant="ghost"
-                className="p-1 h-7 hover:bg-muted/50"
+                className="p-1 h-7 hover:bg-muted/100"
                 onClick={async () => {
                   await onSaveEdit();
                 }}
@@ -200,7 +211,7 @@ export function AgendaSidebar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="p-1 h-7 hover:bg-muted/50 flex items-center gap-1"
+                className="p-1 h-7 hover:bg-muted/100 flex items-center gap-1"
                 onClick={() => onCancelEdit()}
               >
                 <X className="h-4 w-4" />
@@ -212,7 +223,7 @@ export function AgendaSidebar({
       </div>
       
       {/* Sidebar Content */}
-      <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
         {items.length === 0 && !isEditingAgenda ? (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
@@ -280,7 +291,7 @@ export function AgendaSidebar({
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="space-y-3"
+                  className="space-y-1"
                 >
                   {displayItems.map((item: AgendaItemWithProfile, index) => (
                     <Draggable
@@ -293,14 +304,13 @@ export function AgendaSidebar({
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`border rounded-xl p-4 bg-white transition-all relative group ${
+                          className={`p-1.5 transition-all relative group ${
                             snapshot.isDragging 
-                              ? 'shadow-2xl border-blue-400 scale-[1.02]' 
-                              : 'shadow-sm hover:shadow-md hover:border-blue-300 border-gray-200'
+                              ? 'bg-blue-50 scale-[1.02]' 
+                              : 'hover:bg-gray-50'
                           }`}
                         >
-                          {/* per-header pen now handles edit entry; row-level pen removed */}
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-2">
                             {isEditingAgenda && (
                               <div
                                 {...provided.dragHandleProps}
@@ -316,7 +326,7 @@ export function AgendaSidebar({
                                 className="mt-0.5"
                               />
                             )}
-                            <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="flex-1 min-w-0 space-y-1">
                               {/* Row 1: Title and Delete */}
                               <div className="flex items-center gap-3">
                                 {isEditingAgenda ? (
@@ -399,7 +409,7 @@ export function AgendaSidebar({
                               ) : (
                                 <div className="flex items-center gap-3 min-w-0">
                                   {item.assigned_to_profile ? (
-                                    <div className="flex items-center gap-2 min-w-0">
+                                    <div className="flex items-center" title={memberNames.get(item.assigned_to) || 'Unknown'}>
                                       {item.assigned_to_profile.avatar_name ? (
                                         <FancyAvatar 
                                           name={item.assigned_to_profile.avatar_name}
@@ -414,9 +424,6 @@ export function AgendaSidebar({
                                           </AvatarFallback>
                                         </Avatar>
                                       )}
-                                      <span className="text-sm text-muted-foreground truncate min-w-0">
-                                        {memberNames.get(item.assigned_to) || 'Unknown'}
-                                      </span>
                                     </div>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">All</span>
@@ -434,10 +441,10 @@ export function AgendaSidebar({
                                       onClick={() => handleNotesToggle(item.id)}
                                       className={`p-2 rounded-md transition-colors ${
                                         !item.notes || item.notes.trim() === '' 
-                                          ? 'text-muted-foreground hover:bg-muted/10' 
+                                          ? 'text-muted-foreground hover:bg-muted/50' 
                                           : expandedNotes.includes(item.id) 
                                             ? 'text-primary bg-primary/10' 
-                                            : 'text-primary hover:bg-primary/10'
+                                            : 'text-primary hover:bg-primary/50'
                                       }`}
                                     >
                                       <MessageSquare className="h-4 w-4" />
@@ -467,7 +474,6 @@ export function AgendaSidebar({
                                       immediateSave(item.id, content);
                                     }}
                                     placeholder="Add notes..."
-                                    className="text-sm border-none focus-visible:ring-0"
                                   />
                                 </div>
                               )}
@@ -506,6 +512,17 @@ export function AgendaSidebar({
             </Droppable>
           </DragDropContext>
         )}
+        
+        {/* Parking Lot Section */}
+        <div className="mt-6 pt-4 border-t">
+          <h3 className="text-sm font-medium mb-2 text-muted-foreground">Parking Lot</h3>
+          <Textarea
+            value={parkingLotContent}
+            onChange={(e) => setParkingLotContent(e.target.value)}
+            placeholder="Add notes, ideas, or topics to revisit later..."
+            className="min-h-[200px] resize-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </div>
       </div>
     </div>
   );

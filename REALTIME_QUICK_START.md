@@ -43,6 +43,7 @@ You should see **7 tables** listed. ✅
 
 ### Features
 - ✅ Instant sync of priorities, topics, action items, agenda
+- ✅ Real-time completion status updates for current and previous period priorities
 - ✅ See who's online in the meeting
 - ✅ Automatic reconnection if network drops
 - ✅ No page refresh needed!
@@ -107,4 +108,5 @@ You now have real-time collaboration! Team members can work together on meetings
 - [Realtime Docs](https://supabase.com/docs/guides/realtime)
 
 **Need Help?** Check the troubleshooting section in `REALTIME_TESTING_GUIDE.md`
+
 

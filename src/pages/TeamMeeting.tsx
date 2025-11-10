@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,7 @@ const TeamMeeting = () => {
   const [previousMeetingId, setPreviousMeetingId] = useState<string | null>(null);
   const meetingPrioritiesRef = useRef<MeetingPrioritiesRef>(null);
   const actionItemsRef = useRef<ActionItemsRef>(null);
+  const isFetchingRef = useRef(false); // OPTIMIZED: Prevent concurrent fetches
   const [isEditingAgenda, setIsEditingAgenda] = useState(false);
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
     priorities: false,
@@ -126,22 +127,115 @@ const TeamMeeting = () => {
     enabled: !!meetingId && !!currentUserName,
   });
 
-  // Callback to refetch meeting items when real-time changes occur
-  const handleRealtimeUpdate = useCallback(async () => {
-    if (meeting?.id) {
-      await fetchMeetingItems(meeting.id);
-    }
+  // OPTIMIZED: Granular callbacks to refetch only changed data
+  const handlePriorityChange = useCallback(async () => {
+    if (!meeting?.id) return;
+    
+    const [currentResult, previousResult] = await Promise.all([
+      supabase
+        .from("meeting_instance_priorities")
+        .select(`
+          *,
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        `)
+        .eq("instance_id", meeting.id)
+        .order("order_index"),
+      
+      // Also fetch previous if exists
+      previousMeetingId
+        ? supabase
+            .from("meeting_instance_priorities")
+            .select(`
+              *,
+              assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+              created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+            `)
+            .eq("instance_id", previousMeetingId)
+            .order("order_index")
+        : Promise.resolve({ data: [], error: null })
+    ]);
+
+    if (!currentResult.error) setPriorityItems(currentResult.data || []);
+    if (!previousResult.error) setPreviousPriorityItems(previousResult.data || []);
+  }, [meeting?.id, previousMeetingId]);
+
+  const handleTopicChange = useCallback(async () => {
+    if (!meeting?.id) return;
+    
+    const { data, error } = await supabase
+      .from("meeting_instance_topics")
+      .select("*")
+      .eq("instance_id", meeting.id)
+      .order("order_index");
+    
+    if (!error) setTeamTopicItems(data || []);
   }, [meeting?.id]);
 
-  // Subscribe to real-time updates for priorities, topics, action items, and agenda
+  const handleActionItemChange = useCallback(async () => {
+    if (!currentSeriesId) return;
+    
+    const { data, error } = await supabase
+      .from("meeting_series_action_items")
+      .select(`
+        *,
+        assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+        created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+      `)
+      .eq("series_id", currentSeriesId)
+      .order("order_index");
+    
+    if (!error) setActionItems(data || []);
+  }, [currentSeriesId]);
+
+  const handleAgendaChange = useCallback(async () => {
+    if (!currentSeriesId) return;
+    
+    const { data: agendaData, error } = await supabase
+      .from("meeting_series_agenda")
+      .select("*")
+      .eq("series_id", currentSeriesId)
+      .order("order_index");
+    
+    if (error) return;
+    
+    // Fetch profiles for assigned users
+    const assignedUserIds = (agendaData || [])
+      .map(item => item.assigned_to)
+      .filter((id): id is string => id != null);
+    
+    let profilesById: Record<string, any> = {};
+    if (assignedUserIds.length > 0) {
+      const uniqueUserIds = [...new Set(assignedUserIds)];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+        .in("id", uniqueUserIds);
+      
+      profilesById = (profiles || []).reduce((acc, profile) => {
+        acc[profile.id] = profile;
+        return acc;
+      }, {} as Record<string, any>);
+    }
+
+    const transformedAgendaData = (agendaData || []).map(item => ({
+      ...item,
+      is_completed: item.completion_status === 'completed',
+      assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
+    }));
+    setAgendaItems(transformedAgendaData);
+  }, [currentSeriesId]);
+
+  // Subscribe to real-time updates with granular handlers
   useMeetingRealtime({
     meetingId: meeting?.id,
     seriesId: currentSeriesId || undefined,
     teamId: teamId,
-    onPriorityChange: handleRealtimeUpdate,
-    onTopicChange: handleRealtimeUpdate,
-    onActionItemChange: handleRealtimeUpdate,
-    onAgendaChange: handleRealtimeUpdate,
+    previousMeetingId: previousMeetingId || undefined,
+    onPriorityChange: handlePriorityChange,
+    onTopicChange: handleTopicChange,
+    onActionItemChange: handleActionItemChange,
+    onAgendaChange: handleAgendaChange,
     enabled: !!meeting?.id && !!currentSeriesId,
   });
 
@@ -167,28 +261,36 @@ const TeamMeeting = () => {
   }, [teamId, meetingId]);
 
   const fetchTeamAndMeeting = async () => {
+    // OPTIMIZED: Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('Fetch already in progress, skipping...');
+      return;
+    }
+    
+    isFetchingRef.current = true;
+
     try {
+      // OPTIMIZED: Fetch team and meeting series in parallel
+      const [teamResult, recurringResult] = await Promise.all([
+        supabase
+          .from("teams")
+          .select("*")
+          .eq("id", teamId)
+          .single(),
+        supabase
+          .from('meeting_series')
+          .select('id,name,frequency,created_by')
+          .filter('id', 'eq', meetingId)
+          .limit(1)
+          .single()
+      ]);
+
+      if (teamResult.error) throw teamResult.error;
+      if (recurringResult.error) throw recurringResult.error;
       
-      // Fetch team
-      const { data: teamData, error: teamError } = await supabase
-        .from("teams")
-        .select("*")
-        .eq("id", teamId)
-        .single();
-
-      if (teamError) throw teamError;
-      setTeam(teamData);
-
-      // Fetch meeting series
-      const { data: recurringData, error: recurringError } = await supabase
-        .from('meeting_series')
-        .select('id,name,frequency,created_by')
-        .filter('id', 'eq', meetingId)
-        .limit(1)
-        .single();
-
-      if (recurringError) throw recurringError;
-      setRecurringMeeting(recurringData as RecurringMeeting);
+      setTeam(teamResult.data);
+      const recurringData = recurringResult.data as RecurringMeeting;
+      setRecurringMeeting(recurringData);
 
       // Get or create current period's meeting
       const today = new Date();
@@ -239,15 +341,18 @@ const TeamMeeting = () => {
 
       console.log('Final meeting data:', meetingData);
       
-      // Fetch all meetings first
-      await fetchAllMeetings(meetingId);
-      
-      // After fetching all meetings, determine which meeting to display
-      const { data: allMeetingsData } = await supabase
+      // OPTIMIZED: Fetch all meetings once (removed duplicate query)
+      const { data: allMeetingsData, error: allMeetingsError } = await supabase
         .from("meeting_instances")
         .select("*")
         .eq("series_id", meetingId)
         .order("start_date", { ascending: false });
+      
+      if (allMeetingsError) {
+        console.error("Error fetching meetings:", allMeetingsError);
+      } else {
+        setAllMeetings(allMeetingsData || []);
+      }
       
       let selectedMeeting = meetingData;
       
@@ -278,10 +383,14 @@ const TeamMeeting = () => {
       }
       
       setMeeting(selectedMeeting);
-      await fetchMeetingItems(selectedMeeting.id);
-      await fetchTeamAdmin(teamId);
-      await fetchCurrentUserRole(teamId);
       updatePreviousMeetingId(selectedMeeting);
+      
+      // OPTIMIZED: Fetch meeting items, admin, and user role in parallel
+      await Promise.all([
+        fetchMeetingItems(selectedMeeting.id),
+        fetchTeamAdmin(teamId),
+        fetchCurrentUserRole(teamId)
+      ]);
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -290,6 +399,7 @@ const TeamMeeting = () => {
       });
     } finally {
       setLoading(false);
+      isFetchingRef.current = false; // OPTIMIZED: Allow future fetches
     }
   };
 
@@ -381,29 +491,79 @@ const TeamMeeting = () => {
       // Store the series_id for use in ActionItems
       setCurrentSeriesId(meetingData.series_id);
 
-      // Fetch agenda items from meeting_series_agenda
-      // Simplified query without profile joins to avoid RLS issues
-      const { data: agendaData, error: agendaError } = await supabase
-        .from("meeting_series_agenda")
-        .select("*")
-        .eq("series_id", meetingData.series_id)
-        .order("order_index");
+      // OPTIMIZED: Batch fetch all data in parallel using Promise.all
+      const [
+        agendaResult,
+        prioritiesResult,
+        topicsResult,
+        actionItemsResult,
+        previousMeetingResult
+      ] = await Promise.all([
+        // Agenda items
+        supabase
+          .from("meeting_series_agenda")
+          .select("*")
+          .eq("series_id", meetingData.series_id)
+          .order("order_index"),
+        
+        // Current priorities with profile joins
+        supabase
+          .from("meeting_instance_priorities")
+          .select(`
+            *,
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+          `)
+          .eq("instance_id", meetingId)
+          .order("order_index"),
+        
+        // Topics
+        supabase
+          .from("meeting_instance_topics")
+          .select("*")
+          .eq("instance_id", meetingId)
+          .order("order_index"),
+        
+        // Action items with profile joins
+        supabase
+          .from("meeting_series_action_items")
+          .select(`
+            *,
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+          `)
+          .eq("series_id", meetingData.series_id)
+          .order("order_index"),
+        
+        // Previous meeting lookup
+        supabase
+          .from("meeting_instances")
+          .select("id")
+          .eq("series_id", meetingData.series_id)
+          .lt("start_date", meetingData.start_date)
+          .order("start_date", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ]);
 
-      if (agendaError) {
-        console.error("Error fetching agenda items:", agendaError);
-        console.error("Agenda error details:", JSON.stringify(agendaError, null, 2));
+      // Process agenda items
+      if (agendaResult.error) {
+        console.error("Error fetching agenda items:", agendaResult.error);
       } else {
-        // Fetch profiles for assigned_to users
-        const assignedUserIds = (agendaData || [])
+        // OPTIMIZED: Collect all unique user IDs from agenda items that need profiles
+        const assignedUserIds = (agendaResult.data || [])
           .map(item => item.assigned_to)
           .filter((id): id is string => id != null);
         
         let profilesById: Record<string, any> = {};
+        
+        // Only fetch profiles if there are assigned users
         if (assignedUserIds.length > 0) {
+          const uniqueUserIds = [...new Set(assignedUserIds)];
           const { data: profiles } = await supabase
             .from("profiles")
             .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-            .in("id", assignedUserIds);
+            .in("id", uniqueUserIds);
           
           profilesById = (profiles || []).reduce((acc, profile) => {
             acc[profile.id] = profile;
@@ -411,46 +571,38 @@ const TeamMeeting = () => {
           }, {} as Record<string, any>);
         }
 
-        // Transform the data to include is_completed field and assigned_to_profile for compatibility
-        const transformedAgendaData = (agendaData || []).map(item => ({
+        // Transform the data
+        const transformedAgendaData = (agendaResult.data || []).map(item => ({
           ...item,
           is_completed: item.completion_status === 'completed',
           assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
         }));
-        console.log("Fetched agenda items:", transformedAgendaData);
-        console.log("Number of agenda items:", agendaData?.length || 0);
         setAgendaItems(transformedAgendaData);
       }
 
-      // Fetch priorities from meeting_instance_priorities
-      const { data: prioritiesData, error: prioritiesError } = await supabase
-        .from("meeting_instance_priorities")
-        .select(`
-          *,
-          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
-        `)
-        .eq("instance_id", meetingId)
-        .order("order_index");
-
-      if (prioritiesError) {
-        console.error("Error fetching priorities:", prioritiesError);
+      // Process priorities
+      if (prioritiesResult.error) {
+        console.error("Error fetching priorities:", prioritiesResult.error);
       } else {
-        console.log("Fetched priorities data for meetingId:", meetingId, "data:", prioritiesData);
-        setPriorityItems(prioritiesData || []);
+        setPriorityItems(prioritiesResult.data || []);
       }
 
-      // Fetch previous period's priorities
-      const { data: previousMeeting } = await supabase
-        .from("meeting_instances")
-        .select("id")
-        .eq("series_id", meetingData.series_id)
-        .lt("start_date", meetingData.start_date)
-        .order("start_date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Process topics
+      if (topicsResult.error) {
+        console.error("Error fetching topics:", topicsResult.error);
+      } else {
+        setTeamTopicItems(topicsResult.data || []);
+      }
 
-      if (previousMeeting) {
+      // Process action items
+      if (actionItemsResult.error) {
+        console.error("Error fetching action items:", actionItemsResult.error);
+      } else {
+        setActionItems(actionItemsResult.data || []);
+      }
+
+      // Fetch previous meeting priorities if previous meeting exists
+      if (previousMeetingResult.data) {
         const { data: previousPrioritiesData, error: previousPrioritiesError } = await supabase
           .from("meeting_instance_priorities")
           .select(`
@@ -458,51 +610,17 @@ const TeamMeeting = () => {
             assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
             created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
           `)
-          .eq("instance_id", previousMeeting.id)
+          .eq("instance_id", previousMeetingResult.data.id)
           .order("order_index");
 
         if (previousPrioritiesError) {
           console.error("Error fetching previous priorities:", previousPrioritiesError);
+          setPreviousPriorityItems([]);
         } else {
-          console.log("Fetched previous priorities data:", previousPrioritiesData);
           setPreviousPriorityItems(previousPrioritiesData || []);
         }
       } else {
         setPreviousPriorityItems([]);
-      }
-
-      // Fetch topics from meeting_instance_topics
-      // Temporarily fetch without profile joins to verify RLS isn't blocking
-      const { data: topicsData, error: topicsError } = await supabase
-        .from("meeting_instance_topics")
-        .select("*")
-        .eq("instance_id", meetingId)
-        .order("order_index");
-
-      if (topicsError) {
-        console.error("Error fetching topics:", topicsError);
-        console.error("Topics error details:", JSON.stringify(topicsError, null, 2));
-      } else {
-        console.log("Fetched topics data:", topicsData);
-        console.log("Number of topics:", topicsData?.length || 0);
-        setTeamTopicItems(topicsData || []);
-      }
-
-      // Fetch action items from meeting_series_action_items
-      const { data: actionItemsData, error: actionItemsError } = await supabase
-        .from("meeting_series_action_items")
-        .select(`
-          *,
-          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
-        `)
-        .eq("series_id", meetingData.series_id)
-        .order("order_index");
-
-      if (actionItemsError) {
-        console.error("Error fetching action items:", actionItemsError);
-      } else {
-        setActionItems(actionItemsData || []);
       }
     } catch (error) {
       console.error("Error in fetchMeetingItems:", error);
@@ -714,6 +832,38 @@ const TeamMeeting = () => {
     }
   };
 
+  // OPTIMIZED: Filter action items to only show those active during current meeting period
+  // Activity Period = created_at to completed_at (or current if not completed)
+  const filteredActionItems = useMemo(() => {
+    if (!meeting || !recurringMeeting) return actionItems;
+    
+    // Calculate meeting period boundaries
+    const [year, month, day] = meeting.start_date.split('-').map(Number);
+    const meetingStart = new Date(year, month - 1, day);
+    meetingStart.setHours(0, 0, 0, 0);
+    
+    const meetingEnd = getMeetingEndDate(recurringMeeting.frequency, meetingStart);
+    meetingEnd.setHours(23, 59, 59, 999);
+    
+    return actionItems.filter(item => {
+      const createdAt = new Date(item.created_at);
+      
+      // Item must be created before or during this meeting period
+      if (createdAt > meetingEnd) {
+        return false;
+      }
+      
+      // If item is not completed yet, show it
+      if (!item.completed_at) {
+        return true;
+      }
+      
+      // If item is completed, only show if completed during or after meeting start
+      const completedAt = new Date(item.completed_at);
+      return completedAt >= meetingStart;
+    });
+  }, [actionItems, meeting, recurringMeeting]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -869,46 +1019,7 @@ const TeamMeeting = () => {
                   items={agendaItems}
                   meetingId={meeting?.id}
                   teamId={teamId}
-                  onUpdate={async () => {
-                    // Only refetch agenda items, not all meeting data
-                    if (!meeting?.id || !currentSeriesId) return;
-
-                    const { data: agendaData, error: agendaError } = await supabase
-                      .from("meeting_series_agenda")
-                      .select("*")
-                      .eq("series_id", currentSeriesId)
-                      .order("order_index");
-
-                    if (agendaError) {
-                      console.error("Error fetching agenda items:", agendaError);
-                    } else {
-                      // Fetch profiles for assigned_to users
-                      const assignedUserIds = (agendaData || [])
-                        .map(item => item.assigned_to)
-                        .filter((id): id is string => id != null);
-                      
-                      let profilesById: Record<string, any> = {};
-                      if (assignedUserIds.length > 0) {
-                        const { data: profiles } = await supabase
-                          .from("profiles")
-                          .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-                          .in("id", assignedUserIds);
-                        
-                        profilesById = (profiles || []).reduce((acc, profile) => {
-                          acc[profile.id] = profile;
-                          return acc;
-                        }, {} as Record<string, any>);
-                      }
-
-                      // Transform the data to include is_completed field and assigned_to_profile
-                      const transformedAgendaData = (agendaData || []).map(item => ({
-                        ...item,
-                        is_completed: item.completion_status === 'completed',
-                        assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
-                      }));
-                      setAgendaItems(transformedAgendaData);
-                    }
-                  }}
+                  onUpdate={handleAgendaChange}
                   currentUserId={currentUserId || undefined}
                   isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
                 />
@@ -1010,38 +1121,7 @@ const TeamMeeting = () => {
                 }
                 meetingId={meeting?.id}
                 teamId={teamId}
-                onUpdate={async () => {
-                  // Refetch both current and previous priorities
-                  if (!meeting?.id) return;
-
-                  // Fetch current priorities
-                  const { data: prioritiesData, error: prioritiesError } = await supabase
-                    .from("meeting_instance_priorities")
-                    .select("*")
-                    .eq("instance_id", meeting.id)
-                    .order("order_index");
-
-                  if (prioritiesError) {
-                    console.error("Error fetching priorities:", prioritiesError);
-                  } else {
-                    setPriorityItems(prioritiesData || []);
-                  }
-
-                  // Fetch previous priorities if we have a previous meeting
-                  if (previousMeetingId) {
-                    const { data: previousPrioritiesData, error: previousPrioritiesError } = await supabase
-                      .from("meeting_instance_priorities")
-                      .select("*")
-                      .eq("instance_id", previousMeetingId)
-                      .order("order_index");
-
-                    if (previousPrioritiesError) {
-                      console.error("Error fetching previous priorities:", previousPrioritiesError);
-                    } else {
-                      setPreviousPriorityItems(previousPrioritiesData || []);
-                    }
-                  }
-                }}
+                onUpdate={handlePriorityChange}
                 frequency={recurringMeeting?.frequency}
                 showPreviousPeriod={showPreviousPeriod}
               />
@@ -1072,23 +1152,7 @@ const TeamMeeting = () => {
                 meetingId={meeting?.id || ""}
                 teamId={teamId}
                 teamName={team?.abbreviated_name || team?.name || "Team"}
-                onUpdate={async () => {
-                  // Only refetch topics, not all meeting data
-                  if (!meeting?.id) return;
-                  
-                  const { data: topicsData, error: topicsError } = await supabase
-                    .from("meeting_instance_topics")
-                    .select("*")
-                    .eq("instance_id", meeting.id)
-                    .order("order_index");
-
-                  if (topicsError) {
-                    console.error("Error fetching topics:", topicsError);
-                  } else {
-                    console.log("Fetched topics:", topicsData?.length || 0);
-                    setTeamTopicItems(topicsData || []);
-                  }
-                }}
+                onUpdate={handleTopicChange}
               />
               )}
             </Card>
@@ -1112,25 +1176,10 @@ const TeamMeeting = () => {
               {!sectionsCollapsed.actionItems && (
                 <ActionItems
                 ref={actionItemsRef}
-                items={actionItems}
+                items={filteredActionItems}
                 meetingId={currentSeriesId || ""}
                 teamId={teamId}
-                onUpdate={async () => {
-                  // Only refetch action items, not all meeting data
-                  if (!meeting?.id || !currentSeriesId) return;
-                  
-                  const { data: actionItemsData, error: actionItemsError } = await supabase
-                    .from("meeting_series_action_items")
-                    .select("*")
-                    .eq("series_id", currentSeriesId)
-                    .order("order_index");
-
-                  if (actionItemsError) {
-                    console.error("Error fetching action items:", actionItemsError);
-                  } else {
-                    setActionItems(actionItemsData || []);
-                  }
-                }}
+                onUpdate={handleActionItemChange}
               />
               )}
             </Card>

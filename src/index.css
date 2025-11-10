@@ -167,8 +167,15 @@
 /* Rich Text Editor Styles */
 .ProseMirror {
   outline: none;
-  min-height: 80px;
-  padding: 12px;
+  min-height: 24px;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+
+.ProseMirror p {
+  margin: 0;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -217,3 +224,4 @@
 .ProseMirror u {
   text-decoration: underline;
 }
+

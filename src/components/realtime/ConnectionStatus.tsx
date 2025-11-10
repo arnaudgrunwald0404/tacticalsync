@@ -86,9 +86,6 @@ export function ConnectionStatus() {
         <TooltipTrigger asChild>
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${config.bgColor} border border-current/20`}>
             {config.icon}
-            <span className={`text-xs font-medium ${config.color}`}>
-              {config.text}
-            </span>
           </div>
         </TooltipTrigger>
         <TooltipContent>
