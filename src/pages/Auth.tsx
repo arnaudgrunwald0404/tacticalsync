@@ -38,9 +38,29 @@ const Auth = () => {
     const hash = window.location.hash;
     const hasAccessToken = hash.includes('access_token=');
     
+    // If there's an OAuth code parameter, exchange it for a session
+    if (hasCode && code) {
+      console.log('[DEBUG] OAuth code detected, exchanging for session...');
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error) {
+          console.error('[ERROR] Failed to exchange code for session:', error);
+          toast.error('Failed to sign in. Please try again.');
+          // Clean up URL
+          window.history.replaceState({}, '', '/auth');
+        } else if (data.session) {
+          console.log('[DEBUG] Session obtained successfully');
+          toast.success('Signed in successfully!');
+          // Let onAuthStateChange handle the navigation
+        }
+      }).catch((err) => {
+        console.error('[ERROR] Exception during code exchange:', err);
+        toast.error('Failed to sign in. Please try again.');
+        window.history.replaceState({}, '', '/auth');
+      });
+    }
     // If there's a code parameter (PKCE/OAuth callback), wait for auth state change
     // Otherwise, check existing session immediately
-    if (!hasCode && !hasAccessToken) {
+    else if (!hasCode && !hasAccessToken) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           // If logged in and has invite code, redirect to join page
@@ -80,10 +100,17 @@ const Auth = () => {
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
+    // Store invite code if present before OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get('invite');
+    if (inviteCode) {
+      localStorage.setItem('pendingInviteCode', inviteCode);
+    }
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/auth`,
       },
     });
 
