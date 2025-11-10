@@ -77,6 +77,17 @@ const JoinTeam = () => {
         throw insertError;
       }
 
+      // Update any pending invitations for this user's email to "accepted"
+      // This prevents duplicate invitation records when joining via invite link
+      if (user.email) {
+        await supabase
+          .from("invitations")
+          .update({ status: "accepted" })
+          .eq("team_id", team.id)
+          .eq("email", user.email.toLowerCase())
+          .eq("status", "pending");
+      }
+
       toast({
         title: "Welcome to the team!",
         description: `You've successfully joined ${team.name}`,
