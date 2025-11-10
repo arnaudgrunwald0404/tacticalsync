@@ -160,3 +160,4 @@ CREATE POLICY "Team admins and super admins can manage invitations" ON public.in
     OR public.is_team_admin(invitations.team_id, auth.uid())
   );
 
+

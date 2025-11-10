@@ -96,3 +96,4 @@ CREATE POLICY "Users can update their own profile" ON public.profiles
 -- 3. Super admins can see all profiles
 -- 4. No infinite recursion errors occur
 
+

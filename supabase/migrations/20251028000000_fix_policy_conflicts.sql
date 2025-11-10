@@ -87,3 +87,4 @@ CREATE POLICY "Users can update their own comments" ON comments
 CREATE POLICY "Users can delete their own comments" ON comments 
   FOR DELETE USING (auth.uid() = created_by);
 
+

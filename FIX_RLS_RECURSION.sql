@@ -45,3 +45,4 @@ CREATE POLICY "Users can update their own profile" ON public.profiles
 -- The "infinite recursion" errors should be gone
 -- =============================================================================
 
+

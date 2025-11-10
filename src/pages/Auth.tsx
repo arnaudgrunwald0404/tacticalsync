@@ -719,7 +719,7 @@ const Auth = () => {
                   We are so glad you're here!
                 </CardTitle>
                 <CardDescription className="text-base sm:text-lg mb-6">
-                  Sign in to continue to Team TacticalSync
+                  Sign in to continue to TacticalSync
                 </CardDescription>
               </div>
             )}
@@ -790,7 +790,7 @@ const Auth = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
+                      className="w-full h-12 text-base sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-600 shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors"
                       onClick={handleGoogleSignIn}
                       disabled={loading}
                     >
@@ -817,11 +817,20 @@ const Auth = () => {
                       </div>
                     </Button>
 
-                    <div className="space-y-4">
+                    <div className="relative flex items-center justify-center mt-6 py-6">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-300"></div>
+                      </div>
+                      <div className="relative bg-white px-4">
+                        <span className="text-sm text-gray-500 font-medium">OR</span>
+                      </div>
+                    </div>
+
+                    <div >
                       <Button
                         type="button"
-                        variant="outline"
-                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
+        
+                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-600 hover:bg-gray-50 mt-0 py-0"
                         onClick={() => {
                           setShowEmailForm(true);
                           setIsSignUp(false);
@@ -829,13 +838,13 @@ const Auth = () => {
                         }}
                         disabled={loading}
                       >
-                        Log in with my email and my password
+                        Log in with my email
                       </Button>
                       
                       <Button
                         type="button"
-                        variant="outline"
-                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-100 shadow-sm hover:bg-gray-50"
+                 
+                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-600 hover:bg-gray-50"
                         onClick={() => {
                           setShowEmailForm(true);
                           setIsSignUp(true);
@@ -843,7 +852,7 @@ const Auth = () => {
                         }}
                         disabled={loading}
                       >
-                        I am new here & need to register
+                        I need to register
                       </Button>
                     </div>
                   </motion.div>

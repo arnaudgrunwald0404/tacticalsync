@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ import { getMeetingStartDate, getNextMeetingStartDate, getMeetingPeriodLabel, ge
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
 import { MeetingProvider } from "@/contexts/MeetingContext";
+import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
+import { usePresence } from "@/hooks/usePresence";
+import { PresenceIndicator } from "@/components/realtime/PresenceIndicator";
+import { ConnectionStatus } from "@/components/realtime/ConnectionStatus";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -84,6 +88,62 @@ const TeamMeeting = () => {
   const [showMineOnly, setShowMineOnly] = useState(true);
   const myPrioritiesThisPeriod = currentUserId ? priorityItems.filter(item => item.assigned_to === currentUserId) : [];
   const hasMyPriorities = myPrioritiesThisPeriod.length > 0;
+  const [currentUserName, setCurrentUserName] = useState<string>("Team Member");
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string>("");
+
+  // Fetch current user profile for presence
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, first_name, last_name, email, avatar_url')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile) {
+          const displayName = profile.full_name || 
+            `${profile.first_name || ''} ${profile.last_name || ''}`.trim() ||
+            profile.email?.split('@')[0] ||
+            'Team Member';
+          setCurrentUserName(displayName);
+          setCurrentUserEmail(profile.email || '');
+          setCurrentUserAvatar(profile.avatar_url || '');
+        }
+      }
+    };
+    fetchUserProfile();
+  }, []);
+
+  // Real-time presence - show who's viewing this meeting
+  const { onlineUsers } = usePresence({
+    roomId: `meeting:${meetingId}`,
+    userName: currentUserName,
+    userEmail: currentUserEmail,
+    avatarUrl: currentUserAvatar,
+    enabled: !!meetingId && !!currentUserName,
+  });
+
+  // Callback to refetch meeting items when real-time changes occur
+  const handleRealtimeUpdate = useCallback(async () => {
+    if (meeting?.id) {
+      await fetchMeetingItems(meeting.id);
+    }
+  }, [meeting?.id]);
+
+  // Subscribe to real-time updates for priorities, topics, action items, and agenda
+  useMeetingRealtime({
+    meetingId: meeting?.id,
+    seriesId: currentSeriesId || undefined,
+    teamId: teamId,
+    onPriorityChange: handleRealtimeUpdate,
+    onTopicChange: handleRealtimeUpdate,
+    onActionItemChange: handleRealtimeUpdate,
+    onAgendaChange: handleRealtimeUpdate,
+    enabled: !!meeting?.id && !!currentSeriesId,
+  });
 
   useEffect(() => {
     if (teamId && meetingId) {
@@ -716,16 +776,24 @@ const TeamMeeting = () => {
                       )}
                     </div>
                     
-                    {currentUserRole === "admin" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}/settings`)}
-                        className="h-8 sm:h-10 w-8 sm:w-10 p-0"
-                      >
-                        <Settings className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {/* Real-time Connection Status */}
+                      <ConnectionStatus />
+                      
+                      {/* Presence Indicator - Show who's online */}
+                      <PresenceIndicator users={onlineUsers} maxDisplay={3} />
+                      
+                      {currentUserRole === "admin" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}/settings`)}
+                          className="h-8 sm:h-10 w-8 sm:w-10 p-0"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Period Picker row with navigation buttons */}
@@ -748,7 +816,7 @@ const TeamMeeting = () => {
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
                         <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
                           isCurrentMeetingPeriod(meeting.start_date) 
-                            ? 'bg-pink-100 border-2 border-pink-600 text-pink-800' 
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-700 border-2 border-blue-600 text-white shadow-md' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
                         }`}>
                           <SelectValue>
@@ -761,7 +829,7 @@ const TeamMeeting = () => {
                               key={m.id} 
                               value={m.id}
                               className={isCurrentMeetingPeriod(m.start_date) 
-                                ? 'bg-orange-50 text-orange-800 border-orange-200' 
+                                ? 'bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 font-semibold border-blue-200' 
                                 : 'bg-gray-50 text-gray-600 border-gray-200'
                               }
                             >
@@ -796,60 +864,62 @@ const TeamMeeting = () => {
           {/* Sticky Agenda Sidebar - Hide on small screens */}
           <div className="hidden lg:block w-64 xl:w-72 shrink-0">
             <div className="sticky top-24 h-[calc(100vh-140px)]">
-              <MeetingAgenda
-                items={agendaItems}
-                meetingId={meeting?.id}
-                teamId={teamId}
-                onUpdate={async () => {
-                  // Only refetch agenda items, not all meeting data
-                  if (!meeting?.id || !currentSeriesId) return;
+              <Card className="p-4 sm:p-6 h-full">
+                <MeetingAgenda
+                  items={agendaItems}
+                  meetingId={meeting?.id}
+                  teamId={teamId}
+                  onUpdate={async () => {
+                    // Only refetch agenda items, not all meeting data
+                    if (!meeting?.id || !currentSeriesId) return;
 
-                  const { data: agendaData, error: agendaError } = await supabase
-                    .from("meeting_series_agenda")
-                    .select("*")
-                    .eq("series_id", currentSeriesId)
-                    .order("order_index");
+                    const { data: agendaData, error: agendaError } = await supabase
+                      .from("meeting_series_agenda")
+                      .select("*")
+                      .eq("series_id", currentSeriesId)
+                      .order("order_index");
 
-                  if (agendaError) {
-                    console.error("Error fetching agenda items:", agendaError);
-                  } else {
-                    // Fetch profiles for assigned_to users
-                    const assignedUserIds = (agendaData || [])
-                      .map(item => item.assigned_to)
-                      .filter((id): id is string => id != null);
-                    
-                    let profilesById: Record<string, any> = {};
-                    if (assignedUserIds.length > 0) {
-                      const { data: profiles } = await supabase
-                        .from("profiles")
-                        .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
-                        .in("id", assignedUserIds);
+                    if (agendaError) {
+                      console.error("Error fetching agenda items:", agendaError);
+                    } else {
+                      // Fetch profiles for assigned_to users
+                      const assignedUserIds = (agendaData || [])
+                        .map(item => item.assigned_to)
+                        .filter((id): id is string => id != null);
                       
-                      profilesById = (profiles || []).reduce((acc, profile) => {
-                        acc[profile.id] = profile;
-                        return acc;
-                      }, {} as Record<string, any>);
-                    }
+                      let profilesById: Record<string, any> = {};
+                      if (assignedUserIds.length > 0) {
+                        const { data: profiles } = await supabase
+                          .from("profiles")
+                          .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
+                          .in("id", assignedUserIds);
+                        
+                        profilesById = (profiles || []).reduce((acc, profile) => {
+                          acc[profile.id] = profile;
+                          return acc;
+                        }, {} as Record<string, any>);
+                      }
 
-                    // Transform the data to include is_completed field and assigned_to_profile
-                    const transformedAgendaData = (agendaData || []).map(item => ({
-                      ...item,
-                      is_completed: item.completion_status === 'completed',
-                      assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
-                    }));
-                    setAgendaItems(transformedAgendaData);
-                  }
-                }}
-                currentUserId={currentUserId || undefined}
-                isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
-              />
+                      // Transform the data to include is_completed field and assigned_to_profile
+                      const transformedAgendaData = (agendaData || []).map(item => ({
+                        ...item,
+                        is_completed: item.completion_status === 'completed',
+                        assigned_to_profile: item.assigned_to ? profilesById[item.assigned_to] || null : null
+                      }));
+                      setAgendaItems(transformedAgendaData);
+                    }
+                  }}
+                  currentUserId={currentUserId || undefined}
+                  isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
+                />
+              </Card>
             </div>
           </div>
 
           {/* Main Content */}
           <div className="flex-1 space-y-6 sm:space-y-8">
             <Card className="p-4 sm:p-6">
-                <div className="space-y-4 mb-2 sm:mb-3">
+                <div className="space-y-4 mb-4 sm:mb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
@@ -866,7 +936,7 @@ const TeamMeeting = () => {
                               <ChevronDown className="h-5 w-5" />
                             )}
                           </Button>
-                          <h2 className="text-lg sm:text-xl font-semibold" data-testid="priorities-section">Priorities</h2>
+                          <h2 className="font-bold text-2xl text-gray-900" data-testid="priorities-section">Priorities</h2>
                         </div>
                       </div>
                     </div>
@@ -993,7 +1063,7 @@ const TeamMeeting = () => {
                       <ChevronDown className="h-5 w-5" />
                     )}
                   </Button>
-                  <h2 className="text-lg sm:text-xl font-semibold" data-testid="topics-section">Topics for Today</h2>
+                  <h2 className="font-bold text-2xl text-gray-900" data-testid="topics-section">Topics for Today</h2>
                 </div>
               </div>
               {!sectionsCollapsed.topics && (
@@ -1037,7 +1107,7 @@ const TeamMeeting = () => {
                     <ChevronDown className="h-5 w-5" />
                   )}
                 </Button>
-                <h2 className="text-lg sm:text-xl font-semibold" data-testid="action-items-section">Action Items</h2>
+                <h2 className="font-bold text-2xl text-gray-900" data-testid="action-items-section">Action Items</h2>
               </div>
               {!sectionsCollapsed.actionItems && (
                 <ActionItems

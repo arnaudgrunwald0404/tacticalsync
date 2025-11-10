@@ -74,3 +74,4 @@ COMMENT ON POLICY "Users manage own templates" ON public.agenda_templates IS
 COMMENT ON POLICY "Users manage own template items" ON public.agenda_template_items IS 
 'Uses JWT email instead of profiles table to avoid RLS recursion.';
 
+

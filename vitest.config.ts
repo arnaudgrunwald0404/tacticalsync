@@ -26,6 +26,12 @@ export default defineConfig({
         '**/mockData',
         '**/dist',
       ],
+      thresholds: {
+        lines: 3,
+        functions: 20,
+        branches: 50,
+        statements: 3,
+      },
     },
   },
   resolve: {
