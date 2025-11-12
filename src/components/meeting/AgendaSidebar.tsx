@@ -2,10 +2,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, X, Timer, GripVertical, Sparkles } from "lucide-react";
+import { MessageSquare, X, Timer, GripVertical, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import SaveButton from "@/components/ui/SaveButton";
 import EditButton from "@/components/ui/EditButton";
 import FancyAvatar from "@/components/ui/fancy-avatar";
+import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import { htmlToPlainText, htmlToFormattedDisplayItems } from "@/lib/htmlUtils";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
@@ -27,6 +28,7 @@ interface AgendaSidebarProps {
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   systemTemplates?: any[];
+  userTemplates?: any[];
   adoptingTemplate?: boolean;
   adoptSystemTemplate?: (template: any) => Promise<void>;
   startAddingManually?: () => void;
@@ -43,6 +45,7 @@ export function AgendaSidebar({
   onSaveEdit,
   onCancelEdit,
   systemTemplates = [],
+  userTemplates = [],
   adoptingTemplate = false,
   adoptSystemTemplate,
   startAddingManually,
@@ -52,6 +55,25 @@ export function AgendaSidebar({
   
   // Generate smart name map
   const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
+  
+  // Combine all templates
+  const allTemplates = useMemo(() => [...systemTemplates, ...userTemplates], [systemTemplates, userTemplates]);
+  
+  // Track expanded templates - when 2 or more templates, collapse by default
+  const shouldCollapseByDefault = allTemplates.length >= 2;
+  const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
+  
+  const toggleTemplate = (templateId: string) => {
+    setExpandedTemplates(prev => {
+      const next = new Set(prev);
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+      return next;
+    });
+  };
   
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [notesContent, setNotesContent] = useState<Record<string, string>>({});
@@ -231,44 +253,108 @@ export function AgendaSidebar({
             </p>
             
             {/* Template Cards */}
-            <div className="space-y-3">
-              {systemTemplates.map((template) => (
-                <div 
-                  key={template.id} 
-                  className="border rounded-xl p-4 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all border-gray-200"
-                >
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100">
-                      <Sparkles className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold mb-1 text-gray-900">{template.name}</h3>
-                      <p className="text-xs text-gray-600">{template.description}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-1 mb-3">
-                    {(template.items || [])
-                      .sort((a: any, b: any) => a.order_index - b.order_index)
-                      .map((item: any) => (
-                        <div key={item.id} className="flex justify-between text-xs text-muted-foreground">
-                          <span>• {item.title}</span>
-                          {item.duration_minutes && (
-                            <span className="text-primary font-medium">{item.duration_minutes} min</span>
+            {allTemplates.length > 0 && (
+              <div className="space-y-3">
+                {allTemplates.map((template) => {
+                  const isExpanded = !shouldCollapseByDefault || expandedTemplates.has(template.id);
+                  const isSystemTemplate = template.is_system;
+                  
+                  return (
+                    <div 
+                      key={template.id} 
+                      className={`border rounded-xl bg-white shadow-sm transition-all border-gray-200 ${
+                        isExpanded ? 'p-4 hover:shadow-md hover:border-blue-300' : 'hover:border-blue-300'
+                      }`}
+                    >
+                      {shouldCollapseByDefault && !isExpanded ? (
+                        // Collapsed view - just title and chevron
+                        <button
+                          onClick={() => toggleTemplate(template.id)}
+                          className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              isSystemTemplate 
+                                ? 'bg-gradient-to-br from-blue-50 to-blue-100' 
+                                : 'bg-gradient-to-br from-purple-50 to-purple-100'
+                            }`}>
+                              <Sparkles className={`h-4 w-4 ${
+                                isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                              }`} />
+                            </div>
+                            <h3 className="text-sm font-semibold text-gray-900">{template.name}</h3>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </button>
+                      ) : (
+                        // Expanded view - full card
+                        <>
+                          {shouldCollapseByDefault ? (
+                            <button
+                              onClick={() => toggleTemplate(template.id)}
+                              className="w-full flex items-center justify-between mb-3 text-left"
+                            >
+                              <div className="flex items-start gap-3 flex-1">
+                                <div className={`p-2 rounded-lg ${
+                                  isSystemTemplate 
+                                    ? 'bg-gradient-to-br from-blue-50 to-blue-100' 
+                                    : 'bg-gradient-to-br from-purple-50 to-purple-100'
+                                }`}>
+                                  <Sparkles className={`h-5 w-5 ${
+                                    isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                                  }`} />
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="text-sm font-semibold mb-1 text-gray-900">{template.name}</h3>
+                                  <p className="text-xs text-gray-600">{template.description}</p>
+                                </div>
+                              </div>
+                              <ChevronDown className="h-5 w-5 text-muted-foreground ml-2 shrink-0" />
+                            </button>
+                          ) : (
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className={`p-2 rounded-lg ${
+                                isSystemTemplate 
+                                  ? 'bg-gradient-to-br from-blue-50 to-blue-100' 
+                                  : 'bg-gradient-to-br from-purple-50 to-purple-100'
+                              }`}>
+                                <Sparkles className={`h-5 w-5 ${
+                                  isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                                }`} />
+                              </div>
+                              <div className="flex-1">
+                                <h3 className="text-sm font-semibold mb-1 text-gray-900">{template.name}</h3>
+                                <p className="text-xs text-gray-600">{template.description}</p>
+                              </div>
+                            </div>
                           )}
-                        </div>
-                    ))}
-                  </div>
-                  <Button 
-                    onClick={() => adoptSystemTemplate?.(template)} 
-                    disabled={adoptingTemplate}
-                    className="w-full"
-                    size="sm"
-                  >
-                    {adoptingTemplate ? "Adopting..." : "Use This Template"}
-                  </Button>
-                </div>
-              ))}
-            </div>
+                          <div className="space-y-1 mb-3">
+                            {(template.items || [])
+                              .sort((a: any, b: any) => a.order_index - b.order_index)
+                              .map((item: any) => (
+                                <div key={item.id} className="flex justify-between text-xs text-muted-foreground">
+                                  <span>• {item.title}</span>
+                                  {item.duration_minutes && (
+                                    <span className="text-primary font-medium">{item.duration_minutes} min</span>
+                                  )}
+                                </div>
+                            ))}
+                          </div>
+                          <Button 
+                            onClick={() => adoptSystemTemplate?.(template)} 
+                            disabled={adoptingTemplate}
+                            className="w-full"
+                            size="sm"
+                          >
+                            {adoptingTemplate ? "Adopting..." : "Use This Template"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Manual Creation Option */}
             <div className="text-center pt-2">
@@ -513,16 +599,18 @@ export function AgendaSidebar({
           </DragDropContext>
         )}
         
-        {/* Parking Lot Section */}
-        <div className="mt-6 pt-4 border-t">
-          <h3 className="text-sm font-medium mb-2 text-muted-foreground">Parking Lot</h3>
-          <Textarea
-            value={parkingLotContent}
-            onChange={(e) => setParkingLotContent(e.target.value)}
-            placeholder="Add notes, ideas, or topics to revisit later..."
-            className="min-h-[200px] resize-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
+        {/* Parking Lot Section - only show when agenda has been created */}
+        {items.length > 0 && (
+          <div className="mt-6 pt-4 border-t">
+            <h3 className="text-sm font-medium mb-2 text-muted-foreground">Parking Lot</h3>
+            <Textarea
+              value={parkingLotContent}
+              onChange={(e) => setParkingLotContent(e.target.value)}
+              placeholder="Add notes, ideas, or topics to revisit later..."
+              className="min-h-[200px] resize-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

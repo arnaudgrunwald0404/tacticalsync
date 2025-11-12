@@ -11,18 +11,22 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
   const { state, actions } = useMeetingData(props);
   const { toast } = useToast();
   const [systemTemplates, setSystemTemplates] = useState<any[]>([]);
+  const [userTemplates, setUserTemplates] = useState<any[]>([]);
   const [adoptingTemplate, setAdoptingTemplate] = useState(false);
 
-  // Fetch system templates
+  // Fetch both system and user templates
   useEffect(() => {
-    const fetchSystemTemplates = async () => {
+    const fetchTemplates = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("agenda_templates")
         .select(`
           *,
           items:agenda_template_items(*)
         `)
-        .eq("is_system", true)
+        .or(`is_system.eq.true,user_id.eq.${user.id}`)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -30,16 +34,20 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         return;
       }
 
-      // Sort items by order_index
+      // Sort items by order_index and separate system from user templates
       const templatesWithSortedItems = (data || []).map(template => ({
         ...template,
         items: (template.items || []).sort((a, b) => a.order_index - b.order_index),
       }));
 
-      setSystemTemplates(templatesWithSortedItems);
+      const system = templatesWithSortedItems.filter(t => t.is_system);
+      const personal = templatesWithSortedItems.filter(t => !t.is_system);
+
+      setSystemTemplates(system);
+      setUserTemplates(personal);
     };
 
-    fetchSystemTemplates();
+    fetchTemplates();
   }, []);
 
   const validateItems = (items: AgendaItem[]) => {
@@ -311,6 +319,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       actions={actions}
       teamMembers={state.teamMembers}
       systemTemplates={systemTemplates}
+      userTemplates={userTemplates}
       adoptingTemplate={adoptingTemplate}
       adoptSystemTemplate={adoptSystemTemplate}
       startAddingManually={startAddingManually}

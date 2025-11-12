@@ -114,9 +114,8 @@ export const getMeetingPeriodLabel = (startDate: Date, frequency: string): strin
   
   switch (frequency) {
     case 'daily':
-      periodType = 'Day';
-      periodNumber = format(startDate, 'M/d');
-      break;
+      // For daily meetings, show full date with day of week: "Monday, Nov 25 2025"
+      return format(startDate, 'EEEE, MMM d yyyy');
     
     case 'weekly':
       periodType = 'Week';
