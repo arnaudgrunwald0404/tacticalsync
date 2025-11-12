@@ -711,7 +711,24 @@ const Dashboard = () => {
             <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
             
             <p className="text-sm sm:text-base text-muted-foreground">
-              Manage your tactical meetings and collaborate with your teams
+              Run your recurring meetings with discipline that makes all the difference.
+              <br />
+              {(isAdmin || isSuperAdmin) ? (
+                <>
+                  Don't see a team that you would like to see here?{' '}
+                  <a 
+                    href="/create-team" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate("/create-team");
+                    }}
+                    className="text-primary hover:underline cursor-pointer"
+                  >
+                    Create it now!</a>
+                </>
+              ) : (
+                "Don't see a team that you would like to see here? Ask an admin to invite you to it!"
+              )}
             </p>
           </div>
           {(teams.length > 0 || pendingInvitations.length > 0) && (isAdmin || isSuperAdmin) && (
@@ -813,23 +830,6 @@ const Dashboard = () => {
                         <h3 className="text-lg sm:text-xl font-bold">
                           {teamMember.teams.name}
                         </h3>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
-                              >
-                                <Settings className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Manage team</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
                       </div>
                       <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                         <span>{teamMember.memberCount} active</span>
@@ -857,6 +857,15 @@ const Dashboard = () => {
                         ) : (
                           <span>{teamMember.invitedCount} invited</span>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 gap-1.5 text-xs sm:text-sm font-normal hover:bg-accent"
+                          onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          <span>Manage team</span>
+                        </Button>
                       </div>
                       {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
                         <div className="mt-2">
@@ -873,16 +882,16 @@ const Dashboard = () => {
                       )}
                     </div>
                     {!hasNoMeetings && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleCreateMeeting(teamMember.teams.id)}
-                        className="w-full sm:w-auto text-xs sm:text-sm"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        <span className="hidden md:inline">Add Another Recurring Meeting</span>
-                        <span className="md:hidden">Add Meeting</span>
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate(`/team/${teamMember.teams.id}/strategy`)}
+                          className="w-full sm:w-auto text-xs sm:text-sm"
+                        >
+                          Strategy
+                        </Button>
+                      </div>
                     )}
                   </div>
 
