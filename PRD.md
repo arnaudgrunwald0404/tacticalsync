@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## TacticalSync - Team Meeting Collaboration Platform
 
-**Version:** 1.0  
-**Last Updated:** November 10, 2025  
+**Version:** 1.1  
+**Last Updated:** November 12, 2025  
 **Status:** Production-Ready  
 **Author:** Arnaud Grunwald  
 
@@ -319,10 +319,10 @@
 - Data isolated per instance (priorities, topics)
 
 **Period Labels**:
-- **Daily**: "Monday, Nov 10, 2025"
-- **Weekly**: "Week 45, 2025" (ISO week numbers)
-- **Bi-weekly**: "Nov 4-17, 2025"
-- **Monthly**: "November 2025"
+- **Daily**: "Monday, Nov 25 2025" (full date with day of week for clarity)
+- **Weekly**: "Week 45 (11/4 - 11/10)" (ISO week numbers with date range)
+- **Bi-weekly**: "Bi-week 45 (11/4 - 11/17)" (2-week period with date range)
+- **Monthly**: "Nov 2025 (11/1 - 11/30)" (month with date range)
 
 **Navigation**:
 - Dropdown selector for all instances
@@ -360,6 +360,10 @@
 - Checkbox for completion tracking
 - Notes expand/collapse per item
 - Real-time autosave (2-second debounce)
+- **Parking Lot**: Persistent notes section below agenda (only visible after agenda is created)
+  - Free-form textarea for topics to revisit later
+  - Auto-saved to localStorage
+  - Separate from structured agenda items
 
 **Technical Features**:
 - Drag-and-drop reordering (@hello-pangea/dnd)
@@ -376,9 +380,10 @@
 **Two Template Types**:
 
 **System Templates** (Super Admin Only):
-- Pre-built by platform admin
-- Available to all users
+- Pre-built by platform admin (corporate templates)
+- Available to all users organization-wide
 - Cannot be edited by regular users
+- Identified with blue sparkle icon
 - Example: "Beem Weekly Meeting" template with:
   - Opening Comments (2 min)
   - Past Action Items (4 min)
@@ -388,28 +393,41 @@
   - Employees At-Risk (10 min)
 
 **User Templates**:
-- Created by individual users
+- Created by individual users (personal templates)
 - Private to creator
 - Fully editable
+- Identified with purple sparkle icon
 - Shareable via adoption
 
+**Template Selection UX**:
+- **Smart Collapsing**: When 2+ templates available, templates show collapsed by default
+  - Collapsed view: Icon + title + chevron right
+  - Click to expand: Full details with description, agenda items, and "Use This Template" button
+  - Expanded view: Icon + title + description + chevron down
+- **Auto-Expanded**: When only 1 template available, shows fully expanded
+- **Unified List**: Corporate and personal templates shown together (no separate sections)
+- **Visual Distinction**: Blue icons for corporate, purple icons for personal
+
 **Template Adoption**:
-- One-click adoption from template
+- One-click adoption from any template (corporate or personal)
 - Copies all items to meeting series
 - Preserves item order and durations
 - User can edit after adoption
+- Toast notification on successful adoption
 
 **Template Management**:
 - Create/edit/delete own templates
 - Add/remove template items
 - Reorder items with drag-and-drop
 - Set durations for each item
+- Set template name and description
 
 **Technical Implementation**:
 - `agenda_templates` table
 - `agenda_template_items` table
-- `is_system` flag for system templates
+- `is_system` flag for system/corporate templates
 - RLS policies for template access
+- Smart query fetches both system and user templates: `or(is_system.eq.true,user_id.eq.{userId})`
 
 ---
 
@@ -865,11 +883,16 @@
 - Triggers for automation
 - RLS policy definitions
 - Bug fixes and adjustments
+- Invitation acceptance fixes (RLS policy updates)
+
+**Recent Migrations** (November 2025):
+- `20251111000000_allow_users_to_accept_invitations.sql`: Fixed RLS policies to allow authenticated users to accept team invitations and create team memberships
 
 **Validation**:
 - Pre-migration health checks
 - Post-migration validation
 - Automated test coverage
+- Pre-commit migration validation script
 
 ---
 
@@ -1407,6 +1430,7 @@
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | Nov 10, 2025 | Arnaud Grunwald | Initial PRD creation (retroactive documentation) |
+| 1.1 | Nov 12, 2025 | Arnaud Grunwald | Updated with recent UI improvements: daily meeting date format (day of week), template selection enhancements (collapsible cards, unified corporate/personal templates), parking lot visibility, invitation acceptance bug fix |
 
 ---
 
@@ -1414,8 +1438,8 @@
 
 **Review Schedule**: Quarterly
 **Owner**: Product Manager / Engineering Lead
-**Last Review**: November 10, 2025
-**Next Review**: February 10, 2026
+**Last Review**: November 12, 2025
+**Next Review**: February 12, 2026
 
 ---
 
