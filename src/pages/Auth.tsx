@@ -28,7 +28,7 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState("signin");
 
   useEffect(() => {
-    // Check for invite code and OAuth callback code in URL
+    // Check for invite code and OAuth callback in URL
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     const code = params.get('code');
@@ -38,29 +38,14 @@ const Auth = () => {
     const hash = window.location.hash;
     const hasAccessToken = hash.includes('access_token=');
     
-    // If there's an OAuth code parameter, exchange it for a session
-    if (hasCode && code) {
-      console.log('[DEBUG] OAuth code detected, exchanging for session...');
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
-        if (error) {
-          console.error('[ERROR] Failed to exchange code for session:', error);
-          toast.error('Failed to sign in. Please try again.');
-          // Clean up URL
-          window.history.replaceState({}, '', '/auth');
-        } else if (data.session) {
-          console.log('[DEBUG] Session obtained successfully');
-          toast.success('Signed in successfully!');
-          // Let onAuthStateChange handle the navigation
-        }
-      }).catch((err) => {
-        console.error('[ERROR] Exception during code exchange:', err);
-        toast.error('Failed to sign in. Please try again.');
-        window.history.replaceState({}, '', '/auth');
-      });
-    }
-    // If there's a code parameter (PKCE/OAuth callback), wait for auth state change
-    // Otherwise, check existing session immediately
-    else if (!hasCode && !hasAccessToken) {
+    // If there's an OAuth code or access token, Supabase will handle it automatically
+    // with detectSessionInUrl: true. Just wait for the auth state change.
+    if (hasCode || hasAccessToken) {
+      console.log('[Auth] OAuth callback detected, waiting for Supabase to process...');
+      // Don't manually exchange - Supabase does this automatically
+      // The onAuthStateChange listener below will handle the redirect
+    } else {
+      // No OAuth callback, check if user is already logged in
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           // If logged in and has invite code, redirect to join page
@@ -74,6 +59,8 @@ const Auth = () => {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth] Auth state changed:', event, 'Has session:', !!session);
+      
       if (session) {
         // Clean up URL by removing code parameter and hash fragment after successful auth
         if (hasCode || hasAccessToken) {
@@ -93,6 +80,9 @@ const Auth = () => {
         } else {
           navigate("/dashboard");
         }
+      } else if (event === 'SIGNED_OUT') {
+        // User signed out, stay on auth page
+        console.log('[Auth] User signed out');
       }
     });
 

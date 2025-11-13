@@ -29,32 +29,37 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [isProcessingAuth, setIsProcessingAuth] = useState(false);
 
-  // Check if we're processing an OAuth callback
+  // Handle OAuth callback and redirect
+  // Keep auth state listener for multi-tab support and session management
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes('access_token=') || hash.includes('error=')) {
-      // We're in the middle of OAuth callback, don't redirect yet
+    const params = new URLSearchParams(window.location.search);
+    const hasCode = params.has('code');
+    const hasAccessToken = hash.includes('access_token=');
+    const hasError = hash.includes('error=');
+    
+    // If we're in an OAuth callback, wait for Supabase to process it
+    // (Supabase auto-processes with detectSessionInUrl: true)
+    if (hasCode || hasAccessToken || hasError) {
+      console.log('[Dashboard] OAuth callback detected, waiting for Supabase to process...');
       setIsProcessingAuth(true);
       
-      // Wait for Supabase to process the token
+      // Listen for auth state change (important for multi-tab and session management)
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         console.log('[Dashboard] Auth state changed:', event, 'Has session:', !!session);
-        if (session || event === 'SIGNED_IN') {
-          // Auth processed successfully, now we can redirect
-          console.log('[Dashboard] Redirecting to dashboard/main');
+        
+        if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+          console.log('[Dashboard] Session established, redirecting to dashboard/main');
           navigate('/dashboard/main', { replace: true });
-        } else if (event === 'SIGNED_OUT' || !session) {
-          // Auth failed or signed out
-          console.log('[Dashboard] Auth failed, redirecting to auth');
+        } else if (hasError || event === 'SIGNED_OUT') {
+          console.error('[Dashboard] Auth failed or signed out');
           navigate('/auth', { replace: true });
         }
       });
       
-      return () => {
-        subscription.unsubscribe();
-      };
+      return () => subscription.unsubscribe();
     } else {
-      // No OAuth callback, just redirect normally
+      // No OAuth callback, just redirect immediately
       navigate('/dashboard/main', { replace: true });
     }
   }, [navigate]);
