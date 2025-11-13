@@ -27,6 +27,17 @@ import { useRoles } from "@/hooks/useRoles";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+
+  // Redirect to new dashboard with tabs
+  useEffect(() => {
+    navigate('/dashboard/main', { replace: true });
+  }, [navigate]);
+
+  return null;
+};
+
+const DashboardOld = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useRoles();
   const [loading, setLoading] = useState(true);

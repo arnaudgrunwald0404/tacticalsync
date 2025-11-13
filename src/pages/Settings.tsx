@@ -67,6 +67,7 @@ const Settings = () => {
     full_name?: string;
     is_admin?: boolean;
     is_super_admin?: boolean;
+    is_rcdo_admin?: boolean;
     has_logged_in?: boolean;
     last_active?: string | null;
     teams?: Array<{ team_id: string; team_name: string; role: string }>;
@@ -97,6 +98,7 @@ const Settings = () => {
   const [editingUserEmail, setEditingUserEmail] = useState("");
   const [editingUserName, setEditingUserName] = useState("");
   const [editingUserIsAdmin, setEditingUserIsAdmin] = useState(false);
+  const [editingUserIsRCDOAdmin, setEditingUserIsRCDOAdmin] = useState(false);
   const [editingUserTeams, setEditingUserTeams] = useState<Set<string>>(new Set());
   const [removingFromTeamId, setRemovingFromTeamId] = useState("");
   
@@ -310,7 +312,7 @@ const Settings = () => {
       // We'll use a database function to get login info since we can't directly query auth.users
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, is_admin, is_super_admin, created_at, updated_at")
+        .select("id, email, full_name, is_admin, is_super_admin, is_rcdo_admin, created_at, updated_at")
         .order("email", { ascending: true });
       
       if (profilesError) throw profilesError;
@@ -543,6 +545,11 @@ const Settings = () => {
       if (currentUser && editingUserIsAdmin !== Boolean(currentUser.is_admin)) {
         updates.is_admin = editingUserIsAdmin;
       }
+      
+      // Update RCDO admin status if changed
+      if (currentUser && editingUserIsRCDOAdmin !== Boolean(currentUser.is_rcdo_admin)) {
+        updates.is_rcdo_admin = editingUserIsRCDOAdmin;
+      }
 
       // Update profile first
       if (Object.keys(updates).length > 0) {
@@ -696,6 +703,7 @@ const Settings = () => {
     setEditingUserEmail(user.email);
     setEditingUserName(user.full_name || "");
     setEditingUserIsAdmin(user.is_admin || false);
+    setEditingUserIsRCDOAdmin(user.is_rcdo_admin || false);
     setEditingUserTeams(new Set((user.teams || []).map(t => t.team_id)));
     setShowEditDialog(true);
   };
@@ -2195,6 +2203,18 @@ const Settings = () => {
               <Label htmlFor="editIsAdmin" className="text-sm font-normal cursor-pointer flex items-center gap-2">
                 <Shield className="h-4 w-4" />
                 Admin privileges
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="editIsRCDOAdmin"
+                checked={editingUserIsRCDOAdmin}
+                onCheckedChange={(checked) => setEditingUserIsRCDOAdmin(checked === true)}
+                className="rounded-none"
+              />
+              <Label htmlFor="editIsRCDOAdmin" className="text-sm font-normal cursor-pointer flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                RCDO Admin (can finalize cycles & objectives)
               </Label>
             </div>
             <div className="space-y-2 pt-2">
