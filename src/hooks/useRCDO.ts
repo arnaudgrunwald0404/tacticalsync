@@ -108,6 +108,12 @@ export function useCycles() {
 
   const createCycle = async (form: CreateCycleForm) => {
     try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('You must be logged in to create a cycle');
+      }
+
       const { data, error: createError } = await supabase
         .from('rc_cycles')
         .insert({
@@ -115,6 +121,7 @@ export function useCycles() {
           start_date: form.start_date,
           end_date: form.end_date,
           status: 'draft',
+          created_by: user.id,
         })
         .select()
         .single();
