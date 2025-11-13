@@ -27,11 +27,45 @@ import { useRoles } from "@/hooks/useRoles";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
 
-  // Redirect to new dashboard with tabs
+  // Check if we're processing an OAuth callback
   useEffect(() => {
-    navigate('/dashboard/main', { replace: true });
+    const hash = window.location.hash;
+    if (hash.includes('access_token=') || hash.includes('error=')) {
+      // We're in the middle of OAuth callback, don't redirect yet
+      setIsProcessingAuth(true);
+      
+      // Wait for Supabase to process the token
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log('[Dashboard] Auth state changed:', event, 'Has session:', !!session);
+        if (session || event === 'SIGNED_IN') {
+          // Auth processed successfully, now we can redirect
+          console.log('[Dashboard] Redirecting to dashboard/main');
+          navigate('/dashboard/main', { replace: true });
+        } else if (event === 'SIGNED_OUT' || !session) {
+          // Auth failed or signed out
+          console.log('[Dashboard] Auth failed, redirecting to auth');
+          navigate('/auth', { replace: true });
+        }
+      });
+      
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      // No OAuth callback, just redirect normally
+      navigate('/dashboard/main', { replace: true });
+    }
   }, [navigate]);
+
+  if (isProcessingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-muted-foreground">Completing sign in...</div>
+      </div>
+    );
+  }
 
   return null;
 };
