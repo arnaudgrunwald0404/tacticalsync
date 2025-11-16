@@ -7,6 +7,7 @@ export interface ParsedSI {
   title: string;
   description: string;
   bullets: string[];
+  ownerName?: string;
 }
 
 export interface ParsedDO {
@@ -15,6 +16,7 @@ export interface ParsedDO {
   definition: string;
   primarySuccessMetric: string;
   strategicInitiatives: ParsedSI[];
+  ownerName?: string;
 }
 
 export interface ParsedRCDO {
@@ -51,7 +53,7 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
       continue;
     }
     
-    // Extract DO headers - match patterns like "## DO #1 — Title" (various dash types)
+    // Extract DO headers - match patterns like "## DO #1 — Title" or "## DO #1 — Title (Owner: Name)"
     // Handles em dash (—), en dash (–), and hyphen (-)
     const doHeaderMatch = line.match(/^##\s+DO\s+#?(\d+)\s*[—–\-:]\s*(.+)$/i);
     if (doHeaderMatch) {
@@ -64,12 +66,23 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
         definingObjectives.push(currentDO);
       }
       
+      // Extract owner from title if present: "Title (Owner: John Doe)"
+      let titleText = doHeaderMatch[2].trim();
+      let ownerName: string | undefined = undefined;
+      
+      const ownerMatch = titleText.match(/^(.+?)\s*\(Owner:\s*([^)]+)\)\s*$/i);
+      if (ownerMatch) {
+        titleText = ownerMatch[1].trim();
+        ownerName = ownerMatch[2].trim();
+      }
+      
       currentDO = {
         number: parseInt(doHeaderMatch[1]),
-        title: doHeaderMatch[2].trim(),
+        title: titleText,
         definition: '',
         primarySuccessMetric: '',
-        strategicInitiatives: []
+        strategicInitiatives: [],
+        ownerName
       };
       currentSection = 'none';
       continue;
@@ -123,10 +136,21 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
           currentDO.strategicInitiatives.push(currentSI);
         }
         
+        // Extract owner from SI title if present: "Title (Owner: Jane Doe)"
+        let siTitle = siMatch[1].trim();
+        let ownerName: string | undefined = undefined;
+        
+        const ownerMatch = siTitle.match(/^(.+?)\s*\(Owner:\s*([^)]+)\)\s*$/i);
+        if (ownerMatch) {
+          siTitle = ownerMatch[1].trim();
+          ownerName = ownerMatch[2].trim();
+        }
+        
         currentSI = {
-          title: siMatch[1].trim(),
+          title: siTitle,
           description: '',
-          bullets: []
+          bullets: [],
+          ownerName
         };
         currentSection = 'si-bullets';
         continue;
@@ -159,9 +183,11 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
     dos: definingObjectives.map(d => ({
       number: d.number,
       title: d.title,
+      owner: d.ownerName || '(none)',
       siCount: d.strategicInitiatives.length,
       hasDefinition: !!d.definition,
-      hasMetric: !!d.primarySuccessMetric
+      hasMetric: !!d.primarySuccessMetric,
+      sisWithOwners: d.strategicInitiatives.filter(si => si.ownerName).length
     }))
   });
   

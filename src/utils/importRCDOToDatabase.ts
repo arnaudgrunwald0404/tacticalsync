@@ -28,6 +28,40 @@ export type ImportProgressCallback = (progress: {
 /**
  * Imports parsed RCDO data into Supabase
  */
+/**
+ * Helper to find user ID by name (matches full name, first+last name, or email)
+ */
+async function findUserByName(name: string, fallbackUserId: string): Promise<string> {
+  if (!name) return fallbackUserId;
+
+  // Try to find user by full name, first+last name match, or email
+  const { data: users } = await supabase
+    .from('profiles')
+    .select('id, full_name, first_name, last_name, email')
+    .or(`full_name.ilike.%${name}%,email.ilike.%${name}%`);
+
+  if (users && users.length > 0) {
+    // Try exact match first
+    const exactMatch = users.find(u => 
+      u.full_name?.toLowerCase() === name.toLowerCase() ||
+      `${u.first_name} ${u.last_name}`.toLowerCase() === name.toLowerCase() ||
+      u.email?.toLowerCase() === name.toLowerCase()
+    );
+    
+    if (exactMatch) {
+      console.log(`✅ Found owner "${name}" → ${exactMatch.email || exactMatch.full_name}`);
+      return exactMatch.id;
+    }
+    
+    // Use first partial match
+    console.log(`⚠️ Partial match for "${name}" → ${users[0].email || users[0].full_name}`);
+    return users[0].id;
+  }
+
+  console.warn(`⚠️ Owner "${name}" not found, using importing user as fallback`);
+  return fallbackUserId;
+}
+
 export async function importRCDOToDatabase(
   data: ParsedRCDO,
   options: ImportRCDOOptions,
@@ -90,12 +124,16 @@ export async function importRCDOToDatabase(
 
       console.log(`Creating DO #${i + 1}:`, {
         title: do_.title,
+        owner: do_.ownerName || '(importing user)',
         definition: do_.definition?.substring(0, 50) + '...',
         siCount: do_.strategicInitiatives.length,
         metric: do_.primarySuccessMetric?.substring(0, 50) + '...'
       });
 
       onProgress?.({ index: progressIndex, status: 'loading', label: do_.title });
+
+      // Look up owner by name or use importing user
+      const doOwnerId = await findUserByName(do_.ownerName || '', ownerUserId);
 
       // Convert definition to HTML
       const hypothesisHtml = do_.definition ? `<p>${do_.definition}</p>` : null;
@@ -106,7 +144,7 @@ export async function importRCDOToDatabase(
           rallying_cry_id: rallyingCryId,
           title: do_.title,
           hypothesis: hypothesisHtml,
-          owner_user_id: ownerUserId,
+          owner_user_id: doOwnerId,
           status: 'draft',
           health: 'on_track',
           confidence_pct: 50,
@@ -148,6 +186,9 @@ export async function importRCDOToDatabase(
       for (let j = 0; j < do_.strategicInitiatives.length; j++) {
         const si = do_.strategicInitiatives[j];
 
+        // Look up SI owner by name or use importing user
+        const siOwnerId = await findUserByName(si.ownerName || '', ownerUserId);
+
         // Convert bullets to HTML list or use description as paragraph
         let descriptionHtml = '';
         if (si.bullets.length > 0) {
@@ -162,7 +203,7 @@ export async function importRCDOToDatabase(
             defining_objective_id: createdDO.id,
             title: si.title,
             description: descriptionHtml,
-            owner_user_id: ownerUserId,
+            owner_user_id: siOwnerId,
             status: 'draft',
             display_order: j
           })

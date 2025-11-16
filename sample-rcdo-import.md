@@ -1,4 +1,4 @@
-# H1 2026 Rallying Cry, Defining Objectives & Strategic Initiatives
+Show the DIO primary success metric in the DIO drawer# H1 2026 Rallying Cry, Defining Objectives & Strategic Initiatives
 
 ## Rallying Cry — H1 2026
 
@@ -6,7 +6,7 @@
 
 ---
 
-## DO #1 — Improve Operational Efficiency & Discipline Across the Company
+## DO #1 — Improve Operational Efficiency & Discipline Across the Company (Owner: John Smith)
 
 **Definition**
 
@@ -18,12 +18,12 @@ Building and strengthening foundations to provide clarity and resources to enabl
 
 ### Strategic Initiatives
 
-1. **Process Standardization & Optimization**
+1. **Process Standardization & Optimization** (Owner: Jane Doe)
 
    * Create and roll out templated SOPs for critical roles and processes, including hand-offs.
    * Identify and address 3–5 of the most critical process gaps (e.g., escalation paths, use of short-term agencies/vendors, deal desk, product sunsetting, pre-sale/sale/implementation readiness, tracking product commitments on SOWs).
 
-2. **Drive Resource Efficiency**
+2. **Drive Resource Efficiency** (Owner: Bob Johnson)
 
    * Successfully execute the H1 rightshoring/techshoring plan.
    * Ensure the right talent is in the right roles via semi-annual talent reviews and gap assessments.

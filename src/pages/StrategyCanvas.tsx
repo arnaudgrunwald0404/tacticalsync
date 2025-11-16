@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -759,11 +759,31 @@ const duplicateSelectedDo = useCallback(() => {
 
       // Format for canvas
       setImportStatus({ type: 'info', message: 'Updating canvas...' });
+      
+      // Add canvas update to progress
+      setImportProgress(prev => [
+        ...prev,
+        { label: 'Rendering canvas', status: 'loading' }
+      ]);
+      
+      // Small delay to let UI update
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       const { nodes: importedNodes, edges: importedEdges } = formatRCDOForCanvas(parsedData);
       
       // Update canvas
       setNodes(importedNodes);
       setEdges(importedEdges);
+      
+      // Wait for ReactFlow to render
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Mark canvas update complete
+      setImportProgress(prev => 
+        prev.map(item => 
+          item.label === 'Rendering canvas' ? { ...item, status: 'success' as const } : item
+        )
+      );
 
       setImportStatus({ 
         type: 'success', 
@@ -1277,6 +1297,24 @@ onNodeDragStop={(_e, node) => {
                   />
                 </div>
 
+                {/* Primary Success Metric Field */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Primary Success Metric</label>
+                  <input
+                    className="w-full rounded border px-2 py-1.5 text-sm bg-background"
+                    value={selectedNode?.data.primarySuccessMetric || ""}
+                    onChange={(e) => {
+                      if (!selectedNode) return;
+                      const next = nodes.map((n) => 
+                        n.id === selectedNode.id ? { ...n, data: { ...n.data, primarySuccessMetric: e.target.value } } : n
+                      );
+                      setNodes(next);
+                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, primarySuccessMetric: e.target.value } });
+                    }}
+                    placeholder="e.g., OpEx management and achievement of SI-level metrics"
+                  />
+                </div>
+
                 <div className="pt-4 space-y-2">
                   <div className="text-sm font-medium">Strategic Initiatives</div>
                   <div className="space-y-2 max-h-48 overflow-auto pr-1">
@@ -1706,7 +1744,7 @@ onNodeDragStop={(_e, node) => {
 Example:
 > **Your Rallying Cry Here**
 
-## DO #1 — Title
+## DO #1 — Title (Owner: John Doe)
 **Definition**
 Your definition here...
 
@@ -1714,9 +1752,12 @@ Your definition here...
 * Your metric here...
 
 ### Strategic Initiatives
-1. **Initiative Title**
+1. **Initiative Title** (Owner: Jane Smith)
    * Bullet point 1
-   * Bullet point 2"
+   * Bullet point 2
+
+2. **Another Initiative**
+   * No owner - will use importing user"
                     value={pastedMarkdown}
                     onChange={(e) => setPastedMarkdown(e.target.value)}
                     disabled={isImporting}
@@ -1754,13 +1795,133 @@ Your definition here...
                 </div>
               )}
 
-              <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/30 rounded">
-                <p className="font-medium">Expected format:</p>
-                <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>Rallying Cry in blockquote format: <code className="text-xs bg-background px-1 py-0.5 rounded">&gt; **Your rallying cry**</code></li>
-                  <li>Defining Objectives with ## headers: <code className="text-xs bg-background px-1 py-0.5 rounded">## DO #1 — Title</code></li>
-                  <li>Strategic Initiatives as numbered lists: <code className="text-xs bg-background px-1 py-0.5 rounded">1. **Initiative**</code></li>
-                </ul>
+              <div className="text-xs text-muted-foreground space-y-2 p-3 bg-muted/30 rounded">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-sm">Markdown Format Instructions:</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 flex items-center gap-1.5"
+                    onClick={() => {
+                      const instructions = `Please format my RCDO (Rallying Cry, Defining Objectives, and Strategic Initiatives) data according to the following markdown structure:
+
+## STRUCTURE OVERVIEW
+
+1. **Document Title** (H1): Main heading for your planning period
+   Example: # H1 2026 Rallying Cry, Defining Objectives & Strategic Initiatives
+
+2. **Rallying Cry Section**:
+   - Use ## header: ## Rallying Cry — [Period]
+   - Place rallying cry in blockquote with bold formatting: > **Your rallying cry text**
+   - Followed by a horizontal rule: ---
+
+3. **Defining Objectives** (repeat for each DO):
+   - Use ## header with format: ## DO #[number] — [Title]
+   - Optional: Add owner in parentheses: ## DO #1 — Title (Owner: Jane Doe)
+   - Follow with **Definition** section containing description
+   - Add **Primary Success Metric** section with bullet point(s)
+   - Include ### Strategic Initiatives subsection
+   - List initiatives as numbered items: 1. **Initiative Title**
+     - Optional: Add owner: 1. **Initiative Title (Owner: John Smith)**
+     - Sub-bullets for initiative details (use * or -)
+   - End each DO with horizontal rule: ---
+
+## COMPLETE EXAMPLE
+
+# H1 2026 Rallying Cry, Defining Objectives & Strategic Initiatives
+
+## Rallying Cry — H1 2026
+
+> **Fuel customer growth and retention through disciplined execution**
+
+---
+
+## DO #1 — Improve Operational Efficiency (Owner: Jane Doe)
+
+**Definition**
+
+Building and strengthening foundations to provide clarity and resources to enable individual success and cross-functional collaboration that drive improved business outcomes consistently.
+
+**Primary Success Metric**
+
+* OpEx management and achievement of SI-level metrics.
+
+### Strategic Initiatives
+
+1. **Process Standardization & Optimization (Owner: John Smith)**
+
+   * Create and roll out templated SOPs for critical roles and processes
+   * Identify and address 3–5 of the most critical process gaps
+
+2. **Drive Resource Efficiency**
+
+   * Successfully execute the H1 rightshoring/techshoring plan
+   * Ensure the right talent is in the right roles
+
+---
+
+## DO #2 — Improve Customer Retention
+
+**Definition**
+
+We aim to predict, prevent, and intervene on customer risk to improve customer retention and drive increased revenue.
+
+**Primary Success Metric**
+
+* Leading indicators of churn (customer health, adoption score, etc.)
+
+### Strategic Initiatives
+
+1. **Product-Related Churn Taskforce**
+
+   * Improve usage data availability
+   * Establish a triage/prioritization process
+
+2. **Integrations Taskforce**
+
+   * Focus on integration-related drivers of churn
+
+---
+
+## KEY FORMATTING RULES
+
+- Use em dash (—) or en dash (–) or hyphen (-) after DO numbers
+- Keep consistent indentation for sub-bullets (3 spaces)
+- Bold important section headers: **Definition**, **Primary Success Metric**
+- Bold initiative titles within numbered lists: 1. **Title**
+- Use blockquote (>) only for the rallying cry
+- Separate each DO with horizontal rule (---)
+- Owner attribution is optional and uses format: (Owner: Name)
+- Owner names match against user email, first name, last name, or full name
+- If owner not specified or not found, the importing user is assigned`;
+                      
+                      navigator.clipboard.writeText(instructions);
+                      toast({
+                        title: "Copied!",
+                        description: "Format instructions copied to clipboard",
+                      });
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy Instructions
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs opacity-90">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
+                  <div className="text-xs space-y-1 pl-2 border-l-2 border-muted-foreground/30">
+                    <p className="font-medium">Quick Reference:</p>
+                    <ul className="list-disc list-inside space-y-0.5 ml-2">
+                      <li>Rallying Cry: <code className="text-xs bg-background px-1 py-0.5 rounded">&gt; **Text**</code></li>
+                      <li>Defining Objectives: <code className="text-xs bg-background px-1 py-0.5 rounded">## DO #1 — Title</code></li>
+                      <li>Strategic Initiatives: <code className="text-xs bg-background px-1 py-0.5 rounded">1. **Initiative**</code></li>
+                      <li>Sections: <code className="text-xs bg-background px-1 py-0.5 rounded">**Definition**</code>, <code className="text-xs bg-background px-1 py-0.5 rounded">**Primary Success Metric**</code></li>
+                      <li>Owners (optional): <code className="text-xs bg-background px-1 py-0.5 rounded">(Owner: Name)</code></li>
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -14,6 +14,7 @@ type NodeData = {
   status?: "draft" | "final";
   ownerId?: string;
   hypothesis?: string;
+  primarySuccessMetric?: string;
   parentDoId?: string;
   bgColor?: string;
   size?: { w: number; h: number };
@@ -45,6 +46,11 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
   const nodes: Node<NodeData>[] = [];
   const edges: Edge[] = [];
 
+  console.log('🎨 Formatting for canvas:', {
+    doCount: data.definingObjectives.length,
+    dos: data.definingObjectives.map((d, i) => `#${i+1}: ${d.title}`)
+  });
+
   // 1. Create Rallying Cry node (at top center)
   const baseX = 400;
   const baseY = 80;
@@ -74,6 +80,13 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
   data.definingObjectives.forEach((do_, index) => {
     const doId = `do-${index + 1}`;
     const posX = startX + (index * gapX);
+
+    console.log(`🎨 Creating canvas node for DO #${index + 1}:`, {
+      doId,
+      title: do_.title,
+      position: { x: posX, y: startY },
+      siCount: do_.strategicInitiatives.length
+    });
 
     // Convert SI data to embedded saiItems format with HTML formatting
     const saiItems = do_.strategicInitiatives.map((si, siIndex) => {
@@ -105,6 +118,7 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
         title: do_.title,
         status: "draft",
         hypothesis: hypothesisHtml,
+        primarySuccessMetric: do_.primarySuccessMetric || '',
         saiItems: saiItems,
         size: { w: 260, h: 110 },
       },
@@ -118,6 +132,12 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
       type: "smoothstep",
       markerEnd: { type: MarkerType.ArrowClosed },
     });
+  });
+
+  console.log('🎨 Canvas formatting complete:', {
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    nodeIds: nodes.map(n => n.id)
   });
 
   return { nodes, edges };
