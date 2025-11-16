@@ -170,9 +170,9 @@ function DoNode({ id, data }: NodeProps<NodeData>) {
         <textarea
           ref={textareaRef}
           className="flex-1 w-full bg-transparent outline-none text-xs font-semibold resize-none overflow-hidden leading-tight"
-          defaultValue={data.title}
+          value={data.title || ""}
           placeholder="Name this DO"
-          onBlur={(e) => {
+          onChange={(e) => {
             window.dispatchEvent(new CustomEvent("rcdo:update-node", { 
               detail: { nodeId: id, updates: { title: e.target.value } } 
             }));
@@ -855,7 +855,7 @@ const duplicateSelectedDo = useCallback(() => {
   const handleConfirmOverwrite = useCallback(async () => {
     if (pendingImportData) {
       setShowOverwriteWarning(false);
-      setShowImportDialog(false); // Close import dialog
+      // Keep import dialog open to show progress
       await processMarkdownImport(pendingImportData, true);
     }
   }, [pendingImportData, processMarkdownImport]);
@@ -1647,7 +1647,14 @@ onNodeDragStop={(_e, node) => {
       {/* Import Dialog */}
       {showImportDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => !isImporting && setShowImportDialog(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => {
+            if (!isImporting) {
+              setShowImportDialog(false);
+              setImportProgress([]);
+              setImportStatus(null);
+              setPastedMarkdown('');
+            }
+          }} />
           <div className="relative bg-background border rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Import RCDO from Markdown</h3>
@@ -1657,6 +1664,7 @@ onNodeDragStop={(_e, node) => {
                   onClick={() => {
                     setShowImportDialog(false);
                     setImportStatus(null);
+                    setImportProgress([]);
                     setPastedMarkdown('');
                   }}
                 >
