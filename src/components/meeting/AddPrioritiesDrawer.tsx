@@ -314,6 +314,7 @@ const AddPrioritiesDrawer = ({
                     priority={priority}
                     teamMembers={teamMembers}
                     currentUser={currentUser}
+                    teamId={teamId}
                     onUpdate={updatePriority}
                     onRemove={() => removePriorityRow(priority.id)}
                     showRemove={priorities.length > 3}
@@ -330,6 +331,7 @@ const AddPrioritiesDrawer = ({
                     priority={priority}
                     teamMembers={teamMembers}
                     currentUser={currentUser}
+                    teamId={teamId}
                     onUpdate={updatePriority}
                     onRemove={() => removePriorityRow(priority.id)}
                     showRemove={priorities.length > 3}
