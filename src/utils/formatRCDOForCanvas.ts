@@ -75,16 +75,27 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
     const doId = `do-${index + 1}`;
     const posX = startX + (index * gapX);
 
-    // Convert SI data to embedded saiItems format
-    const saiItems = do_.strategicInitiatives.map((si, siIndex) => ({
-      id: `si-${doId}-${siIndex + 1}`,
-      title: si.title,
-      ownerId: undefined,
-      description: si.bullets.length > 0 
-        ? si.bullets.map(b => `• ${b}`).join('\n')
-        : si.description,
-      metric: '', // Can be populated if SI has specific metrics
-    }));
+    // Convert SI data to embedded saiItems format with HTML formatting
+    const saiItems = do_.strategicInitiatives.map((si, siIndex) => {
+      // Convert bullets to HTML list
+      let description = '';
+      if (si.bullets.length > 0) {
+        description = '<ul>' + si.bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
+      } else if (si.description) {
+        description = `<p>${si.description}</p>`;
+      }
+      
+      return {
+        id: `si-${doId}-${siIndex + 1}`,
+        title: si.title,
+        ownerId: undefined,
+        description: description,
+        metric: siIndex === 0 && do_.primarySuccessMetric ? do_.primarySuccessMetric : '', // Only first SI gets DO's primary metric
+      };
+    });
+
+    // Convert definition to HTML
+    const hypothesisHtml = do_.definition ? `<p>${do_.definition}</p>` : '';
 
     nodes.push({
       id: doId,
@@ -93,7 +104,7 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
       data: {
         title: do_.title,
         status: "draft",
-        hypothesis: do_.definition,
+        hypothesis: hypothesisHtml,
         saiItems: saiItems,
         size: { w: 260, h: 110 },
       },

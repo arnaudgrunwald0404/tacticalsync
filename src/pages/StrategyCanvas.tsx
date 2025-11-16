@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -41,6 +41,7 @@ type NodeData = {
   status?: "draft" | "final";
   ownerId?: string; // owner user ID for DOs
   hypothesis?: string; // DO hypothesis (rich text)
+  primarySuccessMetric?: string; // DO primary success metric
   parentDoId?: string; // only for legacy SI nodes (no longer used)
   bgColor?: string; // node background color
   size?: { w: number; h: number }; // optional fixed size per node
@@ -358,8 +359,11 @@ export default function StrategyCanvasPage() {
   
   // Import state
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
+  const [pendingImportData, setPendingImportData] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const [importProgress, setImportProgress] = useState<Array<{ label: string; status: 'pending' | 'loading' | 'success' | 'error' }>>([]);
   const [importMode, setImportMode] = useState<'file' | 'paste'>('paste');
   const [pastedMarkdown, setPastedMarkdown] = useState('');
   const { toast } = useToast();
@@ -648,14 +652,55 @@ const duplicateSelectedDo = useCallback(() => {
     setSelectedNode(null);
   }, [nodes, edges, selectedNode]);
 
+  // Check if canvas has content
+  const hasCanvasContent = useCallback(() => {
+    // Check if there are DOs beyond the initial template state
+    const doNodes = nodes.filter(n => n.type === 'do');
+    if (doNodes.length === 0) return false;
+    
+    // Check if any DO has a custom title or SIs
+    const hasCustomContent = doNodes.some(n => {
+      const title = n.data.title || '';
+      const hasSIs = (n.data.saiItems?.length || 0) > 0;
+      const hasCustomTitle = title && !title.match(/^DO \d+$/);
+      return hasCustomTitle || hasSIs;
+    });
+    
+    return hasCustomContent;
+  }, [nodes]);
+
   // Import from markdown text (shared logic)
-  const processMarkdownImport = useCallback(async (markdownText: string) => {
+  const processMarkdownImport = useCallback(async (markdownText: string, skipWarning = false) => {
+    // Check if canvas has content and show warning if needed
+    if (!skipWarning && hasCanvasContent()) {
+      setPendingImportData(markdownText);
+      setShowOverwriteWarning(true);
+      return;
+    }
+
     setIsImporting(true);
+    setImportProgress([]);
 
     try {
+      // Check if replacing existing data
+      if (skipWarning && hasCanvasContent()) {
+        setImportStatus({ type: 'info', message: 'Removing existing data...' });
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
       // Parse markdown
       setImportStatus({ type: 'info', message: 'Parsing markdown...' });
       const parsedData = parseMarkdownRCDO(markdownText);
+      
+      // Initialize progress items
+      const progressItems = [
+        { label: 'Rallying Cry', status: 'pending' as const },
+        ...parsedData.definingObjectives.map(do_ => ({
+          label: do_.title,
+          status: 'pending' as const
+        }))
+      ];
+      setImportProgress(progressItems);
       
       // Validate
       const validation = validateParsedRCDO(parsedData);
@@ -673,21 +718,20 @@ const duplicateSelectedDo = useCallback(() => {
         return;
       }
 
-      // Get current user and team
+      // Show warnings if any
+      if (validation.warnings && validation.warnings.length > 0) {
+        console.warn('⚠️ Import warnings:', validation.warnings);
+        setImportStatus({ 
+          type: 'info', 
+          message: `Warnings: ${validation.warnings.join(', ')}` 
+        });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No user found');
-      }
-
-      // Get user's team
-      const { data: teamMember } = await supabase
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (!teamMember?.team_id) {
-        throw new Error('No team found for user');
       }
 
       // Import to database
@@ -696,10 +740,17 @@ const duplicateSelectedDo = useCallback(() => {
       }
 
       setImportStatus({ type: 'info', message: 'Saving to database...' });
+      
+      // Import with progress callback
       const importResult = await importRCDOToDatabase(parsedData, {
         cycleId,
-        teamId: teamMember.team_id,
         ownerUserId: user.id
+      }, (progress) => {
+        setImportProgress(prev => 
+          prev.map((item, idx) => 
+            idx === progress.index ? { ...item, status: progress.status } : item
+          )
+        );
       });
 
       if (!importResult.success) {
@@ -724,11 +775,8 @@ const duplicateSelectedDo = useCallback(() => {
         description: `Imported ${parsedData.definingObjectives.length} Defining Objectives`,
       });
 
-      // Close dialog after a delay
-      setTimeout(() => {
-        setShowImportDialog(false);
-        setImportStatus(null);
-      }, 2000);
+      // Keep dialog open to show success state
+      // User can close manually
 
     } catch (error: any) {
       setImportStatus({ 
@@ -742,12 +790,62 @@ const duplicateSelectedDo = useCallback(() => {
       });
     } finally {
       setIsImporting(false);
+      setPendingImportData(null);
+      setShowOverwriteWarning(false);
+      // Don't clear progress - keep it visible
+    }
+  }, [cycleId, setNodes, setEdges, toast, hasCanvasContent]);
+
+  // Import from file
+  const handleImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportStatus({ type: 'info', message: 'Reading file...' });
+    try {
+      const text = await file.text();
+      await processMarkdownImport(text);
+    } catch (error: any) {
+      setImportStatus({ 
+        type: 'error', 
+        message: error.message || 'Failed to read file' 
+      });
+    } finally {
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
-  }, [cycleId, setNodes, setEdges, toast]);
+  }, [processMarkdownImport]);
+
+  // Import from pasted text
+  const handleImportPasted = useCallback(async () => {
+    if (!pastedMarkdown.trim()) {
+      toast({
+        title: "No Content",
+        description: "Please paste markdown content first",
+        variant: "destructive"
+      });
+      return;
+    }
+    await processMarkdownImport(pastedMarkdown);
+  }, [pastedMarkdown, processMarkdownImport, toast]);
+
+  // Confirm overwrite and proceed with import
+  const handleConfirmOverwrite = useCallback(async () => {
+    if (pendingImportData) {
+      setShowOverwriteWarning(false);
+      setShowImportDialog(false); // Close import dialog
+      await processMarkdownImport(pendingImportData, true);
+    }
+  }, [pendingImportData, processMarkdownImport]);
+
+  // Cancel overwrite
+  const handleCancelOverwrite = useCallback(() => {
+    setShowOverwriteWarning(false);
+    setPendingImportData(null);
+    // Keep import dialog open so user can try again or cancel
+  }, []);
 
   return (
     <div className="w-full h-dvh flex flex-col">
@@ -1465,28 +1563,124 @@ onNodeDragStop={(_e, node) => {
         </Drawer>
       )}
 
+      {/* Overwrite Warning Dialog */}
+      {showOverwriteWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={handleCancelOverwrite} />
+          <div className="relative bg-background border rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="h-6 w-6 text-orange-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Replace Canvas Content?</h3>
+                <p className="text-sm text-muted-foreground">
+                  The canvas currently contains data. Importing this file will <strong>replace all existing content</strong> including:
+                </p>
+                <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1 ml-2">
+                  <li>All Defining Objectives</li>
+                  <li>All Strategic Initiatives</li>
+                  <li>The Rallying Cry</li>
+                </ul>
+                <p className="text-sm text-muted-foreground mt-3">
+                  This action cannot be undone. Are you sure you want to continue?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={handleCancelOverwrite}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmOverwrite}
+                className="flex items-center gap-2"
+              >
+                <AlertCircle className="h-4 w-4" />
+                Replace All Content
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import Dialog */}
       {showImportDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => !isImporting && setShowImportDialog(false)} />
-          <div className="relative bg-background border rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="relative bg-background border rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Import RCDO from Markdown</h3>
               {!isImporting && (
                 <button
                   className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowImportDialog(false)}
+                  onClick={() => {
+                    setShowImportDialog(false);
+                    setImportStatus(null);
+                    setPastedMarkdown('');
+                  }}
                 >
                   <X className="h-5 w-5" />
                 </button>
               )}
             </div>
 
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Upload a markdown file containing your Rallying Cry, Defining Objectives, and Strategic Initiatives.
-              </p>
+            {/* Mode Tabs */}
+            <div className="flex gap-2 mb-4 border-b">
+              <button
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  importMode === 'paste'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setImportMode('paste')}
+                disabled={isImporting}
+              >
+                Paste Text
+              </button>
+              <button
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  importMode === 'file'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setImportMode('file')}
+                disabled={isImporting}
+              >
+                Upload File
+              </button>
+            </div>
 
+            <div className="space-y-4 flex-1 overflow-y-auto">
+              {/* Progress List */}
+              {importProgress.length > 0 && (
+                <div className="space-y-2 p-3 bg-muted/30 rounded-md">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Import Progress:</p>
+                  {importProgress.map((item, index) => (
+                    <div key={index} className="flex items-center gap-2 text-sm">
+                      {item.status === 'pending' && (
+                        <div className="h-5 w-5 rounded-full border-2 border-muted flex-shrink-0" />
+                      )}
+                      {item.status === 'loading' && (
+                        <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-blue-500" />
+                      )}
+                      {item.status === 'success' && (
+                        <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-green-600" />
+                      )}
+                      {item.status === 'error' && (
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
+                      )}
+                      <span className={item.status === 'success' ? 'text-foreground' : item.status === 'error' ? 'text-red-600' : 'text-muted-foreground'}>
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Status Messages */}
               {importStatus && (
                 <div className={`flex items-start gap-2 p-3 rounded-md ${
                   importStatus.type === 'success' ? 'bg-green-50 text-green-900 border border-green-200' :
@@ -1500,54 +1694,99 @@ onNodeDragStop={(_e, node) => {
                 </div>
               )}
 
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".md,.markdown,.txt"
-                  onChange={handleImportFile}
-                  disabled={isImporting}
-                  className="hidden"
-                  id="import-file-input"
-                />
-                <label htmlFor="import-file-input">
-                  <Button
-                    asChild
-                    variant="outline"
-                    disabled={isImporting}
-                    className="w-full cursor-pointer"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <Upload className="h-4 w-4" />
-                      {isImporting ? 'Importing...' : 'Choose Markdown File'}
-                    </span>
-                  </Button>
-                </label>
-              </div>
+              {importMode === 'paste' ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Paste your markdown content containing the Rallying Cry, Defining Objectives, and Strategic Initiatives.
+                  </p>
+                  <textarea
+                    className="w-full h-80 rounded border px-3 py-2 text-sm bg-background font-mono resize-none"
+                    placeholder="Paste your markdown here...
 
-              <div className="text-xs text-muted-foreground space-y-1">
+Example:
+> **Your Rallying Cry Here**
+
+## DO #1 — Title
+**Definition**
+Your definition here...
+
+**Primary Success Metric**
+* Your metric here...
+
+### Strategic Initiatives
+1. **Initiative Title**
+   * Bullet point 1
+   * Bullet point 2"
+                    value={pastedMarkdown}
+                    onChange={(e) => setPastedMarkdown(e.target.value)}
+                    disabled={isImporting}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Upload a markdown file containing your Rallying Cry, Defining Objectives, and Strategic Initiatives.
+                  </p>
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".md,.markdown,.txt"
+                      onChange={handleImportFile}
+                      disabled={isImporting}
+                      className="hidden"
+                      id="import-file-input"
+                    />
+                    <label htmlFor="import-file-input">
+                      <Button
+                        asChild
+                        variant="outline"
+                        disabled={isImporting}
+                        className="w-full cursor-pointer"
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          {isImporting ? 'Importing...' : 'Choose Markdown File'}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/30 rounded">
                 <p className="font-medium">Expected format:</p>
                 <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>Rallying Cry in blockquote format</li>
-                  <li>Defining Objectives with ## headers</li>
-                  <li>Strategic Initiatives as numbered lists</li>
+                  <li>Rallying Cry in blockquote format: <code className="text-xs bg-background px-1 py-0.5 rounded">&gt; **Your rallying cry**</code></li>
+                  <li>Defining Objectives with ## headers: <code className="text-xs bg-background px-1 py-0.5 rounded">## DO #1 — Title</code></li>
+                  <li>Strategic Initiatives as numbered lists: <code className="text-xs bg-background px-1 py-0.5 rounded">1. **Initiative**</code></li>
                 </ul>
               </div>
             </div>
 
-            {!isImporting && (
-              <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImportDialog(false);
+                  setImportStatus(null);
+                  setImportProgress([]);
+                  setPastedMarkdown('');
+                }}
+              >
+                {isImporting ? 'Close' : importProgress.length > 0 && importProgress.every(p => p.status === 'success' || p.status === 'error') ? 'Done' : 'Cancel'}
+              </Button>
+              {importMode === 'paste' && !isImporting && importProgress.length === 0 && (
                 <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowImportDialog(false);
-                    setImportStatus(null);
-                  }}
+                  onClick={handleImportPasted}
+                  disabled={!pastedMarkdown.trim()}
+                  className="flex items-center gap-2"
                 >
-                  Cancel
+                  <Upload className="h-4 w-4" />
+                  Import
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

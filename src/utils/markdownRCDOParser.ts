@@ -51,8 +51,9 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
       continue;
     }
     
-    // Extract DO headers - match patterns like "## DO #1 — Title"
-    const doHeaderMatch = line.match(/^##\s+DO\s+#(\d+)\s+[—–-]\s+(.+)$/i);
+    // Extract DO headers - match patterns like "## DO #1 — Title" (various dash types)
+    // Handles em dash (—), en dash (–), and hyphen (-)
+    const doHeaderMatch = line.match(/^##\s+DO\s+#?(\d+)\s*[—–\-:]\s*(.+)$/i);
     if (doHeaderMatch) {
       // Save previous DO if exists
       if (currentDO && currentSI) {
@@ -113,8 +114,8 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
       continue;
     }
     
-    // Strategic Initiative numbered items
-    if (currentSection === 'si-list' && currentDO) {
+    // Strategic Initiative numbered items (check in both si-list and si-bullets sections)
+    if ((currentSection === 'si-list' || currentSection === 'si-bullets') && currentDO) {
       const siMatch = line.match(/^\d+\.\s+\*\*(.+)\*\*$/);
       if (siMatch) {
         // Save previous SI if exists
@@ -132,11 +133,14 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
       }
     }
     
-    // SI bullet points
-    if (currentSection === 'si-bullets' && currentSI && line.startsWith('*')) {
-      const bulletText = line.replace(/^\*\s*/, '').trim();
-      currentSI.bullets.push(bulletText);
-      continue;
+    // SI bullet points (only process if not a new numbered item)
+    if (currentSection === 'si-bullets' && currentSI) {
+      // Check if it's a bullet point
+      if (line.startsWith('*') && !line.match(/^\d+\.\s+\*\*(.+)\*\*$/)) {
+        const bulletText = line.replace(/^\*\s*/, '').trim();
+        currentSI.bullets.push(bulletText);
+        continue;
+      }
     }
   }
   
@@ -148,6 +152,19 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
     definingObjectives.push(currentDO);
   }
   
+  // Debug logging
+  console.log('📋 Parsed RCDO:', {
+    rallyingCry: rallyingCry?.substring(0, 50) + '...',
+    doCount: definingObjectives.length,
+    dos: definingObjectives.map(d => ({
+      number: d.number,
+      title: d.title,
+      siCount: d.strategicInitiatives.length,
+      hasDefinition: !!d.definition,
+      hasMetric: !!d.primarySuccessMetric
+    }))
+  });
+  
   return {
     rallyingCry,
     definingObjectives
@@ -155,10 +172,11 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
 }
 
 /**
- * Validates parsed RCDO data
+ * Validates parsed RCDO data (lenient - warnings only, not blocking)
  */
-export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: string[] } {
+export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const warnings: string[] = [];
   
   if (!data.rallyingCry) {
     errors.push('No Rallying Cry found in the markdown file');
@@ -169,7 +187,7 @@ export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: 
   }
   
   if (data.definingObjectives.length > 6) {
-    errors.push(`Found ${data.definingObjectives.length} Defining Objectives. Maximum recommended is 6.`);
+    warnings.push(`Found ${data.definingObjectives.length} Defining Objectives. Maximum recommended is 6.`);
   }
   
   data.definingObjectives.forEach((do_, idx) => {
@@ -177,16 +195,20 @@ export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: 
       errors.push(`DO #${idx + 1} is missing a title`);
     }
     if (!do_.definition) {
-      errors.push(`DO #${idx + 1} "${do_.title}" is missing a definition`);
+      warnings.push(`DO #${idx + 1} "${do_.title}" is missing a definition`);
+    }
+    if (!do_.primarySuccessMetric) {
+      warnings.push(`DO #${idx + 1} "${do_.title}" is missing a primary success metric`);
     }
     if (do_.strategicInitiatives.length === 0) {
-      errors.push(`DO #${idx + 1} "${do_.title}" has no Strategic Initiatives`);
+      warnings.push(`DO #${idx + 1} "${do_.title}" has no Strategic Initiatives`);
     }
   });
   
   return {
     valid: errors.length === 0,
-    errors
+    errors,
+    warnings
   };
 }
 
