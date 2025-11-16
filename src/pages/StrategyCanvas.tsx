@@ -1242,7 +1242,13 @@ onNodeDragStop={(_e, node) => {
                     </div>
                     <div>
                       <label className="text-sm font-medium">Description</label>
-                      <textarea className="mt-1 w-full rounded border px-2 py-1 text-sm bg-background" rows={5} placeholder="What is this initiative?" value={si.description || ""} onChange={(e)=>update({ description: e.target.value })} />
+                      <div className="mt-1">
+                        <RichTextEditor
+                          content={si.description || ""}
+                          onChange={(content) => update({ description: content })}
+                          placeholder="What is this initiative?"
+                        />
+                      </div>
                     </div>
                   </div>
                 </>
