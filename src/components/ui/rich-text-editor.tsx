@@ -23,9 +23,10 @@ interface RichTextEditorProps {
   placeholder?: string
   className?: string
   readOnly?: boolean
+  minHeight?: string // e.g., "96px" for 3 rows
 }
 
-const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className = '', readOnly = false }: RichTextEditorProps) => {
+const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className = '', readOnly = false, minHeight = '40px' }: RichTextEditorProps) => {
   // Clean up empty lines when displaying existing content
   const cleanContent = content ? content.replace(/(<p><\/p>)+/g, '') : content;
   const [isFocused, setIsFocused] = useState(false)
@@ -261,7 +262,10 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       )}
 
       {/* Editor Content */}
-      <div className="relative border h-auto min-h-[40px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background">
+      <div 
+        className="relative border h-auto focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background"
+        style={{ minHeight }}
+      >
         <EditorContent 
           editor={editor} 
         />

@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -28,6 +28,10 @@ import type { Tables } from "@/integrations/supabase/types";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParser";
+import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
+import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
+import { useToast } from "@/hooks/use-toast";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -351,6 +355,13 @@ export default function StrategyCanvasPage() {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
   const profilesMap = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])), [profiles]);
+  
+  // Import state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Header state (logo/tabs/avatar)
   const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
@@ -635,6 +646,113 @@ const duplicateSelectedDo = useCallback(() => {
     setSelectedNode(null);
   }, [nodes, edges, selectedNode]);
 
+  // Import from markdown file
+  const handleImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportStatus({ type: 'info', message: 'Reading file...' });
+
+    try {
+      // Read file
+      const text = await file.text();
+      
+      // Parse markdown
+      setImportStatus({ type: 'info', message: 'Parsing markdown...' });
+      const parsedData = parseMarkdownRCDO(text);
+      
+      // Validate
+      const validation = validateParsedRCDO(parsedData);
+      if (!validation.valid) {
+        setImportStatus({ 
+          type: 'error', 
+          message: `Validation failed:\n${validation.errors.join('\n')}` 
+        });
+        toast({
+          title: "Import Failed",
+          description: validation.errors[0],
+          variant: "destructive"
+        });
+        setIsImporting(false);
+        return;
+      }
+
+      // Get current user and team
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('No user found');
+      }
+
+      // Get user's team
+      const { data: teamMember } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!teamMember?.team_id) {
+        throw new Error('No team found for user');
+      }
+
+      // Import to database
+      if (!cycleId) {
+        throw new Error('No cycle ID found');
+      }
+
+      setImportStatus({ type: 'info', message: 'Saving to database...' });
+      const importResult = await importRCDOToDatabase(parsedData, {
+        cycleId,
+        teamId: teamMember.team_id,
+        ownerUserId: user.id
+      });
+
+      if (!importResult.success) {
+        throw new Error(importResult.error || 'Import failed');
+      }
+
+      // Format for canvas
+      setImportStatus({ type: 'info', message: 'Updating canvas...' });
+      const { nodes: importedNodes, edges: importedEdges } = formatRCDOForCanvas(parsedData);
+      
+      // Update canvas
+      setNodes(importedNodes);
+      setEdges(importedEdges);
+
+      setImportStatus({ 
+        type: 'success', 
+        message: `Successfully imported: ${parsedData.definingObjectives.length} DOs with ${parsedData.definingObjectives.reduce((sum, d) => sum + d.strategicInitiatives.length, 0)} Strategic Initiatives` 
+      });
+
+      toast({
+        title: "Import Successful",
+        description: `Imported ${parsedData.definingObjectives.length} Defining Objectives`,
+      });
+
+      // Close dialog after a delay
+      setTimeout(() => {
+        setShowImportDialog(false);
+        setImportStatus(null);
+      }, 2000);
+
+    } catch (error: any) {
+      setImportStatus({ 
+        type: 'error', 
+        message: error.message || 'An error occurred during import' 
+      });
+      toast({
+        title: "Import Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [cycleId, setNodes, setEdges, toast]);
 
   return (
     <div className="w-full h-dvh flex flex-col">
@@ -715,6 +833,14 @@ const duplicateSelectedDo = useCallback(() => {
         </Button>
         <div className="h-5 w-px bg-muted" />
         <Button size="sm" onClick={addDo} className="flex items-center gap-1"><Plus className="h-4 w-4" /> Add DO</Button>
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => setShowImportDialog(true)} 
+          className="flex items-center gap-1"
+        >
+          <Upload className="h-4 w-4" /> Import from File
+        </Button>
         <div className="ml-auto text-xs text-muted-foreground pr-2">Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.</div>
       </div>
 
@@ -1054,6 +1180,7 @@ onNodeDragStop={(_e, node) => {
                       setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, hypothesis: content } });
                     }}
                     placeholder="If we do X, then Y will happen because Z..."
+                    minHeight="96px"
                   />
                 </div>
 
@@ -1247,6 +1374,7 @@ onNodeDragStop={(_e, node) => {
                           content={si.description || ""}
                           onChange={(content) => update({ description: content })}
                           placeholder="What is this initiative?"
+                          minHeight="96px"
                         />
                       </div>
                     </div>

@@ -12,6 +12,7 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   readOnly?: boolean;
+  minHeight?: string;
 }
 
 /**

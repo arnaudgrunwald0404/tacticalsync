@@ -228,6 +228,7 @@ const fetchUsers = async () => {
                   setFormData({ ...formData, hypothesis: content })
                 }
                 placeholder="If we do X, then Y will happen because Z..."
+                minHeight="96px"
               />
             </div>
 

@@ -216,6 +216,7 @@ export function InitiativeDialog({
                   setFormData({ ...formData, description: content })
                 }
                 placeholder="Describe what this initiative entails and why it's important..."
+                minHeight="96px"
               />
             </div>
 
