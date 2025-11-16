@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X, LogOut } from "lucide-react";
+import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X, LogOut, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -49,6 +49,7 @@ const TeamInvite = () => {
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState("");
   const [userRole, setUserRole] = useState<string>("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [meetings, setMeetings] = useState<any[]>([]);
 
   useEffect(() => {
     fetchTeam();
@@ -104,6 +105,9 @@ const TeamInvite = () => {
       
       // Fetch pending invitations (we'll need to create this functionality)
       await fetchPendingInvitations();
+
+      // Fetch meetings
+      await fetchMeetings();
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -233,6 +237,22 @@ const TeamInvite = () => {
       setPendingInvitations(pendingEmails);
     } catch (error: unknown) {
       console.error("Error fetching pending invitations:", error);
+    }
+  };
+
+  const fetchMeetings = async () => {
+    try {
+      const { data: meetingSeries, error } = await supabase
+        .from("meeting_series")
+        .select("*")
+        .eq("team_id", teamId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      setMeetings(meetingSeries || []);
+    } catch (error: unknown) {
+      console.error("Error fetching meetings:", error);
     }
   };
 
@@ -701,6 +721,49 @@ const TeamInvite = () => {
                 </CardContent>
               </Card>
             )}
+
+            {/* Recurring Meetings Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Recurring Meetings</span>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => navigate(`/team/${teamId}/setup-meeting`)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Meeting
+                  </Button>
+                </CardTitle>
+                <CardDescription>
+                  {meetings.length === 0 
+                    ? "No recurring meetings yet"
+                    : `${meetings.length} recurring meeting${meetings.length !== 1 ? 's' : ''}`
+                  }
+                </CardDescription>
+              </CardHeader>
+              {meetings.length > 0 && (
+                <CardContent>
+                  <div className="space-y-2">
+                    {meetings.map((meeting) => (
+                      <div
+                        key={meeting.id}
+                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/team/${teamId}/meeting/${meeting.id}`)}
+                      >
+                        <div>
+                          <div className="font-medium">{meeting.name}</div>
+                          <div className="text-xs text-muted-foreground capitalize">
+                            {meeting.frequency.replace('-', ' ')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
           </div>
 
           {/* Right Column: Invitations */}
