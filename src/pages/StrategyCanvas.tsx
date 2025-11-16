@@ -25,6 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 
@@ -35,6 +36,7 @@ type NodeData = {
   title: string;
   status?: "draft" | "final";
   ownerId?: string; // owner user ID for DOs
+  hypothesis?: string; // DO hypothesis (rich text)
   parentDoId?: string; // only for legacy SI nodes (no longer used)
   bgColor?: string; // node background color
   size?: { w: number; h: number }; // optional fixed size per node
@@ -1036,6 +1038,23 @@ onNodeDragStop={(_e, node) => {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Hypothesis Field */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Hypothesis (Optional)</label>
+                  <RichTextEditor
+                    content={selectedNode?.data.hypothesis || ""}
+                    onChange={(content) => {
+                      if (!selectedNode) return;
+                      const next = nodes.map((n) => 
+                        n.id === selectedNode.id ? { ...n, data: { ...n.data, hypothesis: content } } : n
+                      );
+                      setNodes(next);
+                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, hypothesis: content } });
+                    }}
+                    placeholder="If we do X, then Y will happen because Z..."
+                  />
                 </div>
 
                 <div className="pt-4 space-y-2">
