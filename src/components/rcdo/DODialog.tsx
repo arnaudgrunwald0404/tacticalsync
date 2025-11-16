@@ -221,7 +221,7 @@ const fetchUsers = async () => {
 
             {/* Hypothesis */}
             <div className="space-y-2">
-              <Label htmlFor="hypothesis">Hypothesis (Optional)</Label>
+              <Label htmlFor="hypothesis">Definition & Hypothesis</Label>
               <RichTextEditor
                 content={formData.hypothesis}
                 onChange={(content) =>

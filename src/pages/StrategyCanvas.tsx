@@ -1168,7 +1168,7 @@ onNodeDragStop={(_e, node) => {
 
                 {/* Hypothesis Field */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium">Hypothesis (Optional)</label>
+                  <label className="block text-sm font-medium">Definition & Hypothesis</label>
                   <RichTextEditor
                     content={selectedNode?.data.hypothesis || ""}
                     onChange={(content) => {
@@ -1468,6 +1468,93 @@ onNodeDragStop={(_e, node) => {
             </DrawerFooter>
           </DrawerContent>
         </Drawer>
+      )}
+
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !isImporting && setShowImportDialog(false)} />
+          <div className="relative bg-background border rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Import RCDO from Markdown</h3>
+              {!isImporting && (
+                <button
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowImportDialog(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Upload a markdown file containing your Rallying Cry, Defining Objectives, and Strategic Initiatives.
+              </p>
+
+              {importStatus && (
+                <div className={`flex items-start gap-2 p-3 rounded-md ${
+                  importStatus.type === 'success' ? 'bg-green-50 text-green-900 border border-green-200' :
+                  importStatus.type === 'error' ? 'bg-red-50 text-red-900 border border-red-200' :
+                  'bg-blue-50 text-blue-900 border border-blue-200'
+                }`}>
+                  {importStatus.type === 'success' && <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />}
+                  {importStatus.type === 'error' && <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />}
+                  {importStatus.type === 'info' && <Upload className="h-5 w-5 flex-shrink-0 mt-0.5 animate-pulse" />}
+                  <p className="text-sm whitespace-pre-wrap">{importStatus.message}</p>
+                </div>
+              )}
+
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md,.markdown,.txt"
+                  onChange={handleImportFile}
+                  disabled={isImporting}
+                  className="hidden"
+                  id="import-file-input"
+                />
+                <label htmlFor="import-file-input">
+                  <Button
+                    asChild
+                    variant="outline"
+                    disabled={isImporting}
+                    className="w-full cursor-pointer"
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      {isImporting ? 'Importing...' : 'Choose Markdown File'}
+                    </span>
+                  </Button>
+                </label>
+              </div>
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">Expected format:</p>
+                <ul className="list-disc list-inside space-y-0.5 ml-2">
+                  <li>Rallying Cry in blockquote format</li>
+                  <li>Defining Objectives with ## headers</li>
+                  <li>Strategic Initiatives as numbered lists</li>
+                </ul>
+              </div>
+            </div>
+
+            {!isImporting && (
+              <div className="flex justify-end gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowImportDialog(false);
+                    setImportStatus(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
