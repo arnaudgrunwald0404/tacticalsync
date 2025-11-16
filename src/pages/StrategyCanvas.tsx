@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2, Copy } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -150,26 +150,58 @@ function DoNode({ id, data }: NodeProps<NodeData>) {
 
   return (
     <div
-      className={`rounded-lg border shadow p-3 min-w-[160px] flex flex-col ${status === "final" ? "border-green-500" : "border-muted"}`}
-      style={{ backgroundColor: data.bgColor || "#ffffff", width: data.size?.w, minHeight: data.size?.h }}
+      className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-hidden ${
+        status === "final" 
+          ? "border-green-500 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30" 
+          : "border-blue-400 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20"
+      }`}
+      style={{ 
+        backgroundColor: data.bgColor, 
+        width: data.size?.w, 
+        minHeight: data.size?.h,
+        boxShadow: status === "final" ? "0 4px 20px rgba(34, 197, 94, 0.15)" : "0 4px 20px rgba(59, 130, 246, 0.15)"
+      }}
     >
-      <div className="flex items-start justify-between gap-2 flex-shrink-0">
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-foreground/80 whitespace-nowrap">Defining Objective</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded bg-muted/60 whitespace-nowrap`}>{status}</span>
+      {/* Decorative corner accent */}
+      <div className={`absolute top-0 right-0 w-20 h-20 ${
+        status === "final" ? "bg-green-500/10" : "bg-blue-500/10"
+      } rounded-bl-full`} />
+      
+      <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+          status === "final"
+            ? "bg-green-500 text-white"
+            : "bg-blue-500 text-white"
+        }`}>Defining Objective</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+          status === "final"
+            ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300"
+            : "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+        }`}>{status}</span>
       </div>
-      <div className="flex items-start gap-2 mt-2">
-        {owner && (
-          <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] flex-shrink-0 mt-0.5">
+      <div className="flex items-start gap-2 mt-3 relative z-10">
+        <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 ${
+          status === "final"
+            ? "bg-white border-green-500 dark:bg-green-900/20 dark:border-green-400"
+            : "bg-white border-blue-500 dark:bg-blue-900/20 dark:border-blue-400"
+        }`}>
+          {owner ? (
             <FancyAvatar 
               name={owner.avatar_name || owner.full_name} 
               displayName={owner.full_name} 
               size="sm" 
             />
-          </span>
-        )}
+          ) : (
+            <span className="text-xs font-semibold text-muted-foreground">?</span>
+          )}
+        </span>
         <textarea
           ref={textareaRef}
-          className="flex-1 w-full bg-transparent outline-none text-xs font-semibold resize-none overflow-hidden leading-tight"
+          className={`flex-1 w-full bg-transparent outline-none text-sm font-bold resize-none overflow-hidden leading-tight ${
+            status === "final"
+              ? "text-green-900 dark:text-green-100"
+              : "text-blue-900 dark:text-blue-100"
+          }`}
           value={data.title || ""}
           placeholder="Name this DO"
           onChange={(e) => {
@@ -189,27 +221,39 @@ function DoNode({ id, data }: NodeProps<NodeData>) {
         />
       </div>
       {items.length > 0 && (
-        <div className="mt-2 flex flex-col gap-1.5 flex-shrink-0">
+        <div className="mt-3 flex flex-col gap-2 flex-shrink-0 relative z-10">
           {items.map((it) => (
             <button
               key={it.id}
-              className="group flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs bg-background hover:bg-accent w-full"
+              className={`group flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] ${
+                status === "final"
+                  ? "bg-white/80 border-green-300 hover:bg-white hover:border-green-500 dark:bg-green-900/10 dark:border-green-700 dark:hover:bg-green-900/20"
+                  : "bg-white/80 border-blue-300 hover:bg-white hover:border-blue-500 dark:bg-blue-900/10 dark:border-blue-700 dark:hover:bg-blue-900/20"
+              }`}
               onClick={(e) => {
                 e.stopPropagation();
                 window.dispatchEvent(new CustomEvent("rcdo:open-si", { detail: { doId: id, siId: it.id } }));
               }}
             >
-              <span className="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] flex-shrink-0">
+              <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 ${
+                status === "final"
+                  ? "bg-green-50 border-green-400 dark:bg-green-900/30 dark:border-green-600"
+                  : "bg-blue-50 border-blue-400 dark:bg-blue-900/30 dark:border-blue-600"
+              }`}>
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
                   if (prof?.avatar_name || prof?.full_name) {
                     return <FancyAvatar name={prof.avatar_name || prof.full_name} displayName={prof.full_name} size="sm" />;
                   }
                   const letter = (it.ownerName?.charAt(0).toUpperCase() || "?");
-                  return <span className="text-[10px] leading-none">{letter}</span>;
+                  return <span className="text-[10px] leading-none font-semibold">{letter}</span>;
                 })()}
               </span>
-              <span className="text-[11px] leading-tight break-words text-left flex-1">{it.title || "Untitled SI"}</span>
+              <span className={`text-[11px] leading-tight break-words text-left flex-1 ${
+                status === "final"
+                  ? "text-green-900 dark:text-green-100"
+                  : "text-blue-900 dark:text-blue-100"
+              }`}>{it.title || "Untitled SI"}</span>
             </button>
           ))}
         </div>
@@ -949,7 +993,12 @@ const duplicateSelectedDo = useCallback(() => {
         <Button 
           size="sm" 
           variant="outline"
-          onClick={() => setShowImportDialog(true)} 
+          onClick={() => {
+            setShowImportDialog(true);
+            setImportProgress([]);
+            setImportStatus(null);
+            setPastedMarkdown('');
+          }} 
           className="flex items-center gap-1"
         >
           <Upload className="h-4 w-4" /> Import from File
@@ -1230,53 +1279,62 @@ onNodeDragStop={(_e, node) => {
                 {/* Owner Selection */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium">Owner</label>
-                  <Select
-                    value={selectedNode.data.ownerId || ""}
-                    onValueChange={(val) => {
-                      if (!selectedNode) return;
-                      const next = nodes.map((n) => 
-                        n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
-                      );
-                      setNodes(next);
-                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
-                    }}
-                  >
-                    <SelectTrigger className="w-full h-9">
-                      <SelectValue placeholder="Select owner">
-                        {selectedNode.data.ownerId && (() => {
-                          const owner = profilesMap[selectedNode.data.ownerId];
-                          return owner ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-muted text-xs flex-shrink-0">
+                      {(() => {
+                        const owner = selectedNode.data.ownerId ? profilesMap[selectedNode.data.ownerId] : undefined;
+                        if (owner) return <FancyAvatar name={owner.avatar_name || owner.full_name} displayName={owner.full_name} size="sm" />;
+                        return <span className="text-xs">?</span>;
+                      })()}
+                    </span>
+                    <Select
+                      value={selectedNode.data.ownerId || ""}
+                      onValueChange={(val) => {
+                        if (!selectedNode) return;
+                        const next = nodes.map((n) => 
+                          n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
+                        );
+                        setNodes(next);
+                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
+                      }}
+                    >
+                      <SelectTrigger className="flex-1 h-9">
+                        <SelectValue placeholder="Select owner">
+                          {selectedNode.data.ownerId && (() => {
+                            const owner = profilesMap[selectedNode.data.ownerId];
+                            return owner ? (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                  <FancyAvatar 
+                                    name={owner.avatar_name || owner.full_name} 
+                                    displayName={owner.full_name} 
+                                    size="sm" 
+                                  />
+                                </span>
+                                <span className="text-sm">{owner.full_name}</span>
+                              </div>
+                            ) : null;
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
                             <div className="flex items-center gap-2">
                               <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
                                 <FancyAvatar 
-                                  name={owner.avatar_name || owner.full_name} 
-                                  displayName={owner.full_name} 
+                                  name={p.avatar_name || p.full_name} 
+                                  displayName={p.full_name} 
                                   size="sm" 
                                 />
                               </span>
-                              <span className="text-sm">{owner.full_name}</span>
+                              <span>{p.full_name}</span>
                             </div>
-                          ) : null;
-                        })()}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                              <FancyAvatar 
-                                name={p.avatar_name || p.full_name} 
-                                displayName={p.full_name} 
-                                size="sm" 
-                              />
-                            </span>
-                            <span>{p.full_name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Hypothesis Field */}
@@ -1752,79 +1810,70 @@ onNodeDragStop={(_e, node) => {
               )}
 
               {/* Hide input forms when progress is shown */}
-              {importProgress.length === 0 && importMode === 'paste' ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Paste your markdown content containing the Rallying Cry, Defining Objectives, and Strategic Initiatives.
-                  </p>
-                  <textarea
-                    className="w-full h-80 rounded border px-3 py-2 text-sm bg-background font-mono resize-none"
-                    placeholder="Paste your markdown here...
-
-Example:
-> **Your Rallying Cry Here**
-
-## DO #1 — Title (Owner: John Doe)
-**Definition**
-Your definition here...
-
-**Primary Success Metric**
-* Your metric here...
-
-### Strategic Initiatives
-1. **Initiative Title** (Owner: Jane Smith)
-   * Bullet point 1
-   * Bullet point 2
-
-2. **Another Initiative**
-   * No owner - will use importing user"
-                    value={pastedMarkdown}
-                    onChange={(e) => setPastedMarkdown(e.target.value)}
-                    disabled={isImporting}
-                  />
-                </div>
-              ) : importProgress.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Upload a markdown file containing your Rallying Cry, Defining Objectives, and Strategic Initiatives.
-                  </p>
-                  <div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".md,.markdown,.txt"
-                      onChange={handleImportFile}
+              {importProgress.length === 0 && (
+                importMode === 'paste' ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Please refer to the instructions below.
+                    </p>
+                    <textarea
+                      className="w-full h-80 rounded border px-3 py-2 text-sm bg-background font-mono resize-none"
+                      placeholder="Paste your markdown here..."
+                      value={pastedMarkdown}
+                      onChange={(e) => setPastedMarkdown(e.target.value)}
                       disabled={isImporting}
-                      className="hidden"
-                      id="import-file-input"
                     />
-                    <label htmlFor="import-file-input">
-                      <Button
-                        asChild
-                        variant="outline"
-                        disabled={isImporting}
-                        className="w-full cursor-pointer"
-                      >
-                        <span className="flex items-center justify-center gap-2">
-                          <Upload className="h-4 w-4" />
-                          {isImporting ? 'Importing...' : 'Choose Markdown File'}
-                        </span>
-                      </Button>
-                    </label>
                   </div>
-                </div>
-              ) : null}
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Upload a markdown file. Please refer to the instructions below for the required format.
+                    </p>
+                    <div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".md,.markdown,.txt"
+                        onChange={handleImportFile}
+                        disabled={isImporting}
+                        className="hidden"
+                        id="import-file-input"
+                      />
+                      <label htmlFor="import-file-input">
+                        <Button
+                          asChild
+                          variant="outline"
+                          disabled={isImporting}
+                          className="w-full cursor-pointer"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            {isImporting ? 'Importing...' : 'Choose Markdown File'}
+                          </span>
+                        </Button>
+                      </label>
+                    </div>
+                  </div>
+                )
+              )}
 
               {/* Hide format instructions when progress is shown */}
               {importProgress.length === 0 && (
-                <div className="text-xs text-muted-foreground space-y-2 p-3 bg-muted/30 rounded">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-sm">Markdown Format Instructions:</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 flex items-center gap-1.5"
-                    onClick={() => {
+                <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950/30 border-2 border-blue-500 dark:border-blue-700 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <div className="h-8 w-8 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center">
+                        <FileText className="h-4 w-4 text-white" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-semibold text-sm text-blue-900 dark:text-blue-100">Markdown Format Instructions</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 flex items-center gap-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                          onClick={() => {
                       const instructions = `Please format my RCDO (Rallying Cry, Defining Objectives, and Strategic Initiatives) data according to the following markdown structure:
 
 ## STRUCTURE OVERVIEW
@@ -1926,22 +1975,25 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
                   >
                     <Copy className="h-3.5 w-3.5" />
                     Copy Instructions
-                  </Button>
-                </div>
-                <div className="space-y-1.5">
-                  <p className="text-xs opacity-90">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
-                  <div className="text-xs space-y-1 pl-2 border-l-2 border-muted-foreground/30">
-                    <p className="font-medium">Quick Reference:</p>
-                    <ul className="list-disc list-inside space-y-0.5 ml-2">
-                      <li>Rallying Cry: <code className="text-xs bg-background px-1 py-0.5 rounded">&gt; **Text**</code></li>
-                      <li>Defining Objectives: <code className="text-xs bg-background px-1 py-0.5 rounded">## DO #1 — Title</code></li>
-                      <li>Strategic Initiatives: <code className="text-xs bg-background px-1 py-0.5 rounded">1. **Initiative**</code></li>
-                      <li>Sections: <code className="text-xs bg-background px-1 py-0.5 rounded">**Definition**</code>, <code className="text-xs bg-background px-1 py-0.5 rounded">**Primary Success Metric**</code></li>
-                      <li>Owners (optional): <code className="text-xs bg-background px-1 py-0.5 rounded">(Owner: Name)</code></li>
-                    </ul>
-                    <p className="text-xs text-muted-foreground mt-2 italic">
-                      Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.
-                    </p>
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs text-blue-800 dark:text-blue-200">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
+                        <div className="text-xs space-y-1.5 pl-3 border-l-2 border-blue-400 dark:border-blue-600">
+                          <p className="font-medium text-blue-900 dark:text-blue-100">Quick Reference:</p>
+                          <ul className="list-disc list-inside space-y-1 ml-2 text-blue-800 dark:text-blue-200">
+                            <li>Rallying Cry: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">&gt; **Text**</code></li>
+                            <li>Defining Objectives: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">## DO #1 — Title</code></li>
+                            <li>Strategic Initiatives: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">1. **Initiative**</code></li>
+                            <li>Sections: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">**Definition**</code>, <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">**Primary Success Metric**</code></li>
+                            <li>Owners (optional): <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">(Owner: Name)</code></li>
+                          </ul>
+                          <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 italic">
+                            Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
