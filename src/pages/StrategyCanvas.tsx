@@ -360,6 +360,8 @@ export default function StrategyCanvasPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const [importMode, setImportMode] = useState<'file' | 'paste'>('paste');
+  const [pastedMarkdown, setPastedMarkdown] = useState('');
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -646,21 +648,14 @@ const duplicateSelectedDo = useCallback(() => {
     setSelectedNode(null);
   }, [nodes, edges, selectedNode]);
 
-  // Import from markdown file
-  const handleImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  // Import from markdown text (shared logic)
+  const processMarkdownImport = useCallback(async (markdownText: string) => {
     setIsImporting(true);
-    setImportStatus({ type: 'info', message: 'Reading file...' });
 
     try {
-      // Read file
-      const text = await file.text();
-      
       // Parse markdown
       setImportStatus({ type: 'info', message: 'Parsing markdown...' });
-      const parsedData = parseMarkdownRCDO(text);
+      const parsedData = parseMarkdownRCDO(markdownText);
       
       // Validate
       const validation = validateParsedRCDO(parsedData);
@@ -1364,7 +1359,7 @@ onNodeDragStop={(_e, node) => {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Metric</label>
+                      <label className="text-sm font-medium">Primary Success Metric</label>
                       <input className="mt-1 w-full rounded border px-2 py-1 text-sm bg-background" placeholder="e.g., % conversion, NPS, etc." value={si.metric || ""} onChange={(e)=>update({ metric: e.target.value })} />
                     </div>
                     <div>
