@@ -4,12 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 interface RolesState {
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  isRCDOAdmin: boolean;
   loading: boolean;
   error?: string;
 }
 
 export function useRoles(): RolesState {
-  const [state, setState] = useState<RolesState>({ isAdmin: false, isSuperAdmin: false, loading: true });
+  const [state, setState] = useState<RolesState>({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: true });
 
   useEffect(() => {
     let isMounted = true;
@@ -19,13 +20,13 @@ export function useRoles(): RolesState {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         if (!user) {
-          if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, loading: false, error: "Not authenticated" });
+          if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: false, error: "Not authenticated" });
           return;
         }
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("is_admin,is_super_admin")
+          .select("is_admin,is_super_admin,is_rcdo_admin")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -37,6 +38,7 @@ export function useRoles(): RolesState {
         const row: any = data as any;
         let effectiveIsSuperAdmin = Boolean(row?.is_super_admin) || emailIsSuperAdmin;
         let effectiveIsAdmin = Boolean(row?.is_admin) || effectiveIsSuperAdmin;
+        let effectiveIsRCDOAdmin = Boolean(row?.is_rcdo_admin) || effectiveIsSuperAdmin;
 
         // If email implies super admin but DB flag is false, try to persist it (best-effort)
         if (emailIsSuperAdmin && !Boolean(row?.is_super_admin)) {
@@ -51,11 +53,12 @@ export function useRoles(): RolesState {
           setState({
             isAdmin: effectiveIsAdmin,
             isSuperAdmin: effectiveIsSuperAdmin,
+            isRCDOAdmin: effectiveIsRCDOAdmin,
             loading: false,
           });
         }
       } catch (e: unknown) {
-        if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, loading: false, error: (e as Error).message });
+        if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: false, error: (e as Error).message });
       }
     };
 

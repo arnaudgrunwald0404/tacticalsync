@@ -1,11 +1,21 @@
 -- Add completed_at timestamp to track when action items were completed
 -- This allows filtering action items by activity period (created_at to completed_at)
 
-ALTER TABLE meeting_series_action_items
-ADD COLUMN completed_at TIMESTAMPTZ;
+-- Add column if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'meeting_series_action_items' 
+    AND column_name = 'completed_at'
+  ) THEN
+    ALTER TABLE meeting_series_action_items
+    ADD COLUMN completed_at TIMESTAMPTZ;
+  END IF;
+END $$;
 
--- Create index for efficient filtering by completion date
-CREATE INDEX idx_meeting_series_action_items_completed_at 
+-- Create index for efficient filtering by completion date (if not exists)
+CREATE INDEX IF NOT EXISTS idx_meeting_series_action_items_completed_at 
 ON meeting_series_action_items(completed_at);
 
 -- Add comment explaining the column
@@ -30,10 +40,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER action_item_completion_timestamp
-BEFORE UPDATE ON meeting_series_action_items
-FOR EACH ROW
-EXECUTE FUNCTION set_action_item_completed_at();
+-- Create trigger if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger 
+    WHERE tgname = 'action_item_completion_timestamp'
+  ) THEN
+    CREATE TRIGGER action_item_completion_timestamp
+    BEFORE UPDATE ON meeting_series_action_items
+    FOR EACH ROW
+    EXECUTE FUNCTION set_action_item_completed_at();
+  END IF;
+END $$;
 
 -- Backfill completed_at for existing completed items (set to updated_at as best estimate)
 UPDATE meeting_series_action_items

@@ -12,6 +12,8 @@ import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
 const Index = lazy(() => import("./pages/Index"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const DashboardWithTabs = lazy(() => import("./pages/DashboardWithTabs"));
+const DashboardMain = lazy(() => import("./pages/DashboardMain"));
 const CreateTeam = lazy(() => import("./pages/CreateTeam"));
 const TeamMeeting = lazy(() => import("./pages/TeamMeeting"));
 const TeamInvite = lazy(() => import("./pages/TeamInvite"));
@@ -23,6 +25,11 @@ const Settings = lazy(() => import("./pages/Settings"));
 const BrandingShowcase = lazy(() => import("./pages/BrandingShowcase"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+// RCDO Module
+const StrategyHome = lazy(() => import("./pages/StrategyHome"));
+const DODetail = lazy(() => import("./pages/DODetail"));
+const CyclePlanner = lazy(() => import("./pages/CyclePlanner"));
+const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
 
 const queryClient = new QueryClient();
 
@@ -51,6 +58,31 @@ const App = () => (
           <Route path="/dashboard" element={
             <Suspense fallback={<DashboardSkeleton />}>
               <Dashboard />
+            </Suspense>
+          } />
+          <Route path="/dashboard/main" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/do/:doId" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <DODetail />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/cycles" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <CyclePlanner />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/canvas" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <StrategyCanvas />
             </Suspense>
           } />
           <Route path="/create-team" element={

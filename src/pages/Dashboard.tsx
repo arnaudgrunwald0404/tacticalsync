@@ -27,6 +27,56 @@ import { useRoles } from "@/hooks/useRoles";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
+
+  // Handle OAuth callback and redirect
+  // Keep auth state listener for multi-tab support and session management
+  useEffect(() => {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    const hasCode = params.has('code');
+    const hasAccessToken = hash.includes('access_token=');
+    const hasError = hash.includes('error=');
+    
+    // If we're in an OAuth callback, wait for Supabase to process it
+    // (Supabase auto-processes with detectSessionInUrl: true)
+    if (hasCode || hasAccessToken || hasError) {
+      console.log('[Dashboard] OAuth callback detected, waiting for Supabase to process...');
+      setIsProcessingAuth(true);
+      
+      // Listen for auth state change (important for multi-tab and session management)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log('[Dashboard] Auth state changed:', event, 'Has session:', !!session);
+        
+        if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+          console.log('[Dashboard] Session established, redirecting to dashboard/main');
+          navigate('/dashboard/main', { replace: true });
+        } else if (hasError || event === 'SIGNED_OUT') {
+          console.error('[Dashboard] Auth failed or signed out');
+          navigate('/auth', { replace: true });
+        }
+      });
+      
+      return () => subscription.unsubscribe();
+    } else {
+      // No OAuth callback, just redirect immediately
+      navigate('/dashboard/main', { replace: true });
+    }
+  }, [navigate]);
+
+  if (isProcessingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-muted-foreground">Completing sign in...</div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+const DashboardOld = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useRoles();
   const [loading, setLoading] = useState(true);
