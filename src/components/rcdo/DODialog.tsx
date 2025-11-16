@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -21,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { CreateDOForm } from '@/types/rcdo';
 
 interface UserProfile {
@@ -136,7 +136,7 @@ const fetchUsers = async () => {
       const createData: CreateDOForm = {
         rallying_cry_id: rallyingCryId,
         title: formData.title.trim(),
-        hypothesis: formData.hypothesis.trim() || undefined,
+        hypothesis: formData.hypothesis || undefined,
         owner_user_id: formData.owner_user_id,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
@@ -222,15 +222,12 @@ const fetchUsers = async () => {
             {/* Hypothesis */}
             <div className="space-y-2">
               <Label htmlFor="hypothesis">Hypothesis (Optional)</Label>
-              <Textarea
-                id="hypothesis"
-                placeholder="If we do X, then Y will happen because Z..."
-                value={formData.hypothesis}
-                onChange={(e) =>
-                  setFormData({ ...formData, hypothesis: e.target.value })
+              <RichTextEditor
+                content={formData.hypothesis}
+                onChange={(content) =>
+                  setFormData({ ...formData, hypothesis: content })
                 }
-                disabled={loading}
-                rows={3}
+                placeholder="If we do X, then Y will happen because Z..."
               />
             </div>
 

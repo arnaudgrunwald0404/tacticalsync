@@ -37,3 +37,6 @@ login-error-*.png
 *.png
 !public/**/*.png
 !src/**/*.png
+potential_backup.sql
+*.dump
+*.backup.sql

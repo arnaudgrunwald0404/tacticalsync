@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -21,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { CreateInitiativeForm } from '@/types/rcdo';
 
 interface UserProfile {
@@ -126,7 +126,7 @@ export function InitiativeDialog({
       const createData: CreateInitiativeForm = {
         defining_objective_id: definingObjectiveId,
         title: formData.title.trim(),
-        description: formData.description.trim() || undefined,
+        description: formData.description || undefined,
         owner_user_id: formData.owner_user_id,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
@@ -210,15 +210,12 @@ export function InitiativeDialog({
             {/* Description */}
             <div className="space-y-2">
               <Label htmlFor="description">Description (Optional)</Label>
-              <Textarea
-                id="description"
-                placeholder="Describe what this initiative entails and why it's important..."
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
+              <RichTextEditor
+                content={formData.description}
+                onChange={(content) =>
+                  setFormData({ ...formData, description: content })
                 }
-                disabled={loading}
-                rows={3}
+                placeholder="Describe what this initiative entails and why it's important..."
               />
             </div>
 
