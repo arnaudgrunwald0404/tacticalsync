@@ -114,13 +114,23 @@ export function useCycles() {
         throw new Error('You must be logged in to create a cycle');
       }
 
+      // Check if there's already an active cycle
+      const { data: activeCycle } = await supabase
+        .from('rc_cycles')
+        .select('id')
+        .eq('status', 'active')
+        .maybeSingle();
+
+      // If no active cycle exists, create as active; otherwise create as draft
+      const newStatus = activeCycle ? 'draft' : 'active';
+
       const { data, error: createError } = await supabase
         .from('rc_cycles')
         .insert({
           type: 'half',
           start_date: form.start_date,
           end_date: form.end_date,
-          status: 'draft',
+          status: newStatus,
           created_by: user.id,
         })
         .select()
@@ -130,7 +140,7 @@ export function useCycles() {
 
       toast({
         title: 'Success',
-        description: 'Cycle created successfully',
+        description: `Cycle created successfully${newStatus === 'active' ? ' and activated' : ''}`,
       });
 
       await fetchCycles();
@@ -283,6 +293,7 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
 
   const createDO = async (form: CreateDOForm) => {
     try {
+      const { data: auth } = await supabase.auth.getUser();
       const { data, error: createError } = await supabase
         .from('rc_defining_objectives')
         .insert({
@@ -295,6 +306,7 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
           status: 'draft',
           health: 'on_track',
           confidence_pct: 50,
+          created_by: auth?.user?.id || null,
         })
         .select()
         .single();
@@ -528,6 +540,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
 
   const createInitiative = async (form: CreateInitiativeForm) => {
     try {
+      const { data: auth } = await supabase.auth.getUser();
       const { data, error: createError } = await supabase
         .from('rc_strategic_initiatives')
         .insert({
@@ -538,6 +551,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           status: 'draft',
+          created_by: auth?.user?.id || null,
         })
         .select()
         .single();

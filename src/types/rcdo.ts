@@ -65,6 +65,7 @@ export interface DefiningObjective {
   display_order: number;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
 }
 
 export interface DOMetric {
@@ -97,6 +98,7 @@ export interface StrategicInitiative {
   display_order: number;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
 }
 
 export interface RCCheckin {

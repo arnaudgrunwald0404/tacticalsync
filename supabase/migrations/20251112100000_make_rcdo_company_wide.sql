@@ -58,6 +58,48 @@ ALTER TABLE rc_cycles ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES auth.u
 -- Step 5: Create new company-wide RLS policies
 -- ============================================================================
 
+-- First, drop policies if they already exist to avoid duplicate-name errors
+-- rc_cycles
+DROP POLICY IF EXISTS "All authenticated users can view cycles" ON rc_cycles;
+DROP POLICY IF EXISTS "Admins and super admins can create cycles" ON rc_cycles;
+DROP POLICY IF EXISTS "Cycle creators and admins can update cycles" ON rc_cycles;
+DROP POLICY IF EXISTS "Super admins can delete cycles" ON rc_cycles;
+
+-- rc_rallying_cries
+DROP POLICY IF EXISTS "All authenticated users can view rallying cries" ON rc_rallying_cries;
+DROP POLICY IF EXISTS "Admins can create rallying cries" ON rc_rallying_cries;
+DROP POLICY IF EXISTS "Owners and admins can update rallying cries" ON rc_rallying_cries;
+DROP POLICY IF EXISTS "Admins can delete rallying cries" ON rc_rallying_cries;
+
+-- rc_defining_objectives
+DROP POLICY IF EXISTS "All authenticated users can view defining objectives" ON rc_defining_objectives;
+DROP POLICY IF EXISTS "Admins can create defining objectives" ON rc_defining_objectives;
+DROP POLICY IF EXISTS "DO owners and admins can update objectives" ON rc_defining_objectives;
+DROP POLICY IF EXISTS "Admins can delete defining objectives" ON rc_defining_objectives;
+
+-- rc_do_metrics
+DROP POLICY IF EXISTS "All authenticated users can view metrics" ON rc_do_metrics;
+DROP POLICY IF EXISTS "DO owners and admins can create metrics" ON rc_do_metrics;
+DROP POLICY IF EXISTS "DO owners and admins can update metrics" ON rc_do_metrics;
+DROP POLICY IF EXISTS "DO owners and admins can delete metrics" ON rc_do_metrics;
+
+-- rc_strategic_initiatives
+DROP POLICY IF EXISTS "All authenticated users can view initiatives" ON rc_strategic_initiatives;
+DROP POLICY IF EXISTS "DO owners and admins can create initiatives" ON rc_strategic_initiatives;
+DROP POLICY IF EXISTS "Initiative owners and admins can update initiatives" ON rc_strategic_initiatives;
+DROP POLICY IF EXISTS "Initiative owners and admins can delete initiatives" ON rc_strategic_initiatives;
+
+-- rc_checkins
+DROP POLICY IF EXISTS "All authenticated users can view checkins" ON rc_checkins;
+DROP POLICY IF EXISTS "Owners can create checkins" ON rc_checkins;
+DROP POLICY IF EXISTS "Users can update their checkins" ON rc_checkins;
+DROP POLICY IF EXISTS "Users can delete their checkins" ON rc_checkins;
+
+-- rc_links
+DROP POLICY IF EXISTS "All authenticated users can view links" ON rc_links;
+DROP POLICY IF EXISTS "Authenticated users can create links" ON rc_links;
+DROP POLICY IF EXISTS "Users can delete their links" ON rc_links;
+
 -- RC CYCLES POLICIES (Company-wide)
 CREATE POLICY "All authenticated users can view cycles" ON rc_cycles
   FOR SELECT USING (auth.uid() IS NOT NULL);

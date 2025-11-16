@@ -78,6 +78,9 @@ export function RCBanner({ rallyingCry, startDate, endDate }: RCBannerProps) {
             {format(new Date(startDate), 'MMM d, yyyy')} -{' '}
             {format(new Date(endDate), 'MMM d, yyyy')}
           </span>
+          <span className="text-xs text-muted-foreground">[
+            {format(new Date(startDate), 'M/d')} - {format(new Date(endDate), 'M/d')}
+          ]</span>
         </div>
 
         {rallyingCry.locked_at && (

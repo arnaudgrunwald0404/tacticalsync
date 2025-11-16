@@ -28,7 +28,8 @@ CREATE POLICY "Cycle creators and admins can update cycles" ON rc_cycles
     )
   );
 
--- New policy specifically for activating cycles (changing to active status)
+-- New policy specifically for activating cycles
+DROP POLICY IF EXISTS "RCDO admins can activate cycles" ON rc_cycles;
 CREATE POLICY "RCDO admins can activate cycles" ON rc_cycles
   FOR UPDATE USING (
     EXISTS (
@@ -91,6 +92,7 @@ CREATE POLICY "Initiative owners and admins can update initiatives" ON rc_strate
 -- ============================================================================
 
 DROP POLICY IF EXISTS "Admins and super admins can create cycles" ON rc_cycles;
+DROP POLICY IF EXISTS "Admins and RCDO admins can create cycles" ON rc_cycles;
 
 CREATE POLICY "Admins and RCDO admins can create cycles" ON rc_cycles
   FOR INSERT WITH CHECK (
@@ -106,6 +108,7 @@ CREATE POLICY "Admins and RCDO admins can create cycles" ON rc_cycles
 -- ============================================================================
 
 DROP POLICY IF EXISTS "Admins can create rallying cries" ON rc_rallying_cries;
+DROP POLICY IF EXISTS "Admins and RCDO admins can create rallying cries" ON rc_rallying_cries;
 
 CREATE POLICY "Admins and RCDO admins can create rallying cries" ON rc_rallying_cries
   FOR INSERT WITH CHECK (
@@ -126,6 +129,7 @@ CREATE POLICY "Admins and RCDO admins can create rallying cries" ON rc_rallying_
 -- ============================================================================
 
 DROP POLICY IF EXISTS "Admins can create defining objectives" ON rc_defining_objectives;
+DROP POLICY IF EXISTS "Admins and RCDO admins can create defining objectives" ON rc_defining_objectives;
 
 CREATE POLICY "Admins and RCDO admins can create defining objectives" ON rc_defining_objectives
   FOR INSERT WITH CHECK (

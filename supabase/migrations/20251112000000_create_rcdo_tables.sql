@@ -163,26 +163,33 @@ CREATE INDEX IF NOT EXISTS idx_rc_links_created_by ON rc_links(created_by);
 -- ============================================================================
 -- Updated_at Triggers
 -- ============================================================================
+-- Make triggers idempotent: drop if exists before creating
+DROP TRIGGER IF EXISTS update_rc_cycles_updated_at ON rc_cycles;
 CREATE TRIGGER update_rc_cycles_updated_at 
   BEFORE UPDATE ON rc_cycles 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_rc_rallying_cries_updated_at ON rc_rallying_cries;
 CREATE TRIGGER update_rc_rallying_cries_updated_at 
   BEFORE UPDATE ON rc_rallying_cries 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_rc_defining_objectives_updated_at ON rc_defining_objectives;
 CREATE TRIGGER update_rc_defining_objectives_updated_at 
   BEFORE UPDATE ON rc_defining_objectives 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_rc_do_metrics_updated_at ON rc_do_metrics;
 CREATE TRIGGER update_rc_do_metrics_updated_at 
   BEFORE UPDATE ON rc_do_metrics 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_rc_strategic_initiatives_updated_at ON rc_strategic_initiatives;
 CREATE TRIGGER update_rc_strategic_initiatives_updated_at 
   BEFORE UPDATE ON rc_strategic_initiatives 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_rc_checkins_updated_at ON rc_checkins;
 CREATE TRIGGER update_rc_checkins_updated_at 
   BEFORE UPDATE ON rc_checkins 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -29,6 +29,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const StrategyHome = lazy(() => import("./pages/StrategyHome"));
 const DODetail = lazy(() => import("./pages/DODetail"));
 const CyclePlanner = lazy(() => import("./pages/CyclePlanner"));
+const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,11 @@ const App = () => (
           <Route path="/dashboard/rcdo/cycles" element={
             <Suspense fallback={<PageSkeleton />}>
               <CyclePlanner />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/canvas" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <StrategyCanvas />
             </Suspense>
           } />
           <Route path="/create-team" element={

@@ -133,12 +133,19 @@ export function useRCDOPermissions(): RCDOPermissionsState {
   );
 
   const canEditInitiative = useCallback(
-    (initiativeOwnerId: string, initiativeLockedAt: string | null): boolean => {
+    (
+      initiativeOwnerId: string,
+      initiativeLockedAt: string | null,
+      doOwnerId?: string,
+      initiativeCreatorId?: string
+    ): boolean => {
       if (isSuperAdmin) return true;
       if (isRCDOAdmin) return true;
       if (isAdmin) return true;
       if (initiativeLockedAt && !isAdmin && !isSuperAdmin && !isRCDOAdmin) return false;
-      if (userId === initiativeOwnerId && !initiativeLockedAt) return true;
+      if (userId === initiativeOwnerId && !initiativeLockedAt) return true; // SI owner (unlocked)
+      if (doOwnerId && userId === doOwnerId) return true; // DO owner
+      if (initiativeCreatorId && userId === initiativeCreatorId) return true; // SI creator
       return false;
     },
     [userId, isAdmin, isSuperAdmin, isRCDOAdmin]

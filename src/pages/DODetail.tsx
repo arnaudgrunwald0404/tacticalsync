@@ -1,27 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Lock, Unlock, TrendingUp, AlertTriangle, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, TrendingUp, AlertTriangle, TrendingDown, Plus } from 'lucide-react';
 import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks } from '@/hooks/useRCDO';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { MetricRow } from '@/components/rcdo/MetricRow';
 import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
+import { MetricDialog } from '@/components/rcdo/MetricDialog';
+import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { calculateDOHealth, getHealthColor } from '@/lib/rcdoScoring';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function DODetail() {
   const { doId } = useParams<{ doId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('metrics');
+  const [showMetricDialog, setShowMetricDialog] = useState(false);
+  const [showInitiativeDialog, setShowInitiativeDialog] = useState(false);
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
@@ -45,7 +51,15 @@ export default function DODetail() {
   const { links, loading: linksLoading, refetch: refetchLinks } = useRCLinks('do', doId);
 
   // Permissions
-  const { canEditDO, canLockDO } = useRCDOPermissions();
+  const { canEditDO, canLockDO, canEditInitiative } = useRCDOPermissions();
+
+  const handleMetricSuccess = () => {
+    refetchMetrics();
+  };
+
+  const handleInitiativeSuccess = () => {
+    refetchInitiatives();
+  };
 
   // Real-time updates
   useRCDORealtime({
@@ -57,6 +71,23 @@ export default function DODetail() {
   });
 
   const loading = doLoading || metricsLoading || initiativesLoading || linksLoading;
+
+  // Profiles for owner selection - load on mount
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  
+  useEffect(() => {
+    const loadProfiles = async () => {
+      setProfilesLoading(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_name, avatar_url')
+        .order('full_name', { ascending: true });
+      if (!error && data) setProfiles(data as any[]);
+      setProfilesLoading(false);
+    };
+    loadProfiles();
+  }, []);
 
   if (loading || !doDetails) {
     return (
@@ -167,19 +198,53 @@ export default function DODetail() {
                 <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">
                   Owner:
                 </span>
-                <div className="flex items-center gap-2">
-                  {doDetails.owner?.avatar_url ? (
-                    <Avatar className="h-7 w-7">
-                      <AvatarImage src={doDetails.owner.avatar_url} />
-                      <AvatarFallback>{ownerName}</AvatarFallback>
-                    </Avatar>
-                  ) : (
-                    <FancyAvatar name={ownerName} size={28} />
-                  )}
-                  <span className="text-sm text-gray-900 dark:text-gray-100">
-                    {ownerName}
-                  </span>
-                </div>
+                <Select
+                  disabled={!canEdit || profilesLoading}
+                  value={doDetails.owner_user_id}
+                  onValueChange={async (val) => {
+                    const { error } = await supabase
+                      .from('rc_defining_objectives')
+                      .update({ owner_user_id: val })
+                      .eq('id', doDetails.id);
+                    if (!error) {
+                      refetchDO();
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 w-[240px]">
+                    <SelectValue placeholder="Select owner">
+                      {doDetails.owner_user_id && (
+                        <div className="flex items-center gap-2">
+                          {doDetails.owner?.avatar_url ? (
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={doDetails.owner.avatar_url} />
+                              <AvatarFallback>{ownerName}</AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <FancyAvatar name={ownerName} size={24} />
+                          )}
+                          <span className="text-sm">{ownerName}</span>
+                        </div>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {profiles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                            <FancyAvatar 
+                              name={p.avatar_name || p.full_name} 
+                              displayName={p.full_name} 
+                              size="sm" 
+                            />
+                          </span>
+                          <span>{p.full_name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex-1 max-w-md">
@@ -252,10 +317,26 @@ export default function DODetail() {
                       No metrics defined yet. Add leading and lagging metrics to track
                       progress.
                     </p>
-                    <Button disabled={!canEdit}>Add Metric</Button>
+                    <Button disabled={!canEdit} onClick={() => setShowMetricDialog(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Metric
+                    </Button>
                   </div>
                 ) : (
                   <div>
+                    <div className="flex items-center justify-between p-4 border-b">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                        Metrics
+                      </h3>
+                      <Button
+                        size="sm"
+                        disabled={!canEdit}
+                        onClick={() => setShowMetricDialog(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Metric
+                      </Button>
+                    </div>
                     {metrics.map((metric) => (
                       <MetricRow
                         key={metric.id}
@@ -277,13 +358,73 @@ export default function DODetail() {
                     No strategic initiatives yet. Create initiatives to drive this
                     objective forward.
                   </p>
-                  <Button disabled={!canEdit}>Add Initiative</Button>
+                  <Button disabled={!canEdit} onClick={() => setShowInitiativeDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Initiative
+                  </Button>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {initiatives.map((initiative) => (
-                    <InitiativeCard key={initiative.id} initiative={initiative} />
-                  ))}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                      Strategic Initiatives
+                    </h3>
+                    <Button
+                      size="sm"
+                      disabled={!canEdit}
+                      onClick={() => setShowInitiativeDialog(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Initiative
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {initiatives.map((initiative) => {
+                      const canEditSI = canEditInitiative(
+                        initiative.owner_user_id,
+                        initiative.locked_at,
+                        doDetails.owner_user_id,
+                        initiative.created_by || undefined
+                      );
+                      return (
+                        <div key={initiative.id} className="space-y-2">
+                          <InitiativeCard initiative={initiative} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Owner</span>
+                            <Select
+                              disabled={!canEditSI || profilesLoading}
+                              value={initiative.owner_user_id}
+                              onValueChange={async (val) => {
+                                const { error } = await supabase
+                                  .from('rc_strategic_initiatives')
+                                  .update({ owner_user_id: val })
+                                  .eq('id', initiative.id);
+                                if (!error) {
+                                  refetchInitiatives();
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-full">
+                                <SelectValue placeholder="Select owner" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {profiles.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    <span className="inline-flex items-center gap-2">
+                                      <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                        <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} size="sm" />
+                                      </span>
+                                      <span>{p.full_name}</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -325,6 +466,24 @@ export default function DODetail() {
           </Tabs>
         </div>
       </div>
+
+      {/* Dialogs */}
+      {doId && (
+        <>
+          <MetricDialog
+            isOpen={showMetricDialog}
+            onClose={() => setShowMetricDialog(false)}
+            definingObjectiveId={doId}
+            onSuccess={handleMetricSuccess}
+          />
+          <InitiativeDialog
+            isOpen={showInitiativeDialog}
+            onClose={() => setShowInitiativeDialog(false)}
+            definingObjectiveId={doId}
+            onSuccess={handleInitiativeSuccess}
+          />
+        </>
+      )}
     </GridBackground>
   );
 }

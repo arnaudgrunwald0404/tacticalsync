@@ -11,11 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCycles } from '@/hooks/useRCDO';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { suggestCycleDates } from '@/lib/rcdoValidation';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -35,9 +37,11 @@ const statusLabels = {
 
 export default function CyclePlanner() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
+  const [activatingCycleId, setActivatingCycleId] = useState<string | null>(null);
 
-  const { cycles, loading, createCycle } = useCycles();
+  const { cycles, loading, createCycle, refetch } = useCycles();
   const { canCreateCycle } = useRCDOPermissions();
 
   const handleCreateCycle = async () => {
@@ -54,6 +58,42 @@ export default function CyclePlanner() {
       }
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleActivateCycle = async (cycleId: string) => {
+    setActivatingCycleId(cycleId);
+    try {
+      // First, deactivate all other cycles
+      const { error: deactivateError } = await supabase
+        .from('rc_cycles')
+        .update({ status: 'archived' })
+        .eq('status', 'active');
+
+      if (deactivateError) throw deactivateError;
+
+      // Then activate the selected cycle
+      const { error: activateError } = await supabase
+        .from('rc_cycles')
+        .update({ status: 'active' })
+        .eq('id', cycleId);
+
+      if (activateError) throw activateError;
+
+      toast({
+        title: 'Success',
+        description: 'Cycle activated successfully',
+      });
+
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to activate cycle',
+        variant: 'destructive',
+      });
+    } finally {
+      setActivatingCycleId(null);
     }
   };
 
@@ -149,13 +189,44 @@ export default function CyclePlanner() {
                         {format(new Date(cycle.created_at), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate('/dashboard/rcdo')}
-                        >
-                          View
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          {cycle.status === 'active' ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate('/dashboard/rcdo')}
+                            >
+                              View Strategy
+                            </Button>
+                          ) : cycle.status === 'draft' ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleActivateCycle(cycle.id)}
+                                disabled={activatingCycleId === cycle.id || !canCreateCycle}
+                              >
+                                {activatingCycleId === cycle.id ? (
+                                  'Activating...'
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Activate
+                                  </>
+                                )}
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled
+                              title="Archived cycles cannot be viewed"
+                            >
+                              Archived
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
