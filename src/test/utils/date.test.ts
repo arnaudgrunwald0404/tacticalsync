@@ -157,8 +157,10 @@ describe('Date Utilities', () => {
       const date = new Date(2025, 9, 15); // October 15, 2025
       const label = getMeetingPeriodLabel(date, 'daily');
       
-      expect(label).toContain('Day');
-      expect(label).toContain('10/15');
+      // New format shows full date with day of week: "Wednesday, Oct 15 2025"
+      expect(label).toContain('Wednesday');
+      expect(label).toContain('Oct 15');
+      expect(label).toContain('2025');
     });
 
     it('should format weekly meeting label correctly', () => {
