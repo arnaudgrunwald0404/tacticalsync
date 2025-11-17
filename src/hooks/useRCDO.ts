@@ -624,6 +624,10 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
 
   const createLink = async (form: CreateLinkForm) => {
     try {
+      // Get current user for created_by field
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const { data, error: createError } = await supabase
         .from('rc_links')
         .insert({
@@ -631,6 +635,7 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
           parent_id: form.parent_id,
           kind: form.kind,
           ref_id: form.ref_id,
+          created_by: user.id,
         })
         .select()
         .single();
