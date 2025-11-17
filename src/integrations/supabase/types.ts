@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -124,9 +144,9 @@ export type Database = {
           expires_at: string | null
           id: string
           invite_code: string | null
-          invited_by: string | null
+          invited_by: string
           role: string
-          status: Database["public"]["Enums"]["invitation_status"] | null
+          status: string
           team_id: string
           updated_at: string | null
         }
@@ -136,9 +156,9 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invite_code?: string | null
-          invited_by?: string | null
-          role?: string
-          status?: Database["public"]["Enums"]["invitation_status"] | null
+          invited_by: string
+          role: string
+          status?: string
           team_id: string
           updated_at?: string | null
         }
@@ -148,20 +168,13 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invite_code?: string | null
-          invited_by?: string | null
+          invited_by?: string
           role?: string
-          status?: Database["public"]["Enums"]["invitation_status"] | null
+          status?: string
           team_id?: string
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "invitations_invited_by_fkey"
-            columns: ["invited_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "invitations_team_id_fkey"
             columns: ["team_id"]
@@ -338,6 +351,7 @@ export type Database = {
           frequency: string
           id: string
           name: string
+          parking_lot: string | null
           team_id: string
           updated_at: string | null
         }
@@ -347,6 +361,7 @@ export type Database = {
           frequency: string
           id?: string
           name: string
+          parking_lot?: string | null
           team_id: string
           updated_at?: string | null
         }
@@ -356,6 +371,7 @@ export type Database = {
           frequency?: string
           id?: string
           name?: string
+          parking_lot?: string | null
           team_id?: string
           updated_at?: string | null
         }
@@ -372,6 +388,7 @@ export type Database = {
       meeting_series_action_items: {
         Row: {
           assigned_to: string | null
+          completed_at: string | null
           completion_status: Database["public"]["Enums"]["completion_status_enum"]
           created_at: string | null
           created_by: string
@@ -385,6 +402,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          completed_at?: string | null
           completion_status?: Database["public"]["Enums"]["completion_status_enum"]
           created_at?: string | null
           created_by: string
@@ -398,6 +416,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          completed_at?: string | null
           completion_status?: Database["public"]["Enums"]["completion_status_enum"]
           created_at?: string | null
           created_by?: string
@@ -504,12 +523,13 @@ export type Database = {
           birthday: string | null
           blue_percentage: number | null
           created_at: string | null
-          email: string
+          email: string | null
           first_name: string | null
-          full_name: string
+          full_name: string | null
           green_percentage: number | null
           id: string
           is_admin: boolean | null
+          is_rcdo_admin: boolean | null
           is_super_admin: boolean | null
           last_name: string | null
           red_percentage: number | null
@@ -522,12 +542,13 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email: string
+          email?: string | null
           first_name?: string | null
-          full_name: string
+          full_name?: string | null
           green_percentage?: number | null
           id: string
           is_admin?: boolean | null
+          is_rcdo_admin?: boolean | null
           is_super_admin?: boolean | null
           last_name?: string | null
           red_percentage?: number | null
@@ -540,12 +561,13 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email?: string
+          email?: string | null
           first_name?: string | null
-          full_name?: string
+          full_name?: string | null
           green_percentage?: number | null
           id?: string
           is_admin?: boolean | null
+          is_rcdo_admin?: boolean | null
           is_super_admin?: boolean | null
           last_name?: string | null
           red_percentage?: number | null
@@ -554,40 +576,430 @@ export type Database = {
         }
         Relationships: []
       }
-      recurring_meetings: {
+      rc_canvas_states: {
+        Row: {
+          created_at: string
+          edges: Json
+          nodes: Json
+          room: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          edges?: Json
+          nodes?: Json
+          room: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          edges?: Json
+          nodes?: Json
+          room?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      rc_checkins: {
+        Row: {
+          blockers: string | null
+          created_at: string | null
+          created_by: string
+          date: string
+          id: string
+          next_steps: string | null
+          parent_id: string
+          parent_type: string
+          sentiment: number | null
+          summary: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          blockers?: string | null
+          created_at?: string | null
+          created_by: string
+          date?: string
+          id?: string
+          next_steps?: string | null
+          parent_id: string
+          parent_type: string
+          sentiment?: number | null
+          summary?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          blockers?: string | null
+          created_at?: string | null
+          created_by?: string
+          date?: string
+          id?: string
+          next_steps?: string | null
+          parent_id?: string
+          parent_type?: string
+          sentiment?: number | null
+          summary?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      rc_cycles: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          created_by: string
+          end_date: string
+          id: string
+          start_date: string
+          status: string
+          team_id: string | null
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          created_by: string
+          end_date: string
+          id?: string
+          start_date: string
+          status?: string
+          team_id?: string | null
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          created_by?: string
+          end_date?: string
+          id?: string
+          start_date?: string
+          status?: string
+          team_id?: string | null
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rc_cycles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_defining_objectives: {
+        Row: {
+          confidence_pct: number | null
+          created_at: string | null
+          created_by: string | null
+          display_order: number | null
+          end_date: string | null
+          health: string | null
+          hypothesis: string | null
+          id: string
+          last_health_calc_at: string | null
+          locked_at: string | null
+          locked_by: string | null
+          owner_user_id: string
+          rallying_cry_id: string
+          start_date: string | null
+          status: string
+          title: string
+          updated_at: string | null
+          weight_pct: number | null
+        }
+        Insert: {
+          confidence_pct?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          display_order?: number | null
+          end_date?: string | null
+          health?: string | null
+          hypothesis?: string | null
+          id?: string
+          last_health_calc_at?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id: string
+          rallying_cry_id: string
+          start_date?: string | null
+          status?: string
+          title: string
+          updated_at?: string | null
+          weight_pct?: number | null
+        }
+        Update: {
+          confidence_pct?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          display_order?: number | null
+          end_date?: string | null
+          health?: string | null
+          hypothesis?: string | null
+          id?: string
+          last_health_calc_at?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id?: string
+          rallying_cry_id?: string
+          start_date?: string | null
+          status?: string
+          title?: string
+          updated_at?: string | null
+          weight_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rc_defining_objectives_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_defining_objectives_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_defining_objectives_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_defining_objectives_rallying_cry_id_fkey"
+            columns: ["rallying_cry_id"]
+            isOneToOne: false
+            referencedRelation: "rc_rallying_cries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_do_metrics: {
+        Row: {
+          created_at: string | null
+          current_numeric: number | null
+          defining_objective_id: string
+          direction: string
+          display_order: number | null
+          id: string
+          last_updated_at: string | null
+          name: string
+          source: string | null
+          target_numeric: number | null
+          type: string
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_numeric?: number | null
+          defining_objective_id: string
+          direction: string
+          display_order?: number | null
+          id?: string
+          last_updated_at?: string | null
+          name: string
+          source?: string | null
+          target_numeric?: number | null
+          type: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_numeric?: number | null
+          defining_objective_id?: string
+          direction?: string
+          display_order?: number | null
+          id?: string
+          last_updated_at?: string | null
+          name?: string
+          source?: string | null
+          target_numeric?: number | null
+          type?: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rc_do_metrics_defining_objective_id_fkey"
+            columns: ["defining_objective_id"]
+            isOneToOne: false
+            referencedRelation: "rc_defining_objectives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_links: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          id: string
+          kind: string
+          parent_id: string
+          parent_type: string
+          ref_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          id?: string
+          kind: string
+          parent_id: string
+          parent_type: string
+          ref_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          kind?: string
+          parent_id?: string
+          parent_type?: string
+          ref_id?: string
+        }
+        Relationships: []
+      }
+      rc_rallying_cries: {
+        Row: {
+          created_at: string | null
+          cycle_id: string
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          narrative: string | null
+          owner_user_id: string
+          status: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          cycle_id: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          narrative?: string | null
+          owner_user_id: string
+          status?: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          cycle_id?: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          narrative?: string | null
+          owner_user_id?: string
+          status?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rc_rallying_cries_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: true
+            referencedRelation: "rc_cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_rallying_cries_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_rallying_cries_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_strategic_initiatives: {
         Row: {
           created_at: string | null
           created_by: string | null
-          frequency: Database["public"]["Enums"]["meeting_frequency"]
+          defining_objective_id: string
+          description: string | null
+          display_order: number | null
+          end_date: string | null
           id: string
-          name: string
-          team_id: string
+          locked_at: string | null
+          locked_by: string | null
+          owner_user_id: string
+          start_date: string | null
+          status: string
+          title: string
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
           created_by?: string | null
-          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          defining_objective_id: string
+          description?: string | null
+          display_order?: number | null
+          end_date?: string | null
           id?: string
-          name: string
-          team_id: string
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id: string
+          start_date?: string | null
+          status?: string
+          title: string
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
           created_by?: string | null
-          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          defining_objective_id?: string
+          description?: string | null
+          display_order?: number | null
+          end_date?: string | null
           id?: string
-          name?: string
-          team_id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id?: string
+          start_date?: string | null
+          status?: string
+          title?: string
           updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "recurring_meetings_team_id_fkey"
-            columns: ["team_id"]
+            foreignKeyName: "rc_strategic_initiatives_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: "teams"
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_defining_objective_id_fkey"
+            columns: ["defining_objective_id"]
+            isOneToOne: false
+            referencedRelation: "rc_defining_objectives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -610,30 +1022,27 @@ export type Database = {
       team_members: {
         Row: {
           created_at: string | null
-          custom_avatar_url: string | null
           id: string
-          role: Database["public"]["Enums"]["member_role"]
-          team_id: string | null
-          title: string | null
-          user_id: string | null
+          role: string
+          team_id: string
+          updated_at: string | null
+          user_id: string
         }
         Insert: {
           created_at?: string | null
-          custom_avatar_url?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["member_role"]
-          team_id?: string | null
-          title?: string | null
-          user_id?: string | null
+          role: string
+          team_id: string
+          updated_at?: string | null
+          user_id: string
         }
         Update: {
           created_at?: string | null
-          custom_avatar_url?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["member_role"]
-          team_id?: string | null
-          title?: string | null
-          user_id?: string | null
+          role?: string
+          team_id?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -650,107 +1059,43 @@ export type Database = {
             referencedRelation: "teams"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "team_members_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
         ]
       }
       teams: {
         Row: {
           abbreviated_name: string | null
           created_at: string | null
-          created_by: string | null
-          frequency: Database["public"]["Enums"]["meeting_frequency"] | null
+          created_by: string
           id: string
-          invite_code: string
+          invite_code: string | null
           name: string
-          standing_agenda_items: Json | null
           updated_at: string | null
         }
         Insert: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by?: string | null
-          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
+          created_by: string
           id?: string
-          invite_code?: string
+          invite_code?: string | null
           name: string
-          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Update: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by?: string | null
-          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
+          created_by?: string
           id?: string
-          invite_code?: string
+          invite_code?: string | null
           name?: string
-          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Relationships: []
-      }
-      topic_status: {
-        Row: {
-          created_at: string | null
-          id: string
-          status: string
-          topic_id: string
-          updated_at: string | null
-          updated_by: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          status: string
-          topic_id: string
-          updated_at?: string | null
-          updated_by: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          status?: string
-          topic_id?: string
-          updated_at?: string | null
-          updated_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "topic_status_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      check_team_member_role: {
-        Args: {
-          _required_role: Database["public"]["Enums"]["member_role"]
-          _team_id: string
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      get_recurring_meeting: {
-        Args: { meeting_id: string }
-        Returns: {
-          frequency: string
-          id: string
-          name: string
-        }[]
-      }
       get_user_login_info: {
         Args: { user_id: string }
         Returns: {
@@ -771,10 +1116,6 @@ export type Database = {
     }
     Enums: {
       completion_status_enum: "completed" | "not_completed" | "pending"
-      invitation_status: "pending" | "accepted" | "expired" | "declined"
-      item_type: "agenda" | "topic" | "priority" | "team_topic" | "action_item"
-      meeting_frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
-      member_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -900,13 +1241,13 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       completion_status_enum: ["completed", "not_completed", "pending"],
-      invitation_status: ["pending", "accepted", "expired", "declined"],
-      item_type: ["agenda", "topic", "priority", "team_topic", "action_item"],
-      meeting_frequency: ["daily", "weekly", "bi-weekly", "monthly"],
-      member_role: ["admin", "member"],
     },
   },
 } as const
+

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
@@ -42,6 +42,12 @@ export function PriorityForm({
   const [linkedItemId, setLinkedItemId] = useState<string | null>(null);
   const [linkedItemType, setLinkedItemType] = useState<'do' | 'initiative' | null>(null);
   
+  // Debug: Log initiatives to console
+  useMemo(() => {
+    console.log('PriorityForm - activeDOs:', activeDOs.length, activeDOs);
+    console.log('PriorityForm - activeSIs:', activeSIs.length, activeSIs);
+  }, [activeDOs, activeSIs]);
+  
   // Generate smart name map
   const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
   
@@ -57,37 +63,37 @@ export function PriorityForm({
     
     try {
       if (type === 'do') {
-        await createLink({
-          parent_type: 'do',
+      await createLink({
+        parent_type: 'do',
           parent_id: id,
-          kind: 'meeting_priority',
-          ref_id: priority.id,
-        });
-        
+        kind: 'meeting_priority',
+        ref_id: priority.id,
+      });
+      
         setLinkedItemId(id);
         setLinkedItemType('do');
-        
+      
         const selectedDO = activeDOs.find(d => d.id === id);
-        toast({
-          title: 'Success',
-          description: `Priority linked to DO: ${selectedDO?.title}`,
-        });
+      toast({
+        title: 'Success',
+        description: `Priority linked to DO: ${selectedDO?.title}`,
+      });
       } else if (type === 'initiative') {
-        await createSILink({
-          parent_type: 'initiative',
+      await createSILink({
+        parent_type: 'initiative',
           parent_id: id,
-          kind: 'meeting_priority',
-          ref_id: priority.id,
-        });
-        
+        kind: 'meeting_priority',
+        ref_id: priority.id,
+      });
+      
         setLinkedItemId(id);
         setLinkedItemType('initiative');
-        
+      
         const selectedSI = activeSIs.find(s => s.id === id);
-        toast({
-          title: 'Success',
-          description: `Priority linked to Initiative: ${selectedSI?.title}`,
-        });
+      toast({
+        title: 'Success',
+        description: `Priority linked to Initiative: ${selectedSI?.title}`,
+      });
       }
     } catch (error: any) {
       toast({
@@ -239,36 +245,39 @@ export function PriorityForm({
               {linkedItemId && linkedItemType ? (
                 <div className="flex items-center gap-2">
                   {linkedItemType === 'do' ? (
-                    <>
-                      <Target className="h-4 w-4 text-blue-600" />
-                      <Badge variant="secondary" className="text-xs">DO</Badge>
+              <>
+                <Target className="h-4 w-4 text-blue-600" />
+                <Badge variant="secondary" className="text-xs">DO</Badge>
                       <span className="text-sm truncate">
                         {activeDOs.find(d => d.id === linkedItemId)?.title || 'Linked to DO'}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-4 w-4 text-purple-600" />
+                </span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4 text-purple-600" />
                       <Badge variant="secondary" className="text-xs">SI</Badge>
                       <span className="text-sm truncate">
                         {activeSIs.find(s => s.id === linkedItemId)?.title || 'Linked to Initiative'}
-                      </span>
-                    </>
-                  )}
-                </div>
-              ) : (
+                </span>
+              </>
+            )}
+          </div>
+        ) : (
                 <span className="text-muted-foreground">Link to Strategy...</span>
               )}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-[400px]">
             {linkedItemId && linkedItemType && (
-              <SelectItem value="">
-                <div className="flex items-center gap-2">
-                  <X className="h-3 w-3" />
-                  <span>Clear Selection</span>
-                </div>
-              </SelectItem>
+              <>
+                <SelectItem value="">
+                  <div className="flex items-center gap-2">
+                    <X className="h-3 w-3" />
+                    <span>Clear Selection</span>
+                  </div>
+                </SelectItem>
+                <SelectSeparator />
+              </>
             )}
             
             {activeDOs.length > 0 && (
@@ -286,6 +295,8 @@ export function PriorityForm({
                 ))}
               </SelectGroup>
             )}
+            
+            {activeDOs.length > 0 && activeSIs.length > 0 && <SelectSeparator />}
             
             {activeSIs.length > 0 && (
               <SelectGroup>
