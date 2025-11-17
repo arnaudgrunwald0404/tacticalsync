@@ -16,6 +16,7 @@ import { useRoles } from "@/hooks/useRoles";
 import { useEffect, useState } from "react";
 import DashboardMain from "./DashboardMain";
 import StrategyHome from "./StrategyHome";
+import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 const DashboardWithTabs = () => {
   const navigate = useNavigate();
@@ -94,11 +95,9 @@ const DashboardWithTabs = () => {
               <DropdownMenuTrigger asChild>
                 <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400" aria-label="Open account menu" role="button">
                   <FancyAvatar 
-                    name={(profile?.avatar_name && profile.avatar_name.trim())
-                      || `${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim()
-                      || (profile?.full_name || '')
-                      || (profile?.email || 'User')}
-                    displayName={`${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim() || (profile?.email?.split('@')[0] || 'U')}
+                    name={(profile?.avatar_name && profile.avatar_name.trim()) || profile?.email || 'User'}
+                    displayName={getFullNameForAvatar(profile?.first_name, profile?.last_name, profile?.email)}
+                    avatarUrl={profile?.avatar_url}
                     size="sm"
                     className="flex-shrink-0"
                   />

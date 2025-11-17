@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
+import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 const DashboardMain = () => {
   const navigate = useNavigate();
@@ -657,7 +658,14 @@ const DashboardMain = () => {
                             name: member.profile?.display_name || member.profile?.full_name || "Unknown",
                             designation: member.role === "admin" ? "Admin" : "Member",
                             image: member.profile?.avatar_url || null,
-                            avatarName: member.profile?.avatar_name || member.profile?.display_name || member.profile?.full_name || "Unknown"
+                            // Use avatar_name or email for consistent color generation
+                            avatarName: member.profile?.avatar_name || member.profile?.email || "Unknown",
+                            // Use full name for initials extraction
+                            displayName: getFullNameForAvatar(
+                              member.profile?.first_name,
+                              member.profile?.last_name,
+                              member.profile?.email
+                            )
                           }))}
                         />
                       </div>

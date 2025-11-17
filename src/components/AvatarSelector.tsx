@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Shuffle, Check, Upload } from "lucide-react";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 
@@ -77,40 +77,67 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         </p>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="avatar" className="w-full">
+        <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-
-            <TabsTrigger value="avatar">Choose avatar</TabsTrigger>
             <TabsTrigger value="upload">Upload a picture</TabsTrigger>
+            <TabsTrigger value="avatar">Choose avatar</TabsTrigger>
           </TabsList>
 
           {/* Upload Picture Tab */}
           <TabsContent value="upload" className="space-y-6 mt-6">
             <div className="flex justify-center items-center" style={{ minHeight: "200px" }}>
               <div className="relative">
-                <label className="cursor-pointer">
-                  <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors shadow-lg">
-                    <Upload className="h-10 w-10 text-primary-foreground" />
+                {avatarUrl ? (
+                  <div className="relative group">
+                    <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+                      <AvatarImage src={avatarUrl} alt="Profile picture" />
+                      <AvatarFallback className="text-2xl font-bold">
+                        {userFirstName?.[0]?.toUpperCase() || ''}{userLastName?.[0]?.toUpperCase() || ''}
+                      </AvatarFallback>
+                    </Avatar>
+                    <label className="absolute inset-0 cursor-pointer rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Upload className="h-8 w-8 text-white" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFileChange}
+                        disabled={uploading}
+                      />
+                    </label>
+                    {uploading && (
+                      <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
+                        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                      </div>
+                    )}
                   </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileChange}
-                    disabled={uploading}
-                  />
-                </label>
-                {uploading && (
-                  <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
-                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
-                  </div>
+                ) : (
+                  <label className="cursor-pointer">
+                    <div className="h-32 w-32 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors shadow-lg">
+                      <Upload className="h-16 w-16 text-primary-foreground" />
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      disabled={uploading}
+                    />
+                    {uploading && (
+                      <div className="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
+                        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                      </div>
+                    )}
+                  </label>
                 )}
               </div>
             </div>
 
             <div className="text-center space-y-2">
               <p className="text-xs text-muted-foreground">
-                Click the upload icon to change your profile picture
+                {avatarUrl 
+                  ? "Hover over your picture and click to change it"
+                  : "Click the upload icon to change your profile picture"}
               </p>
               <p className="text-xs text-muted-foreground">
                 Max file size: 5MB • Supported formats: JPG, PNG, GIF

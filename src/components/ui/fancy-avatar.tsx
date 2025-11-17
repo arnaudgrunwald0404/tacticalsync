@@ -1,8 +1,10 @@
-import React from "react";
+                                                                                                                                                          import React, { useState } from "react";
+import { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 
 interface FancyAvatarProps {
   name: string; // Used for generating the pattern/colors (can include seed)
   displayName?: string; // Used for displaying initials (actual first/last name)
+  avatarUrl?: string | null; // Optional uploaded profile photo URL
   size?: "sm" | "md" | "lg";
   className?: string;
 }
@@ -16,9 +18,51 @@ interface AvatarConfig {
 const FancyAvatar: React.FC<FancyAvatarProps> = ({ 
   name, 
   displayName,
+  avatarUrl,
   size = "md", 
   className = "" 
 }) => {
+  const [imageError, setImageError] = useState(false);
+  
+  // Helper function to get initials
+  const getInitials = (nameStr: string): string => {
+    const cleanName = (nameStr && nameStr.trim().length > 0) ? nameStr.trim() : "User";
+    const words = cleanName.split(' ').filter(word => word.length > 0);
+    
+    if (words.length >= 2) {
+      return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+    } else if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    } else {
+      return cleanName.slice(0, 2).toUpperCase();
+    }
+  };
+  
+  const cleanNameForInitials = (str: string): string => {
+    return str.replace(/\d+$/, '').trim();
+  };
+  
+  // If avatarUrl is provided and no error, use the regular Avatar component
+  if (avatarUrl && !imageError) {
+    const sizeClasses = {
+      sm: "h-7 w-7 text-xs",
+      md: "h-12 w-12 text-sm",
+      lg: "h-16 w-16 text-base"
+    };
+    
+    return (
+      <Avatar className={`${sizeClasses[size]} ${className}`}>
+        <AvatarImage 
+          src={avatarUrl} 
+          alt={displayName || name}
+          onError={() => setImageError(true)}
+        />
+        <AvatarFallback className={sizeClasses[size]}>
+          {getInitials(displayName || cleanNameForInitials(name))}
+        </AvatarFallback>
+      </Avatar>
+    );
+  }
   // Generate diverse avatar config based on name
   const getAvatarConfig = (name: string): AvatarConfig => {
     // Create multiple hash values for more variety
@@ -82,29 +126,6 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
 
   const safeName = (name && name.trim().length > 0) ? name : "User";
   const config = getAvatarConfig(safeName);
-  
-  // Get initials from displayName (actual user name) or fall back to name
-  const getInitials = (nameStr: string): string => {
-    const cleanName = (nameStr && nameStr.trim().length > 0) ? nameStr.trim() : "User";
-    const words = cleanName.split(' ').filter(word => word.length > 0);
-    
-    if (words.length >= 2) {
-      // First and last name available: take first letter of each
-      return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-    } else if (words.length === 1) {
-      // Only one word (could be first name or email): take first two letters
-      return words[0].slice(0, 2).toUpperCase();
-    } else {
-      // Fallback: take first two characters
-      return cleanName.slice(0, 2).toUpperCase();
-    }
-  };
-  
-  // Always use displayName for initials if available, otherwise clean up name
-  const cleanNameForInitials = (str: string): string => {
-    // Remove any numbers from the end of the string
-    return str.replace(/\d+$/, '').trim();
-  };
   
   const initials = getInitials(displayName || cleanNameForInitials(name));
   

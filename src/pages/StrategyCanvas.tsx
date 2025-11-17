@@ -32,6 +32,7 @@ import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParse
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
+import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -996,11 +997,9 @@ const duplicateSelectedDo = useCallback(() => {
               <DropdownMenuTrigger asChild>
                 <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow" role="button" aria-label="Open account menu">
                   <FancyAvatar
-                    name={(headerProfile?.avatar_name && headerProfile.avatar_name.trim())
-                      || `${(headerProfile?.first_name || '')} ${(headerProfile?.last_name || '')}`.trim()
-                      || (headerProfile?.full_name || '')
-                      || (headerProfile?.email || 'User')}
-                    displayName={`${(headerProfile?.first_name || '')} ${(headerProfile?.last_name || '')}`.trim() || (headerProfile?.email?.split('@')[0] || 'U')}
+                    name={(headerProfile?.avatar_name && headerProfile.avatar_name.trim()) || headerProfile?.email || 'User'}
+                    displayName={getFullNameForAvatar(headerProfile?.first_name, headerProfile?.last_name, headerProfile?.email)}
+                    avatarUrl={headerProfile?.avatar_url}
                     size="sm"
                     className="flex-shrink-0"
                   />

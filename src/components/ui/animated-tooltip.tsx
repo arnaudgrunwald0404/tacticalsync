@@ -8,6 +8,7 @@ interface TooltipItem {
   designation: string;
   image: string;
   avatarName?: string;
+  displayName?: string;
 }
 
 interface AnimatedTooltipProps {
@@ -16,11 +17,6 @@ interface AnimatedTooltipProps {
 
 export const AnimatedTooltip = ({ items }: AnimatedTooltipProps) => {
   const [activeItem, setActiveItem] = React.useState<number | null>(null);
-  const [imageErrors, setImageErrors] = React.useState<Set<number>>(new Set());
-
-  const handleImageError = (itemId: number) => {
-    setImageErrors(prev => new Set(prev).add(itemId));
-  };
 
   return (
     <div className="flex flex-row items-center space-x-2">
@@ -41,16 +37,12 @@ export const AnimatedTooltip = ({ items }: AnimatedTooltipProps) => {
               ease: "easeInOut",
             }}
           >
-            {imageErrors.has(item.id) || !item.image || item.image === "/placeholder-avatar.png" ? (
-              <FancyAvatar name={item.avatarName || item.name} size="sm" />
-            ) : (
-              <img
-                src={item.image}
-                alt={item.name}
-                className="w-8 h-8 rounded-full object-cover"
-                onError={() => handleImageError(item.id)}
-              />
-            )}
+            <FancyAvatar 
+              name={item.avatarName || item.name} 
+              displayName={item.displayName}
+              avatarUrl={!item.image || item.image === "/placeholder-avatar.png" ? null : item.image}
+              size="sm" 
+            />
           </motion.div>
           
           {activeItem === item.id && (
