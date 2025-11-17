@@ -301,15 +301,16 @@ const AddPrioritiesDrawer = ({
             
             {/* Desktop Table View */}
             <div className="hidden sm:block border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_80px] gap-4 text-sm font-medium text-muted-foreground">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_300px_80px] gap-4 text-sm font-medium text-muted-foreground">
                 <div>Who</div>
                 <div>Desired Outcome</div>
                 <div>Supporting Activities</div>
+                <div>Link to Strategy</div>
                 <div></div>
               </div>
               
               {priorities.length > 0 ? priorities.map((priority) => (
-                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[200px_2fr_2fr_80px] gap-4 items-start">
+                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[200px_2fr_2fr_300px_80px] gap-4 items-start">
                   <PriorityForm
                     priority={priority}
                     teamMembers={teamMembers}

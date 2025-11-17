@@ -322,6 +322,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       userTemplates={userTemplates}
       adoptingTemplate={adoptingTemplate}
       adoptSystemTemplate={adoptSystemTemplate}
+      meetingId={meetingId}
       startAddingManually={startAddingManually}
       onStartEdit={() => {
         actions.updateEditingItems([...items]);

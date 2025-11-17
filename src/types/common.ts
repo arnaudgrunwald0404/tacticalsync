@@ -55,6 +55,7 @@ export interface MeetingSeries {
   frequency: string;
   created_by: string;
   created_at: string;
+  parking_lot?: string;
 }
 
 export interface MeetingInstance {

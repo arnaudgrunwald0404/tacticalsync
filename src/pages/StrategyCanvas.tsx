@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -45,6 +45,8 @@ type NodeData = {
   parentDoId?: string; // only for legacy SI nodes (no longer used)
   bgColor?: string; // node background color
   size?: { w: number; h: number }; // optional fixed size per node
+  // DO title candidates (for draft mode)
+  titleCandidates?: string[];
   // SIs embedded in DO
   saiItems?: Array<{
     id: string;
@@ -135,11 +137,13 @@ function StrategyNode({ data }: { data: NodeData }) {
 
 import type { NodeProps } from "reactflow";
 
-function DoNode({ id, data }: NodeProps<NodeData>) {
-  const status = data.status || "draft";
-  const items = data.saiItems || [];
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
+// Create a factory function that accepts profilesMap
+const createDoNode = (profilesMap: Record<string, any>) => {
+  return function DoNode({ id, data }: NodeProps<NodeData>) {
+    const status = data.status || "draft";
+    const items = data.saiItems || [];
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -260,7 +264,8 @@ function DoNode({ id, data }: NodeProps<NodeData>) {
       )}
     </div>
   );
-}
+  };
+};
 
 function SaiNode({ id, data }: NodeProps<NodeData>) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -303,30 +308,67 @@ function SaiNode({ id, data }: NodeProps<NodeData>) {
 
 function RallyNode({ data }: { data: NodeData }) {
   const finalized = !!data.rallyFinalized;
-  const bg = data.bgColor || "#ffffff";
+  const bg = data.bgColor;
   const headline = data.rallyCandidates?.[0] || data.title || "Double‑click to edit candidates";
   return (
-    <div className="rounded-lg border shadow p-3 min-w-[220px] flex flex-col" style={{ backgroundColor: bg, width: data.size?.w, height: data.size?.h }}>
-      <div className="flex items-start justify-between gap-2 flex-shrink-0">
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-foreground/80 whitespace-nowrap">Rallying Cry</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${finalized ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+    <div 
+      className={`rounded-xl border-2 shadow-lg p-4 min-w-[220px] flex flex-col relative ${
+        finalized
+          ? "border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30"
+          : "border-amber-400 dark:border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20"
+      }`}
+      style={{ 
+        backgroundColor: bg, 
+        width: data.size?.w, 
+        minHeight: data.size?.h,
+        boxShadow: finalized ? "0 6px 24px rgba(168, 85, 247, 0.2)" : "0 6px 24px rgba(251, 191, 36, 0.2)",
+        overflow: 'visible'
+      }}
+    >
+      {/* Decorative corner accent */}
+      <div className={`absolute top-0 right-0 w-24 h-24 ${
+        finalized ? "bg-purple-500/10" : "bg-amber-500/10"
+      } rounded-bl-full`} />
+      
+      {/* Decorative top accent */}
+      <div className={`absolute top-0 left-0 right-0 h-1 ${
+        finalized 
+          ? "bg-gradient-to-r from-purple-500 via-violet-500 to-purple-500" 
+          : "bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500"
+      }`} />
+      
+      <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+          finalized
+            ? "bg-purple-500 text-white"
+            : "bg-amber-500 text-white"
+        }`}>Rallying Cry</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+          finalized 
+            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300" 
+            : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+        }`}>
           {finalized ? "final" : "ideating"}
         </span>
       </div>
-      <div className="mt-2 text-sm font-semibold leading-tight text-foreground break-words overflow-hidden">
+      <div className={`mt-3 text-base font-bold leading-snug break-words whitespace-normal relative z-10 ${
+        finalized
+          ? "text-purple-900 dark:text-purple-100"
+          : "text-amber-900 dark:text-amber-100"
+      }`}
+      style={{
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+        display: '-webkit-box',
+        WebkitBoxOrient: 'vertical' as any,
+      }}>
         {headline}
       </div>
     </div>
   );
 }
 
-const nodeTypes = {
-  strategy: StrategyNode,
-  do: DoNode,
-  // si nodes are legacy; kept for compatibility but not created anymore
-  sai: SaiNode,
-  rally: RallyNode,
-};
+// nodeTypes will be created inside the component with access to profilesMap
 
 // ---- Layout helpers to avoid overlapping nodes ----
 const DEFAULT_NODE_DIMENSIONS: Record<NodeKind, { w: number; h: number }> = {
@@ -400,6 +442,14 @@ export default function StrategyCanvasPage() {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
   const profilesMap = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])), [profiles]);
+  
+  // Create node types with access to profilesMap
+  const nodeTypes = useMemo(() => ({
+    strategy: StrategyNode,
+    do: createDoNode(profilesMap),
+    sai: SaiNode,
+    rally: RallyNode,
+  }), [profilesMap]);
   
   // Import state
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -1060,18 +1110,6 @@ onNodeDragStop={(_e, node) => {
             </div>
 
             <div className="mt-3 space-y-3">
-              <label className="block text-sm font-medium">Label (optional)</label>
-              <input
-                className="w-full rounded border px-2 py-1 text-sm bg-background"
-                value={selectedNode?.data.title || ""}
-                onChange={(e) => {
-                  const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
-                  setNodes(next);
-                  setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, title: e.target.value } });
-                }}
-                placeholder="Optional label for the RC box"
-              />
-
               <div className="flex items-center gap-2">
                 <label className="text-sm">Background</label>
                 <input
@@ -1124,6 +1162,61 @@ onNodeDragStop={(_e, node) => {
                 <div className="space-y-2">
                   {(selectedNode.data.rallyCandidates || []).map((c, i) => (
                     <div key={i} className="flex items-center gap-2">
+                      {/* Up/Down chevrons for reordering */}
+                      {!selectedNode.data.rallyFinalized && (
+                        <div className="flex flex-col">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (i === 0) return;
+                              const arr = [...(selectedNode.data.rallyCandidates || [])];
+                              // Swap with previous item
+                              [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode!.id 
+                                  ? { ...n, data: { ...n.data, rallyCandidates: arr } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, rallyCandidates: arr } });
+                            }}
+                            disabled={i === 0}
+                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const arr = [...(selectedNode.data.rallyCandidates || [])];
+                              if (i >= arr.length - 1) return;
+                              // Swap with next item
+                              [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode!.id 
+                                  ? { ...n, data: { ...n.data, rallyCandidates: arr } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, rallyCandidates: arr } });
+                            }}
+                            disabled={i >= (selectedNode.data.rallyCandidates || []).length - 1}
+                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Rank number badge */}
+                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold flex-shrink-0 ${
+                        i === 0 ? "bg-purple-500 text-white" : "bg-muted text-foreground"
+                      }`}>
+                        {i + 1}
+                      </span>
+                      
                       <input
                         className={`flex-1 rounded border px-2 py-1 text-sm bg-background ${i === 0 ? "font-semibold" : ""}`}
                         value={c}
@@ -1139,20 +1232,26 @@ onNodeDragStop={(_e, node) => {
                         }}
                         disabled={selectedNode.data.rallyFinalized && i > 0}
                       />
+                      
+                      {/* Remove button (only for non-first items and when not finalized) */}
                       {i > 0 && !selectedNode.data.rallyFinalized && (
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
                           onClick={() => {
                             const arr = [...(selectedNode.data.rallyCandidates || [])];
-                            const [picked] = arr.splice(i, 1);
-                            arr.unshift(picked);
-                            const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, rallyCandidates: arr } } : n);
+                            arr.splice(i, 1);
+                            const next = nodes.map((n) => 
+                              n.id === selectedNode!.id 
+                                ? { ...n, data: { ...n.data, rallyCandidates: arr } } 
+                                : n
+                            );
                             setNodes(next);
                             setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, rallyCandidates: arr } });
                           }}
+                          className="h-8 w-8 p-0"
                         >
-                          Top
+                          <X className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
@@ -1245,18 +1344,170 @@ onNodeDragStop={(_e, node) => {
 
             <div className="mt-3 space-y-3 flex-1 overflow-y-auto">
               <div className="space-y-3">
-                <label className="block text-sm font-medium">Title</label>
-                <input
-                  className="w-full rounded border px-2 py-1 text-sm bg-background"
-                  value={selectedNode?.data.title || ""}
-                  onChange={(e) => {
-                    if (!selectedNode) return;
-                    const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, title: e.target.value } });
-                  }}
-                  placeholder="Name this DO"
-                />
+                <label className="block text-sm font-medium">
+                  {selectedNode.data.status === "final" ? "Name" : "Name Candidates"}
+                </label>
+                
+                {selectedNode.data.status === "final" ? (
+                  // Final mode: just show the locked title
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm bg-background"
+                    value={selectedNode?.data.title || ""}
+                    onChange={(e) => {
+                      if (!selectedNode) return;
+                      const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
+                      setNodes(next);
+                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, title: e.target.value } });
+                    }}
+                    placeholder="Name this DO"
+                  />
+                ) : (
+                  // Draft mode: show candidates with ranking
+                  <div className="space-y-2">
+                    {(selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).map((candidate, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        {/* Up/Down chevrons for reordering */}
+                        <div className="flex flex-col">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (!selectedNode || idx === 0) return;
+                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                              // Swap with previous item
+                              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode.id 
+                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                            }}
+                            disabled={idx === 0}
+                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (!selectedNode) return;
+                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                              if (idx >= arr.length - 1) return;
+                              // Swap with next item
+                              [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode.id 
+                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                            }}
+                            disabled={idx >= (selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).length - 1}
+                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        
+                        {/* Rank number badge */}
+                        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold flex-shrink-0 ${
+                          idx === 0 ? "bg-blue-500 text-white" : "bg-muted text-foreground"
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        
+                        <input
+                          className="flex-1 rounded border px-2 py-1 text-sm bg-background"
+                          value={candidate}
+                          onChange={(e) => {
+                            if (!selectedNode) return;
+                            const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                            arr[idx] = e.target.value;
+                            const next = nodes.map((n) => 
+                              n.id === selectedNode.id 
+                                ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                : n
+                            );
+                            setNodes(next);
+                            setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                          }}
+                          placeholder={`Candidate ${idx + 1}`}
+                        />
+                        
+                        {/* Remove button (only for non-first items) */}
+                        {idx > 0 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (!selectedNode) return;
+                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                              arr.splice(idx, 1);
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode.id 
+                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                            }}
+                            className="h-8 w-8 p-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {/* Add new candidate */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        className="flex-1 rounded border px-2 py-1 text-sm bg-background"
+                        placeholder="Add another candidate..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            if (!val) return;
+                            const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                            arr.push(val);
+                            (e.target as HTMLInputElement).value = "";
+                            const next = nodes.map((n) => 
+                              n.id === selectedNode.id 
+                                ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                : n
+                            );
+                            setNodes(next);
+                            setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                          arr.push("New candidate");
+                          const next = nodes.map((n) => 
+                            n.id === selectedNode.id 
+                              ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                              : n
+                          );
+                          setNodes(next);
+                          setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground">
+                      The #1 ranked candidate is displayed on the canvas. Change status to "final" to lock it.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <label className="text-sm">Status</label>
@@ -1358,8 +1609,9 @@ onNodeDragStop={(_e, node) => {
                 {/* Primary Success Metric Field */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium">Primary Success Metric</label>
-                  <input
-                    className="w-full rounded border px-2 py-1.5 text-sm bg-background"
+                  <textarea
+                    className="w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+                    rows={3}
                     value={selectedNode?.data.primarySuccessMetric || ""}
                     onChange={(e) => {
                       if (!selectedNode) return;
@@ -1370,6 +1622,11 @@ onNodeDragStop={(_e, node) => {
                       setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, primarySuccessMetric: e.target.value } });
                     }}
                     placeholder="e.g., OpEx management and achievement of SI-level metrics"
+                    style={{ 
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      whiteSpace: 'pre-wrap'
+                    }}
                   />
                 </div>
 
@@ -1554,7 +1811,18 @@ onNodeDragStop={(_e, node) => {
                     </div>
                     <div>
                       <label className="text-sm font-medium">Primary Success Metric</label>
-                      <input className="mt-1 w-full rounded border px-2 py-1 text-sm bg-background" placeholder="e.g., % conversion, NPS, etc." value={si.metric || ""} onChange={(e)=>update({ metric: e.target.value })} />
+                      <textarea 
+                        className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none" 
+                        rows={3}
+                        placeholder="e.g., % conversion, NPS, etc." 
+                        value={si.metric || ""} 
+                        onChange={(e)=>update({ metric: e.target.value })}
+                        style={{ 
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          whiteSpace: 'pre-wrap'
+                        }}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Description</label>

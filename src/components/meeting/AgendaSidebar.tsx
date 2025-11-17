@@ -16,6 +16,7 @@ import { MeetingDataActions } from "@/types/meeting";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useHotkeys } from "react-hotkeys-hook";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AgendaSidebarProps {
   items: AgendaItemWithProfile[];
@@ -31,6 +32,7 @@ interface AgendaSidebarProps {
   userTemplates?: any[];
   adoptingTemplate?: boolean;
   adoptSystemTemplate?: (template: any) => Promise<void>;
+  meetingId?: string;
   startAddingManually?: () => void;
 }
 
@@ -48,6 +50,7 @@ export function AgendaSidebar({
   userTemplates = [],
   adoptingTemplate = false,
   adoptSystemTemplate,
+  meetingId,
   startAddingManually,
 }: AgendaSidebarProps) {
   const displayItems = isEditingAgenda ? editingItems : items;
@@ -77,13 +80,46 @@ export function AgendaSidebar({
   
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [notesContent, setNotesContent] = useState<Record<string, string>>({});
-  const [parkingLotContent, setParkingLotContent] = useState<string>(() => {
-    // Load from localStorage on mount
-    const saved = localStorage.getItem('meeting-parking-lot');
-    return saved || "";
-  });
+  const [seriesId, setSeriesId] = useState<string | null>(null);
+  const [parkingLotContent, setParkingLotContent] = useState<string>("");
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Fetch series_id from meeting instance
+  useEffect(() => {
+    const fetchSeriesId = async () => {
+      if (!meetingId) {
+        setSeriesId(null);
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from("meeting_instances")
+        .select("series_id")
+        .eq("id", meetingId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Error fetching series_id:", error);
+        return;
+      }
+      
+      if (data) {
+        setSeriesId(data.series_id);
+      }
+    };
+    
+    fetchSeriesId();
+  }, [meetingId]);
+  
+  // Load parking lot content from localStorage when series_id is available
+  useEffect(() => {
+    if (seriesId) {
+      const storageKey = `meeting-parking-lot-${seriesId}`;
+      const saved = localStorage.getItem(storageKey);
+      setParkingLotContent(saved || "");
+    }
+  }, [seriesId]);
 
   // Debounced autosave for notes
   const { debouncedSave, immediateSave } = useDebouncedAutosave({
@@ -95,12 +131,13 @@ export function AgendaSidebar({
     }
   });
   
-  // Auto-save parking lot to localStorage
+  // Auto-save parking lot to localStorage with series-specific key
   useEffect(() => {
-    if (parkingLotContent !== null) {
-      localStorage.setItem('meeting-parking-lot', parkingLotContent);
+    if (seriesId && parkingLotContent !== null) {
+      const storageKey = `meeting-parking-lot-${seriesId}`;
+      localStorage.setItem(storageKey, parkingLotContent);
     }
-  }, [parkingLotContent]);
+  }, [parkingLotContent, seriesId]);
 
   const shouldShowNotes = (item: AgendaItemWithProfile) => {
     // Don't show notes when creating from scratch (item has a temp id)
