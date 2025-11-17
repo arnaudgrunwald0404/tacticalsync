@@ -1124,6 +1124,7 @@ const TeamMeeting = () => {
                 onUpdate={handlePriorityChange}
                 frequency={recurringMeeting?.frequency}
                 showPreviousPeriod={showPreviousPeriod}
+                meetingStartDate={meeting?.start_date}
               />
               )}
             </Card>

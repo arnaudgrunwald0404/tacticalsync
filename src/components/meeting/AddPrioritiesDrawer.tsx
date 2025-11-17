@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, X } from "lucide-react";
+import { Save, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -20,6 +20,8 @@ import {
 // Team member shape used locally for dropdowns
 import { TeamMember } from "@/types/meeting";
 import { useMeetingContext } from "@/contexts/MeetingContext";
+import { getWeek, format, startOfWeek, startOfMonth, endOfWeek, endOfMonth, startOfQuarter, endOfQuarter } from "date-fns";
+import { getMeetingEndDate } from "@/lib/dateUtils";
 
 const AddPrioritiesDrawer = ({ 
   isOpen, 
@@ -28,16 +30,17 @@ const AddPrioritiesDrawer = ({
   teamId, 
   onSave, 
   existingPriorities = [],
-  frequency = "weekly"
+  frequency = "weekly",
+  meetingStartDate
 }: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
   const { currentUserId, teamMembers } = useMeetingContext();
   
   // Initialize with 3 empty rows to avoid flash of empty state
   const [priorities, setPriorities] = useState<PriorityRow[]>([
-    { id: 'new-1', priority: "", assigned_to: "", activities: "", time_minutes: null },
-    { id: 'new-2', priority: "", assigned_to: "", activities: "", time_minutes: null },
-    { id: 'new-3', priority: "", assigned_to: "", activities: "", time_minutes: null }
+    { id: 'new-1', priority: "", assigned_to: "", activities: "", time_minutes: null, pendingLink: null },
+    { id: 'new-2', priority: "", assigned_to: "", activities: "", time_minutes: null, pendingLink: null },
+    { id: 'new-3', priority: "", assigned_to: "", activities: "", time_minutes: null, pendingLink: null }
   ]);
   const [saving, setSaving] = useState(false);
   const [newTopic, setNewTopic] = useState({
@@ -64,7 +67,8 @@ const AddPrioritiesDrawer = ({
             priority: htmlToPlainText(priority.outcome || ""),
             assigned_to: priority.assigned_to || defaultAssignee,
             activities: priority.activities || "",
-            time_minutes: null
+            time_minutes: null,
+            pendingLink: null
           }));
           
           // Ensure we have at least 3 rows for consistency
@@ -74,7 +78,8 @@ const AddPrioritiesDrawer = ({
               priority: "",
               assigned_to: defaultAssignee,
               activities: "",
-              time_minutes: null
+              time_minutes: null,
+              pendingLink: null
             });
           }
           
@@ -93,19 +98,77 @@ const AddPrioritiesDrawer = ({
     }
   }, [isOpen, currentUserId, existingPriorities]);
 
-  const addPriorityRow = () => {
-    const newId = `temp-${Date.now()}-${priorities.length + 1}`;
-    setPriorities([...priorities, { 
-      id: newId, 
-      priority: "", 
-      assigned_to: currentUserId || "", 
-      activities: "", 
-      time_minutes: null 
-    }]);
-  };
-  
   // Derive current user object from context data
   const currentUser = teamMembers.find(m => m.user_id === currentUserId) || null;
+
+  // Format the title with week/month number and date range
+  const getPrioritiesTitle = (): string => {
+    if (!meetingStartDate) {
+      // Fallback to old format if no date available
+      return `Edit This ${frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities`;
+    }
+
+    try {
+      // Parse the meeting start date
+      const [year, month, day] = meetingStartDate.split('-').map(Number);
+      const startDate = new Date(year, month - 1, day);
+      
+      let periodType: string;
+      let periodNumber: string;
+      let actualStartDate: Date;
+      let endDate: Date;
+
+      switch (frequency) {
+        case 'weekly':
+          actualStartDate = startOfWeek(startDate, { weekStartsOn: 1 });
+          endDate = getMeetingEndDate('weekly', actualStartDate);
+          periodType = 'week';
+          periodNumber = getWeek(actualStartDate).toString();
+          break;
+        
+        case 'bi-weekly':
+          actualStartDate = startOfWeek(startDate, { weekStartsOn: 1 });
+          endDate = getMeetingEndDate('bi-weekly', actualStartDate);
+          periodType = 'bi-week';
+          periodNumber = getWeek(actualStartDate).toString();
+          break;
+        
+        case 'monthly':
+          actualStartDate = startOfMonth(startDate);
+          endDate = getMeetingEndDate('monthly', actualStartDate);
+          periodType = 'month';
+          periodNumber = format(actualStartDate, 'MMM yyyy');
+          break;
+        
+        case 'quarter':
+          actualStartDate = startOfQuarter(startDate);
+          endDate = getMeetingEndDate('quarterly', actualStartDate);
+          periodType = 'quarter';
+          const quarter = Math.floor((startDate.getMonth() + 3) / 3);
+          periodNumber = `Q${quarter}`;
+          break;
+        
+        default:
+          actualStartDate = startOfWeek(startDate, { weekStartsOn: 1 });
+          endDate = getMeetingEndDate('weekly', actualStartDate);
+          periodType = 'week';
+          periodNumber = getWeek(actualStartDate).toString();
+      }
+
+      const dateRange = `${format(actualStartDate, 'M/d')} - ${format(endDate, 'M/d')}`;
+      
+      // Format: "Priorities this week 47 (11/17 - 11/23)"
+      if (periodType === 'month') {
+        return `Priorities this ${periodType} ${periodNumber} (${dateRange})`;
+      }
+      
+      return `Priorities this ${periodType} ${periodNumber} (${dateRange})`;
+    } catch (error) {
+      console.error('Error formatting priorities title:', error);
+      // Fallback to old format on error
+      return `Edit This ${frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities`;
+    }
+  };
 
   const removePriorityRow = (id: string) => {
     // Always keep at least 3 rows
@@ -120,10 +183,25 @@ const AddPrioritiesDrawer = ({
     return priorities.every(priority => priority.priority.trim() !== "");
   };
 
-  const updatePriority = (id: string, field: keyof PriorityRow, value: string) => {
-    setPriorities(priorities.map(priority => 
-      priority.id === id ? { ...priority, [field]: value } : priority
-    ));
+  const updatePriority = (id: string, field: keyof PriorityRow, value: string | null) => {
+    setPriorities(priorities.map(priority => {
+      if (priority.id === id) {
+        if (field === 'pendingLink') {
+          // Handle pendingLink specially - it can be a JSON string or null
+          if (!value || value === '') {
+            return { ...priority, pendingLink: null };
+          }
+          try {
+            const parsed = JSON.parse(value);
+            return { ...priority, pendingLink: parsed };
+          } catch {
+            return { ...priority, pendingLink: null };
+          }
+        }
+        return { ...priority, [field]: value };
+      }
+      return priority;
+    }));
   };
 
   const handleAddTopic = async () => {
@@ -259,6 +337,51 @@ const AddPrioritiesDrawer = ({
         
         console.log('Successfully inserted priorities:', insertedData);
         totalChanges += insertedData.length;
+        
+        // Create links for newly inserted priorities that have pending links
+        if (insertedData && insertedData.length > 0) {
+          for (let i = 0; i < newPriorities.length; i++) {
+            const newPriority = newPriorities[i];
+            const insertedPriority = insertedData[i];
+            
+            if (newPriority.pendingLink && insertedPriority) {
+              try {
+                if (newPriority.pendingLink.type === 'do') {
+                  const { error: linkError } = await supabase
+                    .from('rc_links')
+                    .insert({
+                      parent_type: 'do',
+                      parent_id: newPriority.pendingLink.id,
+                      kind: 'meeting_priority',
+                      ref_id: insertedPriority.id,
+                      created_by: user.id
+                    });
+                  
+                  if (linkError) {
+                    console.error('Error creating DO link:', linkError);
+                  }
+                } else if (newPriority.pendingLink.type === 'initiative') {
+                  const { error: linkError } = await supabase
+                    .from('rc_links')
+                    .insert({
+                      parent_type: 'initiative',
+                      parent_id: newPriority.pendingLink.id,
+                      kind: 'meeting_priority',
+                      ref_id: insertedPriority.id,
+                      created_by: user.id
+                    });
+                  
+                  if (linkError) {
+                    console.error('Error creating Initiative link:', linkError);
+                  }
+                }
+              } catch (linkErr) {
+                console.error('Error creating link for priority:', linkErr);
+                // Don't throw - link creation failure shouldn't block priority save
+              }
+            }
+          }
+        }
       }
       
       if (totalChanges > 0) {
@@ -288,7 +411,7 @@ const AddPrioritiesDrawer = ({
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] flex flex-col h-full">
         <SheetHeader className="pb-4 flex-none">
-          <SheetTitle className="text-xl sm:text-2xl">{`Edit This ${frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priorities`}</SheetTitle>
+          <SheetTitle className="text-xl sm:text-2xl">{getPrioritiesTitle()}</SheetTitle>
           <SheetDescription className="text-sm sm:text-base">
             Edit your priorities for the current period. Start with three, add more if needed.
           </SheetDescription>
@@ -301,7 +424,7 @@ const AddPrioritiesDrawer = ({
             
             {/* Desktop Table View */}
             <div className="hidden sm:block border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[200px_2fr_2fr_300px_80px] gap-4 text-sm font-medium text-muted-foreground">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[60px_2fr_2fr_300px_80px] gap-4 text-sm font-medium text-muted-foreground">
                 <div>Who</div>
                 <div>Desired Outcome</div>
                 <div>Supporting Activities</div>
@@ -310,7 +433,7 @@ const AddPrioritiesDrawer = ({
               </div>
               
               {priorities.length > 0 ? priorities.map((priority) => (
-                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[200px_2fr_2fr_300px_80px] gap-4 items-start">
+                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[60px_2fr_2fr_300px_80px] gap-4 items-start">
                   <PriorityForm
                     priority={priority}
                     teamMembers={teamMembers}
@@ -345,23 +468,11 @@ const AddPrioritiesDrawer = ({
           
         {/* Fixed Footer */}
         <div className="flex-none mt-6 pt-6 border-t">
-          <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={onClose} className="text-sm">
+          <div className="flex items-center justify-end gap-2 mb-6">
+            <Button variant="outline" onClick={onClose} className="text-sm">
               <X className="h-4 w-4 mr-2" />
               Cancel
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={addPriorityRow}
-              disabled={priorities.length >= 3}
-              className="text-xs sm:text-sm"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              {priorities.length === 0 ? "Add Priority" : "Add Another Priority"}
-            </Button>
-            </div>
             <Button onClick={handleSave} disabled={saving} className="text-sm">
               <Save className="h-4 w-4 mr-2" />
               {saving ? "Saving..." : existingPriorities.length > 0 ? "Save Changes" : `Save ${priorities.filter(t => t.priority.trim()).length} ${priorities.filter(t => t.priority.trim()).length === 1 ? 'Priority' : 'Priorities'}`}

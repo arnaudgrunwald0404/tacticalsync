@@ -1,4 +1,4 @@
-import { Profile } from "./meeting";
+import { Profile } from "./common";
 
 export type CompletionStatus = 'completed' | 'not_completed' | 'pending';
 
@@ -49,6 +49,10 @@ export interface PriorityRow {
   activities: string; // supporting activities (rich text)
   assigned_to: string; // user id (empty string means unassigned)
   time_minutes: number | null;
+  pendingLink?: {
+    type: 'do' | 'initiative';
+    id: string;
+  } | null;
 }
 
 export interface AddPrioritiesDrawerProps {
@@ -59,4 +63,5 @@ export interface AddPrioritiesDrawerProps {
   onSave: () => void;
   existingPriorities?: Priority[];
   frequency?: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
+  meetingStartDate?: string;
 }

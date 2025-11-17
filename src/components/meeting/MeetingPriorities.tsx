@@ -45,6 +45,7 @@ interface MeetingPrioritiesProps {
   frequency?: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
   showPreviousPeriod?: boolean;
   currentUserId?: string;
+  meetingStartDate?: string;
 }
 
 export interface MeetingPrioritiesRef {
@@ -138,7 +139,7 @@ const SortablePriorityRow = ({
   );
 };
 
-const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false, currentUserId }, ref) => {
+const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProps>(({ items, previousItems = [], meetingId, teamId, onUpdate, onAddPriority, frequency = "weekly", showPreviousPeriod = false, currentUserId, meetingStartDate }, ref) => {
   const { toast } = useToast();
   const { isSuperAdmin, isTeamAdmin, teamMembers: members, memberNames } = useMeetingContext();
   
@@ -794,6 +795,7 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
         onSave={onUpdate}
         existingPriorities={currentUserId ? items.filter(i => i.assigned_to === currentUserId) : items}
         frequency={frequency}
+        meetingStartDate={meetingStartDate}
       />
     </>
   );
