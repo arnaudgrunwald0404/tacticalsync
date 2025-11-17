@@ -9,16 +9,25 @@ import { Trash2, Target, X, Zap } from "lucide-react";
 import { PriorityRow } from "@/types/priorities";
 import { TeamMember } from "@/types/meeting";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
-import { useActiveDOs } from "@/hooks/useActiveDOs";
-import { useActiveInitiatives } from "@/hooks/useActiveInitiatives";
 import { useRCLinks } from "@/hooks/useRCDO";
 import { useToast } from "@/hooks/use-toast";
+import type { DOHashtagOption } from "@/types/rcdo";
+
+interface ActiveInitiative {
+  id: string;
+  title: string;
+  doId: string;
+  doTitle: string;
+  status: string;
+}
 
 interface PriorityFormProps {
   priority: PriorityRow;
   teamMembers: TeamMember[];
   currentUser: any;
   teamId: string;
+  activeDOs: DOHashtagOption[];
+  activeSIs: ActiveInitiative[];
   onUpdate: (id: string, field: keyof PriorityRow, value: string | null) => void;
   onRemove?: () => void;
   showRemove?: boolean;
@@ -29,13 +38,13 @@ export function PriorityForm({
   teamMembers, 
   currentUser,
   teamId,
+  activeDOs,
+  activeSIs,
   onUpdate, 
   onRemove,
   showRemove = false 
 }: PriorityFormProps) {
   const { toast } = useToast();
-  const { dos: activeDOs } = useActiveDOs();
-  const { initiatives: activeSIs } = useActiveInitiatives(teamId);
   const { createLink, deleteLink } = useRCLinks('do', undefined);
   const { createLink: createSILink, deleteLink: deleteSILink } = useRCLinks('initiative', undefined);
   

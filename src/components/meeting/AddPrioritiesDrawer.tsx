@@ -20,6 +20,8 @@ import {
 // Team member shape used locally for dropdowns
 import { TeamMember } from "@/types/meeting";
 import { useMeetingContext } from "@/contexts/MeetingContext";
+import { useActiveDOs } from "@/hooks/useActiveDOs";
+import { useActiveInitiatives } from "@/hooks/useActiveInitiatives";
 import { getWeek, format, startOfWeek, startOfMonth, endOfWeek, endOfMonth, startOfQuarter, endOfQuarter } from "date-fns";
 import { getMeetingEndDate } from "@/lib/dateUtils";
 
@@ -35,6 +37,10 @@ const AddPrioritiesDrawer = ({
 }: AddPrioritiesDrawerProps) => {
   const { toast } = useToast();
   const { currentUserId, teamMembers } = useMeetingContext();
+  
+  // Fetch DOs and SIs once at the parent level to avoid duplicate API calls
+  const { dos: activeDOs } = useActiveDOs();
+  const { initiatives: activeSIs } = useActiveInitiatives(teamId);
   
   // Initialize with 3 empty rows to avoid flash of empty state
   const [priorities, setPriorities] = useState<PriorityRow[]>([
@@ -439,6 +445,8 @@ const AddPrioritiesDrawer = ({
                     teamMembers={teamMembers}
                     currentUser={currentUser}
                     teamId={teamId}
+                    activeDOs={activeDOs}
+                    activeSIs={activeSIs}
                     onUpdate={updatePriority}
                     onRemove={() => removePriorityRow(priority.id)}
                     showRemove={priorities.length > 3}
@@ -456,6 +464,8 @@ const AddPrioritiesDrawer = ({
                     teamMembers={teamMembers}
                     currentUser={currentUser}
                     teamId={teamId}
+                    activeDOs={activeDOs}
+                    activeSIs={activeSIs}
                     onUpdate={updatePriority}
                     onRemove={() => removePriorityRow(priority.id)}
                     showRemove={priorities.length > 3}
