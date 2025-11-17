@@ -246,20 +246,12 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
             <div className="col-span-3 flex items-center gap-2 min-w-0">
               {item.assigned_to && assignedMember?.profiles ? (
                 <>
-                {assignedMember.profiles.avatar_name ? (
-                  <FancyAvatar 
-                    name={assignedMember.profiles.avatar_name} 
-                    displayName={getFullNameForAvatar(assignedMember.profiles.first_name, assignedMember.profiles.last_name, assignedMember.profiles.email)}
-                    size="sm" 
-                  />
-                ) : (
-                  <Avatar className="h-6 w-6 rounded-full">
-                    <AvatarImage src={assignedMember.profiles.avatar_url} />
-                    <AvatarFallback className="text-xs">
-                      {assignedMember.profiles.first_name?.[0]?.toUpperCase() || assignedMember.profiles.email?.[0]?.toUpperCase() || ''}{assignedMember.profiles.last_name?.[0]?.toUpperCase() || ''}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
+                <FancyAvatar
+                  name={(assignedMember.profiles.avatar_name && assignedMember.profiles.avatar_name.trim()) || assignedMember.profiles.email || 'Unknown'}
+                  displayName={getFullNameForAvatar(assignedMember.profiles.first_name, assignedMember.profiles.last_name, assignedMember.profiles.email)}
+                  avatarUrl={assignedMember.profiles.avatar_url}
+                  size="sm"
+                />
                 <span className="text-base truncate min-w-0">
                   {memberNames.get(item.assigned_to) || 'Unknown'}
                 </span>

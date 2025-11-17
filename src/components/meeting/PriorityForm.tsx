@@ -19,7 +19,7 @@ interface PriorityFormProps {
   teamMembers: TeamMember[];
   currentUser: any;
   teamId: string;
-  onUpdate: (id: string, field: keyof PriorityRow, value: string) => void;
+  onUpdate: (id: string, field: keyof PriorityRow, value: string | null) => void;
   onRemove?: () => void;
   showRemove?: boolean;
 }
@@ -34,13 +34,17 @@ export function PriorityForm({
   showRemove = false 
 }: PriorityFormProps) {
   const { toast } = useToast();
-  const { dos: activeDOs } = useActiveDOs(teamId);
+  const { dos: activeDOs } = useActiveDOs();
   const { initiatives: activeSIs } = useActiveInitiatives(teamId);
   const { createLink, deleteLink } = useRCLinks('do', undefined);
   const { createLink: createSILink, deleteLink: deleteSILink } = useRCLinks('initiative', undefined);
   
-  const [linkedItemId, setLinkedItemId] = useState<string | null>(null);
-  const [linkedItemType, setLinkedItemType] = useState<'do' | 'initiative' | null>(null);
+  // Check if priority ID is a valid UUID (not a temp ID)
+  const isTempId = (id: string) => id.startsWith('temp-') || id.startsWith('new-');
+  
+  // Initialize linked state from priority's pending link
+  const [linkedItemId, setLinkedItemId] = useState<string | null>(priority.pendingLink?.id || null);
+  const [linkedItemType, setLinkedItemType] = useState<'do' | 'initiative' | null>(priority.pendingLink?.type || null);
   
   // Debug: Log initiatives to console
   useMemo(() => {
@@ -53,54 +57,75 @@ export function PriorityForm({
   
   // Handler to link priority to DO or SI
   const handleLinkChange = async (value: string) => {
-    if (!value) {
-      // Handle unlink
-      handleUnlink();
-      return;
-    }
-    
-    const [type, id] = value.split(':') as ['do' | 'initiative', string];
-    
     try {
-      if (type === 'do') {
-      await createLink({
-        parent_type: 'do',
-          parent_id: id,
-        kind: 'meeting_priority',
-        ref_id: priority.id,
-      });
+      if (!value) {
+        // Handle unlink
+        handleUnlink();
+        return;
+      }
       
+      const [type, id] = value.split(':') as ['do' | 'initiative', string];
+      
+      // If priority has a temp ID, store the link info for later
+      if (isTempId(priority.id)) {
+        setLinkedItemId(id);
+        setLinkedItemType(type);
+        // Update the priority row with pending link info
+        onUpdate(priority.id, 'pendingLink', JSON.stringify({ type, id }));
+        
+        const selectedItem = type === 'do' 
+          ? activeDOs.find(d => d.id === id)
+          : activeSIs.find(s => s.id === id);
+        
+        toast({
+          title: 'Link queued',
+          description: `Link will be created when priority is saved: ${selectedItem?.title}`,
+        });
+        return;
+      }
+      
+      // If priority has a real ID, create the link immediately
+      if (type === 'do') {
+        await createLink({
+          parent_type: 'do',
+          parent_id: id,
+          kind: 'meeting_priority',
+          ref_id: priority.id,
+        });
+        
         setLinkedItemId(id);
         setLinkedItemType('do');
-      
+        
         const selectedDO = activeDOs.find(d => d.id === id);
-      toast({
-        title: 'Success',
-        description: `Priority linked to DO: ${selectedDO?.title}`,
-      });
+        toast({
+          title: 'Success',
+          description: `Priority linked to DO: ${selectedDO?.title}`,
+        });
       } else if (type === 'initiative') {
-      await createSILink({
-        parent_type: 'initiative',
+        await createSILink({
+          parent_type: 'initiative',
           parent_id: id,
-        kind: 'meeting_priority',
-        ref_id: priority.id,
-      });
-      
+          kind: 'meeting_priority',
+          ref_id: priority.id,
+        });
+        
         setLinkedItemId(id);
         setLinkedItemType('initiative');
-      
+        
         const selectedSI = activeSIs.find(s => s.id === id);
-      toast({
-        title: 'Success',
-        description: `Priority linked to Initiative: ${selectedSI?.title}`,
-      });
+        toast({
+          title: 'Success',
+          description: `Priority linked to Initiative: ${selectedSI?.title}`,
+        });
       }
     } catch (error: any) {
+      console.error('Error in handleLinkChange:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to link priority',
         variant: 'destructive',
       });
+      // Don't rethrow - prevent drawer from closing
     }
   };
   
@@ -109,6 +134,19 @@ export function PriorityForm({
     if (!linkedItemId || !linkedItemType) return;
     
     try {
+      // If priority has a temp ID, just clear the pending link
+      if (isTempId(priority.id)) {
+        setLinkedItemId(null);
+        setLinkedItemType(null);
+        onUpdate(priority.id, 'pendingLink', '');
+        toast({
+          title: 'Link removed',
+          description: 'Pending link cleared',
+        });
+        return;
+      }
+      
+      // If priority has a real ID, delete the link
       setLinkedItemId(null);
       setLinkedItemType(null);
       toast({
@@ -116,11 +154,13 @@ export function PriorityForm({
         description: 'Priority unlinked',
       });
     } catch (error: any) {
+      console.error('Error in handleUnlink:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to unlink',
         variant: 'destructive',
       });
+      // Don't rethrow - prevent drawer from closing
     }
   };
   
@@ -131,41 +171,30 @@ export function PriorityForm({
           value={priority.assigned_to || ""}
           onValueChange={(value) => onUpdate(priority.id, "assigned_to", value)}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full h-8 px-1">
             <SelectValue placeholder="Assign to...">
               {priority.assigned_to ? (
                 (() => {
                   const member = teamMembers.find(m => m.user_id === priority.assigned_to);
                   if (!member?.profiles) return null;
                   
-                  const displayName = memberNames.get(priority.assigned_to) || 'Unknown';
-                  
                   return (
-                    <div className="flex items-center gap-2">
-                      {member.profiles.avatar_name ? (
-                        <FancyAvatar 
-                          name={member.profiles.avatar_name} 
-                          displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                          size="sm" 
-                        />
-                      ) : (
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={member.profiles.avatar_url} />
-                          <AvatarFallback className="text-xs">
-                            {member.profiles.first_name?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <span className="text-sm">{displayName}</span>
+                    <div className="flex items-center justify-center">
+                      <FancyAvatar
+                        name={(member.profiles.avatar_name && member.profiles.avatar_name.trim()) || member.profiles.email || 'Unknown'}
+                        displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                        avatarUrl={member.profiles.avatar_url}
+                        size="sm"
+                      />
                     </div>
                   );
                 })()
               ) : (
-                <span className="text-muted-foreground">Assign to...</span>
+                <span className="text-muted-foreground text-xs">...</span>
               )}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="w-[200px]">
             {currentUser && (
               <SelectItem value={currentUser.user_id}>
                 <div className="flex items-center gap-2">
@@ -267,7 +296,7 @@ export function PriorityForm({
               )}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent className="max-h-[400px]">
+          <SelectContent className="max-h-[400px] [&>div:nth-child(2)]:!h-auto [&>div:nth-child(2)]:!max-h-[400px] [&>div:nth-child(2)]:!overflow-y-auto">
             {linkedItemId && linkedItemType && (
               <>
                 <SelectItem value="">

@@ -124,12 +124,12 @@ const SortablePriorityRow = ({
       className="flex items-center justify-between gap-2 px-4 py-2 hover:bg-muted/30"
     >
       <div className="flex items-center gap-2 min-w-0">
-        <Avatar className="h-6 w-6">
-          <AvatarImage src={item.assigned_to_profile?.avatar_url} />
-          <AvatarFallback className="text-xs">
-            {item.assigned_to_profile?.first_name?.[0]?.toUpperCase() || item.assigned_to_profile?.email?.[0]?.toUpperCase() || ''}{item.assigned_to_profile?.last_name?.[0]?.toUpperCase() || ''}
-          </AvatarFallback>
-        </Avatar>
+        <FancyAvatar
+          name={(item.assigned_to_profile?.avatar_name && item.assigned_to_profile.avatar_name.trim()) || item.assigned_to_profile?.email || 'Unknown'}
+          displayName={getFullNameForAvatar(item.assigned_to_profile?.first_name, item.assigned_to_profile?.last_name, item.assigned_to_profile?.email)}
+          avatarUrl={item.assigned_to_profile?.avatar_url}
+          size="sm"
+        />
         <span className="text-sm truncate min-w-0">{item.outcome}</span>
       </div>
       <Button variant="ghost" size="sm" onClick={() => onDelete(item.id)}>
@@ -481,20 +481,12 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                           <div>
                             {userId && userId !== 'unassigned' && member?.profiles ? (
                               <div className="flex items-center gap-2 min-w-0">
-                                {member.profiles.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={member.profiles.avatar_name} 
-                                    displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6 rounded-full">
-                                    <AvatarImage src={member.profiles.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
+                                <FancyAvatar
+                                  name={(member.profiles.avatar_name && member.profiles.avatar_name.trim()) || member.profiles.email || 'Unknown'}
+                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                  avatarUrl={member.profiles.avatar_url}
+                                  size="sm"
+                                />
                                 <span className="text-sm truncate min-w-0">{displayName}</span>
                               </div>
                             ) : (
@@ -513,11 +505,24 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                                     prevItem.completion_status === 'not_completed' && "bg-red-50 border-red-200"
                                   )}
                                 >
-                                  <div className="flex-1 pr-3">
+                                  <div className="flex-1 pr-3 space-y-1">
                                     <div
                                       className="text-sm"
                                       dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevItem.outcome).map(it => it.content).join('') }}
                                     />
+                                    {prevItem.activities && (
+                                      <div className="text-sm mt-1 text-muted-foreground">
+                                        {htmlToFormattedDisplayItems(prevItem.activities).map((displayItem, idx) => (
+                                          <div key={idx} className="flex items-start gap-2">
+                                            {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
+                                            <span
+                                              className={displayItem.isListItem ? "" : "block"}
+                                              dangerouslySetInnerHTML={{ __html: displayItem.content }}
+                                            />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex flex-col gap-1">
                                     <Button
@@ -632,20 +637,12 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                             
                             return (
                               <div className="flex items-center gap-2 min-w-0">
-                                {member.profiles.avatar_name ? (
-                                  <FancyAvatar 
-                                    name={member.profiles.avatar_name} 
-                                    displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                    size="sm" 
-                                  />
-                                ) : (
-                                  <Avatar className="h-6 w-6 rounded-full">
-                                    <AvatarImage src={member.profiles.avatar_url} />
-                                    <AvatarFallback className="text-xs">
-                                      {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
+                                <FancyAvatar
+                                  name={(member.profiles.avatar_name && member.profiles.avatar_name.trim()) || member.profiles.email || 'Unknown'}
+                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                  avatarUrl={member.profiles.avatar_url}
+                                  size="sm"
+                                />
                                 <span className="text-sm truncate min-w-0">{displayName}</span>
                               </div>
                             );
@@ -662,20 +659,12 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                         return (
                           <SelectItem key={member.user_id} value={member.user_id} disabled={!!(currentUserId && item.assigned_to !== currentUserId)}>
                             <div className="flex items-center gap-2 min-w-0">
-                              {member.profiles?.avatar_name ? (
-                                <FancyAvatar 
-                                  name={member.profiles.avatar_name} 
-                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                  size="sm" 
-                                />
-                              ) : (
-                                <Avatar className="h-6 w-6 rounded-full">
-                                  <AvatarImage src={member.profiles?.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
-                                  </AvatarFallback>
-                                </Avatar>
-                              )}
+                              <FancyAvatar
+                                name={(member.profiles?.avatar_name && member.profiles.avatar_name.trim()) || member.profiles?.email || 'Unknown'}
+                                displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}
+                                avatarUrl={member.profiles?.avatar_url}
+                                size="sm"
+                              />
                               <span className="truncate min-w-0">{displayName}</span>
                             </div>
                           </SelectItem>
@@ -697,12 +686,25 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
                           prevPriority.completion_status === 'not_completed' && "bg-red-50 border-red-200"
                         )}
                       >
-                        <div className="flex-1 pr-3">
+                        <div className="flex-1 pr-3 space-y-1">
                           <div className="text-xs text-muted-foreground mb-1">Previous {frequency === "monthly" ? "Month's" : frequency === "weekly" ? "Week's" : frequency === "quarter" ? "Quarter's" : "Period's"} Priority:</div>
                           <div 
                             className="text-sm" 
                             dangerouslySetInnerHTML={{ __html: htmlToFormattedDisplayItems(prevPriority.outcome).map(item => item.content).join('') }} 
                           />
+                          {prevPriority.activities && (
+                            <div className="text-sm mt-1 text-muted-foreground">
+                              {htmlToFormattedDisplayItems(prevPriority.activities).map((displayItem, idx) => (
+                                <div key={idx} className="flex items-start gap-2">
+                                  {displayItem.isListItem && <span className="text-muted-foreground">•</span>}
+                                  <span
+                                    className={displayItem.isListItem ? "" : "block"}
+                                    dangerouslySetInnerHTML={{ __html: displayItem.content }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col gap-1">
                           <Button 

@@ -586,20 +586,12 @@ export function AgendaSidebar({
                                 <div className="flex items-center gap-3 min-w-0">
                                   {item.assigned_to_profile ? (
                                     <div className="flex items-center" title={memberNames.get(item.assigned_to) || 'Unknown'}>
-                                      {item.assigned_to_profile.avatar_name ? (
-                                        <FancyAvatar 
-                                          name={item.assigned_to_profile.avatar_name}
-                                          displayName={getFullNameForAvatar(item.assigned_to_profile.first_name, item.assigned_to_profile.last_name, item.assigned_to_profile.email)}
-                                          size="sm"
-                                        />
-                                      ) : (
-                                        <Avatar className="h-6 w-6 rounded-full">
-                                          <AvatarImage src={item.assigned_to_profile.avatar_url} />
-                                          <AvatarFallback className="text-xs">
-                                            {item.assigned_to_profile.first_name?.[0]?.toUpperCase() || item.assigned_to_profile.email?.[0]?.toUpperCase() || ''}{item.assigned_to_profile.last_name?.[0]?.toUpperCase() || ''}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                      )}
+                                      <FancyAvatar
+                                        name={(item.assigned_to_profile.avatar_name && item.assigned_to_profile.avatar_name.trim()) || item.assigned_to_profile.email || 'Unknown'}
+                                        displayName={getFullNameForAvatar(item.assigned_to_profile.first_name, item.assigned_to_profile.last_name, item.assigned_to_profile.email)}
+                                        avatarUrl={item.assigned_to_profile.avatar_url}
+                                        size="sm"
+                                      />
                                     </div>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">All</span>
