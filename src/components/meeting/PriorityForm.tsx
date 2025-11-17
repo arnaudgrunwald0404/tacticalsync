@@ -48,6 +48,11 @@ export function PriorityForm({
   const { createLink, deleteLink } = useRCLinks('do', undefined);
   const { createLink: createSILink, deleteLink: deleteSILink } = useRCLinks('initiative', undefined);
   
+  // Compute orphan SIs (SIs without a parent DO in activeDOs)
+  const orphanSIs = useMemo(() => {
+    return activeSIs.filter((si) => !activeDOs.some((doItem) => doItem.id === si.doId));
+  }, [activeDOs, activeSIs]);
+  
   // Check if priority ID is a valid UUID (not a temp ID)
   const isTempId = (id: string) => id.startsWith('temp-') || id.startsWith('new-');
   
@@ -55,86 +60,137 @@ export function PriorityForm({
   const [linkedItemId, setLinkedItemId] = useState<string | null>(priority.pendingLink?.id || null);
   const [linkedItemType, setLinkedItemType] = useState<'do' | 'initiative' | null>(priority.pendingLink?.type || null);
   
-  // Debug: Log initiatives to console
-  useMemo(() => {
-    console.log('PriorityForm - activeDOs:', activeDOs.length, activeDOs);
-    console.log('PriorityForm - activeSIs:', activeSIs.length, activeSIs);
-  }, [activeDOs, activeSIs]);
-  
   // Generate smart name map
   const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
   
   // Handler to link priority to DO or SI
   const handleLinkChange = async (value: string) => {
+    // Prevent any default behavior that might close the drawer
     try {
-      if (!value) {
+      if (!value || value === '__clear__') {
         // Handle unlink
-        handleUnlink();
+        handleUnlink().catch((err) => {
+          console.error('Error in handleUnlink:', err);
+        });
         return;
       }
       
       const [type, id] = value.split(':') as ['do' | 'initiative', string];
+      if (!type || !id) {
+        console.error('Invalid value format:', value);
+        return;
+      }
       
       // If priority has a temp ID, store the link info for later
       if (isTempId(priority.id)) {
-        setLinkedItemId(id);
-        setLinkedItemType(type);
-        // Update the priority row with pending link info
-        onUpdate(priority.id, 'pendingLink', JSON.stringify({ type, id }));
-        
-        const selectedItem = type === 'do' 
-          ? activeDOs.find(d => d.id === id)
-          : activeSIs.find(s => s.id === id);
-        
-        toast({
-          title: 'Link queued',
-          description: `Link will be created when priority is saved: ${selectedItem?.title}`,
-        });
+        try {
+          setLinkedItemId(id);
+          setLinkedItemType(type);
+          // Update the priority row with pending link info
+          onUpdate(priority.id, 'pendingLink', JSON.stringify({ type, id }));
+          
+          const selectedItem = type === 'do' 
+            ? activeDOs.find(d => d.id === id)
+            : activeSIs.find(s => s.id === id);
+          
+          toast({
+            title: 'Link queued',
+            description: `Link will be created when priority is saved: ${selectedItem?.title || 'Unknown'}`,
+          });
+        } catch (updateError) {
+          console.error('Error updating pending link:', updateError);
+          toast({
+            title: 'Warning',
+            description: 'Link selection saved, but there was an issue updating the form',
+            variant: 'default',
+          });
+        }
         return;
       }
       
       // If priority has a real ID, create the link immediately
       if (type === 'do') {
-        await createLink({
-          parent_type: 'do',
-          parent_id: id,
-          kind: 'meeting_priority',
-          ref_id: priority.id,
-        });
-        
-        setLinkedItemId(id);
-        setLinkedItemType('do');
-        
-        const selectedDO = activeDOs.find(d => d.id === id);
-        toast({
-          title: 'Success',
-          description: `Priority linked to DO: ${selectedDO?.title}`,
-        });
+        try {
+          const result = await createLink({
+            parent_type: 'do',
+            parent_id: id,
+            kind: 'meeting_priority',
+            ref_id: priority.id,
+          });
+          
+          // Only update state if link was created/found successfully
+          if (result) {
+            setLinkedItemId(id);
+            setLinkedItemType('do');
+            
+            const selectedDO = activeDOs.find(d => d.id === id);
+            toast({
+              title: 'Success',
+              description: `Priority linked to Defining Objective: ${selectedDO?.title || 'Unknown'}`,
+            });
+          }
+        } catch (linkError: any) {
+          console.error('Error creating DO link:', linkError);
+          // Don't show error for duplicate keys - it's already handled
+          if (linkError?.code !== '23505' && !linkError?.message?.includes('duplicate key')) {
+            toast({
+              title: 'Error',
+              description: linkError?.message || 'Failed to link priority to Defining Objective',
+              variant: 'destructive',
+            });
+          } else {
+            // Link already exists, just update the UI
+            setLinkedItemId(id);
+            setLinkedItemType('do');
+          }
+        }
       } else if (type === 'initiative') {
-        await createSILink({
-          parent_type: 'initiative',
-          parent_id: id,
-          kind: 'meeting_priority',
-          ref_id: priority.id,
-        });
-        
-        setLinkedItemId(id);
-        setLinkedItemType('initiative');
-        
-        const selectedSI = activeSIs.find(s => s.id === id);
-        toast({
-          title: 'Success',
-          description: `Priority linked to Initiative: ${selectedSI?.title}`,
-        });
+        try {
+          const result = await createSILink({
+            parent_type: 'initiative',
+            parent_id: id,
+            kind: 'meeting_priority',
+            ref_id: priority.id,
+          });
+          
+          // Only update state if link was created/found successfully
+          if (result) {
+            setLinkedItemId(id);
+            setLinkedItemType('initiative');
+            
+            const selectedSI = activeSIs.find(s => s.id === id);
+            toast({
+              title: 'Success',
+              description: `Priority linked to Strategic Initiative: ${selectedSI?.title || 'Unknown'}`,
+            });
+          }
+        } catch (linkError: any) {
+          console.error('Error creating SI link:', linkError);
+          // Don't show error for duplicate keys - it's already handled
+          if (linkError?.code !== '23505' && !linkError?.message?.includes('duplicate key')) {
+            toast({
+              title: 'Error',
+              description: linkError?.message || 'Failed to link priority to Strategic Initiative',
+              variant: 'destructive',
+            });
+          } else {
+            // Link already exists, just update the UI
+            setLinkedItemId(id);
+            setLinkedItemType('initiative');
+          }
+        }
       }
     } catch (error: any) {
       console.error('Error in handleLinkChange:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to link priority',
-        variant: 'destructive',
-      });
-      // Don't rethrow - prevent drawer from closing
+      // Don't show toast for duplicate key errors
+      if (error?.code !== '23505' && !error?.message?.includes('duplicate key')) {
+        toast({
+          title: 'Error',
+          description: error?.message || 'Failed to link priority',
+          variant: 'destructive',
+        });
+      }
+      // Don't rethrow - prevent drawer from closing and component crash
     }
   };
   
@@ -273,13 +329,36 @@ export function PriorityForm({
       </div>
       
       {/* Strategic Linking Section */}
-      <div>
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }} 
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      >
         <Select
           value={linkedItemId && linkedItemType ? `${linkedItemType}:${linkedItemId}` : ""}
-          onValueChange={handleLinkChange}
+          onValueChange={(value) => {
+            // Prevent any event bubbling that might close the drawer
+            // Use setTimeout to prevent synchronous errors from crashing
+            try {
+              setTimeout(() => {
+                handleLinkChange(value).catch((error) => {
+                  console.error('Unhandled error in handleLinkChange:', error);
+                  // Don't rethrow - prevent component crash
+                });
+              }, 0);
+            } catch (error) {
+              console.error('Error in onValueChange handler:', error);
+              // Prevent any error from propagating
+            }
+          }}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Link to Strategy...">
+          <SelectTrigger className="w-full max-w-full">
+            <SelectValue placeholder="DOs / SIs">
               {linkedItemId && linkedItemType ? (
                 <div className="flex items-center gap-2">
                   {linkedItemType === 'do' ? (
@@ -301,14 +380,17 @@ export function PriorityForm({
             )}
           </div>
         ) : (
-                <span className="text-muted-foreground">Link to Strategy...</span>
+                <span className="text-muted-foreground">DOs / SIs</span>
               )}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent className="max-h-[400px] [&>div:nth-child(2)]:!h-auto [&>div:nth-child(2)]:!max-h-[400px] [&>div:nth-child(2)]:!overflow-y-auto">
+          <SelectContent 
+            className="max-h-[500px] overflow-y-auto" 
+            position="item-aligned"
+          >
             {linkedItemId && linkedItemType && (
               <>
-                <SelectItem value="">
+                <SelectItem value="__clear__">
                   <div className="flex items-center gap-2">
                     <X className="h-3 w-3" />
                     <span>Clear Selection</span>
@@ -320,29 +402,41 @@ export function PriorityForm({
             
             {activeDOs.length > 0 && (
               <SelectGroup>
-                <SelectLabel className="flex items-center gap-2">
-                  <Target className="h-3 w-3 text-blue-600" />
-                  Desired Outcomes
-                </SelectLabel>
-                {activeDOs.map((do_item) => (
-                  <SelectItem key={do_item.id} value={`do:${do_item.id}`}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{do_item.title}</span>
+                {activeDOs.map((do_item) => {
+                  // Find SIs that belong to this DO
+                  const doSIs = activeSIs.filter(si => si.doId === do_item.id);
+                  
+                  return (
+                    <div key={do_item.id}>
+                      <SelectItem value={`do:${do_item.id}`}>
+                        <div className="flex items-center gap-2">
+                          <Target className="h-3 w-3 text-blue-600" />
+                          <span className="text-sm font-medium">{do_item.title}</span>
+                        </div>
+                      </SelectItem>
+                      {/* Nested SIs under their parent DO */}
+                      {doSIs.map((si) => (
+                        <SelectItem key={si.id} value={`initiative:${si.id}`}>
+                          <div className="flex items-center gap-2 pl-6">
+                            <Zap className="h-3 w-3 text-purple-600" />
+                            <span className="text-sm">{si.title}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </div>
-                  </SelectItem>
-                ))}
+                  );
+                })}
               </SelectGroup>
             )}
             
-            {activeDOs.length > 0 && activeSIs.length > 0 && <SelectSeparator />}
-            
-            {activeSIs.length > 0 && (
+            {/* Show SIs that don't have a parent DO in activeDOs */}
+            {orphanSIs.length > 0 && (
               <SelectGroup>
                 <SelectLabel className="flex items-center gap-2">
                   <Zap className="h-3 w-3 text-purple-600" />
                   Strategic Initiatives
                 </SelectLabel>
-                {activeSIs.map((si) => (
+                {orphanSIs.map((si) => (
                   <SelectItem key={si.id} value={`initiative:${si.id}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-sm">{si.title}</span>

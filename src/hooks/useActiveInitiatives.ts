@@ -15,17 +15,43 @@ export function useActiveInitiatives(teamId: string | undefined) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchInitiatives = useCallback(async () => {
-    if (!teamId) {
-      setInitiatives([]);
-      setLoading(false);
-      return;
-    }
+    console.log('🔵 useActiveInitiatives - teamId:', teamId);
 
     try {
       setLoading(true);
       setError(null);
 
-      // Get active initiatives with their DO info
+      console.log('🔵 useActiveInitiatives - Fetching initiatives for active cycle');
+
+      // Get active cycle (company-wide, same as useActiveDOs)
+      const { data: activeCycle } = await supabase
+        .from('rc_cycles')
+        .select('id')
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!activeCycle) {
+        console.log('❌ useActiveInitiatives - No active cycle found');
+        setInitiatives([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get rallying cry for cycle
+      const { data: rallyingCry } = await supabase
+        .from('rc_rallying_cries')
+        .select('id')
+        .eq('cycle_id', activeCycle.id)
+        .maybeSingle();
+
+      if (!rallyingCry) {
+        console.log('❌ useActiveInitiatives - No rallying cry found for active cycle');
+        setInitiatives([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get initiatives for DOs in this rallying cry
       const { data, error: fetchError } = await supabase
         .from('rc_strategic_initiatives')
         .select(`
@@ -36,19 +62,22 @@ export function useActiveInitiatives(teamId: string | undefined) {
           rc_defining_objectives!inner(
             id,
             title,
-            rc_rallying_cries!inner(
-              id,
-              rc_cycles!inner(
-                team_id
-              )
-            )
+            rallying_cry_id
           )
         `)
-        .eq('rc_defining_objectives.rc_rallying_cries.rc_cycles.team_id', teamId)
-        .in('status', ['draft', 'in_progress', 'blocked'])
+        .eq('rc_defining_objectives.rallying_cry_id', rallyingCry.id)
+        .in('status', ['draft', 'not_started', 'active', 'blocked'])
         .order('title', { ascending: true });
 
-      if (fetchError) throw fetchError;
+      console.log('🔵 useActiveInitiatives - Query result:', { data, error: fetchError });
+
+      if (fetchError) {
+        console.error('❌ useActiveInitiatives - Query error:', fetchError);
+        throw fetchError;
+      }
+
+      console.log('🔵 useActiveInitiatives - Raw data:', data);
+      console.log('🔵 useActiveInitiatives - Data length:', data?.length || 0);
 
       // Transform the data
       const transformed: ActiveInitiative[] = (data || []).map((item: any) => ({
@@ -59,9 +88,10 @@ export function useActiveInitiatives(teamId: string | undefined) {
         status: item.status,
       }));
 
+      console.log('🔵 useActiveInitiatives - Transformed initiatives:', transformed);
       setInitiatives(transformed);
     } catch (err: any) {
-      console.error('Failed to fetch active initiatives:', err);
+      console.error('❌ useActiveInitiatives - Failed to fetch active initiatives:', err);
       setError(err.message);
       setInitiatives([]);
     } finally {

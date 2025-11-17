@@ -39,8 +39,17 @@ const AddPrioritiesDrawer = ({
   const { currentUserId, teamMembers } = useMeetingContext();
   
   // Fetch DOs and SIs once at the parent level to avoid duplicate API calls
+  console.log('🔵 AddPrioritiesDrawer - teamId prop:', teamId);
   const { dos: activeDOs } = useActiveDOs();
-  const { initiatives: activeSIs } = useActiveInitiatives(teamId);
+  const { initiatives: activeSIs, loading: siLoading, error: siError } = useActiveInitiatives(teamId);
+  
+  // Debug: Log to verify SIs are loading
+  useEffect(() => {
+    console.log('🔵 AddPrioritiesDrawer - activeDOs:', activeDOs.length);
+    console.log('🔵 AddPrioritiesDrawer - activeSIs:', activeSIs.length, activeSIs);
+    console.log('🔵 AddPrioritiesDrawer - siLoading:', siLoading);
+    console.log('🔵 AddPrioritiesDrawer - siError:', siError);
+  }, [activeDOs, activeSIs, siLoading, siError]);
   
   // Initialize with 3 empty rows to avoid flash of empty state
   const [priorities, setPriorities] = useState<PriorityRow[]>([
@@ -352,6 +361,21 @@ const AddPrioritiesDrawer = ({
             
             if (newPriority.pendingLink && insertedPriority) {
               try {
+                // Check if link already exists before creating
+                const { data: existingLink } = await supabase
+                  .from('rc_links')
+                  .select('id')
+                  .eq('parent_type', newPriority.pendingLink.type === 'do' ? 'do' : 'initiative')
+                  .eq('parent_id', newPriority.pendingLink.id)
+                  .eq('kind', 'meeting_priority')
+                  .eq('ref_id', insertedPriority.id)
+                  .maybeSingle();
+
+                if (existingLink) {
+                  // Link already exists, skip creation
+                  continue;
+                }
+
                 if (newPriority.pendingLink.type === 'do') {
                   const { error: linkError } = await supabase
                     .from('rc_links')
@@ -364,7 +388,10 @@ const AddPrioritiesDrawer = ({
                     });
                   
                   if (linkError) {
-                    console.error('Error creating DO link:', linkError);
+                    // Ignore duplicate key errors
+                    if (linkError.code !== '23505' && !linkError.message?.includes('duplicate key')) {
+                      console.error('Error creating DO link:', linkError);
+                    }
                   }
                 } else if (newPriority.pendingLink.type === 'initiative') {
                   const { error: linkError } = await supabase
@@ -378,11 +405,17 @@ const AddPrioritiesDrawer = ({
                     });
                   
                   if (linkError) {
-                    console.error('Error creating Initiative link:', linkError);
+                    // Ignore duplicate key errors
+                    if (linkError.code !== '23505' && !linkError.message?.includes('duplicate key')) {
+                      console.error('Error creating Initiative link:', linkError);
+                    }
                   }
                 }
-              } catch (linkErr) {
-                console.error('Error creating link for priority:', linkErr);
+              } catch (linkErr: any) {
+                // Ignore duplicate key errors
+                if (linkErr?.code !== '23505' && !linkErr?.message?.includes('duplicate key')) {
+                  console.error('Error creating link for priority:', linkErr);
+                }
                 // Don't throw - link creation failure shouldn't block priority save
               }
             }
@@ -414,7 +447,16 @@ const AddPrioritiesDrawer = ({
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
+    <Sheet 
+      open={isOpen} 
+      onOpenChange={(open) => {
+        // Only close if explicitly set to false, not on any change
+        // This prevents the drawer from closing when Select dropdown opens/closes
+        if (!open && isOpen) {
+          onClose();
+        }
+      }}
+    >
       <SheetContent className="w-full sm:w-[75vw] sm:max-w-[75vw] flex flex-col h-full">
         <SheetHeader className="pb-4 flex-none">
           <SheetTitle className="text-xl sm:text-2xl">{getPrioritiesTitle()}</SheetTitle>
@@ -430,7 +472,7 @@ const AddPrioritiesDrawer = ({
             
             {/* Desktop Table View */}
             <div className="hidden sm:block border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[60px_2fr_2fr_300px_80px] gap-4 text-sm font-medium text-muted-foreground">
+              <div className="bg-muted/50 px-4 py-2 grid grid-cols-[60px_2fr_2fr_120px_80px] gap-4 text-sm font-medium text-muted-foreground">
                 <div>Who</div>
                 <div>Desired Outcome</div>
                 <div>Supporting Activities</div>
@@ -439,7 +481,7 @@ const AddPrioritiesDrawer = ({
               </div>
               
               {priorities.length > 0 ? priorities.map((priority) => (
-                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[60px_2fr_2fr_300px_80px] gap-4 items-start">
+                <div key={priority.id} className="px-4 py-3 border-t grid grid-cols-[60px_2fr_2fr_120px_80px] gap-4 items-start">
                   <PriorityForm
                     priority={priority}
                     teamMembers={teamMembers}

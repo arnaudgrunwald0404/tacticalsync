@@ -628,6 +628,21 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Check if link already exists
+      const { data: existingLink } = await supabase
+        .from('rc_links')
+        .select('id')
+        .eq('parent_type', form.parent_type)
+        .eq('parent_id', form.parent_id)
+        .eq('kind', form.kind)
+        .eq('ref_id', form.ref_id)
+        .maybeSingle();
+
+      if (existingLink) {
+        // Link already exists, return it without showing error
+        return existingLink;
+      }
+
       const { data, error: createError } = await supabase
         .from('rc_links')
         .insert({
@@ -640,7 +655,25 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
         .select()
         .single();
 
-      if (createError) throw createError;
+      if (createError) {
+        // Handle duplicate key error gracefully
+        if (createError.code === '23505' || createError.message?.includes('duplicate key')) {
+          // Link was created by another process, fetch it
+          const { data: fetchedLink } = await supabase
+            .from('rc_links')
+            .select('id')
+            .eq('parent_type', form.parent_type)
+            .eq('parent_id', form.parent_id)
+            .eq('kind', form.kind)
+            .eq('ref_id', form.ref_id)
+            .maybeSingle();
+          
+          if (fetchedLink) {
+            return fetchedLink;
+          }
+        }
+        throw createError;
+      }
 
       toast({
         title: 'Success',
@@ -650,11 +683,14 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
       await fetchLinks();
       return data;
     } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to create link',
-        variant: 'destructive',
-      });
+      // Only show error if it's not a duplicate key error
+      if (!err.code || err.code !== '23505') {
+        toast({
+          title: 'Error',
+          description: err.message || 'Failed to create link',
+          variant: 'destructive',
+        });
+      }
       throw err;
     }
   };
