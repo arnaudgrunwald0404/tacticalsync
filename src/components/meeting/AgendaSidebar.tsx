@@ -85,41 +85,59 @@ export function AgendaSidebar({
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // Fetch series_id from meeting instance
+  // Fetch series_id and parking lot from database
   useEffect(() => {
-    const fetchSeriesId = async () => {
+    const fetchSeriesAndParkingLot = async () => {
       if (!meetingId) {
         setSeriesId(null);
         return;
       }
       
-      const { data, error } = await supabase
+      // Get series_id from meeting instance
+      const { data: instanceData, error: instanceError } = await supabase
         .from("meeting_instances")
         .select("series_id")
         .eq("id", meetingId)
         .maybeSingle();
       
-      if (error) {
-        console.error("Error fetching series_id:", error);
+      if (instanceError) {
+        console.error("Error fetching series_id:", instanceError);
         return;
       }
       
-      if (data) {
-        setSeriesId(data.series_id);
+      if (!instanceData) return;
+      
+      setSeriesId(instanceData.series_id);
+      
+      // Load parking lot from localStorage immediately for instant display
+      const storageKey = `meeting-parking-lot-${instanceData.series_id}`;
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        setParkingLotContent(cached);
+      }
+      
+      // Then fetch from database (source of truth)
+      const { data: seriesData, error: seriesError } = await supabase
+        .from("meeting_series")
+        .select("parking_lot")
+        .eq("id", instanceData.series_id)
+        .maybeSingle();
+      
+      if (seriesError) {
+        console.error("Error fetching parking lot:", seriesError);
+        return;
+      }
+      
+      if (seriesData) {
+        const dbContent = seriesData.parking_lot || "";
+        setParkingLotContent(dbContent);
+        // Update localStorage with DB value (sync)
+        localStorage.setItem(storageKey, dbContent);
       }
     };
     
-    fetchSeriesId();
+    fetchSeriesAndParkingLot();
   }, [meetingId]);
-  
-  // Load parking lot content from localStorage when series_id is available
-  useEffect(() => {
-    if (seriesId) {
-      const storageKey = `meeting-parking-lot-${seriesId}`;
-      const saved = localStorage.getItem(storageKey);
-      setParkingLotContent(saved || "");
-    }
-  }, [seriesId]);
 
   // Debounced autosave for notes
   const { debouncedSave, immediateSave } = useDebouncedAutosave({
@@ -131,13 +149,48 @@ export function AgendaSidebar({
     }
   });
   
-  // Auto-save parking lot to localStorage with series-specific key
+  // Debounced save for parking lot
+  const saveParkingLotToDatabase = useCallback(async (content: string, sId: string) => {
+    try {
+      const { error } = await supabase
+        .from("meeting_series")
+        .update({ parking_lot: content })
+        .eq("id", sId);
+      
+      if (error) {
+        console.error("Error saving parking lot to database:", error);
+      } else {
+        console.log("Parking lot saved to database");
+      }
+    } catch (err) {
+      console.error("Exception saving parking lot:", err);
+    }
+  }, []);
+  
+  // Create debounced version of the save function
+  const debouncedSaveParkingLot = useMemo(
+    () => {
+      let timeoutId: NodeJS.Timeout;
+      return (content: string, sId: string) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          saveParkingLotToDatabase(content, sId);
+        }, 2000);
+      };
+    },
+    [saveParkingLotToDatabase]
+  );
+  
+  // Auto-save parking lot to localStorage (instant) and database (debounced)
   useEffect(() => {
     if (seriesId && parkingLotContent !== null) {
       const storageKey = `meeting-parking-lot-${seriesId}`;
+      // Save to localStorage immediately for instant responsiveness
       localStorage.setItem(storageKey, parkingLotContent);
+      // Debounced save to database (source of truth)
+      debouncedSaveParkingLot(parkingLotContent, seriesId);
     }
-  }, [parkingLotContent, seriesId]);
+  }, [parkingLotContent, seriesId, debouncedSaveParkingLot]);
 
   const shouldShowNotes = (item: AgendaItemWithProfile) => {
     // Don't show notes when creating from scratch (item has a temp id)

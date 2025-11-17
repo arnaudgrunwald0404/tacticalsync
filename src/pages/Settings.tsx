@@ -145,34 +145,31 @@ const Settings = () => {
 
       setDbVerifiedSuperAdmin(Boolean(dbIsSuperAdmin));
 
+      // Check if user is an org-level admin (is_admin or is_super_admin)
+      // Also check using the profile data we just fetched
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_admin, is_super_admin")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const isOrgAdmin = Boolean(profileData?.is_admin) || Boolean(profileData?.is_super_admin);
+
+      if (!isOrgAdmin && !isAdmin && !isSuperAdmin && !dbIsSuperAdmin) {
+        toast({
+          title: "Access Denied",
+          description: "You need organization admin privileges to access settings",
+          variant: "destructive",
+        });
+        navigate("/dashboard");
+        return;
+      }
+
       // Set default section based on permissions
       if (Boolean(dbIsSuperAdmin) || isSuperAdmin) {
         setActiveSection("user-management");
       } else {
         setActiveSection("agenda-templates");
-      }
-
-      // If not super admin via DB roles, ensure user has some admin capability
-      if (!dbIsSuperAdmin) {
-        // Check if user is an admin on any team
-        const { data: teamMemberships, error: membershipError } = await supabase
-          .from("team_members")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "admin");
-
-        if (membershipError) throw membershipError;
-
-        // If user is not an admin on any team, redirect to dashboard
-        if (!teamMemberships || teamMemberships.length === 0) {
-          toast({
-            title: "Access Denied",
-            description: "You need admin privileges to access settings",
-            variant: "destructive",
-          });
-          navigate("/dashboard");
-          return;
-        }
       }
       
       await fetchTemplates();

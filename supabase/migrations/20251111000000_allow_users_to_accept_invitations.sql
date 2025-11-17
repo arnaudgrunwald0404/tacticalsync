@@ -10,6 +10,9 @@
 -- sent to their email address (for accepting/declining invitations).
 -- =============================================================================
 
+-- Drop existing policy if it exists, then create it
+DROP POLICY IF EXISTS "Users can update invitations sent to them" ON public.invitations;
+
 -- Create policy that allows users to update invitations sent to them
 CREATE POLICY "Users can update invitations sent to them" ON public.invitations
   FOR UPDATE
