@@ -88,11 +88,53 @@ Deno.serve(async (req) => {
       })
     }
 
+    // UUID validation regex
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    // Filter out invalid UUIDs (including pending invitations)
+    const validUserIds: string[] = []
+    const invalidUserIds: string[] = []
+
+    for (const userId of userIds) {
+      if (userId.startsWith('pending-')) {
+        invalidUserIds.push(userId)
+      } else if (uuidRegex.test(userId)) {
+        validUserIds.push(userId)
+      } else {
+        invalidUserIds.push(userId)
+      }
+    }
+
+    // If all IDs are invalid, return early
+    if (validUserIds.length === 0) {
+      const errorMessage = invalidUserIds.length === 1
+        ? `Invalid user ID: ${invalidUserIds[0]}. Pending invitations cannot be deleted through this endpoint.`
+        : `All user IDs are invalid. ${invalidUserIds.length} invalid ID(s) provided, including pending invitations which cannot be deleted through this endpoint.`
+      
+      return new Response(JSON.stringify({ 
+        error: errorMessage,
+        invalidIds: invalidUserIds
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const deletedUsers: string[] = []
     const errors: Array<{ userId: string; error: string }> = []
 
-    // Delete each user
-    for (const userId of userIds) {
+    // Add errors for invalid IDs
+    for (const invalidId of invalidUserIds) {
+      errors.push({ 
+        userId: invalidId, 
+        error: invalidId.startsWith('pending-') 
+          ? 'Pending invitations cannot be deleted through this endpoint. Use the invitations table instead.'
+          : 'Invalid UUID format'
+      })
+    }
+
+    // Delete each valid user
+    for (const userId of validUserIds) {
       try {
         // First, delete from team_members (cascade should handle this, but being explicit)
         const { error: teamMembersError } = await supabaseAdmin

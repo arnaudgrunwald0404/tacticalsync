@@ -72,6 +72,15 @@ const Settings = () => {
     has_logged_in?: boolean;
     last_active?: string | null;
     teams?: Array<{ team_id: string; team_name: string; role: string }>;
+    pendingInvitations?: Array<{
+      id: string;
+      team_id: string;
+      team_name: string;
+      role: string;
+      created_at: string;
+      expires_at: string;
+      invited_by: string;
+    }>;
   }>>([]);
   const [loadingUsersWithDetails, setLoadingUsersWithDetails] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -375,7 +384,80 @@ const Settings = () => {
         })
       );
 
-      setUsersWithDetails(usersWithTeams);
+      // Fetch pending invitations
+      const { data: pendingInvitations, error: invitationsError } = await supabase
+        .from("invitations")
+        .select(`
+          id,
+          email,
+          team_id,
+          role,
+          created_at,
+          expires_at,
+          invited_by,
+          teams:team_id (
+            id,
+            name
+          )
+        `)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
+
+      if (invitationsError) {
+        console.warn("Error fetching pending invitations:", invitationsError);
+      }
+
+      // Create a map of users by email for quick lookup
+      const usersByEmail = new Map<string, typeof usersWithTeams[0]>();
+      usersWithTeams.forEach(user => {
+        usersByEmail.set(user.email.toLowerCase(), user);
+      });
+
+      // Add pending invitations to existing users or create pending user entries
+      const pendingUsers: typeof usersWithDetails = [];
+      if (pendingInvitations) {
+        pendingInvitations.forEach((invitation: any) => {
+          const email = invitation.email.toLowerCase();
+          const existingUser = usersByEmail.get(email);
+          
+          const invitationData = {
+            id: invitation.id,
+            team_id: invitation.team_id,
+            team_name: invitation.teams?.name || "Unknown Team",
+            role: invitation.role,
+            created_at: invitation.created_at,
+            expires_at: invitation.expires_at,
+            invited_by: invitation.invited_by,
+          };
+
+          if (existingUser) {
+            // Add invitation to existing user
+            if (!existingUser.pendingInvitations) {
+              existingUser.pendingInvitations = [];
+            }
+            existingUser.pendingInvitations.push(invitationData);
+          } else {
+            // Create a pending user entry
+            pendingUsers.push({
+              id: `pending-${invitation.id}`,
+              email: invitation.email,
+              full_name: undefined,
+              is_admin: false,
+              is_super_admin: false,
+              is_rcdo_admin: false,
+              has_logged_in: false,
+              last_active: null,
+              teams: [],
+              pendingInvitations: [invitationData],
+            });
+          }
+        });
+      }
+
+      // Merge users with pending invitations and add standalone pending users
+      const allUsers = [...usersWithTeams, ...pendingUsers];
+      setUsersWithDetails(allUsers);
     } catch (e) {
       console.error("Error fetching users with details:", e);
       toast({
@@ -451,40 +533,33 @@ const Settings = () => {
 
   // Parse emails from text input
   const parseEmails = (input: string): string[] => {
-    // Split by comma, semicolon, or newline
+    if (!input || !input.trim()) return [];
+    
+    // Split by comma, semicolon, newline, or space (for space-separated lists)
     const parsed = input
-      .split(/[,;\n]+/)
+      .split(/[,;\n\s]+/)
       .map(email => email.trim())
       .filter(email => email.length > 0);
     
-    // Basic email validation
+    // Basic email validation - more permissive regex
     const validEmails = parsed.filter(email => {
+      // Remove any leading/trailing whitespace
+      const trimmed = email.trim();
+      // Basic email regex - allows most common email formats
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      return emailRegex.test(email);
-    });
+      return emailRegex.test(trimmed);
+    }).map(email => email.trim().toLowerCase());
 
-    return validEmails;
+    // Remove duplicates
+    return Array.from(new Set(validEmails));
   };
 
   // User Management functions
   const handleInviteUser = async () => {
-    // Parse emails from input if not already parsed
-    let emailsToInvite: string[] = [];
-    if (inviteEmails.length > 0) {
-      emailsToInvite = inviteEmails;
-    } else if (inviteEmail.trim()) {
-      // Parse the input to get valid emails
-      const parsed = parseEmails(inviteEmail);
-      if (parsed.length > 0) {
-        emailsToInvite = parsed;
-      } else {
-        // If parsing failed but there's input, try to validate it as a single email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (emailRegex.test(inviteEmail.trim())) {
-          emailsToInvite = [inviteEmail.trim()];
-        }
-      }
-    }
+    // Use parsed emails, or parse from input if needed
+    const emailsToInvite = inviteEmails.length > 0 
+      ? inviteEmails 
+      : parseEmails(inviteEmail);
     
     if (emailsToInvite.length === 0 || !inviteTeamId) {
       toast({
@@ -565,6 +640,59 @@ const Settings = () => {
     } catch (e: any) {
       toast({
         title: "Failed to invite users",
+        description: e.message || String(e),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendReminder = async (invitationId: string, teamId: string, email: string) => {
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error("Not authenticated");
+
+      // Get user's name for the email
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", currentUser.id)
+        .single();
+
+      // Get team invite code
+      const { data: team, error: teamError } = await supabase
+        .from("teams")
+        .select("invite_code, name")
+        .eq("id", teamId)
+        .single();
+
+      if (teamError || !team) throw new Error("Team not found");
+
+      // Send invitation email via Edge Function
+      const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
+      try {
+        await supabase.functions.invoke("send-invitation-email", {
+          body: {
+            email: email.toLowerCase().trim(),
+            teamName: team.name,
+            inviterName: profile?.full_name || "A super admin",
+            inviteLink,
+          },
+        });
+      } catch (e) {
+        console.warn("Failed to send reminder email:", e);
+        throw new Error("Failed to send reminder email");
+      }
+
+      toast({
+        title: "Reminder sent",
+        description: `Reminder email sent to ${email}`,
+      });
+
+      // Refresh the user list
+      fetchUsersWithDetails();
+    } catch (e: any) {
+      toast({
+        title: "Failed to send reminder",
         description: e.message || String(e),
         variant: "destructive",
       });
@@ -762,6 +890,33 @@ const Settings = () => {
 
     setDeleteLoading(true);
     try {
+      // Check if this is a pending invitation
+      if (selectedUser.id.startsWith('pending-')) {
+        // Extract invitation ID (remove "pending-" prefix)
+        const invitationId = selectedUser.id.replace('pending-', '');
+        
+        // Delete the invitation
+        const { error } = await supabase
+          .from('invitations')
+          .delete()
+          .eq('id', invitationId);
+
+        if (error) {
+          throw new Error(`Failed to delete invitation: ${error.message}`);
+        }
+
+        toast({
+          title: "Invitation deleted",
+          description: `Invitation for ${selectedUser.email} has been removed`,
+        });
+
+        setShowDeleteDialog(false);
+        setSelectedUser(null);
+        setSelectedUserIds(new Set());
+        fetchUsersWithDetails();
+        return;
+      }
+
       // Delete user completely via Edge Function
       const { data, error } = await supabase.functions.invoke('delete-user', {
         body: {
@@ -813,37 +968,87 @@ const Settings = () => {
 
     setDeleteLoading(true);
     try {
-      // Delete all selected users completely via Edge Function
       const userIdsArray = Array.from(selectedUserIds);
-      const { data, error } = await supabase.functions.invoke('delete-user', {
-        body: {
-          userIds: userIdsArray,
-        },
+      
+      // Separate pending invitations from real users
+      const pendingInvitationIds: string[] = [];
+      const realUserIds: string[] = [];
+      
+      userIdsArray.forEach(id => {
+        if (id.startsWith('pending-')) {
+          pendingInvitationIds.push(id.replace('pending-', ''));
+        } else {
+          realUserIds.push(id);
+        }
       });
 
-      if (error) {
-        console.error('Bulk delete error:', error);
-        // Check if it's a network/function not found error
-        if (error.message?.includes('Failed to send a request') || error.message?.includes('Function not found')) {
-          throw new Error('Edge Function not deployed. Please deploy the delete-user function to Supabase.');
+      let deletedInvitationsCount = 0;
+      let deletedUsersCount = 0;
+      const errors: string[] = [];
+
+      // Delete pending invitations
+      if (pendingInvitationIds.length > 0) {
+        try {
+          const { error: invitationError } = await supabase
+            .from('invitations')
+            .delete()
+            .in('id', pendingInvitationIds);
+
+          if (invitationError) {
+            errors.push(`Failed to delete invitations: ${invitationError.message}`);
+          } else {
+            deletedInvitationsCount = pendingInvitationIds.length;
+          }
+        } catch (e: any) {
+          errors.push(`Failed to delete invitations: ${e.message || String(e)}`);
         }
-        throw new Error(error.message || 'Failed to invoke delete function');
       }
 
-      // Check if the response contains an error
-      if (data?.error) {
-        throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
+      // Delete real users via Edge Function
+      if (realUserIds.length > 0) {
+        const { data, error } = await supabase.functions.invoke('delete-user', {
+          body: {
+            userIds: realUserIds,
+          },
+        });
+
+        if (error) {
+          console.error('Bulk delete error:', error);
+          // Check if it's a network/function not found error
+          if (error.message?.includes('Failed to send a request') || error.message?.includes('Function not found')) {
+            errors.push('Edge Function not deployed. Please deploy the delete-user function to Supabase.');
+          } else {
+            errors.push(error.message || 'Failed to invoke delete function');
+          }
+        } else {
+          // Check if the response contains an error
+          if (data?.error) {
+            errors.push(data.error + (data.details ? `: ${data.details}` : ''));
+          } else if (data?.errors && data.errors.length > 0) {
+            const errorMessages = data.errors.map((e: any) => e.error).join(', ');
+            errors.push(`Some users failed to delete: ${errorMessages}`);
+          } else {
+            deletedUsersCount = data?.deletedCount || realUserIds.length;
+          }
+        }
       }
 
-      if (data?.errors && data.errors.length > 0) {
-        const errorMessages = data.errors.map((e: any) => e.error).join(', ');
-        throw new Error(`Some users failed to delete: ${errorMessages}`);
+      // Show appropriate success/error messages
+      if (errors.length > 0) {
+        throw new Error(errors.join('; '));
       }
 
-      const deletedCount = data?.deletedCount || userIdsArray.length;
+      const messages: string[] = [];
+      if (deletedInvitationsCount > 0) {
+        messages.push(`${deletedInvitationsCount} invitation${deletedInvitationsCount > 1 ? 's' : ''} deleted`);
+      }
+      if (deletedUsersCount > 0) {
+        messages.push(`${deletedUsersCount} user${deletedUsersCount > 1 ? 's' : ''} permanently deleted`);
+      }
+
       toast({
-        title: "Users deleted",
-        description: `${deletedCount} user${deletedCount > 1 ? 's' : ''} permanently deleted from the system`,
+        title: "Deletion complete",
+        description: messages.join(' and ') + ' from the system',
       });
 
       setShowDeleteDialog(false);
@@ -1768,15 +1973,22 @@ const Settings = () => {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex gap-1">
-                                {user.is_super_admin && (
-                                  <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">Super Admin</span>
-                                )}
-                                {user.is_admin && !user.is_super_admin && (
-                                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Admin</span>
-                                )}
-                                {!user.is_admin && !user.is_super_admin && (
-                                  <span className="text-xs text-muted-foreground">Member</span>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex gap-1">
+                                  {user.is_super_admin && (
+                                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">Super Admin</span>
+                                  )}
+                                  {user.is_admin && !user.is_super_admin && (
+                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Admin</span>
+                                  )}
+                                  {!user.is_admin && !user.is_super_admin && !user.pendingInvitations?.length && (
+                                    <span className="text-xs text-muted-foreground">Member</span>
+                                  )}
+                                </div>
+                                {user.pendingInvitations && user.pendingInvitations.length > 0 && (
+                                  <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                                    Pending ({user.pendingInvitations.length})
+                                  </span>
                                 )}
                               </div>
                             </TableCell>
@@ -1802,7 +2014,22 @@ const Settings = () => {
                                       </div>
                                     ))}
                                   </>
-                                ) : (
+                                ) : null}
+                                {user.pendingInvitations && user.pendingInvitations.length > 0 && (
+                                  <>
+                                    {user.pendingInvitations.map((invitation) => (
+                                      <div
+                                        key={invitation.id}
+                                        className="flex items-center gap-1 bg-amber-100 px-2 py-0.5 rounded text-xs"
+                                      >
+                                        <span>{invitation.team_name}</span>
+                                        <span className="text-muted-foreground">(pending)</span>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                                {(!user.teams || user.teams.length === 0) && 
+                                 (!user.pendingInvitations || user.pendingInvitations.length === 0) && (
                                   <span className="text-xs text-muted-foreground italic">No teams</span>
                                 )}
                               </div>
@@ -1816,11 +2043,29 @@ const Settings = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                                    <Edit2 className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
+                                  {user.pendingInvitations && user.pendingInvitations.length > 0 && (
+                                    <>
+                                      {user.pendingInvitations.map((invitation) => (
+                                        <DropdownMenuItem 
+                                          key={invitation.id}
+                                          onClick={() => handleSendReminder(invitation.id, invitation.team_id, user.email)}
+                                        >
+                                          <Mail className="h-4 w-4 mr-2" />
+                                          Send Reminder ({invitation.team_name})
+                                        </DropdownMenuItem>
+                                      ))}
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  )}
+                                  {user.id.startsWith('pending-') ? null : (
+                                    <>
+                                      <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                                        <Edit2 className="h-4 w-4 mr-2" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  )}
                                   <DropdownMenuItem 
                                     onClick={() => openDeleteDialog(user)}
                                     className="text-destructive focus:text-destructive"
@@ -2237,8 +2482,8 @@ const Settings = () => {
             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInviteUser} disabled={(inviteEmails.length === 0 && !inviteEmail.trim()) || !inviteTeamId}>
-              Send Invitation{inviteEmails.length > 1 ? 's' : ''} ({inviteEmails.length || (inviteEmail.trim() ? 1 : 0)})
+            <Button onClick={handleInviteUser} disabled={inviteEmails.length === 0 || !inviteTeamId}>
+              Send Invitation{inviteEmails.length > 1 ? 's' : ''} ({inviteEmails.length})
             </Button>
           </DialogFooter>
         </DialogContent>
