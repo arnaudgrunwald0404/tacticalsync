@@ -756,7 +756,7 @@ const DashboardOld = () => {
       </header>
 
       <main className="container mx-auto px-4 py-6 sm:py-8">
-        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start justify-between gap-4">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start  gap-4">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
             
@@ -782,25 +782,24 @@ const DashboardOld = () => {
             </p>
           </div>
           {(teams.length > 0 || pendingInvitations.length > 0) && (isAdmin || isSuperAdmin) && (
-            <Button variant="outline" onClick={handleCreateTeam} size="sm" className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-2" />
-              Create New Team
-            </Button>
+            <div className="ml-auto text-right">
+              {/* Add your right-aligned content here */}
+            </div>
           )}
         </div>
 
         {teams.length === 0 && pendingInvitations.length === 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {(isAdmin || isSuperAdmin) ? (
-              <Card
-                className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
-                onClick={handleCreateTeam}
-              >
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
-                    <Plus className="h-8 w-8 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-1">Create New Team</h3>
+          {false && (isAdmin || isSuperAdmin) ? (
+            <Card
+              className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
+              onClick={handleCreateTeam}
+            >
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
+                  <Plus className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-1">Create New Team</h3>
                   <p className="text-sm text-muted-foreground text-center">
                     Start a new tactical meeting
                   </p>

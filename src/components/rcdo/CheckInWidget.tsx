@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, MessageSquare, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
@@ -58,14 +57,12 @@ function CheckInItem({ checkin }: { checkin: UserCheckinWithParent }) {
       <CardContent className="pt-0 space-y-3">
         {/* Reporter */}
         <div className="flex items-center gap-2">
-          {checkin.creator?.avatar_url ? (
-            <Avatar className="h-6 w-6">
-              <AvatarImage src={checkin.creator.avatar_url} />
-              <AvatarFallback>{reporterName}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <FancyAvatar name={reporterName} size={24} />
-          )}
+          <FancyAvatar
+            name={checkin.creator?.avatar_name || reporterName}
+            displayName={reporterName}
+            avatarUrl={checkin.creator?.avatar_url}
+            size="sm"
+          />
           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
             {reporterName}
           </span>
@@ -120,54 +117,33 @@ export function CheckInWidget() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Check-Ins</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-32 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-32 w-full" />
+        ))}
+      </div>
     );
   }
 
   if (checkins.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Check-Ins</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No check-ins found. Check-ins will appear here when you're a participant in a Strategic Initiative or Defining Objective.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="text-sm text-muted-foreground text-right py-4 w-[70%] ml-auto">
+        No check-ins found. Check-ins will appear here when you're a participant in a Strategic Initiative or Defining Objective.
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Check-Ins</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {checkins.slice(0, 5).map((checkin) => (
-            <CheckInItem key={checkin.id} checkin={checkin} />
-          ))}
-          {checkins.length > 5 && (
-            <p className="text-xs text-muted-foreground text-center pt-2">
-              Showing 5 of {checkins.length} check-ins
-            </p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {checkins.slice(0, 5).map((checkin) => (
+        <CheckInItem key={checkin.id} checkin={checkin} />
+      ))}
+      {checkins.length > 5 && (
+        <p className="text-xs text-muted-foreground text-center pt-2">
+          Showing 5 of {checkins.length} check-ins
+        </p>
+      )}
+    </div>
   );
 }
 
