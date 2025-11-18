@@ -12,6 +12,7 @@ import type {
   StrategicInitiative,
   StrategicInitiativeWithRelations,
   RCCheckin,
+  RCCheckinWithRelations,
   RCLink,
   RCLinkWithDetails,
   CreateCycleForm,
@@ -22,6 +23,7 @@ import type {
   CreateInitiativeForm,
   CreateCheckinForm,
   CreateLinkForm,
+  CheckinParentType,
 } from '@/types/rcdo';
 
 // ============================================================================
@@ -722,5 +724,54 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
   };
 
   return { links, loading, refetch: fetchLinks, createLink, deleteLink };
+}
+
+// ============================================================================
+// useCheckins - Fetch check-ins for a DO or Initiative
+// ============================================================================
+export function useCheckins(parentType: CheckinParentType, parentId: string | undefined) {
+  const [checkins, setCheckins] = useState<RCCheckinWithRelations[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const fetchCheckins = useCallback(async () => {
+    if (!parentId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data, error: fetchError } = await supabase
+        .from('rc_checkins')
+        .select(`
+          *,
+          creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
+        `)
+        .eq('parent_type', parentType)
+        .eq('parent_id', parentId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      setCheckins(data as RCCheckinWithRelations[] || []);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to fetch check-ins',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [parentType, parentId, toast]);
+
+  useEffect(() => {
+    fetchCheckins();
+  }, [fetchCheckins]);
+
+  return { checkins, loading, refetch: fetchCheckins };
 }
 

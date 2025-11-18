@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { ArrowLeft, Lock, Unlock, TrendingUp, AlertTriangle, TrendingDown, Plus, MessageSquare } from 'lucide-react';
-import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks } from '@/hooks/useRCDO';
+import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins } from '@/hooks/useRCDO';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { MetricRow } from '@/components/rcdo/MetricRow';
@@ -14,6 +14,7 @@ import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
 import { MetricDialog } from '@/components/rcdo/MetricDialog';
 import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
 import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
+import { CheckinCard } from '@/components/rcdo/CheckinCard';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -53,6 +54,9 @@ export default function DODetail() {
   // Fetch links
   const { links, loading: linksLoading, refetch: refetchLinks } = useRCLinks('do', doId);
 
+  // Fetch check-ins
+  const { checkins, loading: checkinsLoading, refetch: refetchCheckins } = useCheckins('do', doId);
+
   // Permissions
   const { canEditDO, canLockDO, canEditInitiative } = useRCDOPermissions();
 
@@ -64,6 +68,10 @@ export default function DODetail() {
     refetchInitiatives();
   };
 
+  const handleCheckInSuccess = () => {
+    refetchCheckins();
+  };
+
   // Real-time updates
   useRCDORealtime({
     doId,
@@ -73,7 +81,7 @@ export default function DODetail() {
     onLinksUpdate: refetchLinks,
   });
 
-  const loading = doLoading || metricsLoading || initiativesLoading || linksLoading;
+  const loading = doLoading || metricsLoading || initiativesLoading || linksLoading || checkinsLoading;
 
   // Profiles for owner selection - load on mount
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -331,6 +339,9 @@ export default function DODetail() {
               <TabsTrigger value="initiatives">
                 Initiatives ({initiatives.length})
               </TabsTrigger>
+              <TabsTrigger value="checkins">
+                Check-ins ({checkins.length})
+              </TabsTrigger>
               <TabsTrigger value="links">Links ({links.length})</TabsTrigger>
             </TabsList>
 
@@ -453,6 +464,33 @@ export default function DODetail() {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            {/* Check-ins Tab */}
+            <TabsContent value="checkins">
+              <Card>
+                {checkins.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                      No check-ins yet. Add a check-in to track progress and updates.
+                    </p>
+                    {isOwner && (
+                      <Button onClick={() => setShowCheckInDialog(true)}>
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Add Check-In
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      {checkins.map((checkin) => (
+                        <CheckinCard key={checkin.id} checkin={checkin} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
             </TabsContent>
 
             {/* Links Tab */}
