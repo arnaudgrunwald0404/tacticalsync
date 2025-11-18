@@ -181,7 +181,7 @@ export function useRallyingCry(cycleId: string | undefined) {
         .from('rc_rallying_cries')
         .select(`
           *,
-          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url)
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
         `)
         .eq('cycle_id', cycleId)
         .maybeSingle();
@@ -265,7 +265,7 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
         .from('rc_defining_objectives')
         .select(`
           *,
-          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url),
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
           metrics:rc_do_metrics(*)
         `)
         .eq('rallying_cry_id', rallyingCryId)
@@ -356,11 +356,11 @@ export function useDODetails(doId: string | undefined) {
         .from('rc_defining_objectives')
         .select(`
           *,
-          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url),
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
           metrics:rc_do_metrics(*),
           initiatives:rc_strategic_initiatives(
             *,
-            owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url)
+            owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
           ),
           links:rc_links(*)
         `)
@@ -515,7 +515,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
         .from('rc_strategic_initiatives')
         .select(`
           *,
-          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url)
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
         `)
         .eq('defining_objective_id', doId)
         .order('display_order', { ascending: true });

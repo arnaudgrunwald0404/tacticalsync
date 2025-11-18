@@ -266,6 +266,8 @@ export function InitiativeDialog({
                   id: u.id,
                   full_name: getUserDisplayName(u),
                   avatar_name: u.first_name || u.full_name || u.email,
+                  first_name: u.first_name,
+                  email: u.email,
                 }))}
                 selectedIds={formData.participant_user_ids}
                 onSelectionChange={(ids) =>

@@ -27,6 +27,9 @@ const statusConfig = {
 };
 
 export function InitiativeCard({ initiative, onClick, isDragging = false }: InitiativeCardProps) {
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showCheckInDialog, setShowCheckInDialog] = useState(false);
+
   const ownerName = getFullNameForAvatar(
     initiative.owner?.first_name,
     initiative.owner?.last_name,
@@ -34,6 +37,24 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
   );
 
   const statusData = statusConfig[initiative.status];
+  const isOwner = currentUserId === initiative.owner_user_id;
+  const isParticipant = initiative.participant_user_ids?.includes(currentUserId || '') || false;
+  const canCheckIn = isOwner || isParticipant;
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    getCurrentUser();
+  }, []);
+
+  const handleCheckInClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowCheckInDialog(true);
+  };
 
   return (
     <Card
@@ -61,14 +82,12 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
         <div className="flex items-center gap-2 text-sm">
           <User className="h-4 w-4 text-gray-500" />
           <div className="flex items-center gap-2">
-            {initiative.owner?.avatar_url ? (
-              <Avatar className="h-5 w-5">
-                <AvatarImage src={initiative.owner.avatar_url} />
-                <AvatarFallback>{ownerName}</AvatarFallback>
-              </Avatar>
-            ) : (
-              <FancyAvatar name={ownerName} size={20} />
-            )}
+            <FancyAvatar
+              name={(initiative.owner?.avatar_name || initiative.owner?.full_name) || ownerName}
+              displayName={ownerName}
+              avatarUrl={initiative.owner?.avatar_url || undefined}
+              size="sm"
+            />
             <span className="text-gray-700 dark:text-gray-300">{ownerName}</span>
           </div>
         </div>
@@ -84,7 +103,32 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
             </span>
           </div>
         )}
+
+        {/* Check-In Button */}
+        {canCheckIn && (
+          <div className="pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckInClick}
+              className="w-full h-7 text-xs"
+            >
+              <MessageSquare className="h-3 w-3 mr-1" />
+              Check-In
+            </Button>
+          </div>
+        )}
       </div>
+      <CheckInDialog
+        isOpen={showCheckInDialog}
+        onClose={() => setShowCheckInDialog(false)}
+        parentType="initiative"
+        parentId={initiative.id}
+        parentName={initiative.title}
+        onSuccess={() => {
+          setShowCheckInDialog(false);
+        }}
+      />
     </Card>
   );
 }

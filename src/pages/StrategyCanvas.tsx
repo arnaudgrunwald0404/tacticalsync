@@ -582,7 +582,7 @@ export default function StrategyCanvasPage() {
 
   // Load platform profiles (logged in or invited)
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, avatar_name, avatar_url').then(({ data, error }) => {
+    supabase.from('profiles').select('id, full_name, avatar_name, avatar_url, first_name, email').then(({ data, error }) => {
       if (!error && data) setProfiles(data as any);
     });
   }, []);
@@ -1337,7 +1337,9 @@ onNodeDragStop={(_e, node) => {
           <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
           <div className="absolute right-0 top-0 h-full w-[380px] bg-background border-l shadow-xl p-4 flex flex-col">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">Edit DO</h3>
+              <h3 className="text-base font-semibold">
+                DO: {selectedNode.data.titleCandidates?.[0] || selectedNode.data.title || "Untitled"}
+              </h3>
               <div className="flex items-center gap-1">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1358,60 +1360,108 @@ onNodeDragStop={(_e, node) => {
 
             <div className="mt-3 space-y-3 flex-1 overflow-y-auto">
               <div className="space-y-3">
-                <label className="block text-sm font-medium">
-                  {selectedNode.data.status === "final" ? "Name" : "Name Candidates"}
-                </label>
-                
-                {selectedNode.data.status === "final" ? (
-                  // Final mode: just show the locked title
-                  <input
-                    className="w-full rounded border px-2 py-1 text-sm bg-background"
-                    value={selectedNode?.data.title || ""}
-                    onChange={(e) => {
-                      if (!selectedNode) return;
-                      const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
-                      setNodes(next);
-                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, title: e.target.value } });
-                    }}
-                    placeholder="Name this DO"
-                  />
-                ) : (
-                  // Draft mode: show candidates with ranking
-                  <div className="space-y-2">
-                    {(selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).map((candidate, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        {/* Up/Down chevrons for reordering */}
-                        <div className="flex flex-col">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (!selectedNode || idx === 0) return;
-                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                              // Swap with previous item
-                              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
-                              const next = nodes.map((n) => 
-                                n.id === selectedNode.id 
-                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                  : n
-                              );
-                              setNodes(next);
-                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                            }}
-                            disabled={idx === 0}
-                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
-                          >
-                            <ChevronUp className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
+                {/* 1. Name */}
+                <div>
+                  <label className="block text-sm font-medium">
+                    DO Name
+                  </label>
+                  <div className="flex items-center gap-2 mt-1 mb-2">
+                    <label className="text-xs text-muted-foreground">Status</label>
+                    <select
+                      className="rounded border bg-background px-2 py-1 text-xs"
+                      value={selectedNode.data.status || "draft"}
+                      onChange={(e) => {
+                        if (!selectedNode) return;
+                        const value = e.target.value as "draft" | "final";
+                        const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, status: value } } : n);
+                        setNodes(next);
+                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, status: value } });
+                      }}
+                    >
+                      <option value="draft">draft</option>
+                      <option value="final">final</option>
+                    </select>
+                  </div>
+                  
+                  {selectedNode.data.status === "final" ? (
+                    // Final mode: just show the locked title
+                    <input
+                      className="w-full rounded border px-2 py-1 text-sm bg-background mt-1"
+                      value={selectedNode?.data.title || ""}
+                      onChange={(e) => {
+                        if (!selectedNode) return;
+                        const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
+                        setNodes(next);
+                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, title: e.target.value } });
+                      }}
+                      placeholder="Name this DO"
+                    />
+                  ) : (
+                    // Draft mode: show candidates with ranking
+                    <div className="space-y-2 mt-1">
+                      {(selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).map((candidate, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          {/* Up/Down chevrons for reordering */}
+                          <div className="flex flex-col">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (!selectedNode || idx === 0) return;
+                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                                // Swap with previous item
+                                [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                                const next = nodes.map((n) => 
+                                  n.id === selectedNode.id 
+                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                    : n
+                                );
+                                setNodes(next);
+                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                              }}
+                              disabled={idx === 0}
+                              className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (!selectedNode) return;
+                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                                if (idx >= arr.length - 1) return;
+                                // Swap with next item
+                                [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                                const next = nodes.map((n) => 
+                                  n.id === selectedNode.id 
+                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                    : n
+                                );
+                                setNodes(next);
+                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                              }}
+                              disabled={idx >= (selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).length - 1}
+                              className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          
+                          {/* Rank number badge */}
+                          <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold flex-shrink-0 ${
+                            idx === 0 ? "bg-blue-500 text-white" : "bg-muted text-foreground"
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          
+                          <input
+                            className="flex-1 rounded border px-2 py-1 text-sm bg-background"
+                            value={candidate}
+                            onChange={(e) => {
                               if (!selectedNode) return;
                               const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                              if (idx >= arr.length - 1) return;
-                              // Swap with next item
-                              [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                              arr[idx] = e.target.value;
                               const next = nodes.map((n) => 
                                 n.id === selectedNode.id 
                                   ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
@@ -1420,27 +1470,61 @@ onNodeDragStop={(_e, node) => {
                               setNodes(next);
                               setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
                             }}
-                            disabled={idx >= (selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).length - 1}
-                            className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
-                          >
-                            <ChevronDown className="h-3 w-3" />
-                          </Button>
+                            placeholder={`Candidate ${idx + 1}`}
+                          />
+                          
+                          {/* Remove button (only for non-first items) */}
+                          {idx > 0 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (!selectedNode) return;
+                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                                arr.splice(idx, 1);
+                                const next = nodes.map((n) => 
+                                  n.id === selectedNode.id 
+                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                    : n
+                                );
+                                setNodes(next);
+                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                              }}
+                              className="h-8 w-8 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
-                        
-                        {/* Rank number badge */}
-                        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold flex-shrink-0 ${
-                          idx === 0 ? "bg-blue-500 text-white" : "bg-muted text-foreground"
-                        }`}>
-                          {idx + 1}
-                        </span>
-                        
+                      ))}
+                      
+                      {/* Add new candidate */}
+                      <div className="flex items-center gap-2 pt-1">
                         <input
                           className="flex-1 rounded border px-2 py-1 text-sm bg-background"
-                          value={candidate}
-                          onChange={(e) => {
-                            if (!selectedNode) return;
+                          placeholder="Add another candidate..."
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const val = (e.target as HTMLInputElement).value.trim();
+                              if (!val) return;
+                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
+                              arr.push(val);
+                              (e.target as HTMLInputElement).value = "";
+                              const next = nodes.map((n) => 
+                                n.id === selectedNode.id 
+                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
+                                  : n
+                              );
+                              setNodes(next);
+                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
                             const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                            arr[idx] = e.target.value;
+                            arr.push("New candidate");
                             const next = nodes.map((n) => 
                               n.id === selectedNode.id 
                                 ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
@@ -1449,160 +1533,19 @@ onNodeDragStop={(_e, node) => {
                             setNodes(next);
                             setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
                           }}
-                          placeholder={`Candidate ${idx + 1}`}
-                        />
-                        
-                        {/* Remove button (only for non-first items) */}
-                        {idx > 0 && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (!selectedNode) return;
-                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                              arr.splice(idx, 1);
-                              const next = nodes.map((n) => 
-                                n.id === selectedNode.id 
-                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                  : n
-                              );
-                              setNodes(next);
-                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                            }}
-                            className="h-8 w-8 p-0"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
+                        >
+                          Add
+                        </Button>
                       </div>
-                    ))}
-                    
-                    {/* Add new candidate */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        className="flex-1 rounded border px-2 py-1 text-sm bg-background"
-                        placeholder="Add another candidate..."
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const val = (e.target as HTMLInputElement).value.trim();
-                            if (!val) return;
-                            const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                            arr.push(val);
-                            (e.target as HTMLInputElement).value = "";
-                            const next = nodes.map((n) => 
-                              n.id === selectedNode.id 
-                                ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                : n
-                            );
-                            setNodes(next);
-                            setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                          }
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                          arr.push("New candidate");
-                          const next = nodes.map((n) => 
-                            n.id === selectedNode.id 
-                              ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                              : n
-                          );
-                          setNodes(next);
-                          setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                        }}
-                      >
-                        Add
-                      </Button>
+                      
+                      <p className="text-xs text-muted-foreground">
+                        The #1 ranked candidate is displayed on the canvas. Change status to "final" to lock it.
+                      </p>
                     </div>
-                    
-                    <p className="text-xs text-muted-foreground">
-                      The #1 ranked candidate is displayed on the canvas. Change status to "final" to lock it.
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2">
-                  <label className="text-sm">Status</label>
-                  <select
-                    className="rounded border bg-background px-2 py-1 text-sm"
-                    value={selectedNode.data.status || "draft"}
-                    onChange={(e) => {
-                      if (!selectedNode) return;
-                      const value = e.target.value as "draft" | "final";
-                      const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, status: value } } : n);
-                      setNodes(next);
-                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, status: value } });
-                    }}
-                  >
-                    <option value="draft">draft</option>
-                    <option value="final">final</option>
-                  </select>
+                  )}
                 </div>
 
-                {/* Owner Selection */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium">Owner</label>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-muted text-xs flex-shrink-0">
-                      {(() => {
-                        const owner = selectedNode.data.ownerId ? profilesMap[selectedNode.data.ownerId] : undefined;
-                        if (owner) return <FancyAvatar name={owner.avatar_name || owner.full_name} displayName={owner.full_name} size="sm" />;
-                        return <span className="text-xs">?</span>;
-                      })()}
-                    </span>
-                    <Select
-                      value={selectedNode.data.ownerId || ""}
-                      onValueChange={(val) => {
-                        if (!selectedNode) return;
-                        const next = nodes.map((n) => 
-                          n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
-                        );
-                        setNodes(next);
-                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
-                      }}
-                    >
-                      <SelectTrigger className="flex-1 h-9">
-                        <SelectValue placeholder="Select owner">
-                          {selectedNode.data.ownerId && (() => {
-                            const owner = profilesMap[selectedNode.data.ownerId];
-                            return owner ? (
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                  <FancyAvatar 
-                                    name={owner.avatar_name || owner.full_name} 
-                                    displayName={owner.full_name} 
-                                    size="sm" 
-                                  />
-                                </span>
-                                <span className="text-sm">{owner.full_name}</span>
-                              </div>
-                            ) : null;
-                          })()}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profiles.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                <FancyAvatar 
-                                  name={p.avatar_name || p.full_name} 
-                                  displayName={p.full_name} 
-                                  size="sm" 
-                                />
-                              </span>
-                              <span>{p.full_name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Hypothesis Field */}
+                {/* 2. Description */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium">Definition & Hypothesis</label>
                   <RichTextEditor
@@ -1620,7 +1563,7 @@ onNodeDragStop={(_e, node) => {
                   />
                 </div>
 
-                {/* Primary Success Metric Field */}
+                {/* 3. Primary Success Metric */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium">Primary Success Metric</label>
                   <textarea
@@ -1644,8 +1587,67 @@ onNodeDragStop={(_e, node) => {
                   />
                 </div>
 
+                {/* 4. Owner */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Owner</label>
+                  <Select
+                      value={selectedNode.data.ownerId || ""}
+                      onValueChange={(val) => {
+                        if (!selectedNode) return;
+                        const next = nodes.map((n) => 
+                          n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
+                        );
+                        setNodes(next);
+                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
+                      }}
+                    >
+                      <SelectTrigger className="flex-1 h-9">
+                        <SelectValue placeholder="Select owner">
+                          {selectedNode.data.ownerId && (() => {
+                            const owner = profilesMap[selectedNode.data.ownerId];
+                            return owner ? (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                  <FancyAvatar 
+                                    name={owner.avatar_name || owner.full_name} 
+                                    displayName={owner.full_name}
+                                    avatarUrl={owner.avatar_url}
+                                    size="sm" 
+                                  />
+                                </span>
+                                <span className="text-sm">{owner.full_name}</span>
+                              </div>
+                            ) : null;
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                <FancyAvatar 
+                                  name={p.avatar_name || p.full_name} 
+                                  displayName={p.full_name}
+                                  avatarUrl={p.avatar_url}
+                                  size="sm" 
+                                />
+                              </span>
+                              <span>{p.full_name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                </div>
+
+                {/* 5. Other Participants - Not applicable for DO, skipping */}
+
                 <div className="pt-4 space-y-2">
-                  <div className="text-sm font-medium">Strategic Initiatives</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">Strategic Initiatives</div>
+                    <Button size="sm" variant="outline" onClick={addSaiToSelectedDo}>Add Strategic Initiative (SI)</Button>
+                  </div>
                   <div className="space-y-2 max-h-48 overflow-auto pr-1">
                     {(selectedNode?.data.saiItems || []).map((it) => (
                       <button
@@ -1663,9 +1665,6 @@ onNodeDragStop={(_e, node) => {
                         <span className="flex-1 truncate text-left">{it.title || "Untitled SI"}</span>
                       </button>
                     ))}
-                  </div>
-                  <div className="pt-2">
-                    <Button size="sm" className="w-full" onClick={addSaiToSelectedDo}>+ Add SI under this DO</Button>
                   </div>
                 </div>
               </div>
@@ -1787,54 +1786,36 @@ onNodeDragStop={(_e, node) => {
                     </div>
                   </div>
                   <div className="mt-4 space-y-3">
+                    {/* 1. Name */}
                     <div>
-                      <label className="text-sm font-medium">Name</label>
-                      <input className="mt-1 w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>update({ title: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Owner</label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-muted text-xs">
-                          {(() => {
-                            const prof = si.ownerId ? profilesMap[si.ownerId] : undefined;
-                            if (prof) return <FancyAvatar name={prof.avatar_name || prof.full_name} displayName={prof.full_name} size="sm" />;
-                            return <span className="text-xs">?</span>;
-                          })()}
-                        </span>
-                        <Select
-                          value={si.ownerId || ""}
-                          onValueChange={(val) => update({ ownerId: val || undefined })}
+                      <label className="text-sm font-medium">SI Name</label>
+                      <div className="flex items-center gap-2 mt-1 mb-2">
+                        <label className="text-xs text-muted-foreground">Status</label>
+                        <select
+                          className="rounded border bg-background px-2 py-1 text-xs"
+                          value="draft"
+                          disabled
                         >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select owner" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {profiles.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                <span className="inline-flex items-center gap-2">
-                                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                    <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} size="sm" />
-                                  </span>
-                                  <span>{p.full_name}</span>
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <option value="draft">draft</option>
+                        </select>
                       </div>
+                      <input className="w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>update({ title: e.target.value })} />
                     </div>
+                    
+                    {/* 2. Description */}
                     <div>
-                      <label className="text-sm font-medium">Other Participants</label>
+                      <label className="text-sm font-medium">Description</label>
                       <div className="mt-1">
-                        <MultiSelectParticipants
-                          profiles={profiles}
-                          selectedIds={si.participantIds || []}
-                          onSelectionChange={(ids) => update({ participantIds: ids })}
-                          placeholder="Select participants to help accomplish this goal..."
-                          excludeIds={si.ownerId ? [si.ownerId] : []}
+                        <RichTextEditor
+                          content={si.description || ""}
+                          onChange={(content) => update({ description: content })}
+                          placeholder="What is this initiative?"
+                          minHeight="96px"
                         />
                       </div>
                     </div>
+                    
+                    {/* 3. Primary Success Metric */}
                     <div>
                       <label className="text-sm font-medium">Primary Success Metric</label>
                       <textarea 
@@ -1850,17 +1831,72 @@ onNodeDragStop={(_e, node) => {
                         }}
                       />
                     </div>
+                    
+                    {/* 4. Owner */}
                     <div>
-                      <label className="text-sm font-medium">Description</label>
+                      <label className="text-sm font-medium">Owner</label>
                       <div className="mt-1">
-                        <RichTextEditor
-                          content={si.description || ""}
-                          onChange={(content) => update({ description: content })}
-                          placeholder="What is this initiative?"
-                          minHeight="96px"
+                        <Select
+                          value={si.ownerId || ""}
+                          onValueChange={(val) => update({ ownerId: val || undefined })}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select owner">
+                              {si.ownerId && (() => {
+                                const owner = profilesMap[si.ownerId];
+                                return owner ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                      <FancyAvatar 
+                                        name={owner.avatar_name || owner.full_name} 
+                                        displayName={owner.full_name}
+                                        avatarUrl={owner.avatar_url}
+                                        size="sm" 
+                                      />
+                                    </span>
+                                    <span className="text-sm">{owner.full_name}</span>
+                                  </div>
+                                ) : null;
+                              })()}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="z-[60]">
+                            {profiles.length === 0 ? (
+                              <div className="py-2 px-2 text-sm text-muted-foreground text-center">
+                                No profiles available
+                              </div>
+                            ) : (
+                              profiles.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                      <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} avatarUrl={p.avatar_url} size="sm" />
+                                    </span>
+                                    <span>{p.full_name || 'Unknown'}</span>
+                                  </span>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    {/* 5. Other Participants */}
+                    <div>
+                      <label className="text-sm font-medium">Other Participants</label>
+                      <div className="mt-1">
+                        <MultiSelectParticipants
+                          profiles={profiles}
+                          selectedIds={si.participantIds || []}
+                          onSelectionChange={(ids) => update({ participantIds: ids })}
+                          placeholder="Select participants to help accomplish this goal..."
+                          excludeIds={si.ownerId ? [si.ownerId] : []}
                         />
                       </div>
                     </div>
+                    
+                    {/* 6. Status - Note: SI doesn't have status in the current data model, but adding placeholder for future */}
                   </div>
                 </>
               );

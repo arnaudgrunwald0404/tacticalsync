@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
@@ -91,8 +92,10 @@ const Settings = () => {
     teams?: Array<{ team_id: string; team_name: string; role: string }>;
   } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteEmails, setInviteEmails] = useState<string[]>([]);
   const [inviteTeamId, setInviteTeamId] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [skipSendingInvitations, setSkipSendingInvitations] = useState(false);
   const [availableTeams, setAvailableTeams] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [editingUserEmail, setEditingUserEmail] = useState("");
@@ -446,12 +449,47 @@ const Settings = () => {
     }
   };
 
+  // Parse emails from text input
+  const parseEmails = (input: string): string[] => {
+    // Split by comma, semicolon, or newline
+    const parsed = input
+      .split(/[,;\n]+/)
+      .map(email => email.trim())
+      .filter(email => email.length > 0);
+    
+    // Basic email validation
+    const validEmails = parsed.filter(email => {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(email);
+    });
+
+    return validEmails;
+  };
+
   // User Management functions
   const handleInviteUser = async () => {
-    if (!inviteEmail.trim() || !inviteTeamId) {
+    // Parse emails from input if not already parsed
+    let emailsToInvite: string[] = [];
+    if (inviteEmails.length > 0) {
+      emailsToInvite = inviteEmails;
+    } else if (inviteEmail.trim()) {
+      // Parse the input to get valid emails
+      const parsed = parseEmails(inviteEmail);
+      if (parsed.length > 0) {
+        emailsToInvite = parsed;
+      } else {
+        // If parsing failed but there's input, try to validate it as a single email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(inviteEmail.trim())) {
+          emailsToInvite = [inviteEmail.trim()];
+        }
+      }
+    }
+    
+    if (emailsToInvite.length === 0 || !inviteTeamId) {
       toast({
         title: "Missing information",
-        description: "Please provide email and select a team",
+        description: "Please provide at least one valid email and select a team",
         variant: "destructive",
       });
       return;
@@ -477,48 +515,56 @@ const Settings = () => {
 
       if (teamError || !team) throw new Error("Team not found");
 
-      // Create invitation
+      // Create invitations for all emails
+      const invitations = emailsToInvite.map(email => ({
+        team_id: inviteTeamId,
+        email: email.toLowerCase().trim(),
+        invited_by: currentUser.id,
+        role: inviteRole,
+        status: "pending",
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }));
+
       const { error: inviteError } = await supabase
         .from("invitations")
-        .insert({
-          team_id: inviteTeamId,
-          email: inviteEmail.toLowerCase().trim(),
-          invited_by: currentUser.id,
-          role: inviteRole,
-          status: "pending",
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        });
+        .insert(invitations);
 
       if (inviteError) throw inviteError;
 
-      // Send invitation email via Edge Function
-      const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
-      try {
-        await supabase.functions.invoke("send-invitation-email", {
-          body: {
-            email: inviteEmail.toLowerCase().trim(),
-            teamName: team.name,
-            inviterName: profile?.full_name || "A super admin",
-            inviteLink,
-          },
-        });
-      } catch (e) {
-        console.warn("Failed to send invitation email:", e);
+      // Send invitation emails via Edge Function (unless skipped)
+      if (!skipSendingInvitations) {
+        const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
+        const emailPromises = emailsToInvite.map(email =>
+          supabase.functions.invoke("send-invitation-email", {
+            body: {
+              email: email.toLowerCase().trim(),
+              teamName: team.name,
+              inviterName: profile?.full_name || "A super admin",
+              inviteLink,
+            },
+          }).catch(e => {
+            console.warn(`Failed to send invitation email to ${email}:`, e);
+          })
+        );
+
+        await Promise.all(emailPromises);
       }
 
       toast({
-        title: "Invitation sent",
-        description: `${inviteEmail} has been invited to ${team.name}`,
+        title: skipSendingInvitations ? "Invitations created" : "Invitations sent",
+        description: `${emailsToInvite.length} invitation${emailsToInvite.length > 1 ? 's' : ''} ${skipSendingInvitations ? 'created' : 'sent'} to ${team.name}${skipSendingInvitations ? ' (emails not sent)' : ''}`,
       });
 
       setShowInviteDialog(false);
       setInviteEmail("");
+      setInviteEmails([]);
       setInviteTeamId("");
       setInviteRole("member");
+      setSkipSendingInvitations(false);
       fetchUsersWithDetails();
     } catch (e: any) {
       toast({
-        title: "Failed to invite user",
+        title: "Failed to invite users",
         description: e.message || String(e),
         variant: "destructive",
       });
@@ -2101,7 +2147,14 @@ const Settings = () => {
       </Dialog>
 
       {/* Invite User Dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+      <Dialog open={showInviteDialog} onOpenChange={(open) => {
+        setShowInviteDialog(open);
+        if (!open) {
+          setInviteEmail("");
+          setInviteEmails([]);
+          setSkipSendingInvitations(false);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite User to Team</DialogTitle>
@@ -2111,14 +2164,36 @@ const Settings = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="inviteEmail">Email Address</Label>
-              <Input
+              <Label htmlFor="inviteEmail">Email Addresses</Label>
+              <p className="text-sm text-muted-foreground">
+                Enter email addresses separated by commas or new lines
+              </p>
+              <Textarea
                 id="inviteEmail"
-                type="email"
-                placeholder="user@example.com"
+                placeholder="user@example.com, user2@example.com&#10;or paste multiple emails..."
                 value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
+                onChange={(e) => {
+                  setInviteEmail(e.target.value);
+                  const parsed = parseEmails(e.target.value);
+                  setInviteEmails(parsed);
+                }}
+                rows={4}
+                className="resize-none"
               />
+              {inviteEmails.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {inviteEmails.map((email, index) => (
+                    <Badge key={index} variant="secondary" className="text-xs">
+                      {email}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {inviteEmail && inviteEmails.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Enter valid email addresses to see them listed here
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="inviteTeam">Team</Label>
@@ -2147,13 +2222,23 @@ const Settings = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="skipSendingInvitations"
+                checked={skipSendingInvitations}
+                onCheckedChange={(checked) => setSkipSendingInvitations(checked === true)}
+              />
+              <Label htmlFor="skipSendingInvitations" className="text-sm font-normal cursor-pointer">
+                Skip sending invitation emails (create invitations only)
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInviteUser} disabled={!inviteEmail.trim() || !inviteTeamId}>
-              Send Invitation
+            <Button onClick={handleInviteUser} disabled={(inviteEmails.length === 0 && !inviteEmail.trim()) || !inviteTeamId}>
+              Send Invitation{inviteEmails.length > 1 ? 's' : ''} ({inviteEmails.length || (inviteEmail.trim() ? 1 : 0)})
             </Button>
           </DialogFooter>
         </DialogContent>

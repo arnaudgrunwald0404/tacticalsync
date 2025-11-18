@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Lock, Unlock, TrendingUp, AlertTriangle, TrendingDown, Plus } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, TrendingUp, AlertTriangle, TrendingDown, Plus, MessageSquare } from 'lucide-react';
 import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks } from '@/hooks/useRCDO';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
@@ -13,6 +13,7 @@ import { MetricRow } from '@/components/rcdo/MetricRow';
 import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
 import { MetricDialog } from '@/components/rcdo/MetricDialog';
 import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
+import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,6 +29,8 @@ export default function DODetail() {
   const [activeTab, setActiveTab] = useState('metrics');
   const [showMetricDialog, setShowMetricDialog] = useState(false);
   const [showInitiativeDialog, setShowInitiativeDialog] = useState(false);
+  const [showCheckInDialog, setShowCheckInDialog] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
@@ -89,6 +92,17 @@ export default function DODetail() {
     loadProfiles();
   }, []);
 
+  // Get current user
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    getCurrentUser();
+  }, []);
+
   if (loading || !doDetails) {
     return (
       <GridBackground>
@@ -110,6 +124,7 @@ export default function DODetail() {
 
   const isLocked = !!doDetails.locked_at;
   const canEdit = canEditDO(doDetails.owner_user_id, doDetails.locked_at);
+  const isOwner = currentUserId === doDetails.owner_user_id;
 
   // Calculate health based on current metrics
   const healthResult = calculateDOHealth(doDetails.id, metrics);
@@ -138,21 +153,32 @@ export default function DODetail() {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to RCDO
             </Button>
-            {canLockDO && (
-              <Button variant="outline">
-                {isLocked ? (
-                  <>
-                    <Unlock className="h-4 w-4 mr-2" />
-                    Unlock
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4 mr-2" />
-                    Lock
-                  </>
-                )}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {isOwner && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCheckInDialog(true)}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Check-In
+                </Button>
+              )}
+              {canLockDO && (
+                <Button variant="outline">
+                  {isLocked ? (
+                    <>
+                      <Unlock className="h-4 w-4 mr-2" />
+                      Unlock
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-4 w-4 mr-2" />
+                      Lock
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* DO Header Card */}
@@ -482,6 +508,18 @@ export default function DODetail() {
             definingObjectiveId={doId}
             onSuccess={handleInitiativeSuccess}
           />
+          {doDetails && (
+            <CheckInDialog
+              isOpen={showCheckInDialog}
+              onClose={() => setShowCheckInDialog(false)}
+              parentType="do"
+              parentId={doDetails.id}
+              parentName={doDetails.title}
+              onSuccess={() => {
+                setShowCheckInDialog(false);
+              }}
+            />
+          )}
         </>
       )}
     </GridBackground>

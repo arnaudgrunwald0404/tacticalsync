@@ -121,14 +121,12 @@ export function DOTile({ definingObjective }: DOTileProps) {
 
         {/* Owner */}
         <div className="flex items-center gap-2">
-          {definingObjective.owner?.avatar_url ? (
-            <Avatar className="h-7 w-7">
-              <AvatarImage src={definingObjective.owner.avatar_url} />
-              <AvatarFallback>{ownerName}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <FancyAvatar name={ownerName} size={28} />
-          )}
+          <FancyAvatar
+            name={(definingObjective.owner?.avatar_name || definingObjective.owner?.full_name) || ownerName}
+            displayName={ownerName}
+            avatarUrl={definingObjective.owner?.avatar_url || undefined}
+            size="sm"
+          />
           <span className="text-sm text-gray-700 dark:text-gray-300">{ownerName}</span>
         </div>
 

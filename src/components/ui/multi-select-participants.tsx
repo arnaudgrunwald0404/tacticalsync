@@ -23,7 +23,41 @@ interface Profile {
   full_name: string | null;
   avatar_name?: string | null;
   avatar_url?: string | null;
+  first_name?: string | null;
+  email?: string | null;
 }
+
+const getShortDisplayName = (profile: Profile): string => {
+  // If we have first_name, use it
+  if (profile.first_name) {
+    return profile.first_name;
+  }
+  
+  // If we have full_name, extract first name
+  if (profile.full_name) {
+    const parts = profile.full_name.trim().split(/\s+/);
+    if (parts.length > 0) {
+      return parts[0];
+    }
+  }
+  
+  // If we have email, use part before @
+  if (profile.email) {
+    return profile.email.split('@')[0];
+  }
+  
+  // Fallback to full_name or avatar_name
+  if (profile.full_name) {
+    return profile.full_name;
+  }
+  
+  if (profile.avatar_name) {
+    const parts = profile.avatar_name.trim().split(/\s+/);
+    return parts[0] || profile.avatar_name;
+  }
+  
+  return "Unknown";
+};
 
 interface MultiSelectParticipantsProps {
   profiles: Profile[];
@@ -46,19 +80,9 @@ export function MultiSelectParticipants({
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const availableProfiles = React.useMemo(() => {
-    const filtered = profiles.filter(
+    return profiles.filter(
       (p) => !excludeIds.includes(p.id)
     );
-    // Debug logging (remove in production)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('MultiSelectParticipants Debug:', {
-        totalProfiles: profiles.length,
-        excludeIds,
-        availableProfiles: filtered.length,
-        profiles: profiles.map(p => ({ id: p.id, name: p.full_name }))
-      });
-    }
-    return filtered;
   }, [profiles, excludeIds]);
 
   const selectedProfiles = React.useMemo(() => {
@@ -71,7 +95,10 @@ export function MultiSelectParticipants({
     return availableProfiles.filter(
       (p) =>
         (p.full_name?.toLowerCase().includes(query) ?? false) ||
-        (p.avatar_name?.toLowerCase().includes(query) ?? false)
+        (p.avatar_name?.toLowerCase().includes(query) ?? false) ||
+        (p.first_name?.toLowerCase().includes(query) ?? false) ||
+        (p.email?.toLowerCase().includes(query) ?? false) ||
+        (getShortDisplayName(p).toLowerCase().includes(query))
     );
   }, [availableProfiles, searchQuery]);
 
@@ -105,8 +132,8 @@ export function MultiSelectParticipants({
               selectedProfiles.map((profile) => (
                 <Badge
                   key={profile.id}
-                  variant="secondary"
-                  className="mr-1 mb-1"
+                  variant="outline"
+                  className="mr-1 mb-1 bg-background hover:bg-accent/50"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <span className="inline-flex items-center gap-1.5">
@@ -114,14 +141,15 @@ export function MultiSelectParticipants({
                       <FancyAvatar
                         name={profile.avatar_name || profile.full_name || ""}
                         displayName={profile.full_name || ""}
+                        avatarUrl={profile.avatar_url}
                         size="sm"
                       />
                     </span>
-                    <span className="text-xs">
-                      {profile.full_name || "Unknown"}
+                    <span className="text-xs text-foreground">
+                      {getShortDisplayName(profile)}
                     </span>
                     <button
-                      className="ml-1 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      className="ml-1 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-muted"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleRemove(profile.id, e as any);
@@ -143,7 +171,7 @@ export function MultiSelectParticipants({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] p-0 z-[60]" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search participants..."
@@ -184,10 +212,11 @@ export function MultiSelectParticipants({
                           <FancyAvatar
                             name={profile.avatar_name || profile.full_name || ""}
                             displayName={profile.full_name || ""}
+                            avatarUrl={profile.avatar_url}
                             size="sm"
                           />
                         </span>
-                        <span>{profile.full_name || "Unknown"}</span>
+                        <span>{getShortDisplayName(profile)}</span>
                       </div>
                     </CommandItem>
                   );
