@@ -294,17 +294,19 @@ const MeetingSettings = () => {
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
-          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
-            className="h-8 sm:h-10"
-          >
-            <ArrowLeft className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Back to Meeting</span>
-            <span className="sm:hidden">Back</span>
-          </Button>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
+              className="h-8 sm:h-10 px-2 sm:px-4"
+            >
+              <ArrowLeft className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Back to Meeting</span>
+              <span className="sm:hidden">Back</span>
+            </Button>
+            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          </div>
         </div>
       </header>
       <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">

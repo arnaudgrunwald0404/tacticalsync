@@ -1,12 +1,16 @@
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
-import { Calendar, User } from 'lucide-react';
+import { Calendar, User, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { cn } from '@/lib/utils';
+import { CheckInDialog } from './CheckInDialog';
 
 interface InitiativeCardProps {
   initiative: StrategicInitiativeWithRelations;

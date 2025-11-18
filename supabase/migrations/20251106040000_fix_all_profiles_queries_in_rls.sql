@@ -76,3 +76,4 @@ COMMENT ON POLICY "Users manage own template items" ON public.agenda_template_it
 
 
 
+

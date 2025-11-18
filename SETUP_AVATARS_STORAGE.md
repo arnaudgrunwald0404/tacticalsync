@@ -63,3 +63,4 @@ After creating the bucket and running the migration, try uploading a profile pho
 - The bucket has a default 50MB limit, but the app enforces 5MB
 - You can set a custom file size limit in the bucket settings
 
+

@@ -90,6 +90,7 @@ export interface StrategicInitiative {
   title: string;
   description: string | null;
   owner_user_id: string;
+  participant_user_ids: string[] | null;
   start_date: string | null;
   end_date: string | null;
   status: InitiativeStatus;
@@ -250,6 +251,7 @@ export interface CreateInitiativeForm {
   title: string;
   description?: string;
   owner_user_id: string;
+  participant_user_ids?: string[];
   start_date?: string;
   end_date?: string;
 }

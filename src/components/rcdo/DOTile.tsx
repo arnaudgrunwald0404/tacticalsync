@@ -1,12 +1,16 @@
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, AlertTriangle, TrendingDown, CheckCircle2, Target } from 'lucide-react';
+import { TrendingUp, AlertTriangle, TrendingDown, CheckCircle2, Target, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import type { DefiningObjectiveWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
+import { CheckInDialog } from './CheckInDialog';
 
 interface DOTileProps {
   definingObjective: DefiningObjectiveWithRelations;
@@ -39,6 +43,8 @@ export function DOTile({ definingObjective }: DOTileProps) {
   const navigate = useNavigate();
   const healthData = healthConfig[definingObjective.health];
   const HealthIcon = healthData.icon;
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
   const ownerName = getFullNameForAvatar(
     definingObjective.owner?.first_name,
@@ -49,9 +55,25 @@ export function DOTile({ definingObjective }: DOTileProps) {
   const initiativeCount = definingObjective.initiatives?.length || 0;
   const linkCount = definingObjective.links?.length || 0;
   const metricsCount = definingObjective.metrics?.length || 0;
+  const isOwner = currentUserId === definingObjective.owner_user_id;
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    getCurrentUser();
+  }, []);
 
   const handleClick = () => {
     navigate(`/dashboard/rcdo/do/${definingObjective.id}`);
+  };
+
+  const handleCheckInClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowCheckInDialog(true);
   };
 
   return (
@@ -111,22 +133,45 @@ export function DOTile({ definingObjective }: DOTileProps) {
         </div>
 
         {/* Stats */}
-        <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400 pt-2 border-t">
-          <div className="flex items-center gap-1">
-            <Target className="h-3 w-3" />
-            <span>{metricsCount} metrics</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <CheckCircle2 className="h-3 w-3" />
-            <span>{initiativeCount} initiatives</span>
-          </div>
-          {linkCount > 0 && (
+        <div className="flex items-center justify-between pt-2 border-t">
+          <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
             <div className="flex items-center gap-1">
-              <span>🔗 {linkCount} linked</span>
+              <Target className="h-3 w-3" />
+              <span>{metricsCount} metrics</span>
             </div>
+            <div className="flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              <span>{initiativeCount} initiatives</span>
+            </div>
+            {linkCount > 0 && (
+              <div className="flex items-center gap-1">
+                <span>🔗 {linkCount} linked</span>
+              </div>
+            )}
+          </div>
+          {isOwner && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckInClick}
+              className="h-7 text-xs"
+            >
+              <MessageSquare className="h-3 w-3 mr-1" />
+              Check-In
+            </Button>
           )}
         </div>
       </div>
+      <CheckInDialog
+        isOpen={showCheckInDialog}
+        onClose={() => setShowCheckInDialog(false)}
+        parentType="do"
+        parentId={definingObjective.id}
+        parentName={definingObjective.title}
+        onSuccess={() => {
+          setShowCheckInDialog(false);
+        }}
+      />
     </Card>
   );
 }

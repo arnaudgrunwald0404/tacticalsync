@@ -567,6 +567,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
                                   displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                  avatarUrl={member.profiles.avatar_url}
                                   size="sm" 
                                 />
                               ) : (
@@ -597,6 +598,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
                                 displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                avatarUrl={member.profiles?.avatar_url}
                                 size="sm" 
                               />
                             ) : (
@@ -695,6 +697,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                                 <FancyAvatar 
                                   name={member.profiles.avatar_name} 
                                   displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                  avatarUrl={member.profiles.avatar_url}
                                   size="sm" 
                                 />
                               ) : (
@@ -725,6 +728,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                               <FancyAvatar 
                                 name={member.profiles.avatar_name} 
                                 displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                avatarUrl={member.profiles?.avatar_url}
                                 size="sm" 
                               />
                             ) : (

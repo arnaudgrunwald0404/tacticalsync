@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
@@ -11,6 +11,7 @@ import { TeamMember } from "@/types/meeting";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import { useRCLinks } from "@/hooks/useRCDO";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import type { DOHashtagOption } from "@/types/rcdo";
 
 interface ActiveInitiative {
@@ -28,6 +29,7 @@ interface PriorityFormProps {
   teamId: string;
   activeDOs: DOHashtagOption[];
   activeSIs: ActiveInitiative[];
+  meetingId?: string;
   onUpdate: (id: string, field: keyof PriorityRow, value: string | null) => void;
   onRemove?: () => void;
   showRemove?: boolean;
@@ -40,6 +42,7 @@ export function PriorityForm({
   teamId,
   activeDOs,
   activeSIs,
+  meetingId,
   onUpdate, 
   onRemove,
   showRemove = false 
@@ -59,6 +62,39 @@ export function PriorityForm({
   // Initialize linked state from priority's pending link
   const [linkedItemId, setLinkedItemId] = useState<string | null>(priority.pendingLink?.id || null);
   const [linkedItemType, setLinkedItemType] = useState<'do' | 'initiative' | null>(priority.pendingLink?.type || null);
+
+  // Sync with priority.pendingLink changes (from parent component)
+  useEffect(() => {
+    if (priority.pendingLink) {
+      setLinkedItemId(priority.pendingLink.id);
+      setLinkedItemType(priority.pendingLink.type);
+    } else if (priority.pendingLink === null && linkedItemId) {
+      // Only clear if explicitly set to null (not undefined)
+      setLinkedItemId(null);
+      setLinkedItemType(null);
+    }
+  }, [priority.pendingLink]);
+
+  // Save to local storage helper
+  const saveToLocalStorage = (priorityId: string, link: { type: 'do' | 'initiative'; id: string } | null) => {
+    if (!meetingId) return;
+    
+    try {
+      const storageKey = `priority-links-${meetingId}`;
+      const stored = localStorage.getItem(storageKey);
+      const links = stored ? JSON.parse(stored) : {};
+      
+      if (link) {
+        links[priorityId] = link;
+      } else {
+        delete links[priorityId];
+      }
+      
+      localStorage.setItem(storageKey, JSON.stringify(links));
+    } catch (err) {
+      console.error('Error saving to local storage:', err);
+    }
+  };
   
   // Generate smart name map
   const memberNames = useMemo(() => formatMemberNames(teamMembers), [teamMembers]);
@@ -84,10 +120,13 @@ export function PriorityForm({
       // If priority has a temp ID, store the link info for later
       if (isTempId(priority.id)) {
         try {
+          const linkData = { type, id };
           setLinkedItemId(id);
           setLinkedItemType(type);
           // Update the priority row with pending link info
-          onUpdate(priority.id, 'pendingLink', JSON.stringify({ type, id }));
+          onUpdate(priority.id, 'pendingLink', JSON.stringify(linkData));
+          // Save to local storage
+          saveToLocalStorage(priority.id, linkData);
           
           const selectedItem = type === 'do' 
             ? activeDOs.find(d => d.id === id)
@@ -122,6 +161,8 @@ export function PriorityForm({
           if (result) {
             setLinkedItemId(id);
             setLinkedItemType('do');
+            // Save to local storage
+            saveToLocalStorage(priority.id, { type: 'do', id });
             
             const selectedDO = activeDOs.find(d => d.id === id);
             toast({
@@ -157,6 +198,8 @@ export function PriorityForm({
           if (result) {
             setLinkedItemId(id);
             setLinkedItemType('initiative');
+            // Save to local storage
+            saveToLocalStorage(priority.id, { type: 'initiative', id });
             
             const selectedSI = activeSIs.find(s => s.id === id);
             toast({
@@ -204,6 +247,8 @@ export function PriorityForm({
         setLinkedItemId(null);
         setLinkedItemType(null);
         onUpdate(priority.id, 'pendingLink', '');
+        // Remove from local storage
+        saveToLocalStorage(priority.id, null);
         toast({
           title: 'Link removed',
           description: 'Pending link cleared',
@@ -211,9 +256,29 @@ export function PriorityForm({
         return;
       }
       
-      // If priority has a real ID, delete the link
+      // If priority has a real ID, find and delete the link
+      const { data: linkData, error: findError } = await supabase
+        .from('rc_links')
+        .select('id')
+        .eq('parent_type', linkedItemType)
+        .eq('parent_id', linkedItemId)
+        .eq('kind', 'meeting_priority')
+        .eq('ref_id', priority.id)
+        .maybeSingle();
+
+      if (findError) {
+        throw findError;
+      }
+
+      if (linkData) {
+        const deleteFn = linkedItemType === 'do' ? deleteLink : deleteSILink;
+        await deleteFn(linkData.id);
+      }
+      
       setLinkedItemId(null);
       setLinkedItemType(null);
+      // Remove from local storage
+      saveToLocalStorage(priority.id, null);
       toast({
         title: 'Success',
         description: 'Priority unlinked',

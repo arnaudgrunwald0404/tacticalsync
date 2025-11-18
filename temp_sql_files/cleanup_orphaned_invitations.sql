@@ -27,3 +27,4 @@ WHERE status = 'accepted'
   AND updated_at > NOW() - INTERVAL '1 minute';
 
 
+

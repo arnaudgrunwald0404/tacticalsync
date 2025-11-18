@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { CreateInitiativeForm } from '@/types/rcdo';
+import { MultiSelectParticipants } from '@/components/ui/multi-select-participants';
 
 interface UserProfile {
   id: string;
@@ -53,12 +54,14 @@ export function InitiativeDialog({
     title: string;
     description: string;
     owner_user_id: string;
+    participant_user_ids: string[];
     start_date: string;
     end_date: string;
   }>({
     title: '',
     description: '',
     owner_user_id: '',
+    participant_user_ids: [],
     start_date: '',
     end_date: '',
   });
@@ -128,6 +131,7 @@ export function InitiativeDialog({
         title: formData.title.trim(),
         description: formData.description || undefined,
         owner_user_id: formData.owner_user_id,
+        participant_user_ids: formData.participant_user_ids.length > 0 ? formData.participant_user_ids : undefined,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
       };
@@ -141,6 +145,7 @@ export function InitiativeDialog({
           title: createData.title,
           description: createData.description || null,
           owner_user_id: createData.owner_user_id,
+          participant_user_ids: createData.participant_user_ids || [],
           start_date: createData.start_date || null,
           end_date: createData.end_date || null,
           status: 'draft',
@@ -172,6 +177,7 @@ export function InitiativeDialog({
       title: '',
       description: '',
       owner_user_id: '',
+      participant_user_ids: [],
       start_date: '',
       end_date: '',
     });
@@ -250,6 +256,25 @@ export function InitiativeDialog({
                   )}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Other Participants */}
+            <div className="space-y-2">
+              <Label htmlFor="participants">Other Participants</Label>
+              <MultiSelectParticipants
+                profiles={users.map(u => ({
+                  id: u.id,
+                  full_name: getUserDisplayName(u),
+                  avatar_name: u.first_name || u.full_name || u.email,
+                }))}
+                selectedIds={formData.participant_user_ids}
+                onSelectionChange={(ids) =>
+                  setFormData({ ...formData, participant_user_ids: ids })
+                }
+                placeholder="Select participants to help accomplish this goal..."
+                disabled={loading || loadingUsers}
+                excludeIds={formData.owner_user_id ? [formData.owner_user_id] : []}
+              />
             </div>
 
             {/* Dates */}

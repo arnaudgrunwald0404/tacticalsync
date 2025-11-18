@@ -42,3 +42,4 @@ ALTER TABLE rc_cycles
   ADD CONSTRAINT rc_cycles_created_by_fkey 
     FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE CASCADE;
 
+

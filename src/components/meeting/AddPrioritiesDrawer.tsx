@@ -65,6 +65,88 @@ const AddPrioritiesDrawer = ({
     notes: ""
   });
 
+  // Fetch existing links for priorities
+  useEffect(() => {
+    const fetchPriorityLinks = async () => {
+      if (!isOpen || existingPriorities.length === 0) return;
+
+      try {
+        // Fetch all links for existing priorities
+        const priorityIds = existingPriorities.map(p => p.id);
+        const { data: links, error } = await supabase
+          .from('rc_links')
+          .select('*')
+          .eq('kind', 'meeting_priority')
+          .in('ref_id', priorityIds);
+
+        if (error) {
+          console.error('Error fetching priority links:', error);
+          return;
+        }
+
+        // Create a map of priority ID to link
+        const linkMap = new Map<string, { type: 'do' | 'initiative'; id: string }>();
+        links?.forEach(link => {
+          linkMap.set(link.ref_id, {
+            type: link.parent_type as 'do' | 'initiative',
+            id: link.parent_id
+          });
+        });
+
+        // Update priorities with their links
+        setPriorities(prevPriorities => {
+          return prevPriorities.map(priority => {
+            // Only update if this is an existing priority (not a temp ID)
+            if (!priority.id.startsWith('new-') && !priority.id.startsWith('temp-')) {
+              const link = linkMap.get(priority.id);
+              if (link) {
+                return {
+                  ...priority,
+                  pendingLink: link
+                };
+              }
+            }
+            return priority;
+          });
+        });
+      } catch (err) {
+        console.error('Error in fetchPriorityLinks:', err);
+      }
+    };
+
+    fetchPriorityLinks();
+  }, [isOpen, existingPriorities]);
+
+  // Load from local storage when drawer opens
+  useEffect(() => {
+    if (!isOpen || !meetingId) return;
+
+    try {
+      const storageKey = `priority-links-${meetingId}`;
+      const storedLinks = localStorage.getItem(storageKey);
+      if (storedLinks) {
+        const links = JSON.parse(storedLinks);
+        setPriorities(prevPriorities => {
+          return prevPriorities.map(priority => {
+            // Only apply local storage links to temp/new priorities
+            if (priority.id.startsWith('new-') || priority.id.startsWith('temp-')) {
+              const storedLink = links[priority.id];
+              if (storedLink && !priority.pendingLink) {
+                return {
+                  ...priority,
+                  pendingLink: storedLink
+                };
+              }
+            }
+            return priority;
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Error loading from local storage:', err);
+    }
+  }, [isOpen, meetingId]);
+
   // Initialize priorities when drawer opens AND current user is available
   useEffect(() => {
     console.log('Priority init useEffect triggered:', { isOpen, currentUserId: !!currentUserId, existingPrioritiesLength: existingPriorities.length });
@@ -83,7 +165,7 @@ const AddPrioritiesDrawer = ({
             assigned_to: priority.assigned_to || defaultAssignee,
             activities: priority.activities || "",
             time_minutes: null,
-            pendingLink: null
+            pendingLink: null // Will be populated by fetchPriorityLinks effect
           }));
           
           // Ensure we have at least 3 rows for consistency
@@ -430,6 +512,16 @@ const AddPrioritiesDrawer = ({
         });
       }
 
+      // Clear local storage after successful save
+      if (meetingId) {
+        try {
+          const storageKey = `priority-links-${meetingId}`;
+          localStorage.removeItem(storageKey);
+        } catch (err) {
+          console.error('Error clearing local storage:', err);
+        }
+      }
+
       await onSave();
       // Small delay to ensure state updates propagate
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -487,6 +579,7 @@ const AddPrioritiesDrawer = ({
                     teamMembers={teamMembers}
                     currentUser={currentUser}
                     teamId={teamId}
+                    meetingId={meetingId}
                     activeDOs={activeDOs}
                     activeSIs={activeSIs}
                     onUpdate={updatePriority}
@@ -506,6 +599,7 @@ const AddPrioritiesDrawer = ({
                     teamMembers={teamMembers}
                     currentUser={currentUser}
                     teamId={teamId}
+                    meetingId={meetingId}
                     activeDOs={activeDOs}
                     activeSIs={activeSIs}
                     onUpdate={updatePriority}

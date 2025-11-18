@@ -33,6 +33,8 @@ import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -53,6 +55,7 @@ type NodeData = {
     id: string;
     title: string;
     ownerId?: string; // references profiles.id
+    participantIds?: string[]; // references profiles.id
     // legacy fields (rendered if ownerId missing)
     ownerName?: string;
     ownerAvatarUrl?: string;
@@ -467,16 +470,21 @@ export default function StrategyCanvasPage() {
   // Header state (logo/tabs/avatar)
   const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
   const [headerProfile, setHeaderProfile] = useState<any>(null);
+  const [headerLoading, setHeaderLoading] = useState(true);
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('first_name, last_name, full_name, avatar_name, avatar_url, email')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (profileData) setHeaderProfile(profileData);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, full_name, avatar_name, avatar_url, email')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileData) setHeaderProfile(profileData);
+        }
+      } finally {
+        setHeaderLoading(false);
       }
     })();
   }, []);
@@ -993,35 +1001,42 @@ const duplicateSelectedDo = useCallback(() => {
 
           {/* Right: Avatar + name clickable */}
           <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow" role="button" aria-label="Open account menu">
-                  <FancyAvatar
-                    name={(headerProfile?.avatar_name && headerProfile.avatar_name.trim()) || headerProfile?.email || 'User'}
-                    displayName={getFullNameForAvatar(headerProfile?.first_name, headerProfile?.last_name, headerProfile?.email)}
-                    avatarUrl={headerProfile?.avatar_url}
-                    size="sm"
-                    className="flex-shrink-0"
-                  />
-                  <div className="flex flex-col items-start min-w-0 overflow-hidden">
-                    <span className="text-sm leading-none truncate max-w-full">
-                      {`${headerProfile?.first_name || headerProfile?.email || ''} ${headerProfile?.last_name || ''}`.trim()}
-                    </span>
+            {headerLoading ? (
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-7 w-7 rounded-full" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow" role="button" aria-label="Open account menu">
+                    <FancyAvatar
+                      name={(headerProfile?.avatar_name && headerProfile.avatar_name.trim()) || headerProfile?.email || 'User'}
+                      displayName={getFullNameForAvatar(headerProfile?.first_name, headerProfile?.last_name, headerProfile?.email)}
+                      avatarUrl={headerProfile?.avatar_url}
+                      size="sm"
+                      className="flex-shrink-0"
+                    />
+                    <div className="flex flex-col items-start min-w-0 overflow-hidden">
+                      <span className="text-sm leading-none truncate max-w-full">
+                        {`${headerProfile?.first_name || headerProfile?.email || ''} ${headerProfile?.last_name || ''}`.trim()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="h-4 w-4 mr-2" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => navigate('/profile')}>
+                    <User className="h-4 w-4 mr-2" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </header>
@@ -1806,6 +1821,18 @@ onNodeDragStop={(_e, node) => {
                             ))}
                           </SelectContent>
                         </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Other Participants</label>
+                      <div className="mt-1">
+                        <MultiSelectParticipants
+                          profiles={profiles}
+                          selectedIds={si.participantIds || []}
+                          onSelectionChange={(ids) => update({ participantIds: ids })}
+                          placeholder="Select participants to help accomplish this goal..."
+                          excludeIds={si.ownerId ? [si.ownerId] : []}
+                        />
                       </div>
                     </div>
                     <div>

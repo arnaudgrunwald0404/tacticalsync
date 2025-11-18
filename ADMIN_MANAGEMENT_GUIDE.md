@@ -330,3 +330,4 @@ UPDATE profiles SET is_admin = true WHERE email = 'user@example.com';
 
 5. **User Notification:** Users need to refresh or re-login to see privilege changes take effect
 
+

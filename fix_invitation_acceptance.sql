@@ -78,3 +78,4 @@ AND policyname = 'Users can update invitations sent to them';
 -- After running this script, users will be able to accept/decline invitations.
 -- =============================================================================
 
+

@@ -548,6 +548,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           title: form.title,
           description: form.description || null,
           owner_user_id: form.owner_user_id,
+          participant_user_ids: form.participant_user_ids || [],
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           status: 'draft',
