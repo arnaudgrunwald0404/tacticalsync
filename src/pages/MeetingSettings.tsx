@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Trash2, Save, UserPlus, Link as LinkIcon } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import Logo from "@/components/Logo";
 import GridBackground from "@/components/ui/grid-background";
@@ -386,21 +385,12 @@ const MeetingSettings = () => {
                       key={member.id}
                       className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-slate-50 rounded-lg"
                     >
-                      {member.profiles?.avatar_name ? (
-                        <FancyAvatar 
-                          name={member.profiles.avatar_name} 
-                          displayName={fullDisplayName}
-                          size="sm" 
-                        />
-                      ) : (
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={member.profiles?.avatar_url} />
-                          <AvatarFallback>
-                            {member.profiles?.first_name?.[0]?.toUpperCase()}
-                            {member.profiles?.last_name?.[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
+                      <FancyAvatar 
+                        name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
+                        displayName={fullDisplayName}
+                        avatarUrl={member.profiles?.avatar_url}
+                        size="sm" 
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-slate-900 text-sm sm:text-base">
                           {fullDisplayName}

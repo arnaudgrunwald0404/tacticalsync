@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, User, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
@@ -83,9 +82,9 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
           <User className="h-4 w-4 text-gray-500" />
           <div className="flex items-center gap-2">
             <FancyAvatar
-              name={(initiative.owner?.avatar_name || initiative.owner?.full_name) || ownerName}
+              name={initiative.owner?.avatar_name || ownerName}
               displayName={ownerName}
-              avatarUrl={initiative.owner?.avatar_url || undefined}
+              avatarUrl={initiative.owner?.avatar_url}
               size="sm"
             />
             <span className="text-gray-700 dark:text-gray-300">{ownerName}</span>

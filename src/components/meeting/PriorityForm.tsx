@@ -1,6 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import { Button } from "@/components/ui/button";
@@ -328,20 +327,12 @@ export function PriorityForm({
             {currentUser && (
               <SelectItem value={currentUser.user_id}>
                 <div className="flex items-center gap-2">
-                  {currentUser.profiles?.avatar_name ? (
-                    <FancyAvatar 
-                      name={currentUser.profiles.avatar_name} 
-                      displayName={getFullNameForAvatar(currentUser.profiles.first_name, currentUser.profiles.last_name, currentUser.profiles.email)}
-                      size="sm" 
-                    />
-                  ) : (
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={currentUser.profiles?.avatar_url} />
-                      <AvatarFallback className="text-xs">
-                        {(currentUser.profiles?.first_name || currentUser.profiles?.email || '?').charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
+                  <FancyAvatar 
+                    name={currentUser.profiles?.avatar_name || currentUser.profiles?.email || 'Unknown'} 
+                    displayName={getFullNameForAvatar(currentUser.profiles?.first_name, currentUser.profiles?.last_name, currentUser.profiles?.email)}
+                    avatarUrl={currentUser.profiles?.avatar_url}
+                    size="sm" 
+                  />
                   <span>Me</span>
                 </div>
               </SelectItem>
@@ -354,20 +345,12 @@ export function PriorityForm({
                 return (
                   <SelectItem key={member.user_id} value={member.user_id}>
                     <div className="flex items-center gap-2">
-                      {member.profiles?.avatar_name ? (
-                        <FancyAvatar 
-                          name={member.profiles.avatar_name} 
-                          displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                          size="sm" 
-                        />
-                      ) : (
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={member.profiles?.avatar_url} />
-                          <AvatarFallback className="text-xs">
-                            {member.profiles?.first_name?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
+                      <FancyAvatar 
+                        name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
+                        displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}
+                        avatarUrl={member.profiles?.avatar_url}
+                        size="sm" 
+                      />
                       <span>{displayName}</span>
                     </div>
                   </SelectItem>

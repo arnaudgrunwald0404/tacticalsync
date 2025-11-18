@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Users, Copy, Check, ArrowLeft, Trash2, AlertTriangle, X, LogOut, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import GridBackground from "@/components/ui/grid-background";
@@ -786,20 +785,12 @@ const TeamInvite = () => {
                     
                     return (
                       <div key={member.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
-                        {member.profiles?.avatar_name ? (
-                          <FancyAvatar 
-                            name={member.profiles.avatar_name} 
-                            displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                            size="sm" 
-                          />
-                        ) : (
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={member.profiles?.avatar_url} />
-                            <AvatarFallback className="text-xs">
-                              {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
+                        <FancyAvatar 
+                          name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
+                          displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}
+                          avatarUrl={member.profiles?.avatar_url}
+                          size="sm" 
+                        />
                         <div className="flex-1">
                           <div className="text-sm font-medium">
                             {fullDisplayName}

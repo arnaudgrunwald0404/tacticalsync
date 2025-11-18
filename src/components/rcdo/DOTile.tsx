@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Progress } from '@/components/ui/progress';
 import { TrendingUp, AlertTriangle, TrendingDown, CheckCircle2, Target, MessageSquare } from 'lucide-react';
@@ -122,9 +121,9 @@ export function DOTile({ definingObjective }: DOTileProps) {
         {/* Owner */}
         <div className="flex items-center gap-2">
           <FancyAvatar
-            name={(definingObjective.owner?.avatar_name || definingObjective.owner?.full_name) || ownerName}
+            name={definingObjective.owner?.avatar_name || ownerName}
             displayName={ownerName}
-            avatarUrl={definingObjective.owner?.avatar_url || undefined}
+            avatarUrl={definingObjective.owner?.avatar_url}
             size="sm"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">{ownerName}</span>

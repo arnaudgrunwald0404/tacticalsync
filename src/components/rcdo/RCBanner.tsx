@@ -1,6 +1,5 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Lock } from 'lucide-react';
 import { format } from 'date-fns';
@@ -60,14 +59,12 @@ export function RCBanner({ rallyingCry, startDate, endDate }: RCBannerProps) {
         <div className="flex items-center gap-2">
           <span className="font-semibold">Owner:</span>
           <div className="flex items-center gap-2">
-            {rallyingCry.owner?.avatar_url ? (
-              <Avatar className="h-6 w-6">
-                <AvatarImage src={rallyingCry.owner.avatar_url} />
-                <AvatarFallback>{ownerName}</AvatarFallback>
-              </Avatar>
-            ) : (
-              <FancyAvatar name={ownerName} size={24} />
-            )}
+            <FancyAvatar
+              name={rallyingCry.owner?.avatar_name || ownerName}
+              displayName={ownerName}
+              avatarUrl={rallyingCry.owner?.avatar_url}
+              size="sm"
+            />
             <span>{ownerName}</span>
           </div>
         </div>

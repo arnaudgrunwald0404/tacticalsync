@@ -196,7 +196,8 @@ const createDoNode = (profilesMap: Record<string, any>) => {
           {owner ? (
             <FancyAvatar 
               name={owner.avatar_name || owner.full_name} 
-              displayName={owner.full_name} 
+              displayName={owner.full_name}
+              avatarUrl={owner.avatar_url}
               size="sm" 
             />
           ) : (
@@ -251,7 +252,7 @@ const createDoNode = (profilesMap: Record<string, any>) => {
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
                   if (prof?.avatar_name || prof?.full_name) {
-                    return <FancyAvatar name={prof.avatar_name || prof.full_name} displayName={prof.full_name} size="sm" />;
+                    return <FancyAvatar name={prof.avatar_name || prof.full_name} displayName={prof.full_name} avatarUrl={prof.avatar_url} size="sm" />;
                   }
                   const letter = (it.ownerName?.charAt(0).toUpperCase() || "?");
                   return <span className="text-[10px] leading-none font-semibold">{letter}</span>;

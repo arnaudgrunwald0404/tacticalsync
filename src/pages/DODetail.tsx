@@ -17,7 +17,6 @@ import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
 import { CheckinCard } from '@/components/rcdo/CheckinCard';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { calculateDOHealth, getHealthColor } from '@/lib/rcdoScoring';
@@ -250,14 +249,12 @@ export default function DODetail() {
                     <SelectValue placeholder="Select owner">
                       {doDetails.owner_user_id && (
                         <div className="flex items-center gap-2">
-                          {doDetails.owner?.avatar_url ? (
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={doDetails.owner.avatar_url} />
-                              <AvatarFallback>{ownerName}</AvatarFallback>
-                            </Avatar>
-                          ) : (
-                            <FancyAvatar name={ownerName} size={24} />
-                          )}
+                          <FancyAvatar
+                            name={doDetails.owner?.avatar_name || ownerName}
+                            displayName={ownerName}
+                            avatarUrl={doDetails.owner?.avatar_url}
+                            size="sm"
+                          />
                           <span className="text-sm">{ownerName}</span>
                         </div>
                       )}
@@ -267,13 +264,12 @@ export default function DODetail() {
                     {profiles.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         <div className="flex items-center gap-2">
-                          <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                            <FancyAvatar 
-                              name={p.avatar_name || p.full_name} 
-                              displayName={p.full_name} 
-                              size="sm" 
-                            />
-                          </span>
+                          <FancyAvatar 
+                            name={p.avatar_name || p.full_name} 
+                            displayName={p.full_name}
+                            avatarUrl={p.avatar_url}
+                            size="sm" 
+                          />
                           <span>{p.full_name}</span>
                         </div>
                       </SelectItem>
@@ -450,7 +446,7 @@ export default function DODetail() {
                                   <SelectItem key={p.id} value={p.id}>
                                     <span className="inline-flex items-center gap-2">
                                       <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                        <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} size="sm" />
+                                        <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} avatarUrl={p.avatar_url} size="sm" />
                                       </span>
                                       <span>{p.full_name}</span>
                                     </span>

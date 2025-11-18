@@ -24,7 +24,6 @@ import { Loader2 } from 'lucide-react';
 import type { CheckinParentType } from '@/types/rcdo';
 import { format } from 'date-fns';
 import FancyAvatar from '@/components/ui/fancy-avatar';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 
 interface CheckInDialogProps {
@@ -219,17 +218,12 @@ export function CheckInDialog({
                   <SelectValue>
                     {selectedReporter && (
                       <div className="flex items-center gap-2">
-                        {selectedReporter.avatar_url ? (
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={selectedReporter.avatar_url} />
-                            <AvatarFallback>{reporterName}</AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          <FancyAvatar 
-                            name={selectedReporter.avatar_name || reporterName} 
-                            size={20} 
-                          />
-                        )}
+                        <FancyAvatar
+                          name={selectedReporter.avatar_name || reporterName}
+                          displayName={reporterName}
+                          avatarUrl={selectedReporter.avatar_url}
+                          size="sm"
+                        />
                         <span>{reporterName}</span>
                       </div>
                     )}
@@ -245,17 +239,12 @@ export function CheckInDialog({
                     return (
                       <SelectItem key={profile.id} value={profile.id}>
                         <div className="flex items-center gap-2">
-                          {profile.avatar_url ? (
-                            <Avatar className="h-5 w-5">
-                              <AvatarImage src={profile.avatar_url} />
-                              <AvatarFallback>{name}</AvatarFallback>
-                            </Avatar>
-                          ) : (
-                            <FancyAvatar 
-                              name={profile.avatar_name || name} 
-                              size={20} 
-                            />
-                          )}
+                          <FancyAvatar
+                            name={profile.avatar_name || name}
+                            displayName={name}
+                            avatarUrl={profile.avatar_url}
+                            size="sm"
+                          />
                           <span>{name}</span>
                         </div>
                       </SelectItem>

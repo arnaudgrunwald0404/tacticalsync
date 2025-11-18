@@ -25,23 +25,18 @@ export function useUserCheckins() {
         return;
       }
 
-      // First, get all SIs where user is owner or participant
-      // We need to fetch all SIs and filter in memory because Supabase array queries can be tricky
-      const { data: allSIs, error: siError } = await supabase
+      // First, get SIs where user is owner
+      const { data: ownerSIs, error: ownerSiError } = await supabase
         .from('rc_strategic_initiatives')
-        .select('id, title, owner_user_id, participant_user_ids');
+        .select('id, title, owner_user_id, participant_user_ids')
+        .eq('owner_user_id', user.id);
 
-      if (siError) throw siError;
+      if (ownerSiError) {
+        console.error('Error fetching owner SIs:', ownerSiError);
+        throw ownerSiError;
+      }
 
-      // Filter SIs where user is owner or participant
-      const userSIs = (allSIs || []).filter(si => 
-        si.owner_user_id === user.id || 
-        (si.participant_user_ids && Array.isArray(si.participant_user_ids) && si.participant_user_ids.includes(user.id))
-      );
-
-      const siIds = (userSIs || []).map(si => si.id);
-
-      // Get all DOs where user is owner
+      // Get all DOs where user is owner (needed for both paths)
       const { data: userDOs, error: doError } = await supabase
         .from('rc_defining_objectives')
         .select('id, title, owner_user_id')
@@ -50,6 +45,52 @@ export function useUserCheckins() {
       if (doError) throw doError;
 
       const doIds = (userDOs || []).map(doItem => doItem.id);
+
+      // Get SIs where user is a participant (using Postgres array contains operator)
+      // Note: We use cs (contains) operator to check if the array contains the user ID
+      const { data: participantSIs, error: participantSiError } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, title, owner_user_id, participant_user_ids')
+        .contains('participant_user_ids', [user.id]);
+
+      let uniqueSIs: any[];
+      let siIds: string[];
+
+      if (participantSiError) {
+        console.error('Error fetching participant SIs:', participantSiError);
+        // If array query fails, fall back to fetching all and filtering
+        console.warn('Falling back to fetching all SIs and filtering in memory');
+        const { data: allSIs, error: allSiError } = await supabase
+          .from('rc_strategic_initiatives')
+          .select('id, title, owner_user_id, participant_user_ids');
+        
+        if (allSiError) throw allSiError;
+        
+        // Filter SIs where user is participant (owner SIs already fetched)
+        const participantSIsFiltered = (allSIs || []).filter(si => 
+          si.owner_user_id !== user.id && // Exclude ones we already have as owner
+          si.participant_user_ids && 
+          Array.isArray(si.participant_user_ids) && 
+          si.participant_user_ids.includes(user.id)
+        );
+        
+        // Combine owner and participant SIs, removing duplicates
+        const allUserSIs = [...(ownerSIs || []), ...participantSIsFiltered];
+        uniqueSIs = Array.from(
+          new Map(allUserSIs.map(si => [si.id, si])).values()
+        );
+      } else {
+        // Combine owner and participant SIs, removing duplicates
+        const allUserSIs = [...(ownerSIs || []), ...(participantSIs || [])];
+        uniqueSIs = Array.from(
+          new Map(allUserSIs.map(si => [si.id, si])).values()
+        );
+      }
+
+      console.log(`Found ${uniqueSIs.length} SIs for user (${ownerSIs?.length || 0} owned, ${participantSiError ? 'error fetching participants' : (participantSIs?.length || 0)} as participant)`);
+
+      siIds = uniqueSIs.map(si => si.id);
+
 
       // Fetch check-ins for user's SIs
       let filteredSICheckins: any[] = [];
@@ -69,7 +110,7 @@ export function useUserCheckins() {
 
         // Map to include parent name
         filteredSICheckins = (siCheckins || []).map((checkin: any) => {
-          const si = userSIs?.find(s => s.id === checkin.parent_id);
+          const si = uniqueSIs.find(s => s.id === checkin.parent_id);
           return {
             ...checkin,
             parent_name: si?.title,

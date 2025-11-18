@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Profile } from "@/types/common";
+import FancyAvatar from "@/components/ui/fancy-avatar";
+import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 interface UserDisplayProps {
   user?: Profile | null;
@@ -15,19 +17,8 @@ export function UserDisplay({ user, firstName, lastName, email, className, size 
   const finalFirstName = user?.first_name || firstName;
   const finalLastName = user?.last_name || lastName;
   const finalEmail = user?.email || email;
-  // Generate initials from firstName and lastName, fallback to email
-  const getInitials = () => {
-    if (finalFirstName && finalLastName) {
-      return `${finalFirstName[0]}${finalLastName[0]}`.toUpperCase();
-    }
-    if (finalFirstName) {
-      return finalFirstName[0].toUpperCase();
-    }
-    if (finalEmail) {
-      return finalEmail[0].toUpperCase();
-    }
-    return "?";
-  };
+  const avatarUrl = user?.avatar_url || null;
+  const avatarName = user?.avatar_name || null;
 
   // Generate display name from available data
   const getDisplayName = () => {
@@ -43,18 +34,18 @@ export function UserDisplay({ user, firstName, lastName, email, className, size 
     return "Unknown User";
   };
 
-  const initials = getInitials();
   const displayName = getDisplayName();
+  const fullName = getFullNameForAvatar(finalFirstName, finalLastName, finalEmail);
+  const nameForAvatar = avatarName || fullName || displayName;
 
   return (
     <div className={cn("flex items-center gap-2 min-w-0", className)}>
-      <div className={cn(
-        "bg-rose-100 text-rose-900 rounded-full flex items-center justify-center flex-shrink-0",
-        size === "sm" ? "h-5 w-5 text-xs" : "h-6 w-6 text-sm",
-        "font-medium"
-      )}>
-        {initials}
-      </div>
+      <FancyAvatar
+        name={nameForAvatar}
+        displayName={fullName}
+        avatarUrl={avatarUrl}
+        size={size === "sm" ? "sm" : "md"}
+      />
       <span className={cn(
         "truncate min-w-0",
         size === "sm" ? "text-sm" : "text-base"

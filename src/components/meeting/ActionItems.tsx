@@ -563,21 +563,12 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                           
                           return (
                             <div className="flex items-center gap-2">
-                              {member.profiles.avatar_name ? (
-                                <FancyAvatar 
-                                  name={member.profiles.avatar_name} 
-                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                  avatarUrl={member.profiles.avatar_url}
-                                  size="sm" 
-                                />
-                              ) : (
-                                <Avatar className="h-6 w-6 rounded-full">
-                                  <AvatarImage src={member.profiles.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
-                                  </AvatarFallback>
-                                </Avatar>
-                              )}
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name || member.profiles.email || 'Unknown'} 
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                avatarUrl={member.profiles.avatar_url}
+                                size="sm" 
+                              />
                               <span className="text-sm truncate">{displayName}</span>
                             </div>
                           );
@@ -594,21 +585,12 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                       return (
                         <SelectItem key={member.user_id} value={member.user_id}>
                           <div className="flex items-center gap-2">
-                            {member.profiles?.avatar_name ? (
-                              <FancyAvatar 
-                                name={member.profiles.avatar_name} 
-                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                avatarUrl={member.profiles?.avatar_url}
-                                size="sm" 
-                              />
-                            ) : (
-                              <Avatar className="h-6 w-6 rounded-full">
-                                <AvatarImage src={member.profiles?.avatar_url} />
-                                <AvatarFallback className="text-xs">
-                                  {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
-                                </AvatarFallback>
-                              </Avatar>
-                            )}
+                            <FancyAvatar 
+                              name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
+                              displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}
+                              avatarUrl={member.profiles?.avatar_url}
+                              size="sm" 
+                            />
                             <span className="truncate">{displayName}</span>
                           </div>
                         </SelectItem>
@@ -693,21 +675,12 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                           
                           return (
                             <div className="flex items-center gap-2">
-                              {member.profiles.avatar_name ? (
-                                <FancyAvatar 
-                                  name={member.profiles.avatar_name} 
-                                  displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                  avatarUrl={member.profiles.avatar_url}
-                                  size="sm" 
-                                />
-                              ) : (
-                                <Avatar className="h-6 w-6 rounded-full">
-                                  <AvatarImage src={member.profiles.avatar_url} />
-                                  <AvatarFallback className="text-xs">
-                                    {member.profiles.first_name?.[0]?.toUpperCase() || member.profiles.email?.[0]?.toUpperCase() || ''}{member.profiles.last_name?.[0]?.toUpperCase() || ''}
-                                  </AvatarFallback>
-                                </Avatar>
-                              )}
+                              <FancyAvatar 
+                                name={member.profiles.avatar_name || member.profiles.email || 'Unknown'} 
+                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
+                                avatarUrl={member.profiles.avatar_url}
+                                size="sm" 
+                              />
                               <span className="text-sm truncate">{displayName}</span>
                             </div>
                           );
@@ -724,21 +697,12 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                       return (
                         <SelectItem key={member.user_id} value={member.user_id}>
                           <div className="flex items-center gap-2">
-                            {member.profiles?.avatar_name ? (
-                              <FancyAvatar 
-                                name={member.profiles.avatar_name} 
-                                displayName={getFullNameForAvatar(member.profiles.first_name, member.profiles.last_name, member.profiles.email)}
-                                avatarUrl={member.profiles?.avatar_url}
-                                size="sm" 
-                              />
-                            ) : (
-                              <Avatar className="h-6 w-6 rounded-full">
-                                <AvatarImage src={member.profiles?.avatar_url} />
-                                <AvatarFallback className="text-xs">
-                                  {member.profiles?.first_name?.[0]?.toUpperCase() || member.profiles?.email?.[0]?.toUpperCase() || ''}{member.profiles?.last_name?.[0]?.toUpperCase() || ''}
-                                </AvatarFallback>
-                              </Avatar>
-                            )}
+                            <FancyAvatar 
+                              name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
+                              displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}
+                              avatarUrl={member.profiles?.avatar_url}
+                              size="sm" 
+                            />
                             <span className="truncate">{displayName}</span>
                           </div>
                         </SelectItem>

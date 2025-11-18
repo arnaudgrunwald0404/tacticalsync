@@ -1,5 +1,4 @@
 import { Card } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, Smile, Meh, Frown } from 'lucide-react';
 import { format } from 'date-fns';
@@ -37,14 +36,12 @@ export function CheckinCard({ checkin }: CheckinCardProps) {
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          {checkin.creator?.avatar_url ? (
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={checkin.creator.avatar_url} />
-              <AvatarFallback>{creatorName}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <FancyAvatar name={creatorName} size={32} />
-          )}
+          <FancyAvatar
+            name={checkin.creator?.avatar_name || creatorName}
+            displayName={creatorName}
+            avatarUrl={checkin.creator?.avatar_url}
+            size="md"
+          />
           <div>
             <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
               {creatorName}

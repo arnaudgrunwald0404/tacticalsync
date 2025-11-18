@@ -490,42 +490,44 @@ const DashboardMain = () => {
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8">
-      <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start justify-between gap-4">
+      <div className="mb-6 sm:mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Your Teams Section */}
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
-          
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Run your recurring meetings with discipline that makes all the difference.
-            <br />
-            {(isAdmin || isSuperAdmin) ? (
-              <>
-                Don't see a team that you would like to see here?{' '}
-                <a 
-                  href="/create-team" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate("/create-team");
-                  }}
-                  className="text-primary hover:underline cursor-pointer"
-                >
-                  Create it now!</a>
-              </>
-            ) : (
-              "Don't see a team that you would like to see here? Ask an admin to invite you to it!"
-            )}
-          </p>
+          <div className="mb-4 ">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
+            
+            <p className="text-sm sm:text-base text-muted-foreground">
+              Run your recurring meetings with discipline that makes all the difference.
+              <br />
+              {(isAdmin || isSuperAdmin) ? (
+                <>
+                  Don't see a team that you would like to see here?{' '}
+                  <a 
+                    href="/create-team" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate("/create-team");
+                    }}
+                    className="text-primary hover:underline cursor-pointer"
+                  >
+                    Create it now!</a>
+                </>
+              ) : (
+                "Don't see a team that you would like to see here? Ask an admin to invite you to it!"
+              )}
+            </p>
+          </div>
         </div>
-        {(teams.length > 0 || pendingInvitations.length > 0) && (isAdmin || isSuperAdmin) && (
-          <Button variant="outline" onClick={handleCreateTeam} size="sm" className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            Create New Team
-          </Button>
-        )}
+
+        {/* Your Actions Section */}
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-right">Your Actions</h2>
+        </div>
       </div>
 
       {teams.length === 0 && pendingInvitations.length === 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {(isAdmin || isSuperAdmin) ? (
+          {false && (isAdmin || isSuperAdmin) ? (
             <Card
               className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
               onClick={handleCreateTeam}
@@ -601,10 +603,10 @@ const DashboardMain = () => {
             </div>
           ))}
 
-          {/* Main Content Grid: Teams and Check-In Widget */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content Grid: Teams and Actions */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Teams Section */}
-            <div className="lg:col-span-2 space-y-8">
+            <div className="space-y-8">
           {teams.map((teamMember) => {
             const teamMeetings = meetings[teamMember.teams.id] || [];
             const hasNoMeetings = teamMeetings.length === 0;
@@ -721,9 +723,14 @@ const DashboardMain = () => {
           })}
             </div>
 
-            {/* Check-In Widget Sidebar */}
-            <div className="lg:col-span-1">
-              <CheckInWidget />
+            {/* Your Actions Section */}
+            <div className="space-y-8">
+              {/* Check-ins */}
+              <div>
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Check-ins</h3>
+                <CheckInWidget />
+              </div>
+              {/* More actions can be added here in the future */}
             </div>
           </div>
         </div>
