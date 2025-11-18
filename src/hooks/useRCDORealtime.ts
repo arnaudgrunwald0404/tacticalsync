@@ -12,6 +12,7 @@ interface UseRCDORealtimeProps {
   onMetricsUpdate?: () => void;
   onInitiativesUpdate?: () => void;
   onLinksUpdate?: () => void;
+  onCheckinsUpdate?: () => void;
 }
 
 /**
@@ -28,6 +29,7 @@ export function useRCDORealtime({
   onMetricsUpdate,
   onInitiativesUpdate,
   onLinksUpdate,
+  onCheckinsUpdate,
 }: UseRCDORealtimeProps) {
   useEffect(() => {
     const channels: RealtimeChannel[] = [];
@@ -159,6 +161,27 @@ export function useRCDORealtime({
 
         channels.push(linksChannel);
       }
+
+      // Check-ins updates
+      if (onCheckinsUpdate) {
+        const checkinsChannel = supabase
+          .channel(`rc_checkins:do:${doId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'rc_checkins',
+              filter: `parent_id=eq.${doId} AND parent_type=eq.do`,
+            },
+            () => {
+              onCheckinsUpdate();
+            }
+          )
+          .subscribe();
+
+        channels.push(checkinsChannel);
+      }
     }
 
     // Cleanup subscriptions on unmount
@@ -177,6 +200,7 @@ export function useRCDORealtime({
     onMetricsUpdate,
     onInitiativesUpdate,
     onLinksUpdate,
+    onCheckinsUpdate,
   ]);
 }
 

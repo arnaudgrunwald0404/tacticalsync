@@ -79,6 +79,7 @@ export default function DODetail() {
     onMetricsUpdate: refetchMetrics,
     onInitiativesUpdate: refetchInitiatives,
     onLinksUpdate: refetchLinks,
+    onCheckinsUpdate: refetchCheckins,
   });
 
   const loading = doLoading || metricsLoading || initiativesLoading || linksLoading || checkinsLoading;
@@ -555,6 +556,7 @@ export default function DODetail() {
               parentName={doDetails.title}
               onSuccess={() => {
                 setShowCheckInDialog(false);
+                handleCheckInSuccess();
               }}
             />
           )}

@@ -15,6 +15,7 @@ import {
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
+import { CheckInWidget } from "@/components/rcdo/CheckInWidget";
 
 const DashboardMain = () => {
   const navigate = useNavigate();
@@ -600,7 +601,10 @@ const DashboardMain = () => {
             </div>
           ))}
 
-          {/* Regular Teams */}
+          {/* Main Content Grid: Teams and Check-In Widget */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Teams Section */}
+            <div className="lg:col-span-2 space-y-8">
           {teams.map((teamMember) => {
             const teamMeetings = meetings[teamMember.teams.id] || [];
             const hasNoMeetings = teamMeetings.length === 0;
@@ -715,6 +719,13 @@ const DashboardMain = () => {
               </div>
             );
           })}
+            </div>
+
+            {/* Check-In Widget Sidebar */}
+            <div className="lg:col-span-1">
+              <CheckInWidget />
+            </div>
+          </div>
         </div>
       )}
 
