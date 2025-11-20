@@ -13,7 +13,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -35,6 +35,9 @@ import { useToast } from "@/hooks/use-toast";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
+import { Switch } from "@/components/ui/switch";
+import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -61,6 +64,7 @@ type NodeData = {
     ownerAvatarUrl?: string;
     metric?: string;
     description?: string;
+    dbId?: string; // database SI ID for fetching locked status and check-ins
   }>;
   // Rallying cry specific
   rallyCandidates?: string[];
@@ -141,8 +145,13 @@ function StrategyNode({ data }: { data: NodeData }) {
 
 import type { NodeProps } from "reactflow";
 
-// Create a factory function that accepts profilesMap
-const createDoNode = (profilesMap: Record<string, any>) => {
+// Create a factory function that accepts profilesMap, showProgress, SI progress data, and DO locked status
+const createDoNode = (
+  profilesMap: Record<string, any>,
+  showProgress: boolean,
+  siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean }>,
+  doLockedStatus: Map<string, { locked: boolean; dbId?: string }>
+) => {
   return function DoNode({ id, data }: NodeProps<NodeData>) {
     const status = data.status || "draft";
     const items = data.saiItems || [];
@@ -185,7 +194,7 @@ const createDoNode = (profilesMap: Record<string, any>) => {
           status === "final"
             ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300"
             : "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-        }`}>{status}</span>
+        }`}>{status === "final" ? "locked" : "ideating"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
         <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 ${
@@ -193,16 +202,21 @@ const createDoNode = (profilesMap: Record<string, any>) => {
             ? "bg-white border-green-500 dark:bg-green-900/20 dark:border-green-400"
             : "bg-white border-blue-500 dark:bg-blue-900/20 dark:border-blue-400"
         }`}>
-          {owner ? (
-            <FancyAvatar 
-              name={owner.avatar_name || owner.full_name} 
-              displayName={owner.full_name}
-              avatarUrl={owner.avatar_url}
-              size="sm" 
-            />
-          ) : (
-            <span className="text-xs font-semibold text-muted-foreground">?</span>
-          )}
+          {(() => {
+            const displayName = owner?.full_name || '';
+            const isUnknown = !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
+            if (isUnknown) {
+              return <span className="text-xs font-semibold text-muted-foreground">?</span>;
+            }
+            return (
+              <FancyAvatar 
+                name={owner.avatar_name || displayName} 
+                displayName={displayName}
+                avatarUrl={owner.avatar_url}
+                size="sm" 
+              />
+            );
+          })()}
         </span>
         <textarea
           ref={textareaRef}
@@ -234,7 +248,7 @@ const createDoNode = (profilesMap: Record<string, any>) => {
           {items.map((it) => (
             <button
               key={it.id}
-              className={`group flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] ${
+              className={`group relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] ${
                 status === "final"
                   ? "bg-white/80 border-green-300 hover:bg-white hover:border-green-500 dark:bg-green-900/10 dark:border-green-700 dark:hover:bg-green-900/20"
                   : "bg-white/80 border-blue-300 hover:bg-white hover:border-blue-500 dark:bg-blue-900/10 dark:border-blue-700 dark:hover:bg-blue-900/20"
@@ -251,11 +265,12 @@ const createDoNode = (profilesMap: Record<string, any>) => {
               }`}>
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
-                  if (prof?.avatar_name || prof?.full_name) {
-                    return <FancyAvatar name={prof.avatar_name || prof.full_name} displayName={prof.full_name} avatarUrl={prof.avatar_url} size="sm" />;
+                  const displayName = prof?.full_name || '';
+                  const isUnknown = !prof || !displayName || displayName.trim().toLowerCase() === 'unknown';
+                  if (!isUnknown && (prof?.avatar_name || prof?.full_name)) {
+                    return <FancyAvatar name={prof.avatar_name || displayName} displayName={displayName} avatarUrl={prof.avatar_url} size="sm" />;
                   }
-                  const letter = (it.ownerName?.charAt(0).toUpperCase() || "?");
-                  return <span className="text-[10px] leading-none font-semibold">{letter}</span>;
+                  return <span className="text-[10px] leading-none font-semibold">?</span>;
                 })()}
               </span>
               <span className={`text-[11px] leading-tight break-words text-left flex-1 ${
@@ -263,6 +278,35 @@ const createDoNode = (profilesMap: Record<string, any>) => {
                   ? "text-green-900 dark:text-green-100"
                   : "text-blue-900 dark:text-blue-100"
               }`}>{it.title || "Untitled SI"}</span>
+              {/* Progress indicator - show bar when > 0; show "0%" text when exactly 0 */}
+              {showProgress && (() => {
+                const isDOLocked = doLockedStatus.get(id)?.locked ?? false;
+                const siProgress = it.dbId ? siProgressMap.get(it.dbId) : null;
+                const percentToGoal = siProgress?.percentToGoal ?? null;
+                const isSILocked = siProgress?.isLocked ?? false;
+
+                // Only show something when DO and SI are locked and the SI has a percent value (including 0)
+                const shouldShow = isDOLocked && isSILocked && percentToGoal !== null && percentToGoal !== undefined;
+                if (!shouldShow) return null;
+
+                // If the percent is 0, render a small "0%" label instead of a bar
+                if (percentToGoal <= 0) {
+                  return <span className="text-[10px] text-muted-foreground">0%</span>;
+                }
+                
+                // Otherwise render the progress bar
+                return (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted overflow-hidden rounded-b-lg">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
+                      style={{
+                        width: `${percentToGoal}%`,
+                        marginLeft: 'auto', // Start from right, fill leftward
+                      }}
+                    />
+                  </div>
+                );
+              })()}
             </button>
           ))}
         </div>
@@ -353,7 +397,7 @@ function RallyNode({ data }: { data: NodeData }) {
             ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300" 
             : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
         }`}>
-          {finalized ? "final" : "ideating"}
+          {finalized ? "locked" : "ideating"}
         </span>
       </div>
       <div className={`mt-3 text-base font-bold leading-snug break-words whitespace-normal relative z-10 ${
@@ -418,6 +462,9 @@ function findNonOverlappingPosition(existing: Node<NodeData>[], type: NodeKind, 
 export default function StrategyCanvasPage() {
   // Realtime doc and provider (optional if server not running)
   const ydocRef = useRef<Y.Doc>();
+  
+  // Guard to avoid repeated hydration requests
+  const hydrationGuardRef = useRef<{ inFlight: boolean; cycle: string | null; sig: string | null }>({ inFlight: false, cycle: null, sig: null });
   const providerRef = useRef<WebsocketProvider | null>(null);
   const updatingFromRemoteNodes = useRef(false);
   const updatingFromRemoteEdges = useRef(false);
@@ -447,14 +494,20 @@ export default function StrategyCanvasPage() {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
   const profilesMap = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])), [profiles]);
+  const progressFeatureOn = isFeatureEnabled('siProgress');
+  const [showProgress, setShowProgress] = useState(progressFeatureOn);
+  const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
   
-  // Create node types with access to profilesMap
+  // Map to store SI progress data (dbId -> { percentToGoal, isLocked })
+  const [siProgressMap, setSiProgressMap] = useState<Map<string, { percentToGoal: number | null; isLocked: boolean }>>(new Map());
+  
+  // Create node types with access to profilesMap, showProgress, SI progress data, and DO locked status
   const nodeTypes = useMemo(() => ({
     strategy: StrategyNode,
-    do: createDoNode(profilesMap),
+    do: createDoNode(profilesMap, showProgress, siProgressMap, doLockedStatus),
     sai: SaiNode,
     rally: RallyNode,
-  }), [profilesMap]);
+  }), [profilesMap, showProgress, siProgressMap, doLockedStatus]);
   
   // Import state
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -467,6 +520,9 @@ export default function StrategyCanvasPage() {
   const [pastedMarkdown, setPastedMarkdown] = useState('');
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // One-click import + lock ("DO")
+  const oneClickFileInputRef = useRef<HTMLInputElement>(null);
+  const [oneClickMode, setOneClickMode] = useState(false);
 
   // Header state (logo/tabs/avatar)
   const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
@@ -564,29 +620,336 @@ export default function StrategyCanvasPage() {
     };
   }, [collabUrl, roomName, cycleId]);
 
-  // Load initial canvas from Supabase (if present)
+  // Load initial canvas from Supabase (if present). If missing, fall back to building from DB RCDO tables.
   useEffect(() => {
     if (!cycleId) return;
     
     (async () => {
+      // 1) Try loading a saved canvas snapshot for this cycle/room
       const { data, error } = await supabase
         .from('rc_canvas_states')
         .select('nodes, edges')
         .eq('room', roomName)
         .maybeSingle();
-      if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
+
+      // Heuristic: detect the built-in template so we can ignore it and rebuild from DB
+      let snapshotLooksLikeTemplate = false;
+      if (!error && data && Array.isArray(data.nodes)) {
+        try {
+          const nodeList = (data.nodes as any[]);
+          const rally = nodeList.find((n: any) => n?.type === 'rally');
+          const doTitles = nodeList.filter((n: any) => n?.type === 'do').map((n: any) => String(n?.data?.title || ''));
+          const hasDraftRally = !!(rally && Array.isArray(rally.data?.rallyCandidates) && rally.data?.rallyCandidates?.[0] === 'Draft your rallying cry');
+          const hasDefaultDOs = doTitles.length === 4 && doTitles.every((t: string, i: number) => t === `DO ${i+1}`);
+          snapshotLooksLikeTemplate = hasDraftRally && hasDefaultDOs;
+        } catch { /* ignore */ }
+      }
+
+      if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as any[]).length > 0 && !snapshotLooksLikeTemplate) {
+        console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as any[]).length, edgeCount: (data.edges as any[]).length });
         setNodes(data.nodes as any);
         setEdges(data.edges as any);
+        return;
+      } else if (snapshotLooksLikeTemplate) {
+        console.log('[Canvas] Ignoring template snapshot; rebuilding from DB…');
+      }
+
+      // 2) Fallback: build canvas from the canonical RCDO tables so users still see their data
+      try {
+        const { data: rc, error: rcErr } = await supabase
+          .from('rc_rallying_cries')
+          .select('id, title')
+          .eq('cycle_id', cycleId)
+          .maybeSingle();
+
+        if (rcErr) console.warn('[Canvas] RC query error:', rcErr);
+        if (!rc) { console.log('[Canvas] No rallying cry found for cycle', cycleId); return; }
+
+        const { data: dos, error: dosErr } = await supabase
+          .from('rc_defining_objectives')
+          .select('id, title, hypothesis, owner_user_id, status, locked_at, display_order')
+          .eq('rallying_cry_id', rc.id)
+          .order('display_order', { ascending: true });
+        if (dosErr) console.warn('[Canvas] DO query error:', dosErr);
+
+        const doDbIds = (dos || []).map(d => d.id);
+        console.log('[Canvas] Fallback found', { doCount: (dos || []).length });
+
+        // If there are no DOs, nothing to render beyond the RC
+        const { data: sis, error: siErr } = await supabase
+          .from('rc_strategic_initiatives')
+          .select('id, title, owner_user_id, description, defining_objective_id, status, locked_at')
+          .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
+        if (siErr) console.warn('[Canvas] SI query error:', siErr);
+        console.log('[Canvas] Fallback SI count', (sis || []).length);
+
+        // Compute a simple layout identical to the import-based formatter
+        const baseX = 400;
+        const baseY = 80;
+        const startY = baseY + 180;
+        const gapX = 320;
+        const count = (dos?.length) || 0;
+        const totalWidth = (count - 1) * gapX;
+        const startX = baseX - totalWidth / 2;
+
+        const builtNodes: any[] = [
+          {
+            id: ROOT_ID,
+            type: 'rally',
+            position: { x: baseX, y: baseY },
+            data: {
+              title: '',
+              rallyCandidates: [rc.title],
+              rallySelectedIndex: 0,
+              rallyFinalized: true,
+              size: { w: 280, h: 100 },
+            },
+          },
+        ];
+        const builtEdges: any[] = [];
+
+        (dos || []).forEach((d: any, index: number) => {
+          const doId = `do-${index + 1}`;
+          const posX = startX + index * gapX;
+          const relatedSIs = (sis || []).filter((s: any) => s.defining_objective_id === d.id);
+          const saiItems = relatedSIs.map((si: any) => ({
+            id: `si-${doId}-${String(si.id).slice(0, 6)}`,
+            title: si.title,
+            ownerId: si.owner_user_id || undefined,
+            description: si.description || '',
+            dbId: si.id,
+          }));
+
+          builtNodes.push({
+            id: doId,
+            type: 'do',
+            position: { x: posX, y: startY },
+            data: {
+              title: d.title,
+              status: d.status === 'final' ? 'final' : 'draft',
+              ownerId: d.owner_user_id || undefined,
+              hypothesis: d.hypothesis || '',
+              primarySuccessMetric: '',
+              saiItems,
+              size: { w: 260, h: 110 },
+              dbId: d.id,
+            },
+          });
+
+          builtEdges.push({
+            id: `e-rc-${doId}`,
+            source: ROOT_ID,
+            target: doId,
+            type: 'smoothstep',
+            markerEnd: { type: MarkerType.ArrowClosed },
+          });
+        });
+
+        if (((dos || []).length) > 0) {
+          setNodes(builtNodes);
+          setEdges(builtEdges);
+
+          // Populate DO locked status map keyed by canvas DO node id (e.g. 'do-1')
+          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = (dos || []).map((d: any, index: number) => {
+            const uiId = `do-${index + 1}`;
+            const locked = !!d.locked_at;
+            return [uiId, { locked, dbId: d.id }];
+          });
+          setDoLockedStatus(new Map(doStatusEntries));
+
+          // Populate SI progress map with latest percent_to_goal and SI locked state
+          const siIds = (sis || []).map((s: any) => s.id);
+          if (siIds.length > 0) {
+            const { data: checkins, error: checkinsErr } = await supabase
+              .from('rc_checkins')
+              .select('parent_id, percent_to_goal, date, created_at')
+              .eq('parent_type', 'initiative')
+              .in('parent_id', siIds)
+              .order('date', { ascending: false })
+              .order('created_at', { ascending: false });
+            if (checkinsErr) {
+              console.warn('[Canvas] Checkins query error:', checkinsErr);
+            }
+            const latestBySi = new Map<string, { percent_to_goal: number | null }>();
+            for (const c of (checkins || [])) {
+              if (!latestBySi.has(c.parent_id)) {
+                latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null });
+              }
+            }
+            const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean }]> = (sis || []).map((si: any) => {
+              const latest = latestBySi.get(si.id);
+              const pct = latest?.percent_to_goal ?? null;
+              const isLocked = !!si.locked_at;
+              return [si.id, { percentToGoal: pct, isLocked }];
+            });
+            setSiProgressMap(new Map(progressEntries));
+          }
+        }
+      } catch (_e) {
+        // ignore; leave template visible
       }
     })();
   }, [cycleId, roomName]);
 
-  // Load platform profiles (logged in or invited)
+  // Hydrate progress/locks without mutating the canvas; skip if template snapshot
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, avatar_name, avatar_url, first_name, email').then(({ data, error }) => {
-      if (!error && data) setProfiles(data as any);
-    });
+    (async () => {
+      try {
+        if (!cycleId) return;
+        if (!nodes || nodes.length === 0) return;
+
+        // Stable signature of canvas DO/SI titles to prevent request storms
+        const sig = JSON.stringify(
+          nodes
+            .filter((n) => n.type === 'do')
+            .map((n) => ({
+              t: String((n.data as any)?.title || ''),
+              s: (((n.data as any)?.saiItems) || []).map((x: any) => String(x?.title || '')),
+            }))
+        );
+        if (hydrationGuardRef.current.inFlight) return;
+        if (hydrationGuardRef.current.cycle === cycleId && hydrationGuardRef.current.sig === sig) return;
+        hydrationGuardRef.current.inFlight = true;
+        hydrationGuardRef.current.cycle = cycleId || null;
+        hydrationGuardRef.current.sig = sig;
+
+        // Skip if the snapshot looks like the empty template
+        const rallyNode = nodes.find((n) => n.type === 'rally');
+        const doTitles = nodes.filter((n) => n.type === 'do').map((n) => String((n.data as any)?.title || ''));
+        const looksLikeTemplate = !!rallyNode && Array.isArray((rallyNode.data as any)?.rallyCandidates)
+          && ((rallyNode.data as any).rallyCandidates[0] === 'Draft your rallying cry')
+          && doTitles.length === 4 && doTitles.every((t, i) => t === `DO ${i+1}`);
+        if (looksLikeTemplate) return;
+
+        const doNodes = nodes.filter((n) => n.type === 'do');
+        const { data: rc } = await supabase
+          .from('rc_rallying_cries')
+          .select('id')
+          .eq('cycle_id', cycleId)
+          .maybeSingle();
+        if (!rc?.id) return;
+
+        // Map DO titles -> db rows (no node changes)
+        const doTitleList = doNodes.map((n) => String((n.data as any).title || '')).filter(Boolean);
+        if (doTitleList.length === 0) return;
+        const { data: doRows } = await supabase
+          .from('rc_defining_objectives')
+          .select('id, title, locked_at')
+          .eq('rallying_cry_id', rc.id)
+          .in('title', doTitleList);
+
+        const doByTitle = new Map<string, { id: string; locked: boolean }>();
+        for (const row of (doRows || [])) doByTitle.set(row.title, { id: row.id, locked: !!row.locked_at });
+
+        // Update lock map
+        const doLockEntries: Array<[string, { locked: boolean; dbId?: string }]> = [];
+        for (const n of doNodes) {
+          const t = String((n.data as any).title || '');
+          const match = doByTitle.get(t);
+          if (match) doLockEntries.push([n.id, { locked: match.locked, dbId: match.id }]);
+        }
+        if (doLockEntries.length) setDoLockedStatus(new Map(doLockEntries));
+
+        // SI progress: build (siId by (doId,title)) without mutating nodes
+        const doIdByNodeId = new Map<string, string>();
+        for (const [nodeId, status] of doLockEntries) { if (status.dbId) doIdByNodeId.set(nodeId, status.dbId); }
+
+        const siTitleRequests: Array<{ doDbId: string; title: string }>= [];
+        for (const n of doNodes) {
+          const doDbId = doIdByNodeId.get(n.id);
+          const items = (((n.data as any).saiItems) || []) as any[];
+          if (!doDbId || !items.length) continue;
+          for (const s of items) {
+            const t = String(s.title || '');
+            if (t) siTitleRequests.push({ doDbId, title: t });
+          }
+        }
+        if (!siTitleRequests.length) return;
+
+        const uniqueDoIds = Array.from(new Set(siTitleRequests.map(x => x.doDbId)));
+        const uniqueTitles = Array.from(new Set(siTitleRequests.map(x => x.title)));
+        const { data: siRows } = await supabase
+          .from('rc_strategic_initiatives')
+          .select('id, title, defining_objective_id, locked_at')
+          .in('defining_objective_id', uniqueDoIds)
+          .in('title', uniqueTitles);
+        const siByKey = new Map<string, { id: string; locked: boolean }>();
+        const key = (doId: string, t: string) => `${doId}:::${t}`;
+        for (const r of (siRows || [])) siByKey.set(key(r.defining_objective_id, r.title), { id: r.id, locked: !!r.locked_at });
+
+        const siIds = Array.from(siByKey.values()).map((v) => v.id);
+        if (!siIds.length) return;
+
+        const { data: checkins } = await supabase
+          .from('rc_checkins')
+          .select('parent_id, percent_to_goal, date, created_at')
+          .eq('parent_type', 'initiative')
+          .in('parent_id', siIds)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false });
+        const latestBySi = new Map<string, { percent_to_goal: number | null }>();
+        for (const c of (checkins || [])) if (!latestBySi.has(c.parent_id)) latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null });
+
+        const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean }]> = [];
+        for (const v of siByKey.values()) {
+          const pct = latestBySi.get(v.id)?.percent_to_goal ?? null;
+          progressEntries.push([v.id, { percentToGoal: pct, isLocked: v.locked }]);
+        }
+        if (progressEntries.length) setSiProgressMap(new Map(progressEntries));
+      } catch (_e) {
+        // no-op
+      } finally {
+        hydrationGuardRef.current.inFlight = false;
+      }
+    })();
+  }, [nodes, cycleId]);
+
+  // Load a baseline set of profiles (subject to RLS)
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('id, full_name, avatar_name, avatar_url, first_name, email')
+      .then(({ data, error }) => {
+        if (!error && data) setProfiles(data as any);
+      });
   }, []);
+
+  // Ensure we also fetch any missing owners referenced by DO/SI items.
+  // This helps when broad profile reads are restricted by RLS policies: we fetch just the needed IDs.
+  useEffect(() => {
+    if (!nodes || nodes.length === 0) return;
+
+    // Collect all profile IDs referenced by the canvas (DO owners and SI owners/participants)
+    const needed = new Set<string>();
+    for (const n of nodes) {
+      const d: any = n.data || {};
+      if (d.ownerId) needed.add(String(d.ownerId));
+      const items: any[] = Array.isArray(d.saiItems) ? d.saiItems : [];
+      for (const s of items) {
+        if (s?.ownerId) needed.add(String(s.ownerId));
+        if (Array.isArray(s?.participantIds)) for (const pid of s.participantIds) needed.add(String(pid));
+      }
+    }
+
+    if (needed.size === 0) return;
+
+    const have = new Set(profiles.map((p) => p.id));
+    const missing = Array.from(needed).filter((id) => !have.has(id));
+    if (missing.length === 0) return;
+
+    supabase
+      .from('profiles')
+      .select('id, full_name, avatar_name, avatar_url, first_name, email')
+      .in('id', missing)
+      .then(({ data, error }) => {
+        if (error || !data || data.length === 0) return;
+        setProfiles((prev) => {
+          const map = new Map(prev.map((p) => [p.id, p] as const));
+          for (const row of data as any[]) map.set(row.id, row);
+          return Array.from(map.values()) as any;
+        });
+      });
+  }, [nodes, profiles]);
 
   // Listen to SI open events from DoNode buttons
   useEffect(() => {
@@ -756,6 +1119,51 @@ const duplicateSelectedDo = useCallback(() => {
     setSelectedNode(null);
   }, [nodes, edges, selectedNode]);
 
+  // Bulk actions
+  const lockEverything = useCallback(() => {
+    // 1) Lock all DOs locally and finalize the Rallying Cry
+    setNodes((curr) => curr.map((n) => {
+      if (n.type === 'do') {
+        return { ...n, data: { ...(n.data as any), status: 'final' } } as Node<NodeData>;
+      }
+      if (n.type === 'rally') {
+        const d: any = n.data || {};
+        const top = Array.isArray(d.rallyCandidates) && d.rallyCandidates.length > 0 ? d.rallyCandidates[0] : (d.title || '');
+        return { ...n, data: { ...d, rallyCandidates: top ? [top] : d.rallyCandidates, rallyFinalized: true } } as Node<NodeData>;
+      }
+      return n;
+    }));
+
+    // 2) Optimistically mark DOs as locked in local lock map (UI-only)
+    setDoLockedStatus((prev) => {
+      const updated = new Map(prev);
+      for (const n of nodes) {
+        if (n.type === 'do') {
+          const existing = updated.get(n.id);
+          const dbId = (existing?.dbId || (n as any)?.data?.dbId);
+          updated.set(n.id, { locked: true, dbId });
+        }
+      }
+      return updated;
+    });
+
+    // 3) Optimistically mark all known SIs as locked in local progress map (UI-only)
+    setSiProgressMap((prev) => {
+      const updated = new Map(prev);
+      for (const [k, v] of updated) {
+        updated.set(k, { ...v, isLocked: true });
+      }
+      return updated;
+    });
+  }, [nodes, setNodes, setDoLockedStatus, setSiProgressMap]);
+
+  const openImportFromFile = useCallback(() => {
+    setShowImportDialog(true);
+    setImportProgress([]);
+    setImportStatus(null);
+    setPastedMarkdown('');
+  }, []);
+
   // Check if canvas has content
   const hasCanvasContent = useCallback(() => {
     // Check if there are DOs beyond the initial template state
@@ -774,7 +1182,7 @@ const duplicateSelectedDo = useCallback(() => {
   }, [nodes]);
 
   // Import from markdown text (shared logic)
-  const processMarkdownImport = useCallback(async (markdownText: string, skipWarning = false) => {
+  const processMarkdownImport = useCallback(async (markdownText: string, skipWarning = false, opts?: { lockAll?: boolean }) => {
     // Check if canvas has content and show warning if needed
     if (!skipWarning && hasCanvasContent()) {
       setPendingImportData(markdownText);
@@ -889,10 +1297,51 @@ const duplicateSelectedDo = useCallback(() => {
         )
       );
 
-      setImportStatus({ 
-        type: 'success', 
-        message: `Successfully imported: ${parsedData.definingObjectives.length} DOs with ${parsedData.definingObjectives.reduce((sum, d) => sum + d.strategicInitiatives.length, 0)} Strategic Initiatives` 
-      });
+      // Optional post-action: lock all DOs and SIs
+      if (opts?.lockAll) {
+        try {
+          const doIds = importResult.doIds || [];
+          const siIds = importResult.siIds || [];
+          const nowIso = new Date().toISOString();
+
+          // Lock DOs
+          if (doIds.length > 0) {
+            setImportProgress(prev => [...prev, { label: 'Locking Defining Objectives', status: 'loading' }]);
+            const { error: doLockErr } = await supabase
+              .from('rc_defining_objectives')
+              .update({ status: 'final', locked_at: nowIso })
+              .in('id', doIds);
+            setImportProgress(prev => prev.map(item => item.label === 'Locking Defining Objectives' ? { ...item, status: doLockErr ? 'error' : 'success' } : item));
+          }
+
+          // Lock SIs
+          if (siIds.length > 0) {
+            setImportProgress(prev => [...prev, { label: 'Locking Strategic Initiatives', status: 'loading' }]);
+            const { error: siLockErr } = await supabase
+              .from('rc_strategic_initiatives')
+              .update({ locked_at: nowIso })
+              .in('id', siIds);
+            setImportProgress(prev => prev.map(item => item.label === 'Locking Strategic Initiatives' ? { ...item, status: siLockErr ? 'error' : 'success' } : item));
+          }
+
+          // Update local lock map so progress bars can show when applicable
+          if ((importResult.doIds || []).length > 0) {
+            const lockEntries: Array<[string, { locked: boolean; dbId?: string }]> = (importResult.doIds || []).map((id, idx) => [`do-${idx + 1}`, { locked: true, dbId: id }]);
+            setDoLockedStatus(new Map(lockEntries));
+          }
+          setImportStatus({ 
+            type: 'success', 
+            message: `Imported and locked ${parsedData.definingObjectives.length} DOs and ${(importResult.siIds || []).length} SIs.` 
+          });
+        } catch (_e) {
+          // Non-fatal
+        }
+      } else {
+        setImportStatus({ 
+          type: 'success', 
+          message: `Successfully imported: ${parsedData.definingObjectives.length} DOs with ${parsedData.definingObjectives.reduce((sum, d) => sum + d.strategicInitiatives.length, 0)} Strategic Initiatives` 
+        });
+      }
 
       toast({
         title: "Import Successful",
@@ -939,6 +1388,28 @@ const duplicateSelectedDo = useCallback(() => {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  }, [processMarkdownImport]);
+
+  // One-click Import + Lock handler
+  const handleOneClickFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) { setOneClickMode(false); return; }
+    try {
+      // Ensure import dialog is visible to show progress
+      setShowImportDialog(true);
+      setImportMode('file');
+      setImportProgress([]);
+      setImportStatus({ type: 'info', message: 'Reading file...' });
+      setIsImporting(true);
+      const text = await file.text();
+      await processMarkdownImport(text, true, { lockAll: true });
+    } catch (_e) {
+      // status already set inside processor
+    } finally {
+      if (oneClickFileInputRef.current) oneClickFileInputRef.current.value = '';
+      setIsImporting(false);
+      setOneClickMode(false);
     }
   }, [processMarkdownImport]);
 
@@ -1044,30 +1515,34 @@ const duplicateSelectedDo = useCallback(() => {
 
       {/* Canvas toolbar */}
       <div className="flex items-center gap-2 p-2 border-b bg-background">
-        <Button 
-          size="sm" 
-          variant="outline"
-          onClick={() => navigate('/dashboard/rcdo')}
-          className="flex items-center gap-1"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Strategies
-        </Button>
-        <div className="h-5 w-px bg-muted" />
-        <Button size="sm" onClick={addDo} className="flex items-center gap-1"><Plus className="h-4 w-4" /> Add DO</Button>
-        <Button 
-          size="sm" 
-          variant="outline"
-          onClick={() => {
-            setShowImportDialog(true);
-            setImportProgress([]);
-            setImportStatus(null);
-            setPastedMarkdown('');
-          }} 
-          className="flex items-center gap-1"
-        >
-          <Upload className="h-4 w-4" /> Import from File
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="flex items-center gap-1">
+              Actions <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={addDo}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add DO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openImportFromFile}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import from File
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={lockEverything}>
+              <Lock className="h-4 w-4 mr-2" />
+              Lock everything
+            </DropdownMenuItem>
+        {progressFeatureOn && (
+              <DropdownMenuItem onClick={() => setShowProgress(true)}>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Turn Progress on
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="ml-auto text-xs text-muted-foreground pr-2">Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.</div>
       </div>
 
@@ -1113,6 +1588,11 @@ onNodeDragStop={(_e, node) => {
           <Background />
         </ReactFlow>
       </div>
+
+      {/* Global lock overlay during one-click import */}
+      {(oneClickMode || (showImportDialog && isImporting)) && (
+        <div className="fixed inset-0 z-40 bg-black/20 pointer-events-auto" />
+      )}
 
       {/* Right-side Rally panel */}
       {selectedNode?.type === "rally" && (
@@ -1379,8 +1859,8 @@ onNodeDragStop={(_e, node) => {
                         setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, status: value } });
                       }}
                     >
-                      <option value="draft">draft</option>
-                      <option value="final">final</option>
+                      <option value="draft">ideating</option>
+                      <option value="final">locked</option>
                     </select>
                   </div>
                   
@@ -1593,51 +2073,86 @@ onNodeDragStop={(_e, node) => {
                   <label className="block text-sm font-medium">Owner</label>
                   <Select
                       value={selectedNode.data.ownerId || ""}
-                      onValueChange={(val) => {
+                      onValueChange={async (val) => {
                         if (!selectedNode) return;
+                        // Update local canvas state immediately for responsiveness
                         const next = nodes.map((n) => 
                           n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
                         );
                         setNodes(next);
                         setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
+
+                        // Persist to DB if this DO is linked to a DB row
+                        try {
+                          const doStatus = doLockedStatus.get(selectedNode.id);
+                          const doDbId = doStatus?.dbId;
+                          if (doDbId && val) {
+                            const { error } = await supabase
+                              .from('rc_defining_objectives')
+                              .update({ owner_user_id: val })
+                              .eq('id', doDbId);
+                            if (error) {
+                              console.warn('[Canvas] Failed to persist DO owner change', error);
+                            } else {
+                              // Optional toast could be added here
+                            }
+                          }
+                        } catch (e) {
+                          console.warn('[Canvas] Error updating DO owner in DB', e);
+                        }
                       }}
                     >
                       <SelectTrigger className="flex-1 h-9">
                         <SelectValue placeholder="Select owner">
                           {selectedNode.data.ownerId && (() => {
                             const owner = profilesMap[selectedNode.data.ownerId];
-                            return owner ? (
+                            if (!owner) return null;
+                            const displayName = owner.full_name || '';
+                            const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
+                            return (
                               <div className="flex items-center gap-2">
                                 <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                  <FancyAvatar 
-                                    name={owner.avatar_name || owner.full_name} 
-                                    displayName={owner.full_name}
-                                    avatarUrl={owner.avatar_url}
-                                    size="sm" 
-                                  />
+                                  {isUnknown ? (
+                                    <span className="font-semibold">?</span>
+                                  ) : (
+                                    <FancyAvatar 
+                                      name={owner.avatar_name || displayName} 
+                                      displayName={displayName}
+                                      avatarUrl={owner.avatar_url}
+                                      size="sm" 
+                                    />
+                                  )}
                                 </span>
-                                <span className="text-sm">{owner.full_name}</span>
+                                <span className="text-sm">{isUnknown ? 'Unknown' : displayName}</span>
                               </div>
-                            ) : null;
+                            );
                           })()}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {profiles.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                <FancyAvatar 
-                                  name={p.avatar_name || p.full_name} 
-                                  displayName={p.full_name}
-                                  avatarUrl={p.avatar_url}
-                                  size="sm" 
-                                />
-                              </span>
-                              <span>{p.full_name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {profiles.map((p) => {
+                          const displayName = p.full_name || '';
+                          const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
+                          return (
+                            <SelectItem key={p.id} value={p.id}>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                                  {isUnknown ? (
+                                    <span className="font-semibold">?</span>
+                                  ) : (
+                                    <FancyAvatar 
+                                      name={p.avatar_name || displayName} 
+                                      displayName={displayName}
+                                      avatarUrl={p.avatar_url}
+                                      size="sm" 
+                                    />
+                                  )}
+                                </span>
+                                <span>{isUnknown ? 'Unknown' : displayName}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                 </div>
@@ -1645,10 +2160,10 @@ onNodeDragStop={(_e, node) => {
                 {/* 5. Other Participants - Not applicable for DO, skipping */}
 
                 <div className="pt-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">Strategic Initiatives</div>
-                    <Button size="sm" variant="outline" onClick={addSaiToSelectedDo}>Add Strategic Initiative (SI)</Button>
-                  </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium">Strategic Initiatives</div>
+                      <Button size="sm" variant="link" className="px-0 h-auto hover:no-underline" onClick={addSaiToSelectedDo}>+ Add</Button>
+                    </div>
                   <div className="space-y-2 max-h-48 overflow-auto pr-1">
                     {(selectedNode?.data.saiItems || []).map((it) => (
                       <button
@@ -1657,11 +2172,27 @@ onNodeDragStop={(_e, node) => {
                         onClick={() => setFocusedSI({ doId: selectedNode!.id, siId: it.id })}
                       >
                         <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                          {it.ownerAvatarUrl ? (
-                            <img src={it.ownerAvatarUrl} className="h-full w-full object-cover" />
-                          ) : (
-                            (it.ownerName?.charAt(0).toUpperCase() || "?")
-                          )}
+                          {(() => {
+                            // Prefer explicit avatar URL; otherwise resolve via ownerId -> profilesMap; fallback to initial from ownerName or '?'
+                            if (it.ownerAvatarUrl) {
+                              return <img src={it.ownerAvatarUrl} className="h-full w-full object-cover" />;
+                            }
+                            const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
+                            const displayName = prof?.full_name || '';
+                            const isUnknown = !prof || !displayName || displayName.trim().toLowerCase() === 'unknown';
+                            if (!isUnknown) {
+                              return (
+                                <FancyAvatar
+                                  name={prof.avatar_name || displayName}
+                                  displayName={displayName}
+                                  avatarUrl={prof.avatar_url}
+                                  size="sm"
+                                />
+                              );
+                            }
+                            const ch = (it.ownerName?.charAt(0).toUpperCase() || '?');
+                            return <span className="font-semibold">{ch}</span>;
+                          })()}
                         </span>
                         <span className="flex-1 truncate text-left">{it.title || "Untitled SI"}</span>
                       </button>
@@ -1733,178 +2264,44 @@ onNodeDragStop={(_e, node) => {
       )}
 
       {/* Secondary drawer for SI details - position left of DO panel when both are open */}
-      {focusedSI && (
+      {focusedSI && (() => {
+        const doNode = nodes.find(n => n.id === focusedSI.doId);
+        const si = doNode?.data.saiItems?.find(x => x.id === focusedSI.siId);
+        if (!doNode || !si) return null;
+        
+        return (
         <>
           {/* Only show an overlay if the DO panel is NOT open */}
           {selectedNode?.type !== "do" && (
             <div className="fixed inset-0 z-[55] bg-black/30" onClick={() => setFocusedSI(null)} />
           )}
-          <div
-            className={
-              // If DO panel is open (right: 380px), place SI panel immediately to its left; otherwise dock to the right edge
-              `fixed top-0 h-full w-[420px] bg-background border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
-              (selectedNode?.type === "do" ? "right-[380px]" : "right-0")
-            }
-          >
-            {(() => {
-              const doNode = nodes.find(n => n.id === focusedSI.doId);
-              const si = doNode?.data.saiItems?.find(x => x.id === focusedSI.siId);
-              if (!doNode || !si) return <div className="text-sm">Not found</div>;
-              const update = (patch: Partial<typeof si>) => {
-                const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).map(x => x.id===si.id ? { ...x, ...patch } : x) } } : n);
-                setNodes(next);
-              };
-              const duplicateSI = () => {
-                const newId = `si-${Math.random().toString(36).slice(2,7)}`;
-                const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: [...(n.data.saiItems||[]), { ...si, id: newId, title: `${si.title || "Untitled SI"} (copy)` }] } } : n);
-                setNodes(next);
-                setFocusedSI({ doId: doNode.id, siId: newId });
-              };
-              const deleteSI = () => {
-                const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).filter(x => x.id !== si.id) } } : n);
-                setNodes(next);
-                setFocusedSI(null);
-              };
-              return (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold">{si.title || "Untitled Initiative"}</h3>
-                    <div className="flex items-center gap-1">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={duplicateSI}>Duplicate</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={deleteSI}>Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="Close" onClick={() => setFocusedSI(null)}>
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {/* 1. Name */}
-                    <div>
-                      <label className="text-sm font-medium">SI Name</label>
-                      <div className="flex items-center gap-2 mt-1 mb-2">
-                        <label className="text-xs text-muted-foreground">Status</label>
-                        <select
-                          className="rounded border bg-background px-2 py-1 text-xs"
-                          value="draft"
-                          disabled
-                        >
-                          <option value="draft">draft</option>
-                        </select>
-                      </div>
-                      <input className="w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>update({ title: e.target.value })} />
-                    </div>
-                    
-                    {/* 2. Description */}
-                    <div>
-                      <label className="text-sm font-medium">Description</label>
-                      <div className="mt-1">
-                        <RichTextEditor
-                          content={si.description || ""}
-                          onChange={(content) => update({ description: content })}
-                          placeholder="What is this initiative?"
-                          minHeight="96px"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* 3. Primary Success Metric */}
-                    <div>
-                      <label className="text-sm font-medium">Primary Success Metric</label>
-                      <textarea 
-                        className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none" 
-                        rows={3}
-                        placeholder="e.g., % conversion, NPS, etc." 
-                        value={si.metric || ""} 
-                        onChange={(e)=>update({ metric: e.target.value })}
-                        style={{ 
-                          wordBreak: 'break-word',
-                          overflowWrap: 'break-word',
-                          whiteSpace: 'pre-wrap'
-                        }}
-                      />
-                    </div>
-                    
-                    {/* 4. Owner */}
-                    <div>
-                      <label className="text-sm font-medium">Owner</label>
-                      <div className="mt-1">
-                        <Select
-                          value={si.ownerId || ""}
-                          onValueChange={(val) => update({ ownerId: val || undefined })}
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select owner">
-                              {si.ownerId && (() => {
-                                const owner = profilesMap[si.ownerId];
-                                return owner ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                      <FancyAvatar 
-                                        name={owner.avatar_name || owner.full_name} 
-                                        displayName={owner.full_name}
-                                        avatarUrl={owner.avatar_url}
-                                        size="sm" 
-                                      />
-                                    </span>
-                                    <span className="text-sm">{owner.full_name}</span>
-                                  </div>
-                                ) : null;
-                              })()}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent className="z-[60]">
-                            {profiles.length === 0 ? (
-                              <div className="py-2 px-2 text-sm text-muted-foreground text-center">
-                                No profiles available
-                              </div>
-                            ) : (
-                              profiles.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  <span className="inline-flex items-center gap-2">
-                                    <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                      <FancyAvatar name={p.avatar_name || p.full_name} displayName={p.full_name} avatarUrl={p.avatar_url} size="sm" />
-                                    </span>
-                                    <span>{p.full_name || 'Unknown'}</span>
-                                  </span>
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    
-                    {/* 5. Other Participants */}
-                    <div>
-                      <label className="text-sm font-medium">Other Participants</label>
-                      <div className="mt-1">
-                        <MultiSelectParticipants
-                          profiles={profiles}
-                          selectedIds={si.participantIds || []}
-                          onSelectionChange={(ids) => update({ participantIds: ids })}
-                          placeholder="Select participants to help accomplish this goal..."
-                          excludeIds={si.ownerId ? [si.ownerId] : []}
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* 6. Status - Note: SI doesn't have status in the current data model, but adding placeholder for future */}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+          <SIPanelContent
+            doNode={doNode}
+            si={si}
+            profiles={profiles}
+            profilesMap={profilesMap}
+            doLockedStatus={doLockedStatus}
+            onUpdate={(patch) => {
+              const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).map(x => x.id===si.id ? { ...x, ...patch } : x) } } : n);
+              setNodes(next);
+            }}
+            onDuplicate={() => {
+              const newId = `si-${Math.random().toString(36).slice(2,7)}`;
+              const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: [...(n.data.saiItems||[]), { ...si, id: newId, title: `${si.title || "Untitled SI"} (copy)` }] } } : n);
+              setNodes(next);
+              setFocusedSI({ doId: doNode.id, siId: newId });
+            }}
+            onDelete={() => {
+              const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).filter(x => x.id !== si.id) } } : n);
+              setNodes(next);
+              setFocusedSI(null);
+            }}
+            onClose={() => setFocusedSI(null)}
+            isDoPanelOpen={selectedNode?.type === "do"}
+          />
         </>
-      )}
+        );
+      })()}
 
       {/* Bottom drawer for SI only (legacy) */}
       {selectedNode && selectedNode.type === "sai" && (
@@ -2184,6 +2581,16 @@ onNodeDragStop={(_e, node) => {
                         </Button>
                       </label>
                     </div>
+
+                    {/* Hidden input for one-click DO import */}
+                    <input
+                      ref={oneClickFileInputRef}
+                      type="file"
+                      accept=".md,.markdown,.txt"
+                      onChange={handleOneClickFile}
+                      className="hidden"
+                      id="one-click-import-file-input"
+                    />
                   </div>
                 )
               )}

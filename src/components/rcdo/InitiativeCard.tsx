@@ -81,13 +81,23 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
         <div className="flex items-center gap-2 text-sm">
           <User className="h-4 w-4 text-gray-500" />
           <div className="flex items-center gap-2">
-            <FancyAvatar
-              name={initiative.owner?.avatar_name || ownerName}
-              displayName={ownerName}
-              avatarUrl={initiative.owner?.avatar_url}
-              size="sm"
-            />
-            <span className="text-gray-700 dark:text-gray-300">{ownerName}</span>
+            {(() => {
+              const hasOwnerInfo = !!(initiative.owner?.full_name || initiative.owner?.first_name || initiative.owner?.last_name || initiative.owner?.avatar_url);
+              if (!hasOwnerInfo || (ownerName || '').trim().toLowerCase() === 'unknown') {
+                return (
+                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] font-semibold">?</span>
+                );
+              }
+              return (
+                <FancyAvatar
+                  name={initiative.owner?.avatar_name || ownerName}
+                  displayName={ownerName}
+                  avatarUrl={initiative.owner?.avatar_url}
+                  size="sm"
+                />
+              );
+            })()}
+            <span className="text-gray-700 dark:text-gray-300">{(ownerName || '').trim().toLowerCase() === 'unknown' ? 'Unknown' : ownerName}</span>
           </div>
         </div>
 

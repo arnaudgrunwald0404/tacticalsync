@@ -16,6 +16,8 @@ import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
 import { CheckInWidget } from "@/components/rcdo/CheckInWidget";
+import { QuickCheckInWidget } from "@/components/rcdo/QuickCheckInWidget";
+import { QuickDOCheckInWidget } from "@/components/rcdo/QuickDOCheckInWidget";
 
 const DashboardMain = () => {
   const navigate = useNavigate();
@@ -612,7 +614,7 @@ const DashboardMain = () => {
             const hasNoMeetings = teamMeetings.length === 0;
 
             return (
-              <div key={teamMember.id} className="space-y-4">
+              <div key={teamMember.teams.id} className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                   <div className="flex flex-col gap-2 flex-1">
                     <div className="flex items-center gap-2">
@@ -620,7 +622,27 @@ const DashboardMain = () => {
                         {teamMember.teams.name}
                       </h3>
                     </div>
-                    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+                    <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+                      {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
+                        <div>
+                          <AnimatedTooltip 
+                            items={teamMember.teamMembers.map((member: any, index: number) => ({
+                              id: index,
+                              name: member.profile?.display_name || member.profile?.full_name || "Unknown",
+                              designation: member.role === "admin" ? "Admin" : "Member",
+                              image: member.profile?.avatar_url || null,
+                              // Use avatar_name or email for consistent color generation
+                              avatarName: member.profile?.avatar_name || member.profile?.email || "Unknown",
+                              // Use full name for initials extraction
+                              displayName: getFullNameForAvatar(
+                                member.profile?.first_name,
+                                member.profile?.last_name,
+                                member.profile?.email
+                              )
+                            }))}
+                          />
+                        </div>
+                      )}
                       <span>{teamMember.memberCount} active</span>
                       <span>·</span>
                       {teamMember.invitedCount > 0 ? (
@@ -656,26 +678,6 @@ const DashboardMain = () => {
                         <span>Manage team</span>
                       </Button>
                     </div>
-                    {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
-                      <div className="mt-2">
-                        <AnimatedTooltip 
-                          items={teamMember.teamMembers.map((member: any, index: number) => ({
-                            id: index,
-                            name: member.profile?.display_name || member.profile?.full_name || "Unknown",
-                            designation: member.role === "admin" ? "Admin" : "Member",
-                            image: member.profile?.avatar_url || null,
-                            // Use avatar_name or email for consistent color generation
-                            avatarName: member.profile?.avatar_name || member.profile?.email || "Unknown",
-                            // Use full name for initials extraction
-                            displayName: getFullNameForAvatar(
-                              member.profile?.first_name,
-                              member.profile?.last_name,
-                              member.profile?.email
-                            )
-                          }))}
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -703,13 +705,13 @@ const DashboardMain = () => {
                         className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
                         onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                       >
-                        <CardHeader className="p-3 sm:p-5">
+                        <CardHeader className="p-2 sm:p-3">
                           <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
                           <CardDescription className="capitalize text-xs sm:text-sm">
                             {meeting.frequency.replace('-', ' ')}
                           </CardDescription>
                         </CardHeader>
-                        <CardContent className="p-3 sm:p-5 pt-0 flex justify-end">
+                        <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
                           <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
                             Go to meetings →
                           </Button>
@@ -725,12 +727,21 @@ const DashboardMain = () => {
 
             {/* Your Actions Section */}
             <div className="space-y-8">
-              {/* Check-ins */}
+              {/* Quick DO Check-ins */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Check-ins</h3>
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Quick DO Check-in</h3>
+                <QuickDOCheckInWidget />
+              </div>
+              {/* Quick SI Check-ins */}
+              <div>
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Quick SI Check-in</h3>
+                <QuickCheckInWidget />
+              </div>
+              {/* Recent Check-ins Feed */}
+              <div>
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Recent Check-ins</h3>
                 <CheckInWidget />
               </div>
-              {/* More actions can be added here in the future */}
             </div>
           </div>
         </div>

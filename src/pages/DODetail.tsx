@@ -100,6 +100,38 @@ export default function DODetail() {
     loadProfiles();
   }, []);
 
+  // Fetch any missing profiles explicitly referenced by this DO or its initiatives
+  useEffect(() => {
+    if (!doDetails && (!initiatives || initiatives.length === 0)) return;
+
+    const needed = new Set<string>();
+    if (doDetails?.owner_user_id) needed.add(doDetails.owner_user_id);
+    for (const ini of (initiatives || [])) {
+      if (ini.owner_user_id) needed.add(ini.owner_user_id);
+      if (Array.isArray(ini.participant_user_ids)) {
+        for (const pid of ini.participant_user_ids) needed.add(String(pid));
+      }
+    }
+    if (needed.size === 0) return;
+
+    const have = new Set(profiles.map((p) => p.id));
+    const missing = Array.from(needed).filter((id) => !have.has(id));
+    if (missing.length === 0) return;
+
+    supabase
+      .from('profiles')
+      .select('id, full_name, avatar_name, avatar_url')
+      .in('id', missing)
+      .then(({ data, error }) => {
+        if (error || !data || data.length === 0) return;
+        setProfiles((prev) => {
+          const map = new Map(prev.map((p) => [p.id, p] as const));
+          for (const row of data as any[]) map.set(row.id, row);
+          return Array.from(map.values());
+        });
+      });
+  }, [doDetails, initiatives, profiles]);
+
   // Get current user
   useEffect(() => {
     const getCurrentUser = async () => {

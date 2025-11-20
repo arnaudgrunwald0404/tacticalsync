@@ -25,6 +25,7 @@ import type { CheckinParentType } from '@/types/rcdo';
 import { format } from 'date-fns';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
+import { isFeatureEnabled } from '@/lib/featureFlags';
 
 interface CheckInDialogProps {
   isOpen: boolean;
@@ -72,12 +73,14 @@ export function CheckInDialog({
     comment: string;
     results: string;
     colorCode: string;
+    percentToGoal: string;
   }>({
     reporterId: '',
     checkinDate: format(new Date(), 'yyyy-MM-dd'),
     comment: '',
     results: '',
     colorCode: '0',
+    percentToGoal: '',
   });
 
   // Load profiles and current user
@@ -131,6 +134,19 @@ export function CheckInDialog({
       const selectedColor = colorOptions.find(c => c.value === formData.colorCode);
       const sentiment = selectedColor?.sentiment ?? 0;
 
+      const percentToGoalValue = formData.percentToGoal.trim() 
+        ? parseInt(formData.percentToGoal.trim()) 
+        : null;
+      
+      if (percentToGoalValue !== null && (percentToGoalValue < 0 || percentToGoalValue > 100)) {
+        toast({
+          title: 'Validation Error',
+          description: '% to Goal must be between 0 and 100',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('rc_checkins')
         .insert({
@@ -140,6 +156,7 @@ export function CheckInDialog({
           summary: formData.comment.trim() || null,
           next_steps: formData.results.trim() || null,
           sentiment: sentiment,
+          percent_to_goal: percentToGoalValue,
           created_by: formData.reporterId,
         });
 
@@ -170,6 +187,7 @@ export function CheckInDialog({
       comment: '',
       results: '',
       colorCode: '0',
+      percentToGoal: '',
     });
     onClose();
   };
@@ -300,6 +318,35 @@ export function CheckInDialog({
                 rows={4}
               />
             </div>
+
+            {/* % to Goal (feature-gated) */}
+            {isFeatureEnabled('siProgress') && (
+              <div className="space-y-2">
+                <Label htmlFor="percentToGoal">% to Goal</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="percentToGoal"
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    value={formData.percentToGoal}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '' || (parseInt(value) >= 0 && parseInt(value) <= 100)) {
+                        setFormData({ ...formData, percentToGoal: value });
+                      }
+                    }}
+                    disabled={loading}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enter a value between 0 and 100 to track progress toward the goal
+                </p>
+              </div>
+            )}
 
             {/* Color Code */}
             <div className="space-y-2">

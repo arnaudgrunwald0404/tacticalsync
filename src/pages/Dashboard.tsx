@@ -880,7 +880,20 @@ const DashboardOld = () => {
                           {teamMember.teams.name}
                         </h3>
                       </div>
-                      <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+                        {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
+                          <div>
+                            <AnimatedTooltip 
+                              items={teamMember.teamMembers.map((member: any, index: number) => ({
+                                id: index,
+                                name: member.profile?.display_name || member.profile?.full_name || "Unknown",
+                                designation: member.role === "admin" ? "Admin" : "Member",
+                                image: member.profile?.avatar_url || null,
+                                avatarName: member.profile?.avatar_name || member.profile?.display_name || member.profile?.full_name || "Unknown"
+                              }))}
+                            />
+                          </div>
+                        )}
                         <span>{teamMember.memberCount} active</span>
                         <span>·</span>
                         {teamMember.invitedCount > 0 ? (
@@ -916,19 +929,6 @@ const DashboardOld = () => {
                           <span>Manage team</span>
                         </Button>
                       </div>
-                      {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
-                        <div className="mt-2">
-                          <AnimatedTooltip 
-                            items={teamMember.teamMembers.map((member: any, index: number) => ({
-                              id: index,
-                              name: member.profile?.display_name || member.profile?.full_name || "Unknown",
-                              designation: member.role === "admin" ? "Admin" : "Member",
-                              image: member.profile?.avatar_url || null,
-                              avatarName: member.profile?.avatar_name || member.profile?.display_name || member.profile?.full_name || "Unknown"
-                            }))}
-                          />
-                        </div>
-                      )}
                     </div>
                     {!hasNoMeetings && (
                       <div className="flex gap-2">
@@ -968,13 +968,13 @@ const DashboardOld = () => {
                           className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
                           onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
-                          <CardHeader className="p-3 sm:p-5">
+                          <CardHeader className="p-2 sm:p-3">
                             <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
                             <CardDescription className="capitalize text-xs sm:text-sm">
                               {meeting.frequency.replace('-', ' ')}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent className="p-3 sm:p-5 pt-0 flex justify-end">
+                          <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
                             <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
                               Go to meetings →
                             </Button>

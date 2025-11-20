@@ -42,7 +42,7 @@ const FancyAvatar: React.FC<FancyAvatarProps> = ({
     return str.replace(/\d+$/, '').trim();
   };
   
-  // If avatarUrl is provided and no error, use the regular Avatar component
+  // If a user-uploaded avatar is provided (from allowed hosts), show it; otherwise fall back to generated initials
   if (avatarUrl && !imageError) {
     const sizeClasses = {
       sm: "h-7 w-7 text-xs",

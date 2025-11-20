@@ -111,6 +111,7 @@ export interface RCCheckin {
   blockers: string | null;
   next_steps: string | null;
   sentiment: number | null; // -2 to +2
+  percent_to_goal: number | null; // 0-100, percentage progress toward goal
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -264,6 +265,7 @@ export interface CreateCheckinForm {
   blockers?: string;
   next_steps?: string;
   sentiment?: number;
+  percent_to_goal?: number | null; // 0-100, percentage progress toward goal
 }
 
 export interface CreateLinkForm {

@@ -15,12 +15,35 @@ const Avatar = React.forwardRef<
 ));
 Avatar.displayName = AvatarPrimitive.Root.displayName;
 
+// Only allow avatar images from safe origins: same-origin or Supabase storage.
+function isAllowedAvatarUrl(src?: string | null): boolean {
+  if (!src) return false;
+  try {
+    const url = new URL(src, window.location.origin);
+    const host = url.hostname.toLowerCase();
+    // same-origin (including localhost in dev)
+    if (url.origin === window.location.origin) return true;
+    // Supabase storage domains
+    if (host.endsWith("supabase.co")) return true;
+    return false;
+  } catch {
+    // If src is a relative path that failed URL parse, do not allow
+    return false;
+  }
+}
+
 const AvatarImage = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Image ref={ref} className={cn("aspect-square h-full w-full object-cover", className)} {...props} />
-));
+>(({ className, src, ...props }, ref) => {
+  if (!isAllowedAvatarUrl(typeof src === 'string' ? src : undefined)) {
+    // Block third-party avatar hosts; show fallback initials instead
+    return null as any;
+  }
+  return (
+    <AvatarPrimitive.Image ref={ref} className={cn("aspect-square h-full w-full object-cover", className)} src={src as any} {...props} />
+  );
+});
 AvatarImage.displayName = AvatarPrimitive.Image.displayName;
 
 const AvatarFallback = React.forwardRef<

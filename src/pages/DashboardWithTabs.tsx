@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, Settings, User, ArrowLeft } from "lucide-react";
 import { useRoles } from "@/hooks/useRoles";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
-import StrategyHome from "./StrategyHome";
+const StrategyHome = lazy(() => import("./StrategyHome"));
 import { getFullNameForAvatar } from "@/lib/nameUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -148,7 +148,11 @@ const DashboardWithTabs = () => {
         </TabsContent>
         
         <TabsContent value="rcdo" className="mt-0">
-          <StrategyHome />
+          {activeTab === 'rcdo' ? (
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading RCDO…</div>}>
+              <StrategyHome />
+            </Suspense>
+          ) : null}
         </TabsContent>
       </Tabs>
     </GridBackground>

@@ -120,13 +120,23 @@ export function DOTile({ definingObjective }: DOTileProps) {
 
         {/* Owner */}
         <div className="flex items-center gap-2">
-          <FancyAvatar
-            name={definingObjective.owner?.avatar_name || ownerName}
-            displayName={ownerName}
-            avatarUrl={definingObjective.owner?.avatar_url}
-            size="sm"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">{ownerName}</span>
+          {(() => {
+            const hasOwnerInfo = !!(definingObjective.owner?.full_name || definingObjective.owner?.first_name || definingObjective.owner?.last_name || definingObjective.owner?.avatar_url);
+            if (!hasOwnerInfo || (ownerName || '').trim().toLowerCase() === 'unknown') {
+              return (
+                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] font-semibold">?</span>
+              );
+            }
+            return (
+              <FancyAvatar
+                name={definingObjective.owner?.avatar_name || ownerName}
+                displayName={ownerName}
+                avatarUrl={definingObjective.owner?.avatar_url}
+                size="sm"
+              />
+            );
+          })()}
+          <span className="text-sm text-gray-700 dark:text-gray-300">{(ownerName || '').trim().toLowerCase() === 'unknown' ? 'Unknown' : ownerName}</span>
         </div>
 
         {/* Stats */}
