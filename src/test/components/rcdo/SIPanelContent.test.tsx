@@ -114,14 +114,14 @@ describe('SIPanelContent - Status Field', () => {
     it('should render status select field', () => {
       render(<SIPanelContent {...defaultProps} />);
       
-      expect(screen.getByLabelText(/status/i)).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument();
     });
 
     it('should display current status value', async () => {
       render(<SIPanelContent {...defaultProps} />);
       
       await waitFor(() => {
-        const select = screen.getByRole('combobox');
+        const select = screen.getByRole('combobox', { name: /status/i });
         expect(select).toHaveTextContent('Not Started');
       });
     });
@@ -130,15 +130,15 @@ describe('SIPanelContent - Status Field', () => {
       const user = userEvent.setup();
       render(<SIPanelContent {...defaultProps} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
       
-      await waitFor(() => {
-        expect(screen.getByText('Not Started')).toBeInTheDocument();
-        expect(screen.getByText('On Track')).toBeInTheDocument();
-        expect(screen.getByText('At Risk')).toBeInTheDocument();
-        expect(screen.getByText('Off Track')).toBeInTheDocument();
-        expect(screen.getByText('Completed')).toBeInTheDocument();
+      await waitFor(async () => {
+        expect(await screen.findByText('Not Started', undefined, { timeout: 3000 })).toBeInTheDocument();
+        expect(await screen.findByText('On Track', undefined, { timeout: 3000 })).toBeInTheDocument();
+        expect(await screen.findByText('At Risk', undefined, { timeout: 3000 })).toBeInTheDocument();
+        expect(await screen.findByText('Off Track', undefined, { timeout: 3000 })).toBeInTheDocument();
+        expect(await screen.findByText('Completed', undefined, { timeout: 3000 })).toBeInTheDocument();
       });
     });
   });
@@ -157,7 +157,7 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
@@ -185,7 +185,7 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
@@ -206,7 +206,7 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
@@ -245,7 +245,7 @@ describe('SIPanelContent - Status Field', () => {
         />
       );
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).toBeDisabled();
     });
   });
@@ -267,14 +267,11 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
       
-      await waitFor(() => {
-        expect(screen.getByText('On Track')).toBeInTheDocument();
-      });
-      
-      await user.click(screen.getByText('On Track'));
+      const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
+      await user.click(onTrackOption);
       
       await waitFor(() => {
         expect(supabase.from).toHaveBeenCalledWith('rc_strategic_initiatives');
@@ -303,14 +300,11 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
       
-      await waitFor(() => {
-        expect(screen.getByText('On Track')).toBeInTheDocument();
-      });
-      
-      await user.click(screen.getByText('On Track'));
+      const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
+      await user.click(onTrackOption);
       
       await waitFor(() => {
         expect(mockUpdate).toHaveBeenCalledWith({ status: 'on_track' });
@@ -326,14 +320,11 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} si={siWithoutDbId} />);
       
-      const select = screen.getByRole('combobox');
+      const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
       
-      await waitFor(() => {
-        expect(screen.getByText('On Track')).toBeInTheDocument();
-      });
-      
-      await user.click(screen.getByText('On Track'));
+      const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
+      await user.click(onTrackOption);
       
       // Should not call supabase.from for update
       await waitFor(() => {

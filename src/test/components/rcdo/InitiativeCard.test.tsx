@@ -100,7 +100,7 @@ describe('InitiativeCard', () => {
       render(<InitiativeCard initiative={initiative} />);
       
       // Should show "Unknown" or fallback
-      const badge = screen.getByRole('generic', { name: /unknown|not started/i });
+      const badge = screen.getByText('Unknown');
       expect(badge).toBeInTheDocument();
     });
   });

@@ -175,7 +175,7 @@ export function SIPanelContent({
           
 
           <div className="flex items-center gap-2 mt-1 mb-2">
-            <label className="text-sm font-medium">Status</label>
+            <Label className="text-sm font-medium">Status</Label>
             <Select
               value={currentStatus}
               disabled={!canEditStatus}
@@ -205,7 +205,7 @@ export function SIPanelContent({
                 }
               }}
             >
-              <SelectTrigger className="h-7 text-xs">
+              <SelectTrigger className="h-7 text-xs" aria-label="Status">
                 <SelectValue placeholder="Select status">
                   {statusLabel}
                 </SelectValue>
@@ -371,7 +371,7 @@ export function SIPanelContent({
                     if (si.dbId) {
                       const { error } = await supabase
                         .from('rc_strategic_initiatives')
-                        .update({ participant_user_ids: ids })
+                        .update({ participant_user_ids: ids } as any)
                         .eq('id', si.dbId);
                       if (error) {
                         console.warn('[SIPanel] Failed to persist SI participants change', error);
