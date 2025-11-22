@@ -7,3 +7,6 @@ ADD COLUMN IF NOT EXISTS percent_to_goal INTEGER CHECK (percent_to_goal >= 0 AND
 
 COMMENT ON COLUMN rc_checkins.percent_to_goal IS 'Percentage progress toward goal (0-100) for Strategic Initiatives, updated during check-ins';
 
+
+
+

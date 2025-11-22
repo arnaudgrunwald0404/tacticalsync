@@ -49,8 +49,8 @@ const Dashboard = () => {
         console.log('[Dashboard] Auth state changed:', event, 'Has session:', !!session);
         
         if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-          console.log('[Dashboard] Session established, redirecting to dashboard/main');
-          navigate('/dashboard/main', { replace: true });
+          console.log('[Dashboard] Session established, redirecting to dashboard/rcdo');
+          navigate('/dashboard/rcdo', { replace: true });
         } else if (hasError || event === 'SIGNED_OUT') {
           console.error('[Dashboard] Auth failed or signed out');
           navigate('/auth', { replace: true });
@@ -60,7 +60,7 @@ const Dashboard = () => {
       return () => subscription.unsubscribe();
     } else {
       // No OAuth callback, just redirect immediately
-      navigate('/dashboard/main', { replace: true });
+      navigate('/dashboard/rcdo', { replace: true });
     }
   }, [navigate]);
 

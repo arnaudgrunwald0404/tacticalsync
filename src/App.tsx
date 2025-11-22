@@ -28,6 +28,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 // RCDO Module
 const StrategyHome = lazy(() => import("./pages/StrategyHome"));
 const DODetail = lazy(() => import("./pages/DODetail"));
+const SIDetail = lazy(() => import("./pages/SIDetail"));
+const TasksFeed = lazy(() => import("./pages/TasksFeed"));
 const CyclePlanner = lazy(() => import("./pages/CyclePlanner"));
 const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
 
@@ -70,9 +72,24 @@ const App = () => (
               <DashboardWithTabs />
             </Suspense>
           } />
+          <Route path="/dashboard/checkins" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
           <Route path="/dashboard/rcdo/do/:doId" element={
             <Suspense fallback={<PageSkeleton />}>
               <DODetail />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/si/:siId" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <SIDetail />
+            </Suspense>
+          } />
+          <Route path="/dashboard/rcdo/tasks-feed" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <TasksFeed />
             </Suspense>
           } />
           <Route path="/dashboard/rcdo/cycles" element={

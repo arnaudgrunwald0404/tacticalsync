@@ -160,3 +160,73 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+---
+
+## Reinstall checklist (local dev)
+
+1) Environment files
+- Copy examples and fill values:
+  - App: `cp .env.example .env.local`
+  - Tests: `cp .env.test.example .env.test`
+- Required values:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- Optional (tests/helpers only):
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- E2E default: `PLAYWRIGHT_BASE_URL=http://localhost:5173`
+- Slack bot (optional):
+  - `cd slack-bot && cp .env.example .env` then fill tokens; to test a schedule set `SLACK_SCHEDULE_CRON="*/5 * * * *"`
+
+2) Install deps
+```bash
+npm ci
+```
+
+3) Database
+- Start local Supabase (if using local):
+```bash
+supabase start
+```
+- Validate migrations and health:
+```bash
+npm run db:validate
+npm run db:health
+```
+- If needed, reset local DB (destructive):
+```bash
+npm run db:reset
+```
+
+4) Run the app
+```bash
+npm run dev
+```
+
+5) Admin setup (optional)
+- Grant yourself admin (choose one: `admin`, `rcdo`, or `super`; combine as `admin,rcdo`):
+```bash
+node scripts/grant-admin.js your@email.com admin,rcdo
+```
+- Verify admin status:
+```bash
+node scripts/check-user-admin.js your@email.com
+```
+
+6) Tests
+- Unit tests:
+```bash
+npm run test -- --run
+npm run test:coverage -- --run
+```
+- E2E (install browsers once):
+```bash
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+
+7) CI secrets (GitHub Actions)
+- Ensure the following are configured in repository secrets:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`

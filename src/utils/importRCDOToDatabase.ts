@@ -204,7 +204,7 @@ export async function importRCDOToDatabase(
             title: si.title,
             description: descriptionHtml,
             owner_user_id: siOwnerId,
-            status: 'draft',
+            status: 'not_started',
             display_order: j
           })
           .select('id')

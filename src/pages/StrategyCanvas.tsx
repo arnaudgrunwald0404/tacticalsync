@@ -11,9 +11,10 @@ import ReactFlow, {
   Node,
   MarkerType,
   Position,
+  ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -37,6 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
 import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
+import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 
 // Types
@@ -149,7 +151,7 @@ import type { NodeProps } from "reactflow";
 const createDoNode = (
   profilesMap: Record<string, any>,
   showProgress: boolean,
-  siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean }>,
+  siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>,
   doLockedStatus: Map<string, { locked: boolean; dbId?: string }>
 ) => {
   return function DoNode({ id, data }: NodeProps<NodeData>) {
@@ -169,39 +171,27 @@ const createDoNode = (
     <div
       className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-hidden ${
         status === "final" 
-          ? "border-green-500 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30" 
-          : "border-blue-400 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20"
+          ? "border-slate-500 dark:border-slate-600 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950/30 dark:to-slate-900/30" 
+          : "border-slate-400 dark:border-slate-600 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950/20 dark:to-slate-900/20"
       }`}
       style={{ 
         backgroundColor: data.bgColor, 
         width: data.size?.w, 
         minHeight: data.size?.h,
-        boxShadow: status === "final" ? "0 4px 20px rgba(34, 197, 94, 0.15)" : "0 4px 20px rgba(59, 130, 246, 0.15)"
+        boxShadow: status === "final" ? "0 4px 20px rgba(100, 116, 139, 0.2)" : "0 4px 20px rgba(100, 116, 139, 0.15)"
       }}
     >
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-20 h-20 ${
-        status === "final" ? "bg-green-500/10" : "bg-blue-500/10"
+        status === "final" ? "bg-slate-500/10" : "bg-slate-500/10"
       } rounded-bl-full`} />
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-          status === "final"
-            ? "bg-green-500 text-white"
-            : "bg-blue-500 text-white"
-        }`}>Defining Objective</span>
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-          status === "final"
-            ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300"
-            : "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-        }`}>{status === "final" ? "locked" : "ideating"}</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white`}>Defining Objective</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300`}>{status === "final" ? "locked" : "ideating"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
-        <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 ${
-          status === "final"
-            ? "bg-white border-green-500 dark:bg-green-900/20 dark:border-green-400"
-            : "bg-white border-blue-500 dark:bg-blue-900/20 dark:border-blue-400"
-        }`}>
+        <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-slate-500 dark:bg-slate-900/20 dark:border-slate-400`}>
           {(() => {
             const displayName = owner?.full_name || '';
             const isUnknown = !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
@@ -220,11 +210,7 @@ const createDoNode = (
         </span>
         <textarea
           ref={textareaRef}
-          className={`flex-1 w-full bg-transparent outline-none text-sm font-bold resize-none overflow-hidden leading-tight ${
-            status === "final"
-              ? "text-green-900 dark:text-green-100"
-              : "text-blue-900 dark:text-blue-100"
-          }`}
+          className={`flex-1 w-full bg-transparent outline-none text-sm font-bold resize-none overflow-hidden leading-tight text-slate-900 dark:text-slate-100`}
           value={data.title || ""}
           placeholder="Name this DO"
           onChange={(e) => {
@@ -248,21 +234,27 @@ const createDoNode = (
           {items.map((it) => (
             <button
               key={it.id}
-              className={`group relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] ${
-                status === "final"
-                  ? "bg-white/80 border-green-300 hover:bg-white hover:border-green-500 dark:bg-green-900/10 dark:border-green-700 dark:hover:bg-green-900/20"
-                  : "bg-white/80 border-blue-300 hover:bg-white hover:border-blue-500 dark:bg-blue-900/10 dark:border-blue-700 dark:hover:bg-blue-900/20"
-              }`}
+              className={`group relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
+                ${(() => {
+                  const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
+                  if (siProg && siProg.sentiment !== null && siProg.sentiment !== undefined) {
+                    // On-track (>=1): green border + light green background
+                    if (siProg.sentiment >= 1) {
+                      return 'border-green-500 hover:border-green-600 dark:border-green-600 bg-green-50 dark:bg-green-950/20';
+                    }
+                    // Otherwise: red border + light red background
+                    return 'border-red-500 hover:border-red-600 dark:border-red-600 bg-red-50 dark:bg-red-950/20';
+                  }
+                  // Default: slate border + neutral background
+                  return 'border-slate-300 hover:border-slate-500 dark:border-slate-700 bg-white/80 dark:bg-slate-900/10';
+                })()}
+                dark:hover:bg-slate-900/20`}
               onClick={(e) => {
                 e.stopPropagation();
                 window.dispatchEvent(new CustomEvent("rcdo:open-si", { detail: { doId: id, siId: it.id } }));
               }}
             >
-              <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 ${
-                status === "final"
-                  ? "bg-green-50 border-green-400 dark:bg-green-900/30 dark:border-green-600"
-                  : "bg-blue-50 border-blue-400 dark:bg-blue-900/30 dark:border-blue-600"
-              }`}>
+              <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 bg-slate-50 border-slate-400 dark:bg-slate-900/30 dark:border-slate-600`}>
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
                   const displayName = prof?.full_name || '';
@@ -273,11 +265,7 @@ const createDoNode = (
                   return <span className="text-[10px] leading-none font-semibold">?</span>;
                 })()}
               </span>
-              <span className={`text-[11px] leading-tight break-words text-left flex-1 ${
-                status === "final"
-                  ? "text-green-900 dark:text-green-100"
-                  : "text-blue-900 dark:text-blue-100"
-              }`}>{it.title || "Untitled SI"}</span>
+              <span className={`text-[11px] leading-tight break-words text-left flex-1 text-slate-900 dark:text-slate-100`}>{it.title || "Untitled SI"}</span>
               {/* Progress indicator - show bar when > 0; show "0%" text when exactly 0 */}
               {showProgress && (() => {
                 const isDOLocked = doLockedStatus.get(id)?.locked ?? false;
@@ -285,9 +273,37 @@ const createDoNode = (
                 const percentToGoal = siProgress?.percentToGoal ?? null;
                 const isSILocked = siProgress?.isLocked ?? false;
 
+                // Iconography for recency/staleness
+                const latestDate = siProgress?.latestDate ? new Date(siProgress.latestDate) : null;
+                const createdAt = siProgress?.createdAt ? new Date(siProgress.createdAt) : null;
+                const now = new Date();
+                const daysSinceUpdate = latestDate ? (now.getTime() - latestDate.getTime()) / (1000*60*60*24) : Infinity;
+                const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000*60*60*24) : Infinity;
+                const showLightning = latestDate && daysSinceUpdate < 3;
+                const showWarning = daysSinceUpdate > 21 && daysSinceCreated > 21;
+
                 // Only show something when DO and SI are locked and the SI has a percent value (including 0)
                 const shouldShow = isDOLocked && isSILocked && percentToGoal !== null && percentToGoal !== undefined;
-                if (!shouldShow) return null;
+                if (!shouldShow) {
+                  // Still render iconography even if progress bar hidden
+                  return (
+                    <>
+                      {(showLightning || showWarning) && (
+                        <div className="absolute -top-2 -right-2 pointer-events-none z-10">
+                          {showLightning ? (
+                            <div className="h-6 w-6 rounded-full bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
+                              <Zap className="h-3.5 w-3.5 text-black" />
+                            </div>
+                          ) : (
+                            <div className="h-6 w-6 rounded-full bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
+                              <AlertTriangle className="h-3.5 w-3.5 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                }
 
                 // If the percent is 0, render a small "0%" label instead of a bar
                 if (percentToGoal <= 0) {
@@ -296,15 +312,30 @@ const createDoNode = (
                 
                 // Otherwise render the progress bar
                 return (
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted overflow-hidden rounded-b-lg">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
-                      style={{
-                        width: `${percentToGoal}%`,
-                        marginLeft: 'auto', // Start from right, fill leftward
-                      }}
-                    />
-                  </div>
+                  <>
+                    {(showLightning || showWarning) && (
+                      <div className="absolute -top-2 -right-2 pointer-events-none z-10">
+                        {showLightning ? (
+                          <div className="h-6 w-6 rounded-full bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
+                            <Zap className="h-3.5 w-3.5 text-black" />
+                          </div>
+                        ) : (
+                          <div className="h-6 w-6 rounded-full bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
+                            <AlertTriangle className="h-3.5 w-3.5 text-white" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted overflow-hidden rounded-b-lg">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
+                        style={{
+                          width: `${percentToGoal}%`,
+                          marginLeft: 'auto', // Start from right, fill leftward
+                        }}
+                      />
+                    </div>
+                  </>
                 );
               })()}
             </button>
@@ -470,6 +501,10 @@ export default function StrategyCanvasPage() {
   const updatingFromRemoteEdges = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
 
+  // React Flow instance to control viewport
+  const rfInstanceRef = useRef<ReactFlowInstance<Node<NodeData>, Edge> | null>(null);
+  const didInitialFitRef = useRef(false);
+
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -497,9 +532,61 @@ export default function StrategyCanvasPage() {
   const progressFeatureOn = isFeatureEnabled('siProgress');
   const [showProgress, setShowProgress] = useState(progressFeatureOn);
   const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
+  const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
   
   // Map to store SI progress data (dbId -> { percentToGoal, isLocked })
-  const [siProgressMap, setSiProgressMap] = useState<Map<string, { percentToGoal: number | null; isLocked: boolean }>>(new Map());
+  const [siProgressMap, setSiProgressMap] = useState<Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>>(new Map());
+  
+  // Filter nodes and edges based on "View As..." selection
+  const filteredNodes = useMemo(() => {
+    if (!viewAsUserId) return nodes;
+    
+    // Always keep rally cry
+    const rallyNode = nodes.find(n => n.type === 'rally');
+    if (!rallyNode) return nodes;
+    
+    const filtered: Node<NodeData>[] = [rallyNode];
+    
+    // Filter DOs: keep only if they have at least one SI where the user is owner or contributor
+    const doNodes = nodes.filter(n => n.type === 'do');
+    for (const doNode of doNodes) {
+      const saiItems = (doNode.data.saiItems || []) as any[];
+      
+      // Check if any SI in this DO has the user as owner or contributor
+      const hasRelevantSI = saiItems.some((si: any) => {
+        const isOwner = si.ownerId === viewAsUserId;
+        const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId);
+        return isOwner || isContributor;
+      });
+      
+      if (hasRelevantSI) {
+        // Filter SIs within this DO: keep only where user is owner or contributor
+        const filteredSaiItems = saiItems.filter((si: any) => {
+          const isOwner = si.ownerId === viewAsUserId;
+          const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId);
+          return isOwner || isContributor;
+        });
+        
+        filtered.push({
+          ...doNode,
+          data: {
+            ...doNode.data,
+            saiItems: filteredSaiItems,
+          },
+        });
+      }
+    }
+    
+    return filtered;
+  }, [nodes, viewAsUserId]);
+  
+  // Filter edges to only connect visible nodes
+  const filteredEdges = useMemo(() => {
+    if (!viewAsUserId) return edges;
+    
+    const visibleNodeIds = new Set(filteredNodes.map(n => n.id));
+    return edges.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
+  }, [edges, filteredNodes, viewAsUserId]);
   
   // Create node types with access to profilesMap, showProgress, SI progress data, and DO locked status
   const nodeTypes = useMemo(() => ({
@@ -552,6 +639,7 @@ export default function StrategyCanvasPage() {
   const handleTabChange = (value: string) => {
     if (value === 'main') navigate('/dashboard/main');
     else if (value === 'rcdo') navigate('/dashboard/rcdo');
+    else if (value === 'checkins') navigate('/dashboard/checkins');
   };
 
   // Run a one-time de-overlap pass to ensure default layout has no collisions
@@ -678,7 +766,7 @@ export default function StrategyCanvasPage() {
         // If there are no DOs, nothing to render beyond the RC
         const { data: sis, error: siErr } = await supabase
           .from('rc_strategic_initiatives')
-          .select('id, title, owner_user_id, description, defining_objective_id, status, locked_at')
+          .select('id, title, owner_user_id, participant_user_ids, description, defining_objective_id, status, locked_at, created_at')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
         if (siErr) console.warn('[Canvas] SI query error:', siErr);
         console.log('[Canvas] Fallback SI count', (sis || []).length);
@@ -716,6 +804,7 @@ export default function StrategyCanvasPage() {
             id: `si-${doId}-${String(si.id).slice(0, 6)}`,
             title: si.title,
             ownerId: si.owner_user_id || undefined,
+            participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
             description: si.description || '',
             dbId: si.id,
           }));
@@ -762,7 +851,7 @@ export default function StrategyCanvasPage() {
           if (siIds.length > 0) {
             const { data: checkins, error: checkinsErr } = await supabase
               .from('rc_checkins')
-              .select('parent_id, percent_to_goal, date, created_at')
+              .select('parent_id, percent_to_goal, sentiment, date, created_at')
               .eq('parent_type', 'initiative')
               .in('parent_id', siIds)
               .order('date', { ascending: false })
@@ -770,17 +859,20 @@ export default function StrategyCanvasPage() {
             if (checkinsErr) {
               console.warn('[Canvas] Checkins query error:', checkinsErr);
             }
-            const latestBySi = new Map<string, { percent_to_goal: number | null }>();
+            const latestBySi = new Map<string, { percent_to_goal: number | null; sentiment: number | null; date: string | null }>();
             for (const c of (checkins || [])) {
               if (!latestBySi.has(c.parent_id)) {
-                latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null });
+                latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null, sentiment: c.sentiment ?? null, date: c.date ?? null });
               }
             }
-            const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean }]> = (sis || []).map((si: any) => {
+            const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }]> = (sis || []).map((si: any) => {
               const latest = latestBySi.get(si.id);
               const pct = latest?.percent_to_goal ?? null;
+              const sent = latest?.sentiment ?? null;
+              const latestDate = latest?.date ?? null;
               const isLocked = !!si.locked_at;
-              return [si.id, { percentToGoal: pct, isLocked }];
+              const createdAt = si.created_at ?? null;
+              return [si.id, { percentToGoal: pct, isLocked, sentiment: sent, latestDate, createdAt }];
             });
             setSiProgressMap(new Map(progressEntries));
           }
@@ -870,30 +962,33 @@ export default function StrategyCanvasPage() {
         const uniqueTitles = Array.from(new Set(siTitleRequests.map(x => x.title)));
         const { data: siRows } = await supabase
           .from('rc_strategic_initiatives')
-          .select('id, title, defining_objective_id, locked_at')
+          .select('id, title, defining_objective_id, locked_at, created_at')
           .in('defining_objective_id', uniqueDoIds)
           .in('title', uniqueTitles);
-        const siByKey = new Map<string, { id: string; locked: boolean }>();
+        const siByKey = new Map<string, { id: string; locked: boolean; createdAt: string | null }>();
         const key = (doId: string, t: string) => `${doId}:::${t}`;
-        for (const r of (siRows || [])) siByKey.set(key(r.defining_objective_id, r.title), { id: r.id, locked: !!r.locked_at });
+        for (const r of (siRows || [])) siByKey.set(key(r.defining_objective_id, r.title), { id: r.id, locked: !!r.locked_at, createdAt: r.created_at ?? null });
 
         const siIds = Array.from(siByKey.values()).map((v) => v.id);
         if (!siIds.length) return;
 
         const { data: checkins } = await supabase
           .from('rc_checkins')
-          .select('parent_id, percent_to_goal, date, created_at')
+          .select('parent_id, percent_to_goal, sentiment, date, created_at')
           .eq('parent_type', 'initiative')
           .in('parent_id', siIds)
           .order('date', { ascending: false })
           .order('created_at', { ascending: false });
-        const latestBySi = new Map<string, { percent_to_goal: number | null }>();
-        for (const c of (checkins || [])) if (!latestBySi.has(c.parent_id)) latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null });
+        const latestBySi = new Map<string, { percent_to_goal: number | null; sentiment: number | null; date: string | null }>();
+        for (const c of (checkins || [])) if (!latestBySi.has(c.parent_id)) latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null, sentiment: c.sentiment ?? null, date: c.date ?? null });
 
-        const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean }]> = [];
+        const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }]> = [];
         for (const v of siByKey.values()) {
-          const pct = latestBySi.get(v.id)?.percent_to_goal ?? null;
-          progressEntries.push([v.id, { percentToGoal: pct, isLocked: v.locked }]);
+          const latest = latestBySi.get(v.id);
+          const pct = latest?.percent_to_goal ?? null;
+          const sent = latest?.sentiment ?? null;
+          const latestDate = latest?.date ?? null;
+          progressEntries.push([v.id, { percentToGoal: pct, isLocked: v.locked, sentiment: sent, latestDate, createdAt: v.createdAt ?? null }]);
         }
         if (progressEntries.length) setSiProgressMap(new Map(progressEntries));
       } catch (_e) {
@@ -1120,7 +1215,7 @@ const duplicateSelectedDo = useCallback(() => {
   }, [nodes, edges, selectedNode]);
 
   // Bulk actions
-  const lockEverything = useCallback(() => {
+  const lockEverything = useCallback(async () => {
     // 1) Lock all DOs locally and finalize the Rallying Cry
     setNodes((curr) => curr.map((n) => {
       if (n.type === 'do') {
@@ -1155,7 +1250,39 @@ const duplicateSelectedDo = useCallback(() => {
       }
       return updated;
     });
-  }, [nodes, setNodes, setDoLockedStatus, setSiProgressMap]);
+
+    // 4) Persist to database: lock DOs; trigger on DO will cascade lock SIs
+    try {
+      const doDbIds: string[] = nodes
+        .filter((n) => n.type === 'do')
+        .map((n) => {
+          const existing = doLockedStatus.get(n.id);
+          return (existing?.dbId || (n as any)?.data?.dbId) as string | undefined;
+        })
+        .filter(Boolean) as string[];
+
+      if (doDbIds.length === 0) {
+        toast({ title: 'Nothing to lock', description: 'No Defining Objectives to lock yet.' });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const { error: doLockErr } = await supabase
+        .from('rc_defining_objectives')
+        .update({ status: 'final', locked_at: nowIso })
+        .in('id', doDbIds);
+
+      if (doLockErr) {
+        toast({ title: 'Lock failed', description: 'Could not persist lock to the server.', variant: 'destructive' });
+        return;
+      }
+
+      // Successful: server trigger will set locked_at on child SIs
+      toast({ title: 'Locked', description: 'All DOs and their SIs were locked.' });
+    } catch (_) {
+      // best-effort: UI already updated
+    }
+  }, [nodes, setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast]);
 
   const openImportFromFile = useCallback(() => {
     setShowImportDialog(true);
@@ -1442,6 +1569,53 @@ const duplicateSelectedDo = useCallback(() => {
     // Keep import dialog open so user can try again or cancel
   }, []);
 
+  // Ensure content fits and rallying cry sits near the top (~1–2 cm ≈ 38–76 px; we use ~60 px)
+  const optimizeViewport = useCallback(() => {
+    const inst = rfInstanceRef.current as any;
+    if (!inst) return;
+
+    // First fit everything into view with a modest padding
+    try {
+      // Increase padding to ensure visible side margins
+      inst.fitView?.({ padding: 0.12, includeHiddenNodes: true, duration: 0 });
+    } catch { /* no-op */ }
+
+    // After the fit, nudge the viewport so the rally node is near the top
+    const rally = nodes.find((n) => n.type === 'rally');
+    if (!rally) return;
+
+    // Try to get current viewport; fallback to reading internal transform if needed
+    let vp: { x: number; y: number; zoom: number } | null = null;
+    if (typeof inst.getViewport === 'function') {
+      vp = inst.getViewport();
+    } else if (inst.toObject?.().viewport) {
+      vp = inst.toObject().viewport;
+    }
+    if (!vp) return;
+
+    const marginTopPx = 60; // target top margin for rallying cry
+    const rallyRect = rectForNode(rally);
+    const rallyTopScreenY = rallyRect.y * vp.zoom + vp.y;
+    const delta = rallyTopScreenY - marginTopPx;
+    if (delta > 2) {
+      // Move content up by decreasing translateY
+      inst.setViewport?.({ x: vp.x, y: vp.y - delta, zoom: vp.zoom }, { duration: 150 });
+    }
+  }, [nodes]);
+
+  useEffect(() => {
+    // Run auto-fit once after nodes are available or change significantly
+    if (!rfInstanceRef.current) return;
+    if (didInitialFitRef.current) return;
+    if (!nodes || nodes.length === 0) return;
+    // Give ReactFlow a tick to measure node sizes
+    const t = window.setTimeout(() => {
+      optimizeViewport();
+      didInitialFitRef.current = true;
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [nodes, optimizeViewport]);
+
   return (
     <div className="w-full h-dvh flex flex-col">
       {/* Page header (logo, tabs, avatar) */}
@@ -1465,8 +1639,9 @@ const duplicateSelectedDo = useCallback(() => {
           <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="h-10">
-                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
                 <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
+                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
+                <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -1522,6 +1697,11 @@ const duplicateSelectedDo = useCallback(() => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => navigate('/dashboard/rcdo')}>
+              <Layers className="h-4 w-4 mr-2" />
+              View all strategies
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={addDo}>
               <Plus className="h-4 w-4 mr-2" />
               Add DO
@@ -1543,19 +1723,62 @@ const duplicateSelectedDo = useCallback(() => {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        
+        {/* View As... dropdown */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">View As:</span>
+          <Select value={viewAsUserId || "all"} onValueChange={(value) => setViewAsUserId(value === "all" ? null : value)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="All users" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All users</SelectItem>
+              {profiles.map((p) => {
+                const displayName = p.full_name || '';
+                const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
+                return (
+                  <SelectItem key={p.id} value={p.id}>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                        {isUnknown ? (
+                          <span className="font-semibold">?</span>
+                        ) : (
+                          <FancyAvatar 
+                            name={p.avatar_name || displayName} 
+                            displayName={displayName}
+                            avatarUrl={p.avatar_url}
+                            size="sm" 
+                          />
+                        )}
+                      </span>
+                      <span>{isUnknown ? 'Unknown' : displayName}</span>
+                    </div>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+        
         <div className="ml-auto text-xs text-muted-foreground pr-2">Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.</div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px]">
+        <div className="min-h-0">
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={filteredNodes}
+          edges={filteredEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
-onNodeDragStop={(_e, node) => {
+          onInit={(inst) => {
+            rfInstanceRef.current = inst as any;
+            // Perform an initial fit + top offset when the instance is ready
+            requestAnimationFrame(() => optimizeViewport());
+          }}
+          onNodeDragStop={(_e, node) => {
             // Basic overlap avoidance: nudge dragged node until it doesn't collide
             function rect(n: Node<NodeData>) {
               return rectForNode(n);
@@ -1587,6 +1810,10 @@ onNodeDragStop={(_e, node) => {
           <Controls />
           <Background />
         </ReactFlow>
+        </div>
+        <aside className="hidden lg:block h-full border-l border-gray-200 bg-gray-50 shadow-md overflow-y-auto p-3">
+          <CheckinFeedSidebar />
+        </aside>
       </div>
 
       {/* Global lock overlay during one-click import */}

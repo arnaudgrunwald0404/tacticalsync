@@ -205,7 +205,7 @@ export function CheckInDialog({
         <DialogHeader>
           <DialogTitle>Check-In</DialogTitle>
           <DialogDescription>
-            Add a check-in update for {parentType === 'do' ? 'Defining Objective' : 'Strategic Initiative'}
+            Add a check-in update for {parentType === 'do' ? 'Defining Objective' : parentType === 'initiative' ? 'Strategic Initiative' : 'Task'}
           </DialogDescription>
         </DialogHeader>
 
@@ -213,7 +213,7 @@ export function CheckInDialog({
           <div className="space-y-4 py-4">
             {/* Parent Name (read-only) */}
             <div className="space-y-2">
-              <Label>Name of {parentType === 'do' ? 'DO' : 'SI'}</Label>
+              <Label>Name of {parentType === 'do' ? 'DO' : parentType === 'initiative' ? 'SI' : 'Task'}</Label>
               <div className="px-3 py-2 rounded-md border bg-muted text-sm font-medium">
                 {parentName}
               </div>

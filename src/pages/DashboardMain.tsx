@@ -15,9 +15,6 @@ import {
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
-import { CheckInWidget } from "@/components/rcdo/CheckInWidget";
-import { QuickCheckInWidget } from "@/components/rcdo/QuickCheckInWidget";
-import { QuickDOCheckInWidget } from "@/components/rcdo/QuickDOCheckInWidget";
 
 const DashboardMain = () => {
   const navigate = useNavigate();
@@ -521,10 +518,6 @@ const DashboardMain = () => {
           </div>
         </div>
 
-        {/* Your Actions Section */}
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-right">Your Actions</h2>
-        </div>
       </div>
 
       {teams.length === 0 && pendingInvitations.length === 0 ? (
@@ -615,32 +608,27 @@ const DashboardMain = () => {
 
             return (
               <div key={teamMember.teams.id} className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div className="flex flex-col gap-2 flex-1">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div className="flex flex-col gap-2 flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-lg sm:text-xl font-bold">
-                        {teamMember.teams.name}
-                      </h3>
+                      <h3 className="text-lg sm:text-xl font-bold">{teamMember.teams.name}</h3>
                     </div>
+                    <div className="text-[10px] sm:text-xs font-medium text-muted-foreground">Members of the team</div>
                     <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
                       {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
                         <div>
-                          <AnimatedTooltip 
-                            items={teamMember.teamMembers.map((member: any, index: number) => ({
-                              id: index,
-                              name: member.profile?.display_name || member.profile?.full_name || "Unknown",
-                              designation: member.role === "admin" ? "Admin" : "Member",
-                              image: member.profile?.avatar_url || null,
-                              // Use avatar_name or email for consistent color generation
-                              avatarName: member.profile?.avatar_name || member.profile?.email || "Unknown",
-                              // Use full name for initials extraction
-                              displayName: getFullNameForAvatar(
-                                member.profile?.first_name,
-                                member.profile?.last_name,
-                                member.profile?.email
-                              )
-                            }))}
-                          />
+                          <AnimatedTooltip items={teamMember.teamMembers.map((member: any, index: number) => ({
+                            id: index,
+                            name: member.profile?.display_name || member.profile?.full_name || 'Unknown',
+                            designation: member.role === 'admin' ? 'Admin' : 'Member',
+                            image: member.profile?.avatar_url || null,
+                            avatarName: member.profile?.avatar_name || member.profile?.email || 'Unknown',
+                            displayName: getFullNameForAvatar(
+                              member.profile?.first_name,
+                              member.profile?.last_name,
+                              member.profile?.email
+                            )
+                          }))} />
                         </div>
                       )}
                       <span>{teamMember.memberCount} active</span>
@@ -649,17 +637,13 @@ const DashboardMain = () => {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="cursor-help underline decoration-dotted underline-offset-2">
-                                {teamMember.invitedCount} invited
-                              </span>
+                              <span className="cursor-help underline decoration-dotted underline-offset-2">{teamMember.invitedCount} invited</span>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" className="max-w-xs">
                               <div className="space-y-1">
                                 <p className="text-xs font-semibold mb-2">Pending invitations:</p>
                                 {teamMember.invitedEmails?.map((email: string, idx: number) => (
-                                  <p key={idx} className="text-xs">
-                                    {email}
-                                  </p>
+                                  <p key={idx} className="text-xs">{email}</p>
                                 ))}
                               </div>
                             </TooltipContent>
@@ -679,70 +663,47 @@ const DashboardMain = () => {
                       </Button>
                     </div>
                   </div>
-                </div>
-
-                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {hasNoMeetings ? (
-                    <Card
-                      className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
-                      onClick={() => handleCreateMeeting(teamMember.teams.id)}
-                      data-testid="create-meeting-card"
-                    >
-                      <CardContent className="flex flex-col items-center justify-center py-6 sm:py-8">
-                        <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:bg-primary/20 transition-all">
-                          <Plus className="h-6 w-6 text-primary" />
-                        </div>
-                        <h4 className="text-sm font-semibold mb-1">Create First Meeting</h4>
-                        <p className="text-xs text-muted-foreground text-center">
-                          Set up a recurring meeting
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    teamMeetings.map((meeting) => (
-                      <Card
-                        key={meeting.id}
-                        className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
-                        onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
-                      >
-                        <CardHeader className="p-2 sm:p-3">
-                          <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
-                          <CardDescription className="capitalize text-xs sm:text-sm">
-                            {meeting.frequency.replace('-', ' ')}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
-                          <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
-                            Go to meetings →
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
+                  <div className="w-full lg:w-2/3">
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+                      {hasNoMeetings ? (
+                        <Card
+                          className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
+                          onClick={() => handleCreateMeeting(teamMember.teams.id)}
+                          data-testid="create-meeting-card"
+                        >
+                          <CardContent className="flex flex-col items-center justify-center py-6 sm:py-8">
+                            <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:bg-primary/20 transition-all">
+                              <Plus className="h-6 w-6 text-primary" />
+                            </div>
+                            <h4 className="text-sm font-semibold mb-1">Create First Meeting</h4>
+                            <p className="text-xs text-muted-foreground text-center">Set up a recurring meeting</p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        teamMeetings.map((meeting) => (
+                          <Card
+                            key={meeting.id}
+                            className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
+                            onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
+                          >
+                            <CardHeader className="p-2 sm:p-3">
+                              <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
+                              <CardDescription className="capitalize text-xs sm:text-sm">{meeting.frequency.replace('-', ' ')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
+                              <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">Go to meetings →</Button>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           })}
             </div>
 
-            {/* Your Actions Section */}
-            <div className="space-y-8">
-              {/* Quick DO Check-ins */}
-              <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Quick DO Check-in</h3>
-                <QuickDOCheckInWidget />
-              </div>
-              {/* Quick SI Check-ins */}
-              <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Quick SI Check-in</h3>
-                <QuickCheckInWidget />
-              </div>
-              {/* Recent Check-ins Feed */}
-              <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4 text-right">Recent Check-ins</h3>
-                <CheckInWidget />
-              </div>
-            </div>
           </div>
         </div>
       )}

@@ -45,15 +45,18 @@ export function DOTile({ definingObjective }: DOTileProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
+  // Default/neutral styling when DO is draft or has no metrics yet
+  const initiativeCount = definingObjective.initiatives?.length || 0;
+  const linkCount = definingObjective.links?.length || 0;
+  const metricsCount = definingObjective.metrics?.length || 0;
+  const isDefaultState = definingObjective.status === 'draft' || metricsCount === 0;
+
   const ownerName = getFullNameForAvatar(
     definingObjective.owner?.first_name,
     definingObjective.owner?.last_name,
     definingObjective.owner?.full_name
   );
 
-  const initiativeCount = definingObjective.initiatives?.length || 0;
-  const linkCount = definingObjective.links?.length || 0;
-  const metricsCount = definingObjective.metrics?.length || 0;
   const isOwner = currentUserId === definingObjective.owner_user_id;
 
   useEffect(() => {
@@ -79,14 +82,15 @@ export function DOTile({ definingObjective }: DOTileProps) {
     <Card
       className="p-5 hover:shadow-lg transition-shadow cursor-pointer border-l-4"
       style={{
-        borderLeftColor:
-          definingObjective.health === 'on_track'
-            ? '#22c55e'
-            : definingObjective.health === 'at_risk'
-            ? '#eab308'
-            : definingObjective.health === 'off_track'
-            ? '#ef4444'
-            : '#a855f7',
+        borderLeftColor: isDefaultState
+          ? '#4b5563' /* gray-600 */
+          : definingObjective.health === 'on_track'
+          ? '#22c55e'
+          : definingObjective.health === 'at_risk'
+          ? '#eab308'
+          : definingObjective.health === 'off_track'
+          ? '#ef4444'
+          : '#a855f7',
       }}
       onClick={handleClick}
     >
@@ -94,7 +98,7 @@ export function DOTile({ definingObjective }: DOTileProps) {
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex-1 pr-2">
           {definingObjective.title}
         </h3>
-        <Badge className={healthData.color}>
+        <Badge className={isDefaultState ? 'bg-gray-600 text-white' : healthData.color}>
           <HealthIcon className="h-3 w-3 mr-1" />
           {healthData.label}
         </Badge>

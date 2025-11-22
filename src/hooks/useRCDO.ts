@@ -553,7 +553,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           participant_user_ids: form.participant_user_ids || [],
           start_date: form.start_date || null,
           end_date: form.end_date || null,
-          status: 'draft',
+          status: 'not_started',
           created_by: auth?.user?.id || null,
         })
         .select()

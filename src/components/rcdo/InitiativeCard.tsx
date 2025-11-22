@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,14 +19,15 @@ interface InitiativeCardProps {
 }
 
 const statusConfig = {
-  draft: { label: 'Draft', color: 'bg-gray-500' },
   not_started: { label: 'Not Started', color: 'bg-blue-500' },
-  active: { label: 'Active', color: 'bg-green-500' },
-  blocked: { label: 'Blocked', color: 'bg-red-500' },
-  done: { label: 'Done', color: 'bg-purple-500' },
+  on_track: { label: 'On Track', color: 'bg-green-500' },
+  at_risk: { label: 'At Risk', color: 'bg-yellow-500' },
+  off_track: { label: 'Off Track', color: 'bg-red-500' },
+  completed: { label: 'Completed', color: 'bg-purple-500' },
 };
 
 export function InitiativeCard({ initiative, onClick, isDragging = false }: InitiativeCardProps) {
+  const navigate = useNavigate();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
@@ -35,7 +37,7 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
     initiative.owner?.full_name
   );
 
-  const statusData = statusConfig[initiative.status];
+  const statusData = statusConfig[initiative.status] || { label: 'Unknown', color: 'bg-gray-500' };
   const isOwner = currentUserId === initiative.owner_user_id;
   const isParticipant = initiative.participant_user_ids?.includes(currentUserId || '') || false;
   const canCheckIn = isOwner || isParticipant;
@@ -55,13 +57,21 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
     setShowCheckInDialog(true);
   };
 
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick();
+    } else {
+      navigate(`/dashboard/rcdo/si/${initiative.id}`);
+    }
+  };
+
   return (
     <Card
       className={cn(
         'p-4 cursor-pointer hover:shadow-md transition-all',
         isDragging && 'opacity-50 rotate-2'
       )}
-      onClick={onClick}
+      onClick={handleCardClick}
     >
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-semibold text-gray-900 dark:text-gray-100 flex-1 pr-2">

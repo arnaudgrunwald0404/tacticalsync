@@ -7,3 +7,6 @@ ADD COLUMN IF NOT EXISTS parking_lot TEXT DEFAULT '';
 COMMENT ON COLUMN meeting_series.parking_lot IS 'Series-level parking lot for notes, ideas, or topics to revisit later. Shared across all instances of this meeting series.';
 
 
+
+
+

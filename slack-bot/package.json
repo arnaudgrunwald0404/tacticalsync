@@ -1,0 +1,19 @@
+{
+  "name": "team-tactical-slack-bot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.18.0",
+    "@supabase/supabase-js": "^2.75.0",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3"
+  }
+}

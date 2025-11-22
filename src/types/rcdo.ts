@@ -13,8 +13,9 @@ export type DOHealth = 'on_track' | 'at_risk' | 'off_track' | 'done';
 export type MetricType = 'leading' | 'lagging';
 export type MetricDirection = 'up' | 'down';
 export type MetricSource = 'manual' | 'api' | 'sheet' | 'jira' | 'clearinsights';
-export type InitiativeStatus = 'draft' | 'not_started' | 'active' | 'blocked' | 'done';
-export type CheckinParentType = 'do' | 'initiative';
+export type InitiativeStatus = 'not_started' | 'on_track' | 'at_risk' | 'off_track' | 'completed';
+export type TaskStatus = 'not_assigned' | 'assigned' | 'in_progress' | 'completed' | 'task_changed_canceled' | 'delayed';
+export type CheckinParentType = 'do' | 'initiative' | 'task';
 export type LinkParentType = 'do' | 'initiative';
 export type LinkKind = 'meeting_priority' | 'action_item' | 'topic' | 'decision' | 'jira' | 'doc';
 
@@ -102,6 +103,23 @@ export interface StrategicInitiative {
   created_by?: string | null;
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  completion_criteria: string | null;
+  owner_user_id: string;
+  strategic_initiative_id: string;
+  start_date: string | null;
+  target_delivery_date: string | null;
+  actual_delivery_date: string | null;
+  notes: string | null;
+  status: TaskStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  display_order: number;
+}
+
 export interface RCCheckin {
   id: string;
   parent_type: CheckinParentType;
@@ -177,6 +195,20 @@ export interface StrategicInitiativeWithRelations extends StrategicInitiative {
   };
   checkins?: RCCheckin[];
   links?: RCLinkWithDetails[];
+  tasks?: TaskWithRelations[];
+}
+
+export interface TaskWithRelations extends Task {
+  strategic_initiative?: StrategicInitiativeWithRelations;
+  owner?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    full_name?: string;
+    avatar_url?: string;
+    avatar_name?: string;
+  };
+  checkins?: RCCheckin[];
 }
 
 export interface RCCheckinWithRelations extends RCCheckin {
@@ -266,6 +298,30 @@ export interface CreateCheckinForm {
   next_steps?: string;
   sentiment?: number;
   percent_to_goal?: number | null; // 0-100, percentage progress toward goal
+}
+
+export interface CreateTaskForm {
+  strategic_initiative_id: string;
+  title: string;
+  completion_criteria?: string;
+  owner_user_id: string;
+  start_date?: string;
+  target_delivery_date?: string;
+  actual_delivery_date?: string;
+  notes?: string;
+  status?: TaskStatus;
+}
+
+export interface UpdateTaskForm {
+  title?: string;
+  completion_criteria?: string;
+  owner_user_id?: string;
+  start_date?: string;
+  target_delivery_date?: string;
+  actual_delivery_date?: string;
+  notes?: string;
+  status?: TaskStatus;
+  display_order?: number;
 }
 
 export interface CreateLinkForm {

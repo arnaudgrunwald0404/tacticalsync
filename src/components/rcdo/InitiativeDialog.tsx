@@ -148,7 +148,7 @@ export function InitiativeDialog({
           participant_user_ids: createData.participant_user_ids || [],
           start_date: createData.start_date || null,
           end_date: createData.end_date || null,
-          status: 'draft',
+          status: 'not_started',
           created_by: auth?.user?.id || null,
         });
 

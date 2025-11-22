@@ -6,11 +6,13 @@ interface UseRCDORealtimeProps {
   cycleId?: string;
   rallyingCryId?: string;
   doId?: string;
+  siId?: string;
   onCycleUpdate?: () => void;
   onRallyingCryUpdate?: () => void;
   onDOUpdate?: () => void;
   onMetricsUpdate?: () => void;
   onInitiativesUpdate?: () => void;
+  onTasksUpdate?: () => void;
   onLinksUpdate?: () => void;
   onCheckinsUpdate?: () => void;
 }
@@ -23,11 +25,13 @@ export function useRCDORealtime({
   cycleId,
   rallyingCryId,
   doId,
+  siId,
   onCycleUpdate,
   onRallyingCryUpdate,
   onDOUpdate,
   onMetricsUpdate,
   onInitiativesUpdate,
+  onTasksUpdate,
   onLinksUpdate,
   onCheckinsUpdate,
 }: UseRCDORealtimeProps) {
@@ -184,6 +188,51 @@ export function useRCDORealtime({
       }
     }
 
+    // Subscribe to SI-specific updates (tasks, check-ins)
+    if (siId) {
+      // Tasks updates
+      if (onTasksUpdate) {
+        const tasksChannel = supabase
+          .channel(`rc_tasks:si:${siId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'rc_tasks',
+              filter: `strategic_initiative_id=eq.${siId}`,
+            },
+            () => {
+              onTasksUpdate();
+            }
+          )
+          .subscribe();
+
+        channels.push(tasksChannel);
+      }
+
+      // Check-ins updates for SI
+      if (onCheckinsUpdate) {
+        const checkinsChannel = supabase
+          .channel(`rc_checkins:si:${siId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'rc_checkins',
+              filter: `parent_id=eq.${siId} AND parent_type=eq.initiative`,
+            },
+            () => {
+              onCheckinsUpdate();
+            }
+          )
+          .subscribe();
+
+        channels.push(checkinsChannel);
+      }
+    }
+
     // Cleanup subscriptions on unmount
     return () => {
       channels.forEach((channel) => {
@@ -194,11 +243,13 @@ export function useRCDORealtime({
     cycleId,
     rallyingCryId,
     doId,
+    siId,
     onCycleUpdate,
     onRallyingCryUpdate,
     onDOUpdate,
     onMetricsUpdate,
     onInitiativesUpdate,
+    onTasksUpdate,
     onLinksUpdate,
     onCheckinsUpdate,
   ]);

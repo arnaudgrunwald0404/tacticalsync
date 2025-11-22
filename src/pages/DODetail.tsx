@@ -168,7 +168,8 @@ export default function DODetail() {
 
   // Calculate health based on current metrics
   const healthResult = calculateDOHealth(doDetails.id, metrics);
-  const healthColor = getHealthColor(healthResult.health);
+  const isDefaultState = doDetails.status === 'draft' || metrics.length === 0;
+  const healthColor = isDefaultState ? 'text-slate-600 dark:text-slate-300' : getHealthColor(healthResult.health);
 
   const healthIcons = {
     on_track: TrendingUp,
@@ -204,7 +205,28 @@ export default function DODetail() {
                 </Button>
               )}
               {canLockDO && (
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!doDetails) return;
+                    const locking = !isLocked;
+                    try {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      const updates: any = locking
+                        ? { locked_at: new Date().toISOString(), locked_by: user?.id || null }
+                        : { locked_at: null, locked_by: null };
+                      const { error } = await supabase
+                        .from('rc_defining_objectives')
+                        .update(updates)
+                        .eq('id', doDetails.id);
+                      if (error) throw error;
+                      // Refresh DO and its initiatives (SIs may have been cascade-locked)
+                      await Promise.all([refetchDO(), refetchInitiatives()]);
+                    } catch (e) {
+                      console.warn('Failed to toggle DO lock', e);
+                    }
+                  }}
+                >
                   {isLocked ? (
                     <>
                       <Unlock className="h-4 w-4 mr-2" />
@@ -243,7 +265,9 @@ export default function DODetail() {
               <div className="flex flex-col gap-2 items-end">
                 <Badge
                   className={
-                    healthResult.health === 'on_track'
+                    isDefaultState
+                      ? 'bg-slate-600'
+                      : healthResult.health === 'on_track'
                       ? 'bg-green-500'
                       : healthResult.health === 'at_risk'
                       ? 'bg-yellow-500'

@@ -16,8 +16,10 @@ import { useRoles } from "@/hooks/useRoles";
 import { useEffect, useState, lazy, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
 const StrategyHome = lazy(() => import("./StrategyHome"));
+const LazyCheckinsPage = lazy(() => import("./Checkins"));
 import { getFullNameForAvatar } from "@/lib/nameUtils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useActiveCycle } from "@/hooks/useRCDO";
 
 const DashboardWithTabs = () => {
   const navigate = useNavigate();
@@ -27,7 +29,14 @@ const DashboardWithTabs = () => {
   const [profileLoading, setProfileLoading] = useState(true);
 
   // Determine active tab from URL
-  const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
+  const activeTab = location.pathname.includes('/dashboard/rcdo')
+    ? 'rcdo'
+    : location.pathname.includes('/dashboard/checkins')
+    ? 'checkins'
+    : 'main';
+
+  // Fetch active cycle to auto-route to canvas when RCDO tab is selected
+  const { cycle: activeCycle, loading: activeCycleLoading } = useActiveCycle();
 
   useEffect(() => {
     fetchProfile();
@@ -61,8 +70,21 @@ const DashboardWithTabs = () => {
       navigate('/dashboard/main');
     } else if (value === 'rcdo') {
       navigate('/dashboard/rcdo');
+    } else if (value === 'checkins') {
+      navigate('/dashboard/checkins');
     }
   };
+
+  // When on /dashboard/rcdo base path, send user to the active canvas if available
+  useEffect(() => {
+    if (activeTab !== 'rcdo') return;
+    const path = location.pathname.replace(/\/$/, '');
+    if (path === '/dashboard/rcdo' && !activeCycleLoading) {
+      if (activeCycle?.id) {
+        navigate(`/dashboard/rcdo/canvas?cycle=${activeCycle.id}`, { replace: true });
+      }
+    }
+  }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
 
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
@@ -88,8 +110,9 @@ const DashboardWithTabs = () => {
           <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="h-10">
-                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
                 <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
+                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
+                <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -143,6 +166,15 @@ const DashboardWithTabs = () => {
       </header>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsContent value="checkins" className="mt-0">
+          {activeTab === 'checkins' ? (
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-ins…</div>}>
+              {/* Lazy import to keep initial bundle small */}
+              <LazyCheckinsPage />
+            </Suspense>
+          ) : null}
+        </TabsContent>
+
         <TabsContent value="main" className="mt-0">
           <DashboardMain />
         </TabsContent>

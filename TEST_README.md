@@ -44,10 +44,14 @@ src/test/                      # Unit/integration tests (Vitest)
 
 ### Prerequisites
 
-1. **Environment Variables**: Create a `.env.test` file (or use your existing `.env`):
+1. **Environment Variables**:
+   - For app dev: copy `.env.example` to `.env.local` and fill values.
+   - For tests: copy `.env.test.example` to `.env.test` and fill values.
    ```bash
+   # .env.test
    VITE_SUPABASE_URL=your-supabase-url
-   VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   # Backward-compat: the app also accepts VITE_SUPABASE_PUBLISHABLE_KEY but ANON_KEY is preferred
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # For test helpers only
    PLAYWRIGHT_BASE_URL=http://localhost:5173
    ```

@@ -11,3 +11,6 @@ COMMENT ON COLUMN invitations.role IS 'Role that will be assigned to the user wh
 
 
 
+
+
+

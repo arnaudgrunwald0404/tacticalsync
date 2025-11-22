@@ -64,3 +64,6 @@ After creating the bucket and running the migration, try uploading a profile pho
 - You can set a custom file size limit in the bucket settings
 
 
+
+
+

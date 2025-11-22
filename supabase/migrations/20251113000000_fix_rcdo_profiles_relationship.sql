@@ -43,3 +43,6 @@ ALTER TABLE rc_cycles
     FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE CASCADE;
 
 
+
+
+

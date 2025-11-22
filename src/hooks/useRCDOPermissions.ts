@@ -15,6 +15,9 @@ interface RCDOPermissionsState {
   canEditMetric: (doOwnerId: string, doLockedAt: string | null) => boolean;
   canCreateInitiative: (doOwnerId: string) => boolean;
   canEditInitiative: (initiativeOwnerId: string, initiativeLockedAt: string | null) => boolean;
+  canCreateTask: (siId: string) => boolean;
+  canEditTask: (taskOwnerId: string, siOwnerId?: string) => boolean;
+  canDeleteTask: (taskOwnerId: string, siOwnerId?: string) => boolean;
   loading: boolean;
 }
 
@@ -151,6 +154,43 @@ export function useRCDOPermissions(): RCDOPermissionsState {
     [userId, isAdmin, isSuperAdmin, isRCDOAdmin]
   );
 
+  const canCreateTask = useCallback(
+    (siId: string): boolean => {
+      // Any team member with access to the SI can create tasks
+      // This will be enforced by RLS policies
+      if (isSuperAdmin) return true;
+      if (isRCDOAdmin) return true;
+      if (isAdmin) return true;
+      // For regular users, RLS will check team membership
+      return true;
+    },
+    [isAdmin, isSuperAdmin, isRCDOAdmin]
+  );
+
+  const canEditTask = useCallback(
+    (taskOwnerId: string, siOwnerId?: string): boolean => {
+      if (isSuperAdmin) return true;
+      if (isRCDOAdmin) return true;
+      if (isAdmin) return true;
+      if (userId === taskOwnerId) return true; // Task owner
+      if (siOwnerId && userId === siOwnerId) return true; // SI owner
+      return false;
+    },
+    [userId, isAdmin, isSuperAdmin, isRCDOAdmin]
+  );
+
+  const canDeleteTask = useCallback(
+    (taskOwnerId: string, siOwnerId?: string): boolean => {
+      if (isSuperAdmin) return true;
+      if (isRCDOAdmin) return true;
+      if (isAdmin) return true;
+      if (userId === taskOwnerId) return true; // Task owner
+      if (siOwnerId && userId === siOwnerId) return true; // SI owner
+      return false;
+    },
+    [userId, isAdmin, isSuperAdmin, isRCDOAdmin]
+  );
+
   return {
     canCreateCycle,
     canEditCycle,
@@ -164,6 +204,9 @@ export function useRCDOPermissions(): RCDOPermissionsState {
     canEditMetric,
     canCreateInitiative,
     canEditInitiative,
+    canCreateTask,
+    canEditTask,
+    canDeleteTask,
     loading: loading || rolesLoading,
   };
 }
