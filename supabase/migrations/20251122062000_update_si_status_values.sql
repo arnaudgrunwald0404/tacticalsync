@@ -27,3 +27,4 @@ ALTER TABLE rc_strategic_initiatives
 ALTER TABLE rc_strategic_initiatives
   ALTER COLUMN status SET DEFAULT 'not_started';
 
+
