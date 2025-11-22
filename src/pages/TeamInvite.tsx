@@ -13,6 +13,7 @@ import FancyAvatar from "@/components/ui/fancy-avatar";
 import { formatMemberNames, getFullNameForAvatar } from "@/lib/nameUtils";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -568,7 +569,7 @@ const TeamInvite = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
       <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
               <ArrowLeft className="h-4 w-4 sm:mr-1" />
@@ -577,6 +578,7 @@ const TeamInvite = () => {
             </Button>
             <Logo variant="minimal" size="lg" />
           </div>
+          <UserProfileHeader />
         </div>
       </header>
       <main className="container mx-auto px-4 py-8 max-w-6xl">

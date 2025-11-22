@@ -12,9 +12,10 @@ import ReactFlow, {
   MarkerType,
   Position,
   ReactFlowInstance,
+  Handle,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, LogOut, Settings, User, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -33,8 +34,7 @@ import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParse
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
-import { getFullNameForAvatar } from "@/lib/nameUtils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
 import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
@@ -181,6 +181,7 @@ const createDoNode = (
         boxShadow: status === "final" ? "0 4px 20px rgba(100, 116, 139, 0.2)" : "0 4px 20px rgba(100, 116, 139, 0.15)"
       }}
     >
+      <Handle type="target" position={Position.Top} />
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-20 h-20 ${
         status === "final" ? "bg-slate-500/10" : "bg-slate-500/10"
@@ -405,6 +406,7 @@ function RallyNode({ data }: { data: NodeData }) {
         overflow: 'visible'
       }}
     >
+      <Handle type="source" position={Position.Bottom} />
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-24 h-24 ${
         finalized ? "bg-purple-500/10" : "bg-amber-500/10"
@@ -588,6 +590,33 @@ export default function StrategyCanvasPage() {
     return edges.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
   }, [edges, filteredNodes, viewAsUserId]);
   
+  // Extract visible DO and SI database IDs for check-in filtering
+  const visibleParentIds = useMemo(() => {
+    if (!viewAsUserId) return { doIds: [], siIds: [] };
+    
+    const doIds: string[] = [];
+    const siIds: string[] = [];
+    
+    filteredNodes.forEach((node) => {
+      if (node.type === 'do') {
+        const doStatus = doLockedStatus.get(node.id);
+        if (doStatus?.dbId) {
+          doIds.push(doStatus.dbId);
+        }
+        
+        // Collect SI IDs from this DO
+        const saiItems = (node.data.saiItems || []) as any[];
+        saiItems.forEach((si: any) => {
+          if (si.dbId) {
+            siIds.push(si.dbId);
+          }
+        });
+      }
+    });
+    
+    return { doIds, siIds };
+  }, [filteredNodes, viewAsUserId, doLockedStatus]);
+  
   // Create node types with access to profilesMap, showProgress, SI progress data, and DO locked status
   const nodeTypes = useMemo(() => ({
     strategy: StrategyNode,
@@ -613,29 +642,6 @@ export default function StrategyCanvasPage() {
 
   // Header state (logo/tabs/avatar)
   const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
-  const [headerProfile, setHeaderProfile] = useState<any>(null);
-  const [headerLoading, setHeaderLoading] = useState(true);
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, full_name, avatar_name, avatar_url, email')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileData) setHeaderProfile(profileData);
-        }
-      } finally {
-        setHeaderLoading(false);
-      }
-    })();
-  }, []);
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/auth');
-  };
   const handleTabChange = (value: string) => {
     if (value === 'main') navigate('/dashboard/main');
     else if (value === 'rcdo') navigate('/dashboard/rcdo');
@@ -1647,44 +1653,7 @@ const duplicateSelectedDo = useCallback(() => {
           </div>
 
           {/* Right: Avatar + name clickable */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
-            {headerLoading ? (
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-7 w-7 rounded-full" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-            ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow" role="button" aria-label="Open account menu">
-                    <FancyAvatar
-                      name={(headerProfile?.avatar_name && headerProfile.avatar_name.trim()) || headerProfile?.email || 'User'}
-                      displayName={getFullNameForAvatar(headerProfile?.first_name, headerProfile?.last_name, headerProfile?.email)}
-                      avatarUrl={headerProfile?.avatar_url}
-                      size="sm"
-                      className="flex-shrink-0"
-                    />
-                    <div className="flex flex-col items-start min-w-0 overflow-hidden">
-                      <span className="text-sm leading-none truncate max-w-full">
-                        {`${headerProfile?.first_name || headerProfile?.email || ''} ${headerProfile?.last_name || ''}`.trim()}
-                      </span>
-                    </div>
-                  </div>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => navigate('/profile')}>
-                    <User className="h-4 w-4 mr-2" />
-                    Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          <UserProfileHeader />
         </div>
       </header>
 
@@ -1759,12 +1728,14 @@ const duplicateSelectedDo = useCallback(() => {
             </SelectContent>
           </Select>
         </div>
-        
-        <div className="ml-auto text-xs text-muted-foreground pr-2">Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.</div>
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px]">
-        <div className="min-h-0">
+        <div className="min-h-0 relative">
+        {/* Watermark text in top-left of canvas */}
+        <div className="absolute top-4 left-4 z-10 text-xs text-muted-foreground/60 pointer-events-none">
+          Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.
+        </div>
         <ReactFlow
           nodes={filteredNodes}
           edges={filteredEdges}
@@ -1812,7 +1783,7 @@ const duplicateSelectedDo = useCallback(() => {
         </ReactFlow>
         </div>
         <aside className="hidden lg:block h-full border-l border-gray-200 bg-gray-50 shadow-md overflow-y-auto p-3">
-          <CheckinFeedSidebar />
+          <CheckinFeedSidebar viewAsUserId={viewAsUserId} filteredNodeIds={visibleParentIds} />
         </aside>
       </div>
 
@@ -2070,8 +2041,9 @@ const duplicateSelectedDo = useCallback(() => {
               <div className="space-y-3">
                 {/* 1. Name */}
                 <div>
+                  <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white mb-2 inline-block">Defining Objective</span>
                   <label className="block text-sm font-medium">
-                    DO Name
+                    Name
                   </label>
                   <div className="flex items-center gap-2 mt-1 mb-2">
                     <label className="text-xs text-muted-foreground">Status</label>

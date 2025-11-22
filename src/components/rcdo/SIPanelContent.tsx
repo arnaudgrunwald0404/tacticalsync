@@ -78,7 +78,45 @@ export function SIPanelContent({
   const { siData: siWithProgress, refetch: refetchSI } = useSIWithProgress(siDbId);
   
   // Get current status from database or default to 'not_started'
-  const currentStatus: InitiativeStatus = (siWithProgress?.status as InitiativeStatus) || 'not_started';
+  // Handle potential null/undefined or old status values
+  const getStatusLabel = (status: string | null | undefined): string => {
+    if (!status) return 'Not Started';
+    const statusMap: Record<string, string> = {
+      'not_started': 'Not Started',
+      'on_track': 'On Track',
+      'at_risk': 'At Risk',
+      'off_track': 'Off Track',
+      'completed': 'Completed',
+      // Handle old values that might still exist
+      'draft': 'Not Started',
+      'active': 'On Track',
+      'blocked': 'At Risk',
+      'done': 'Completed',
+    };
+    return statusMap[status] || 'Not Started';
+  };
+
+  // Normalize status value to ensure it matches one of the valid SelectItem values
+  const normalizeStatus = (status: string | null | undefined): InitiativeStatus => {
+    if (!status) return 'not_started';
+    const validStatuses: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
+    // If it's already a valid status, return it
+    if (validStatuses.includes(status as InitiativeStatus)) {
+      return status as InitiativeStatus;
+    }
+    // Map old values to new values
+    const statusMapping: Record<string, InitiativeStatus> = {
+      'draft': 'not_started',
+      'active': 'on_track',
+      'blocked': 'at_risk',
+      'done': 'completed',
+    };
+    return statusMapping[status] || 'not_started';
+  };
+
+  const rawStatus = siWithProgress?.status || 'not_started';
+  const currentStatus: InitiativeStatus = normalizeStatus(rawStatus);
+  const statusLabel = getStatusLabel(rawStatus);
   
   // Check if DO is locked
   const doStatus = doLockedStatus.get(doNode.id);
@@ -134,9 +172,10 @@ export function SIPanelContent({
       <div className="mt-4 space-y-3">
         {/* 1. Name */}
         <div>
-          <label className="text-sm font-medium">SI Name</label>
+          
+
           <div className="flex items-center gap-2 mt-1 mb-2">
-            <label className="text-xs text-muted-foreground">Status</label>
+            <label className="text-sm font-medium">Status</label>
             <Select
               value={currentStatus}
               disabled={!canEditStatus}
@@ -167,7 +206,9 @@ export function SIPanelContent({
               }}
             >
               <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
+                <SelectValue placeholder="Select status">
+                  {statusLabel}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="not_started">Not Started</SelectItem>
@@ -178,6 +219,7 @@ export function SIPanelContent({
               </SelectContent>
             </Select>
           </div>
+          <label className="text-sm font-medium">Name</label>
           <input className="w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>{ if (isLocked) return; onUpdate({ title: e.target.value }); }} disabled={isLocked} />
         </div>
         

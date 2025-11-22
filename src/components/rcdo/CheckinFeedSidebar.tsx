@@ -28,7 +28,15 @@ interface GlobalCheckin {
   } | null;
 }
 
-export function CheckinFeedSidebar() {
+interface CheckinFeedSidebarProps {
+  viewAsUserId?: string | null;
+  filteredNodeIds?: {
+    doIds: string[];
+    siIds: string[];
+  };
+}
+
+export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFeedSidebarProps = {}) {
   const [loading, setLoading] = useState(true);
   const [updates, setUpdates] = useState<GlobalCheckin[]>([]);
   const [parentTitles, setParentTitles] = useState<Record<string, { title: string; type: string }>>({});
@@ -37,26 +45,104 @@ export function CheckinFeedSidebar() {
     (async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from('rc_checkins')
-          .select(`
-            id,
-            parent_type,
-            parent_id,
-            date,
-            summary,
-            next_steps,
-            sentiment,
-            percent_to_goal,
-            created_at,
-            creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
-          `)
-          .in('parent_type', ['do', 'initiative', 'task'])
-          .order('date', { ascending: false })
-          .order('created_at', { ascending: false })
-          .limit(30);
-        if (error) throw error;
-        const rows = (data || []) as unknown as GlobalCheckin[];
+        
+        let rows: GlobalCheckin[] = [];
+        
+        // If filtering is active, only fetch check-ins for visible DOs and SIs
+        if (viewAsUserId && filteredNodeIds) {
+          const { doIds, siIds } = filteredNodeIds;
+          
+          // If no visible DOs or SIs, return empty
+          if (doIds.length === 0 && siIds.length === 0) {
+            setUpdates([]);
+            setParentTitles({});
+            setLoading(false);
+            return;
+          }
+          
+          // Fetch check-ins for DOs and SIs separately, then combine
+          if (doIds.length > 0) {
+            const { data: doCheckins, error: doError } = await supabase
+              .from('rc_checkins')
+              .select(`
+                id,
+                parent_type,
+                parent_id,
+                date,
+                summary,
+                next_steps,
+                sentiment,
+                percent_to_goal,
+                created_at,
+                creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
+              `)
+              .eq('parent_type', 'do')
+              .in('parent_id', doIds);
+            
+            if (!doError && doCheckins) {
+              rows.push(...(doCheckins as unknown as GlobalCheckin[]));
+            }
+          }
+          
+          if (siIds.length > 0) {
+            const { data: siCheckins, error: siError } = await supabase
+              .from('rc_checkins')
+              .select(`
+                id,
+                parent_type,
+                parent_id,
+                date,
+                summary,
+                next_steps,
+                sentiment,
+                percent_to_goal,
+                created_at,
+                creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
+              `)
+              .eq('parent_type', 'initiative')
+              .in('parent_id', siIds);
+            
+            if (!siError && siCheckins) {
+              rows.push(...(siCheckins as unknown as GlobalCheckin[]));
+            }
+          }
+          
+          if (rows.length > 0) {
+            
+            // Sort by date and created_at, then limit
+            rows.sort((a, b) => {
+              const ad = new Date(a.date || a.created_at).getTime();
+              const bd = new Date(b.date || b.created_at).getTime();
+              if (bd !== ad) return bd - ad;
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+            
+            rows = rows.slice(0, 30);
+          }
+        } else {
+          // Default: fetch all check-ins
+          const { data, error } = await supabase
+            .from('rc_checkins')
+            .select(`
+              id,
+              parent_type,
+              parent_id,
+              date,
+              summary,
+              next_steps,
+              sentiment,
+              percent_to_goal,
+              created_at,
+              creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
+            `)
+            .in('parent_type', ['do', 'initiative', 'task'])
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(30);
+          if (error) throw error;
+          rows = (data || []) as unknown as GlobalCheckin[];
+        }
+        
         setUpdates(rows);
 
         // Fetch titles for all parent types
@@ -101,7 +187,7 @@ export function CheckinFeedSidebar() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [viewAsUserId, filteredNodeIds]);
 
   if (loading) {
     return (

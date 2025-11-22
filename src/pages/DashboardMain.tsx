@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Users, Mail } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Users, Mail, GripVertical } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
 import {
@@ -15,6 +16,184 @@ import {
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+// Sortable Team Item Component
+function SortableTeamItem({ 
+  teamMember, 
+  teamMeetings, 
+  hasNoMeetings, 
+  onMeetingAccess, 
+  onCreateMeeting,
+  navigate,
+  teamIndex,
+  totalTeams
+}: {
+  teamMember: any;
+  teamMeetings: any[];
+  hasNoMeetings: boolean;
+  onMeetingAccess: (teamId: string, meetingId: string) => void;
+  onCreateMeeting: (teamId: string) => void;
+  navigate: (path: string) => void;
+  teamIndex: number;
+  totalTeams: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: teamMember.teams.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {teamIndex > 0 && (
+        <div className="mb-2 border-t border-border/50"></div>
+      )}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-3 flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-accent rounded"
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold text-foreground">
+              {teamMember.teams.name}
+            </h3>
+          </div>
+          <div className="bg-muted/30 rounded-lg p-3 sm:p-4 space-y-2.5">
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-foreground/70">{teamMember.memberCount} active</span>
+                  <span className="text-muted-foreground/50">·</span>
+                  {teamMember.invitedCount > 0 ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-help underline decoration-dotted underline-offset-2 font-medium text-foreground/70">
+                            {teamMember.invitedCount} invited
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-xs">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold mb-2">Pending invitations:</p>
+                            {teamMember.invitedEmails?.map((email: string, idx: number) => (
+                              <p key={idx} className="text-xs">
+                                {email}
+                              </p>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <span className="font-medium text-foreground/70">{teamMember.invitedCount} invited</span>
+                  )}
+                </div>
+                {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <AnimatedTooltip 
+                      items={teamMember.teamMembers.map((member: any, index: number) => ({
+                        id: index,
+                        name: member.profile?.display_name || member.profile?.full_name || "Unknown",
+                        designation: member.role === "admin" ? "Admin" : "Member",
+                        image: member.profile?.avatar_url || null,
+                        avatarName: member.profile?.avatar_name || member.profile?.email || "Unknown",
+                        displayName: getFullNameForAvatar(
+                          member.profile?.first_name,
+                          member.profile?.last_name,
+                          member.profile?.email
+                        )
+                      }))}
+                    />
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto px-2.5 gap-1.5 text-xs sm:text-sm font-normal hover:bg-accent flex-col"
+                onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span className="leading-tight">Manage<br />team</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="w-full lg:w-2/3">
+          <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+            {hasNoMeetings ? (
+              <Card
+                className="border-dashed border-2 hover:border-primary hover:shadow-md transition-all cursor-pointer group bg-muted/20"
+                onClick={() => onCreateMeeting(teamMember.teams.id)}
+                data-testid="create-meeting-card"
+              >
+                <CardContent className="flex flex-col items-center justify-center py-8 sm:py-10 px-4">
+                  <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
+                    <Plus className="h-7 w-7 text-primary" />
+                  </div>
+                  <h4 className="text-base font-semibold mb-1.5">Create First Meeting</h4>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Set up a recurring meeting
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              teamMeetings.map((meeting) => (
+                <Card
+                  key={meeting.id}
+                  className="hover:shadow-lg hover:border-blue-300 bg-card/40 backdrop-blur-sm hover:bg-card/60 transition-all duration-200 cursor-pointer group border border-blue-200/50"
+                  onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
+                >
+                  <CardHeader className="p-3">
+                    <Badge className="mb-1 capitalize text-[10px] px-2 py-1 rounded-full font-medium bg-slate-600 text-white w-fit">
+                      {meeting.frequency.replace('-', ' ')}
+                    </Badge>
+                    <CardTitle className="text-base sm:text-lg font-semibold">{meeting.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4 pt-0 flex justify-end">
+                    <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium">
+                      Go →
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const DashboardMain = () => {
   const navigate = useNavigate();
@@ -40,6 +219,44 @@ const DashboardMain = () => {
   }
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = teams.findIndex((team) => team.teams.id === active.id);
+    const newIndex = teams.findIndex((team) => team.teams.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const reorderedTeams = arrayMove(teams, oldIndex, newIndex);
+    setTeams(reorderedTeams);
+
+    // Save order to localStorage
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user?.id) {
+      const storageKey = `team-order-${userData.user.id}`;
+      const orderArray = reorderedTeams.map(team => team.teams.id);
+      localStorage.setItem(storageKey, JSON.stringify(orderArray));
+    }
+
+    toast({
+      title: "Teams reordered",
+      description: "Your team order has been saved",
+    });
+  };
 
   useEffect(() => {
     checkUser();
@@ -284,10 +501,46 @@ const DashboardMain = () => {
         };
       });
 
-      setTeams(teamsWithData);
+      // Apply saved order from localStorage
+      const { data: userDataForOrder } = await supabase.auth.getUser();
+      const storageKey = `team-order-${userDataForOrder.user?.id}`;
+      const savedOrder = localStorage.getItem(storageKey);
+      
+      let orderedTeams = teamsWithData;
+      if (savedOrder) {
+        try {
+          const orderArray = JSON.parse(savedOrder) as string[];
+          // Create a map for quick lookup
+          const teamsMap = new Map(teamsWithData.map(t => [t.teams.id, t]));
+          // Reorder based on saved order, then append any new teams
+          const ordered: any[] = [];
+          const seen = new Set<string>();
+          
+          orderArray.forEach(teamId => {
+            const team = teamsMap.get(teamId);
+            if (team) {
+              ordered.push(team);
+              seen.add(teamId);
+            }
+          });
+          
+          // Add any teams not in the saved order (new teams)
+          teamsWithData.forEach(team => {
+            if (!seen.has(team.teams.id)) {
+              ordered.push(team);
+            }
+          });
+          
+          orderedTeams = ordered;
+        } catch (e) {
+          console.warn("Failed to parse saved team order:", e);
+        }
+      }
+
+      setTeams(orderedTeams);
 
       const meetingsForState: Record<string, any[]> = {};
-      teamsWithData.forEach((team) => {
+      orderedTeams.forEach((team) => {
         meetingsForState[team.teams.id] = team.meetings;
       });
       setMeetings(meetingsForState);
@@ -489,13 +742,13 @@ const DashboardMain = () => {
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8">
-      <div className="mb-6 sm:mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="mb-8 sm:mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Your Teams Section */}
         <div>
-          <div className="mb-4 ">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-2">Your Teams</h2>
+          <div className="mb-6">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Discipline Starts with Cadenced Meetings </h2>
             
-            <p className="text-sm sm:text-base text-muted-foreground">
+            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
               Run your recurring meetings with discipline that makes all the difference.
               <br />
               {(isAdmin || isSuperAdmin) ? (
@@ -507,7 +760,7 @@ const DashboardMain = () => {
                       e.preventDefault();
                       navigate("/create-team");
                     }}
-                    className="text-primary hover:underline cursor-pointer"
+                    className="text-primary hover:underline cursor-pointer font-medium"
                   >
                     Create it now!</a>
                 </>
@@ -552,7 +805,7 @@ const DashboardMain = () => {
           )}
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-10 sm:space-y-12">
           {/* Pending Invitations */}
           {pendingInvitations.map((invitation) => (
             <div key={`invitation-${invitation.id}`} className="space-y-4">
@@ -566,7 +819,7 @@ const DashboardMain = () => {
                           Invitation Pending
                         </div>
                         <CardDescription className="text-xs">
-                          <span className="hidden sm:inline">·</span> Invited by {invitation.invited_by_profile?.full_name || "a team member"}
+                          <span className="hidden sm:inline">·</span> <span>Invited by<br />{invitation.invited_by_profile?.full_name || "a team member"}</span>
                         </CardDescription>
                       </div>
                       {invitation.meetings && invitation.meetings.length > 0 && (
@@ -599,110 +852,39 @@ const DashboardMain = () => {
           ))}
 
           {/* Main Content Grid: Teams and Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="gap-4">
             {/* Teams Section */}
-            <div className="space-y-8">
-          {teams.map((teamMember) => {
-            const teamMeetings = meetings[teamMember.teams.id] || [];
-            const hasNoMeetings = teamMeetings.length === 0;
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={teams.map(team => team.teams.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-10 sm:space-y-12">
+                  {teams.map((teamMember, teamIndex) => {
+                    const teamMeetings = meetings[teamMember.teams.id] || [];
+                    const hasNoMeetings = teamMeetings.length === 0;
 
-            return (
-              <div key={teamMember.teams.id} className="space-y-4">
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                  <div className="flex flex-col gap-2 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg sm:text-xl font-bold">{teamMember.teams.name}</h3>
-                    </div>
-                    <div className="text-[10px] sm:text-xs font-medium text-muted-foreground">Members of the team</div>
-                    <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
-                      {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
-                        <div>
-                          <AnimatedTooltip items={teamMember.teamMembers.map((member: any, index: number) => ({
-                            id: index,
-                            name: member.profile?.display_name || member.profile?.full_name || 'Unknown',
-                            designation: member.role === 'admin' ? 'Admin' : 'Member',
-                            image: member.profile?.avatar_url || null,
-                            avatarName: member.profile?.avatar_name || member.profile?.email || 'Unknown',
-                            displayName: getFullNameForAvatar(
-                              member.profile?.first_name,
-                              member.profile?.last_name,
-                              member.profile?.email
-                            )
-                          }))} />
-                        </div>
-                      )}
-                      <span>{teamMember.memberCount} active</span>
-                      <span>·</span>
-                      {teamMember.invitedCount > 0 ? (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="cursor-help underline decoration-dotted underline-offset-2">{teamMember.invitedCount} invited</span>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="max-w-xs">
-                              <div className="space-y-1">
-                                <p className="text-xs font-semibold mb-2">Pending invitations:</p>
-                                {teamMember.invitedEmails?.map((email: string, idx: number) => (
-                                  <p key={idx} className="text-xs">{email}</p>
-                                ))}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        <span>{teamMember.invitedCount} invited</span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 gap-1.5 text-xs sm:text-sm font-normal hover:bg-accent"
-                        onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
-                      >
-                        <Users className="h-3.5 w-3.5" />
-                        <span>Manage team</span>
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="w-full lg:w-2/3">
-                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-                      {hasNoMeetings ? (
-                        <Card
-                          className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
-                          onClick={() => handleCreateMeeting(teamMember.teams.id)}
-                          data-testid="create-meeting-card"
-                        >
-                          <CardContent className="flex flex-col items-center justify-center py-6 sm:py-8">
-                            <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:bg-primary/20 transition-all">
-                              <Plus className="h-6 w-6 text-primary" />
-                            </div>
-                            <h4 className="text-sm font-semibold mb-1">Create First Meeting</h4>
-                            <p className="text-xs text-muted-foreground text-center">Set up a recurring meeting</p>
-                          </CardContent>
-                        </Card>
-                      ) : (
-                        teamMeetings.map((meeting) => (
-                          <Card
-                            key={meeting.id}
-                            className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
-                            onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
-                          >
-                            <CardHeader className="p-2 sm:p-3">
-                              <CardTitle className="text-sm sm:text-base">{meeting.name}</CardTitle>
-                              <CardDescription className="capitalize text-xs sm:text-sm">{meeting.frequency.replace('-', ' ')}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
-                              <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">Go to meetings →</Button>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                    return (
+                      <SortableTeamItem
+                        key={teamMember.teams.id}
+                        teamMember={teamMember}
+                        teamMeetings={teamMeetings}
+                        hasNoMeetings={hasNoMeetings}
+                        onMeetingAccess={handleMeetingAccess}
+                        onCreateMeeting={handleCreateMeeting}
+                        navigate={navigate}
+                        teamIndex={teamIndex}
+                        totalTeams={teams.length}
+                      />
+                    );
+                  })}
                 </div>
-              </div>
-            );
-          })}
-            </div>
+              </SortableContext>
+            </DndContext>
 
           </div>
         </div>

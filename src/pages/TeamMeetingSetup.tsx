@@ -10,6 +10,7 @@ import { Calendar, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useRoles } from "@/hooks/useRoles";
 import { getMeetingStartDate, getISODateString } from "@/lib/dateUtils";
 
@@ -215,13 +216,14 @@ const TeamMeetingSetup = () => {
     return (
       <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
         <header className="border-b bg-white">
-          <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
             <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
               <ArrowLeft className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Back to Home</span>
               <span className="sm:hidden">Back</span>
             </Button>
+            <UserProfileHeader />
           </div>
         </header>
         <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">
@@ -243,13 +245,14 @@ const TeamMeetingSetup = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
       <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
             <ArrowLeft className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">Back to Home</span>
             <span className="sm:hidden">Back</span>
           </Button>
+          <UserProfileHeader />
         </div>
       </header>
       <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">

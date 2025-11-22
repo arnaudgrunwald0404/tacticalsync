@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 const JoinTeam = () => {
   const { inviteCode } = useParams();
@@ -110,8 +111,9 @@ const JoinTeam = () => {
     return (
       <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
         <header className="border-b bg-card/50 backdrop-blur-sm">
-          <div className="container mx-auto px-4 py-4">
+          <div className="container mx-auto px-4 py-4 relative pr-20">
             <Logo variant="minimal" size="lg" />
+            <UserProfileHeader />
           </div>
         </header>
         <div className="flex items-center justify-center min-h-[calc(100vh-80px)]">

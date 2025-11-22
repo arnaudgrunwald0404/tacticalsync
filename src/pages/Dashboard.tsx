@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRoles } from "@/hooks/useRoles";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -713,45 +714,7 @@ const DashboardOld = () => {
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           
           {/* Avatar positioned absolutely to avoid clipping */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400" aria-label="Open account menu" role="button">
-                  <FancyAvatar 
-                    name={(profile?.avatar_name && profile.avatar_name.trim())
-                      || `${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim()
-                      || (profile?.full_name || '')
-                      || (profile?.email || 'User')}
-                    displayName={`${(profile?.first_name || '')} ${(profile?.last_name || '')}`.trim() || (profile?.email?.split('@')[0] || 'U')}
-                    size="sm"
-                    className="flex-shrink-0"
-                  />
-                  <div className="flex flex-col items-start min-w-0 overflow-hidden">
-                    <span className="text-sm leading-none truncate max-w-full">
-                      {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
-                    </span>
-                  </div>
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => navigate("/profile")}>
-                  <User className="h-4 w-4 mr-2" />
-                  Profile
-                </DropdownMenuItem>
-                {(isAdmin || isSuperAdmin) && (
-                  <DropdownMenuItem onClick={() => navigate("/settings")}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Settings
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <UserProfileHeader />
         </div>
       </header>
 

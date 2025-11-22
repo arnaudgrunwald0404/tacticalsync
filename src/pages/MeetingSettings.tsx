@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Trash2, Save, UserPlus, Link as LinkIcon } from "lucide-react";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import Logo from "@/components/Logo";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import GridBackground from "@/components/ui/grid-background";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -292,7 +293,7 @@ const MeetingSettings = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
       <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -306,6 +307,7 @@ const MeetingSettings = () => {
             </Button>
             <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           </div>
+          <UserProfileHeader />
         </div>
       </header>
       <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">

@@ -20,6 +20,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
+import { UserProfileHeader } from '@/components/ui/user-profile-header';
+import Logo from '@/components/Logo';
 
 const statusColors = {
   draft: 'bg-gray-500',
@@ -112,19 +114,27 @@ export default function CyclePlanner() {
 
   return (
     <GridBackground>
+      <header className="border-b bg-white">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/dashboard/rcdo')}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          </div>
+          <UserProfileHeader />
+        </div>
+      </header>
       <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4 py-8 max-w-6xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/dashboard/rcdo')}
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to RCDO
-              </Button>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
                 Strategy Cycles
               </h1>

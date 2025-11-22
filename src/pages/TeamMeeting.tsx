@@ -25,6 +25,7 @@ import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
 import { usePresence } from "@/hooks/usePresence";
 import { PresenceIndicator } from "@/components/realtime/PresenceIndicator";
 import { ConnectionStatus } from "@/components/realtime/ConnectionStatus";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -880,7 +881,7 @@ const TeamMeeting = () => {
     <MeetingProvider teamId={teamId}>
       <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
               <header className="sticky top-0 z-50 border-b bg-white">
-                <div className="container mx-auto px-4 py-3 sm:py-4">
+                <div className="container mx-auto px-4 py-3 sm:py-4 relative pr-20">
                   {/* Top row: Logo, Title/Admin, Settings */}
                   <div className="flex items-center justify-between mb-3">
                     <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
@@ -945,6 +946,7 @@ const TeamMeeting = () => {
                       )}
                     </div>
                   </div>
+                  <UserProfileHeader />
                   
                   {/* Period Picker row with navigation buttons */}
                   {meeting && allMeetings.length > 0 && (

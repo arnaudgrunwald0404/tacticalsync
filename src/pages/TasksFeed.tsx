@@ -11,6 +11,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import GridBackground from '@/components/ui/grid-background';
 import { useNavigate } from 'react-router-dom';
+import { UserProfileHeader } from '@/components/ui/user-profile-header';
+import Logo from '@/components/Logo';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
 
 interface CheckinFeedItem {
   id: string;
@@ -175,6 +179,22 @@ export default function TasksFeed() {
 
   return (
     <GridBackground>
+      <header className="border-b bg-white">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/dashboard/rcdo')}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          </div>
+          <UserProfileHeader />
+        </div>
+      </header>
       <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="mb-6">

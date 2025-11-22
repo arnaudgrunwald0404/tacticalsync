@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Plus, MessageSquare, Table2, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Plus, MessageSquare, Table2, BarChart3, Lock, Unlock, MoreVertical } from 'lucide-react';
 import { useStrategicInitiatives, useRCLinks, useCheckins } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI } from '@/hooks/useTasks';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
@@ -22,11 +22,14 @@ import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCycle } from '@/hooks/useRCDO';
+import { UserProfileHeader } from '@/components/ui/user-profile-header';
+import Logo from '@/components/Logo';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function SIDetail() {
   const { siId } = useParams<{ siId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('tasks');
+  const [activeTab, setActiveTab] = useState('definition');
   const [viewMode, setViewMode] = useState<'table' | 'gantt'>('table');
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | undefined>();
@@ -180,7 +183,8 @@ export default function SIDetail() {
   );
 
   const isOwner = currentUserId === siDetails.owner_user_id;
-  const { canCreateTask, canEditTask, canDeleteTask } = useRCDOPermissions();
+  const isLocked = !!siDetails.locked_at;
+  const { canCreateTask, canEditTask, canDeleteTask, canLockDO } = useRCDOPermissions();
   
   const canEdit = canEditInitiative(
     siDetails.owner_user_id,
@@ -208,6 +212,28 @@ export default function SIDetail() {
 
   return (
     <GridBackground>
+      <header className="border-b bg-white">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (siDetails.defining_objective?.id) {
+                  navigate(`/dashboard/rcdo/do/${siDetails.defining_objective.id}`);
+                } else {
+                  navigate('/dashboard/rcdo');
+                }
+              }}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
+          </div>
+          <UserProfileHeader />
+        </div>
+      </header>
       <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           {/* Header */}
@@ -224,10 +250,10 @@ export default function SIDetail() {
               }}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              Back to DO
             </Button>
             <div className="flex items-center gap-2">
-              {isOwner && (
+              {isOwner && !isLocked && (
                 <Button
                   variant="outline"
                   onClick={() => setShowCheckInDialog(true)}
@@ -236,130 +262,187 @@ export default function SIDetail() {
                   Check-In
                 </Button>
               )}
+              {isLocked && canLockDO && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        if (!siDetails) return;
+                        try {
+                          const updates: any = { 
+                            locked_at: null, 
+                            locked_by: null,
+                            status: 'draft'
+                          };
+                          const { error } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .update(updates)
+                            .eq('id', siDetails.id);
+                          if (error) throw error;
+                          // Refetch SI details
+                          const { data } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .select(`
+                              *,
+                              owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
+                              defining_objective:rc_defining_objectives!defining_objective_id(
+                                id,
+                                title,
+                                rallying_cry_id
+                              )
+                            `)
+                            .eq('id', siId)
+                            .single();
+                          if (data) setSiDetails(data);
+                        } catch (e) {
+                          console.warn('Failed to unlock SI', e);
+                        }
+                      }}
+                    >
+                      <Unlock className="h-4 w-4 mr-2" />
+                      Unlock
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 
-          {/* SI Header Card */}
+          {/* SI Header Card - Simplified when locked */}
           <Card className="p-6 mb-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                  {siDetails.title}
-                </h1>
-                {siDetails.description && (
-                  <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
-                    {siDetails.description}
-                  </p>
-                )}
+                <div className="flex items-center gap-3 mb-2">
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                    {siDetails.title}
+                  </h1>
+                  {isLocked && (
+                    <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Owner */}
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">
-                Owner:
-              </span>
-              <FancyAvatar
-                name={siDetails.owner?.avatar_name || ownerName}
-                displayName={ownerName}
-                avatarUrl={siDetails.owner?.avatar_url}
-                size="sm"
-              />
-              <span className="text-sm">{ownerName}</span>
             </div>
           </Card>
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-6">
-              <TabsTrigger value="tasks">
-                Tasks ({tasks.length})
+              <TabsTrigger value="definition">
+                Definition
               </TabsTrigger>
               <TabsTrigger value="checkins">
                 Check-ins ({checkins.length})
               </TabsTrigger>
             </TabsList>
 
-            {/* Tasks Tab */}
-            <TabsContent value="tasks">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-                      Tasks
+            {/* Definition Tab */}
+            <TabsContent value="definition">
+              <Card className="p-6">
+                <div className="space-y-6">
+                  {/* SI Name - Read-only when locked */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      SI Name
                     </h3>
-                    {viewMode === 'table' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewMode('gantt')}
-                      >
-                        <BarChart3 className="h-4 w-4 mr-2" />
-                        Gantt View
-                      </Button>
-                    )}
-                    {viewMode === 'gantt' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewMode('table')}
-                      >
-                        <Table2 className="h-4 w-4 mr-2" />
-                        Table View
-                      </Button>
+                    {isLocked ? (
+                      <p className="text-lg text-gray-900 dark:text-gray-100">
+                        {siDetails.title}
+                      </p>
+                    ) : (
+                      <input
+                        type="text"
+                        value={siDetails.title}
+                        onChange={async (e) => {
+                          const { error } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .update({ title: e.target.value })
+                            .eq('id', siDetails.id);
+                          if (!error) {
+                            const { data } = await supabase
+                              .from('rc_strategic_initiatives')
+                              .select(`
+                                *,
+                                owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
+                                defining_objective:rc_defining_objectives!defining_objective_id(
+                                  id,
+                                  title,
+                                  rallying_cry_id
+                                )
+                              `)
+                              .eq('id', siId)
+                              .single();
+                            if (data) setSiDetails(data);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border rounded-md text-lg"
+                        disabled={!canEdit}
+                      />
                     )}
                   </div>
-                  {canEdit && canCreateTask(siId || '') && (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setEditingTaskId(undefined);
-                        setShowTaskDialog(true);
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Task
-                    </Button>
-                  )}
-                </div>
 
-                {viewMode === 'table' ? (
-                  tasks.length === 0 ? (
-                    <Card className="p-12 text-center">
-                      <p className="text-gray-600 dark:text-gray-400 mb-4">
-                        No tasks yet. Create tasks to track work for this strategic initiative.
+                  {/* Description - Read-only when locked */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Description
+                    </h3>
+                    {isLocked ? (
+                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        {siDetails.description || 'No description provided.'}
                       </p>
-                      {canEdit && canCreateTask(siId || '') && (
-                        <Button onClick={() => setShowTaskDialog(true)}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Task
-                        </Button>
-                      )}
-                    </Card>
-                  ) : (
-                    <div className="space-y-2">
-                      {tasks.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          onEdit={() => handleEditTask(task.id)}
-                          onDelete={() => handleDeleteTask(task.id)}
-                          onComplete={() => handleCompleteTask(task.id)}
-                          canEdit={canEditTaskForItem(task)}
-                          canDelete={canDeleteTaskForItem(task)}
-                        />
-                      ))}
+                    ) : (
+                      <textarea
+                        value={siDetails.description || ''}
+                        onChange={async (e) => {
+                          const { error } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .update({ description: e.target.value })
+                            .eq('id', siDetails.id);
+                          if (!error) {
+                            const { data } = await supabase
+                              .from('rc_strategic_initiatives')
+                              .select(`
+                                *,
+                                owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
+                                defining_objective:rc_defining_objectives!defining_objective_id(
+                                  id,
+                                  title,
+                                  rallying_cry_id
+                                )
+                              `)
+                              .eq('id', siId)
+                              .single();
+                            if (data) setSiDetails(data);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border rounded-md min-h-[100px]"
+                        disabled={!canEdit}
+                        placeholder="Enter description..."
+                      />
+                    )}
+                  </div>
+
+                  {/* Owner - Read-only when locked */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Owner
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <FancyAvatar
+                        name={siDetails.owner?.avatar_name || ownerName}
+                        displayName={ownerName}
+                        avatarUrl={siDetails.owner?.avatar_url}
+                        size="sm"
+                      />
+                      <span className="text-sm">{ownerName}</span>
                     </div>
-                  )
-                ) : (
-                  <TaskGanttChart
-                    tasks={tasks}
-                    cycleStartDate={cycleStartDate}
-                    cycleEndDate={cycleEndDate}
-                    onTaskClick={(task) => handleEditTask(task.id)}
-                  />
-                )}
-              </div>
+                  </div>
+                </div>
+              </Card>
             </TabsContent>
 
             {/* Check-ins Tab */}
@@ -370,7 +453,7 @@ export default function SIDetail() {
                     <p className="text-gray-600 dark:text-gray-400 mb-4">
                       No check-ins yet. Add a check-in to track progress and updates.
                     </p>
-                    {isOwner && (
+                    {isOwner && !isLocked && (
                       <Button onClick={() => setShowCheckInDialog(true)}>
                         <MessageSquare className="h-4 w-4 mr-2" />
                         Add Check-In
