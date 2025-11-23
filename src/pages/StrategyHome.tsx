@@ -342,7 +342,7 @@ export default function StrategyHome() {
                         <div className="flex items-center justify-end gap-2">
                           <Button
                             size="sm"
-                            onClick={() => navigate(`/dashboard/rcdo/canvas?cycle=${cycle.id}`)}
+                            onClick={() => navigate(`/rcdo/canvas?cycle=${cycle.id}`)}
                           >
                             <Layers className="h-4 w-4 mr-2" />
                             Open Canvas

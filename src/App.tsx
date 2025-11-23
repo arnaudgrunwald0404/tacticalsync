@@ -77,12 +77,12 @@ const App = () => (
               <DashboardWithTabs />
             </Suspense>
           } />
-          <Route path="/dashboard/rcdo/do/:doId" element={
+          <Route path="/rcdo/detail/do/:doId" element={
             <Suspense fallback={<PageSkeleton />}>
               <DODetail />
             </Suspense>
           } />
-          <Route path="/dashboard/rcdo/si/:siId" element={
+          <Route path="/rcdo/detail/si/:siId" element={
             <Suspense fallback={<PageSkeleton />}>
               <SIDetail />
             </Suspense>
@@ -95,6 +95,11 @@ const App = () => (
           <Route path="/dashboard/rcdo/cycles" element={
             <Suspense fallback={<PageSkeleton />}>
               <CyclePlanner />
+            </Suspense>
+          } />
+          <Route path="/rcdo/canvas" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <StrategyCanvas />
             </Suspense>
           } />
           <Route path="/dashboard/rcdo/canvas" element={

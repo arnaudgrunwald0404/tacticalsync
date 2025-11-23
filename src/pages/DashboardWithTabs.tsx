@@ -45,7 +45,7 @@ const DashboardWithTabs = () => {
     const path = location.pathname.replace(/\/$/, '');
     if (path === '/dashboard/rcdo' && !activeCycleLoading) {
       if (activeCycle?.id) {
-        navigate(`/dashboard/rcdo/canvas?cycle=${activeCycle.id}`, { replace: true });
+        navigate(`/rcdo/canvas?cycle=${activeCycle.id}`, { replace: true });
       }
     }
   }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
@@ -77,7 +77,7 @@ const DashboardWithTabs = () => {
                 <TabsList className="h-10">
                   <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
                   <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
-                  <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
+                  <TabsTrigger value="checkins" className="px-6">My Workspace</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
