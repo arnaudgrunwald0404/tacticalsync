@@ -90,7 +90,7 @@ export function DetailPageHeader({
     healthResult = calculateDOHealth(doId, metrics as any);
   }
   const isDefaultState = status === 'draft' || (type === 'do' && metrics.length === 0);
-  const healthColor = isDefaultState ? 'text-slate-600 dark:text-slate-300' : getHealthColor(healthResult.health);
+  const healthColor = isDefaultState ? 'text-[#5B6E7A]' : getHealthColor(healthResult.health);
 
   const healthIcons = {
     on_track: TrendingUp,
@@ -190,14 +190,14 @@ export function DetailPageHeader({
               <Badge
                 className={
                   isDefaultState
-                    ? 'bg-slate-600'
+                    ? 'bg-[#5B6E7A]'
                     : healthResult.health === 'on_track'
-                    ? 'bg-green-500'
+                    ? 'bg-[#6B9A8F]'
                     : healthResult.health === 'at_risk'
-                    ? 'bg-yellow-500'
+                    ? 'bg-[#B89A6B]'
                     : healthResult.health === 'off_track'
-                    ? 'bg-red-500'
-                    : 'bg-purple-500'
+                    ? 'bg-[#8B6F47]'
+                    : 'bg-[#6B9A8F]'
                 }
               >
                 <HealthIcon className="h-3 w-3 mr-1" />
@@ -207,7 +207,7 @@ export function DetailPageHeader({
           )}
           {type === 'si' && status && (
             <Badge className={
-              status === 'draft' ? 'bg-blue-500' :
+              status === 'draft' ? 'bg-[#5B6E7A]' :
               status === 'initialized' ? 'bg-cyan-500' :
               status === 'on_track' ? 'bg-green-500' :
               status === 'delayed' ? 'bg-yellow-500' :

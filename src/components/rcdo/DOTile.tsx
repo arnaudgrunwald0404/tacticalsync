@@ -32,7 +32,7 @@ const healthConfig = {
     label: 'Off Track',
   },
   done: {
-    color: 'bg-purple-500 text-white',
+    color: 'bg-[#6B9A8F] text-white',
     icon: CheckCircle2,
     label: 'Done',
   },

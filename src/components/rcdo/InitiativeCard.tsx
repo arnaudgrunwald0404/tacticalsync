@@ -19,16 +19,16 @@ interface InitiativeCardProps {
 }
 
 const statusConfig = {
-  draft: { label: 'Draft', color: 'bg-blue-500' },
+  draft: { label: 'Draft', color: 'bg-[#5B6E7A]' },
   initialized: { label: 'Initialized', color: 'bg-cyan-500' },
-  on_track: { label: 'On Track', color: 'bg-green-500' },
+  on_track: { label: 'On Track', color: 'bg-[#6FA87F]' },
   delayed: { label: 'Delayed', color: 'bg-yellow-500' },
-  cancelled: { label: 'Cancelled', color: 'bg-red-500' },
+  cancelled: { label: 'Cancelled', color: 'bg-[#A85D5D]' },
   // Legacy status mappings
-  not_started: { label: 'Draft', color: 'bg-blue-500' },
+  not_started: { label: 'Draft', color: 'bg-[#5B6E7A]' },
   at_risk: { label: 'Delayed', color: 'bg-yellow-500' },
   off_track: { label: 'Delayed', color: 'bg-yellow-500' },
-  completed: { label: 'On Track', color: 'bg-green-500' },
+  completed: { label: 'On Track', color: 'bg-[#6FA87F]' },
 };
 
 export function InitiativeCard({ initiative, onClick, isDragging = false }: InitiativeCardProps) {

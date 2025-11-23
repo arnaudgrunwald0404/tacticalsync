@@ -20,7 +20,7 @@ interface TaskCardProps {
 
 const statusConfig = {
   not_assigned: { label: 'Not Assigned', color: 'bg-gray-500' },
-  assigned: { label: 'Assigned', color: 'bg-blue-500' },
+  assigned: { label: 'Assigned', color: 'bg-[#C97D60]' },
   in_progress: { label: 'In Progress', color: 'bg-yellow-500' },
   completed: { label: 'Completed', color: 'bg-green-500' },
   task_changed_canceled: { label: 'Changed/Canceled', color: 'bg-red-500' },
@@ -88,7 +88,7 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
         <div className="mb-2">
           <button
             onClick={handleSIClick}
-            className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+            className="font-body text-xs text-[#C97D60] hover:underline flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
             {task.strategic_initiative.title}

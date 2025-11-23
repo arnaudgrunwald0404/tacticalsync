@@ -71,9 +71,6 @@ function SortableTeamItem({
 
   return (
     <div ref={setNodeRef} style={style}>
-      {teamIndex > 0 && (
-        <div className="mb-2 border-t border-border/50"></div>
-      )}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between">
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -84,7 +81,7 @@ function SortableTeamItem({
             >
               <GripVertical className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
+            <h3 className="font-heading text-xl sm:text-2xl font-bold text-[#2C2C2C] flex items-center gap-2">
               {teamMember.teams.name}
               {teamMember.role === "admin" && (
                 <button
@@ -97,7 +94,7 @@ function SortableTeamItem({
               )}
             </h3>
           </div>
-          <div className="bg-muted/30 rounded-lg p-3 sm:p-4 space-y-2.5">
+          <div className="rounded-lg p-3 sm:p-4 space-y-2.5">
             <div className="space-y-2.5">
               <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground ml-[32px]">
                 <div className="flex items-center gap-2">
@@ -153,7 +150,7 @@ function SortableTeamItem({
           <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             {hasNoMeetings ? (
               <Card
-                className="border-dashed border-2 hover:border-primary hover:shadow-md transition-all cursor-pointer group bg-muted/20"
+                className="border-dashed border-2 hover:border-primary hover:shadow-md transition-all cursor-pointer group bg-[#F5F3F0]"
                 onClick={() => onCreateMeeting(teamMember.teams.id)}
                 data-testid="create-meeting-card"
               >
@@ -161,8 +158,8 @@ function SortableTeamItem({
                   <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
                     <Plus className="h-7 w-7 text-primary" />
                   </div>
-                  <h4 className="text-base font-semibold mb-1.5">Create First Meeting</h4>
-                  <p className="text-sm text-muted-foreground text-center">
+                  <h4 className="font-heading text-base font-semibold mb-1.5 text-[#2C2C2C]">Create First Meeting</h4>
+                  <p className="font-body text-sm text-[#4A5D5F] text-center">
                     Set up a recurring meeting
                   </p>
                 </CardContent>
@@ -171,19 +168,18 @@ function SortableTeamItem({
               teamMeetings.map((meeting) => (
                 <Card
                   key={meeting.id}
-                  className="hover:shadow-lg hover:border-slate-200 bg-slate-300/50 backdrop-blur-sm hover:bg-slate-400/30 transition-all duration-200 cursor-pointer group border border-slate-300/50"
+                  className="hover:shadow-lg hover:border-[#E8B4A0]/30 bg-[#F5F3F0] hover:bg-[#F8F6F2] transition-all duration-200 cursor-pointer group border border-[#E8B4A0]/20"
                   onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
                 >
                   <CardHeader className="p-5 sm:p-2">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center justify-between gap-3">
-                        <Badge className="capitalize text-[11px] px-2 py-1 rounded-full font-medium bg-slate-600 text-white w-fit">
+                        <Badge className="font-body capitalize text-[11px] px-2 py-1 rounded-full font-medium bg-[#4A5D5F] text-white w-fit">
                           {meeting.frequency.replace('-', ' ')}
                         </Badge>
                         <Button 
-                          variant="ghost" 
                           size="sm" 
-                          className="group-hover:bg-transparent text-md sm:text-md text-blue-600 hover:text-blue-700 font-semibold shrink-0 h-auto py-1"
+                          className="font-body shrink-0 h-auto py-1"
                           onClick={(e) => {
                             e.stopPropagation();
                             onMeetingAccess(teamMember.teams.id, meeting.id);
@@ -192,7 +188,7 @@ function SortableTeamItem({
                           Go →
                         </Button>
                       </div>
-                      <CardTitle className="text-base sm:text-lg font-semibold">{meeting.name}</CardTitle>
+                      <CardTitle className="font-heading text-base sm:text-lg font-semibold text-[#2C2C2C]">{meeting.name}</CardTitle>
                     </div>
                   </CardHeader>
                   
@@ -757,9 +753,9 @@ const DashboardMain = () => {
         {/* Your Teams Section */}
         <div>
           <div className="mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">My Cadenced Meetings</h2>
+            <h2 className="font-heading text-2xl sm:text-3xl font-bold mb-3 text-[#2C2C2C]">My Cadenced Meetings</h2>
             
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            <p className="font-body text-sm sm:text-base text-[#4A5D5F] leading-relaxed">
               Run your recurring meetings with discipline that makes all the difference.
               <br />
               {(isAdmin || isSuperAdmin) ? (
@@ -795,8 +791,8 @@ const DashboardMain = () => {
                 <div className="rounded-full bg-primary/10 p-4 mb-4 group-hover:bg-primary/20 transition-all">
                   <Plus className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-1">Create New Team</h3>
-                <p className="text-sm text-muted-foreground text-center">
+                <h3 className="font-heading text-lg font-semibold mb-1 text-[#2C2C2C]">Create New Team</h3>
+                <p className="font-body text-sm text-[#4A5D5F] text-center">
                   Start a new tactical meeting
                 </p>
               </CardContent>
@@ -804,11 +800,11 @@ const DashboardMain = () => {
           ) : (
             <Card className="border-2 border-muted">
               <CardContent className="flex flex-col items-center justify-center py-12 px-6">
-                <div className="rounded-full bg-muted/50 p-4 mb-4">
+                <div className="rounded-full bg-[#F5F3F0] p-4 mb-4">
                   <Mail className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2 text-center">Waiting for an Invitation</h3>
-                <p className="text-sm text-muted-foreground text-center max-w-sm">
+                <h3 className="font-heading text-lg font-semibold mb-2 text-center text-[#2C2C2C]">Waiting for an Invitation</h3>
+                <p className="font-body text-sm text-[#4A5D5F] text-center max-w-sm">
                   You'll need to wait for an admin to invite you to a team.
                 </p>
               </CardContent>
@@ -824,7 +820,7 @@ const DashboardMain = () => {
                 <CardHeader className="p-4 sm:p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-lg sm:text-xl mb-3">{invitation.teams.name}</CardTitle>
+                      <CardTitle className="font-heading text-lg sm:text-xl mb-3 text-[#2C2C2C]">{invitation.teams.name}</CardTitle>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 mb-2">
                         <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200 w-fit">
                           Invitation Pending
@@ -843,8 +839,9 @@ const DashboardMain = () => {
                 </CardHeader>
                 <CardContent className="flex flex-col sm:flex-row gap-2 p-4 sm:p-6 pt-0">
                   <Button
+                    variant="secondary"
                     onClick={() => handleAcceptInvitation(invitation)}
-                    className="bg-orange-500 hover:bg-orange-600 text-white w-full sm:w-auto"
+                    className="w-full sm:w-auto"
                     size="sm"
                   >
                     Accept Invitation
@@ -852,7 +849,7 @@ const DashboardMain = () => {
                   <Button
                     variant="outline"
                     onClick={() => handleDeclineInvitation(invitation)}
-                    className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full sm:w-auto"
+                    className="w-full sm:w-auto"
                     size="sm"
                   >
                     Decline

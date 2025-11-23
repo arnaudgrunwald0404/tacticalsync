@@ -1825,8 +1825,8 @@ const Settings = () => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+      <header className="border-b bg-white sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4 relative pr-20">
           <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -1858,7 +1858,7 @@ const Settings = () => {
                   <Upload className="h-4 w-4 mr-2" />
                   Bulk Import
                 </Button>
-                <Button onClick={() => setShowInviteDialog(true)}>
+                <Button variant="default" onClick={() => setShowInviteDialog(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Invite User
                 </Button>
@@ -1978,10 +1978,10 @@ const Settings = () => {
                               <div className="flex flex-col gap-1">
                                 <div className="flex gap-1">
                                   {user.is_super_admin && (
-                                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">Super Admin</span>
+                                    <span className="font-body text-xs bg-[#6B9A8F]/20 text-[#6B9A8F] px-2 py-0.5 rounded-full">Super Admin</span>
                                   )}
                                   {user.is_admin && !user.is_super_admin && (
-                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Admin</span>
+                                    <span className="font-body text-xs bg-[#C97D60]/20 text-[#C97D60] px-2 py-0.5 rounded-full">Admin</span>
                                   )}
                                   {!user.is_admin && !user.is_super_admin && !user.pendingInvitations?.length && (
                                     <span className="text-xs text-muted-foreground">Member</span>
@@ -2156,7 +2156,7 @@ const Settings = () => {
               <Card className="col-span-2 border-dashed border-2">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">No templates yet</p>
-                  <Button onClick={handleCreateTemplate} variant="outline">
+                  <Button onClick={handleCreateTemplate}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create Your First Template
                   </Button>
@@ -2255,7 +2255,7 @@ const Settings = () => {
                     You are about to send invitation emails to <strong>{usersToReinvite.length}</strong> user{usersToReinvite.length !== 1 ? 's' : ''} who haven't logged in yet.
                   </p>
                   {usersToReinvite.length > 0 && (
-                    <div className="max-h-48 overflow-y-auto border rounded-md p-3 bg-muted/50">
+                    <div className="max-h-48 overflow-y-auto border rounded-md p-3 bg-[#F5F3F0]">
                       <p className="text-xs font-medium mb-2">Users to reinvite:</p>
                       <ul className="text-xs text-muted-foreground space-y-1">
                         {usersToReinvite.slice(0, 10).map((user) => (
@@ -2805,7 +2805,7 @@ const Settings = () => {
                   {templateItems.map((item, index) => (
                     <div
                       key={item.id}
-                      className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"
+                      className="flex items-center gap-2 p-3 bg-[#F5F3F0] rounded-lg"
                     >
                       <div className="flex flex-col gap-1">
                         <Button
@@ -2918,7 +2918,7 @@ const Settings = () => {
                 </div>
               )}
 
-              <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="space-y-3 p-4 bg-[#F5F3F0] rounded-lg">
                 <h5 className="text-sm font-medium">Add New Item</h5>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2 sm:col-span-1">

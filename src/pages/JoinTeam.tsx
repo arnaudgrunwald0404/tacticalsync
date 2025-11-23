@@ -109,8 +109,8 @@ const JoinTeam = () => {
 
   if (loading) {
     return (
-      <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-        <header className="border-b bg-card/50 backdrop-blur-sm">
+      <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+        <header className="border-b bg-white">
           <div className="container mx-auto px-4 py-4 relative pr-20">
             <Logo variant="minimal" size="lg" />
             <UserProfileHeader />

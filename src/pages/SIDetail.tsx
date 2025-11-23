@@ -494,7 +494,7 @@ export default function SIDetail() {
                                 case 'not_assigned':
                                   return { text: 'Not Assigned', color: 'text-gray-600 dark:text-gray-400' };
                                 case 'assigned':
-                                  return { text: 'Assigned', color: 'text-blue-600 dark:text-blue-400' };
+                                  return { text: 'Assigned', color: 'text-[#C97D60]' };
                                 case 'in_progress':
                                   return { text: 'In Progress', color: 'text-yellow-600 dark:text-yellow-400' };
                                 case 'completed':

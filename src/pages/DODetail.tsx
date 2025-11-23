@@ -683,13 +683,13 @@ export default function DODetail() {
                     Status
                   </label>
                   <Badge className={
-                    selectedInitiative.status === 'draft' ? 'bg-blue-500' :
+                    selectedInitiative.status === 'draft' ? 'bg-[#5B6E7A]' :
                     selectedInitiative.status === 'initialized' ? 'bg-cyan-500' :
                     selectedInitiative.status === 'on_track' ? 'bg-green-500' :
                     selectedInitiative.status === 'delayed' ? 'bg-yellow-500' :
                     selectedInitiative.status === 'cancelled' ? 'bg-red-500' :
                     // Legacy status mappings
-                    selectedInitiative.status === 'not_started' ? 'bg-blue-500' :
+                    selectedInitiative.status === 'not_started' ? 'bg-[#5B6E7A]' :
                     selectedInitiative.status === 'at_risk' ? 'bg-yellow-500' :
                     selectedInitiative.status === 'off_track' ? 'bg-yellow-500' :
                     selectedInitiative.status === 'completed' ? 'bg-green-500' :

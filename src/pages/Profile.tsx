@@ -259,8 +259,8 @@ const Profile = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className="border-b bg-card/50 backdrop-blur-sm">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
@@ -429,7 +429,7 @@ const Profile = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="blue" className="flex items-center gap-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        <span className="font-body inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#C97D60]/20 text-[#C97D60]">
                           Blue
                         </span>
                       </Label>
@@ -451,7 +451,7 @@ const Profile = () => {
 
                   {/* Pie Chart on the right */}
                   {(Number(redPercentage) + Number(yellowPercentage) + Number(greenPercentage) + Number(bluePercentage)) > 0 && (
-                    <div className="flex-1 flex flex-col items-center justify-center p-4 bg-muted/30 rounded-lg">
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 bg-[#F5F3F0] rounded-lg">
                       <h4 className="text-sm font-medium mb-4">Your Insight Discovery Profile</h4>
                       <div className="w-48 h-48 rounded-full overflow-hidden" style={{
                         background: `conic-gradient(

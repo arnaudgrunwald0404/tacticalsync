@@ -22,7 +22,7 @@ const DashboardWithTabs = () => {
     ? 'tasks'
     : location.pathname.includes('/dashboard/rcdo')
     ? 'rcdo'
-    : location.pathname.includes('/dashboard/checkins')
+    : location.pathname.includes('/workspace')
     ? 'checkins'
     : 'main';
 
@@ -35,7 +35,7 @@ const DashboardWithTabs = () => {
     } else if (value === 'rcdo') {
       navigate('/dashboard/rcdo');
     } else if (value === 'checkins') {
-      navigate('/dashboard/checkins');
+      navigate('/workspace');
     }
   };
 
@@ -51,7 +51,7 @@ const DashboardWithTabs = () => {
   }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           {/* Left: Back button and Logo */}

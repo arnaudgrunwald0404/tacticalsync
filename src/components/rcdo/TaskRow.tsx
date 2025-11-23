@@ -19,7 +19,7 @@ interface TaskRowProps {
 
 const statusConfig = {
   not_assigned: { label: 'Not Assigned', color: 'bg-gray-500' },
-  assigned: { label: 'Assigned', color: 'bg-blue-500' },
+  assigned: { label: 'Assigned', color: 'bg-[#C97D60]' },
   in_progress: { label: 'In Progress', color: 'bg-yellow-500' },
   completed: { label: 'Completed', color: 'bg-green-500' },
   task_changed_canceled: { label: 'Changed/Canceled', color: 'bg-red-500' },

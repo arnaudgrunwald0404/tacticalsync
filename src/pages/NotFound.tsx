@@ -12,7 +12,7 @@ const NotFound = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-      <header className="border-b bg-card/50 backdrop-blur-sm">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4">
           <Logo variant="minimal" size="lg" />
         </div>

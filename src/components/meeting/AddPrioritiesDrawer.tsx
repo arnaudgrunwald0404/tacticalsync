@@ -628,7 +628,7 @@ const AddPrioritiesDrawer = ({
           {/* Topic Section */}
           <div className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">Thinking of a Topic?</h3>
-            <div className="border-2 border-dashed border-blue-300 bg-background bg-blue-50 rounded-lg p-4 space-y-3">
+            <div className="font-body border-2 border-dashed border-[#C97D60] bg-background bg-[#F5F3F0] rounded-lg p-4 space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">Add Topic</h4>
               
               {/* Desktop Layout */}

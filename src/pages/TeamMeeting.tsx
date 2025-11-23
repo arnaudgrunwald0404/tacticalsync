@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Settings, Plus, Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Settings, Plus, Edit2, Save, X, ChevronDown, ChevronRight, LogOut, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MeetingAgenda from "@/components/meeting/MeetingAgenda";
 import MeetingPriorities from "@/components/meeting/MeetingPriorities";
@@ -25,8 +25,16 @@ import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
 import { usePresence } from "@/hooks/usePresence";
 import { PresenceIndicator } from "@/components/realtime/PresenceIndicator";
 import { ConnectionStatus } from "@/components/realtime/ConnectionStatus";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useMeetingContext } from "@/contexts/MeetingContext";
+import FancyAvatar from "@/components/ui/fancy-avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -94,6 +102,7 @@ const TeamMeeting = () => {
   const [currentUserName, setCurrentUserName] = useState<string>("Team Member");
   const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string>("");
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // Fetch current user profile for presence
   useEffect(() => {
@@ -102,7 +111,7 @@ const TeamMeeting = () => {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('full_name, first_name, last_name, email, avatar_url')
+          .select('full_name, first_name, last_name, email, avatar_url, avatar_name')
           .eq('id', user.id)
           .single();
         
@@ -114,6 +123,8 @@ const TeamMeeting = () => {
           setCurrentUserName(displayName);
           setCurrentUserEmail(profile.email || '');
           setCurrentUserAvatar(profile.avatar_url || '');
+          // Set full profile for avatar dropdown
+          setUserProfile(profile);
         }
       }
     };
@@ -867,6 +878,8 @@ const TeamMeeting = () => {
         actionItems={filteredActionItems}
         currentSeriesId={currentSeriesId}
         currentUserId={currentUserId}
+        previousMeetingId={previousMeetingId}
+        userProfile={userProfile}
         sectionsCollapsed={sectionsCollapsed}
         setSectionsCollapsed={setSectionsCollapsed}
         showPreviousPeriod={showPreviousPeriod}
@@ -910,6 +923,8 @@ interface TeamMeetingContentProps {
   actionItems: any[];
   currentSeriesId: string | null;
   currentUserId: string | null;
+  previousMeetingId: string | null;
+  userProfile: any;
   sectionsCollapsed: any;
   setSectionsCollapsed: any;
   showPreviousPeriod: boolean;
@@ -950,6 +965,8 @@ const TeamMeetingContent = ({
   actionItems,
   currentSeriesId,
   currentUserId,
+  previousMeetingId,
+  userProfile,
   sectionsCollapsed,
   setSectionsCollapsed,
   showPreviousPeriod,
@@ -976,7 +993,7 @@ const TeamMeetingContent = ({
   const { teamMembers } = useMeetingContext();
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
               <header className="sticky top-0 z-50 border-b bg-white">
                 <div className="container mx-auto px-4 py-3 sm:py-4 relative pr-20">
                   {/* Top row: Logo, Title/Admin, Settings */}
@@ -1041,9 +1058,42 @@ const TeamMeetingContent = ({
                           <Settings className="h-4 w-4" />
                         </Button>
                       )}
+                      
+                      {/* User Avatar with Dropdown */}
+                      {userProfile && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="h-8 sm:h-10 w-8 sm:w-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                              aria-label="Open account menu"
+                            >
+                              <FancyAvatar 
+                                name={(userProfile?.avatar_name && userProfile.avatar_name.trim()) || userProfile?.email || 'User'}
+                                displayName={getFullNameForAvatar(userProfile?.first_name, userProfile?.last_name, userProfile?.email)}
+                                avatarUrl={userProfile?.avatar_url}
+                                size="sm"
+                                className="h-8 sm:h-10 w-8 sm:w-10"
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => navigate("/profile")}>
+                              <User className="h-4 w-4 mr-2" />
+                              Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={async () => {
+                              await supabase.auth.signOut();
+                              navigate("/auth");
+                            }}>
+                              <LogOut className="h-4 w-4 mr-2" />
+                              Sign Out
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
-                  <UserProfileHeader />
                   
                   {/* Period Picker row with navigation buttons */}
                   {meeting && allMeetings.length > 0 && (
@@ -1051,9 +1101,9 @@ const TeamMeetingContent = ({
                       {/* Previous Button */}
                       {hasPreviousMeeting() && (
                         <Button 
-                          variant="outline" 
+                          variant="ghost" 
                           size="sm"
-                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
+                          className="text-gray-600 hover:text-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
                           onClick={() => navigateToPreviousMeeting()}
                         >
                           <span className="hidden sm:inline">← Previous</span>
@@ -1065,7 +1115,7 @@ const TeamMeetingContent = ({
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
                         <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
                           isCurrentMeetingPeriod(meeting.start_date) 
-                            ? 'bg-gradient-to-br from-blue-500 to-blue-700 border-2 border-blue-600 text-white shadow-md' 
+                            ? 'bg-gradient-to-br from-[#C97D60] to-[#B86A4F] border-2 border-[#C97D60] text-white shadow-md' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
                         }`}>
                           <SelectValue>
@@ -1078,7 +1128,7 @@ const TeamMeetingContent = ({
                               key={m.id} 
                               value={m.id}
                               className={isCurrentMeetingPeriod(m.start_date) 
-                                ? 'bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 font-semibold border-blue-200' 
+                                ? 'bg-gradient-to-br from-[#F5F3F0] to-[#E8B4A0]/20 text-[#C97D60] font-semibold border-[#E8B4A0]/30' 
                                 : 'bg-gray-50 text-gray-600 border-gray-200'
                               }
                             >
@@ -1094,9 +1144,9 @@ const TeamMeetingContent = ({
                         (!isCurrentMeeting() && allMeetings.length > 1)
                       ) && (
                         <Button 
-                          variant="outline" 
+                          variant="ghost" 
                           size="sm"
-                          className="border-gray-300 text-gray-600 hover:text-primary hover:border-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
+                          className="text-gray-600 hover:text-primary h-10 sm:h-12 px-2 sm:px-4 text-xs sm:text-sm"
                           onClick={() => navigateToNextMeeting()}
                         >
                           <span className="hidden sm:inline">{isCurrentMeeting() ? "Create Next →" : "Next →"}</span>
@@ -1113,7 +1163,7 @@ const TeamMeetingContent = ({
           {/* Sticky Agenda Sidebar - Hide on small screens */}
           <div className="hidden lg:block w-64 xl:w-72 shrink-0">
             <div className="sticky top-24 h-[calc(100vh-140px)]">
-              <Card className="p-4 sm:p-6 h-full">
+              <div className="h-full">
                 <MeetingAgenda
                   items={agendaItems}
                   meetingId={meeting?.id}
@@ -1122,7 +1172,7 @@ const TeamMeetingContent = ({
                   currentUserId={currentUserId || undefined}
                   isAdmin={(currentUserRole === "admin") || (currentUserId !== null && currentUserId === recurringMeeting?.created_by) || false}
                 />
-              </Card>
+              </div>
             </div>
           </div>
 
@@ -1183,7 +1233,7 @@ const TeamMeetingContent = ({
                       className={`text-xs sm:text-sm h-8 sm:h-9 ${
                         hasMyPriorities 
                           ? "text-primary hover:text-primary/80 hover:bg-transparent" 
-                          : ""
+                          : "bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
                       }`}
                     >
                       {hasMyPriorities ? (
@@ -1276,7 +1326,7 @@ const TeamMeetingContent = ({
               {!sectionsCollapsed.actionItems && (
                 <ActionItems
                 ref={actionItemsRef}
-                items={filteredActionItems}
+                items={actionItems}
                 meetingId={currentSeriesId || ""}
                 teamId={teamId}
                 onUpdate={handleActionItemChange}
@@ -1287,7 +1337,6 @@ const TeamMeetingContent = ({
         </div>
       </main>
     </GridBackground>
-    </MeetingProvider>
   );
 };
 

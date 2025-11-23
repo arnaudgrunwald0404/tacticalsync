@@ -214,7 +214,7 @@ const TeamMeetingSetup = () => {
 
   if (!(isSuperAdmin || (isAdmin && isTeamMember))) {
     return (
-      <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+      <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
         <header className="border-b bg-white">
           <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
             <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
@@ -261,7 +261,7 @@ const TeamMeetingSetup = () => {
             <Calendar className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-            <span className="bg-gradient-to-r from-blue-600 via-pink-500 to-blue-600 bg-clip-text text-transparent font-light text-4xl tracking-tight">Great! </span>
+            <span className="font-heading bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60] bg-clip-text text-transparent font-bold text-4xl tracking-tight">Great! </span>
             {" Now Let's Set Up Your Team Meeting"}
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground px-4">

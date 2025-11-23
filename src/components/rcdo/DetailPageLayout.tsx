@@ -31,8 +31,8 @@ export function DetailPageLayout({
   const navigate = useNavigate();
 
   return (
-    <GridBackground inverted className="flex flex-col min-h-screen bg-blue-50 overscroll-none">
-      <header className="sticky top-0 z-50 border-b bg-white dark:bg-gray-900 flex-shrink-0">
+    <GridBackground inverted className="flex flex-col min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+      <header className="sticky top-0 z-50 border-b bg-white flex-shrink-0">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-2 sm:gap-4">
             <Button

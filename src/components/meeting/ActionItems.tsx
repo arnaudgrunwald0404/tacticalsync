@@ -156,7 +156,7 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
       style={style}
       className={cn(
         "px-3 py-1 bg-white group",
-        !isLast && "border-b border-blue-200/50",
+        !isLast && "border-b border-[#E8B4A0]/30",
         isDragging && "shadow-lg"
       )}
     >
@@ -531,7 +531,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       )}
 
       {/* Add New Action Item Form */}
-      <div className="bg-blue-200 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
+      <div className="bg-[#E8B4A0]/20 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
             
             {/* Desktop Layout */}
             <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-6">
@@ -642,7 +642,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   onClick={handleAddItem}
                   disabled={!newItem.title.trim()}
                   size="icon"
-                  className="h-10 w-10"
+                  className="h-10 w-10 bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
                   aria-label="Add Action Item"
                 >
                   <Plus className="h-4 w-4" />
@@ -742,7 +742,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               <Button
                 onClick={handleAddItem}
                 disabled={!newItem.title.trim()}
-                className="w-full"
+                className="w-full bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Action Item

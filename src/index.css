@@ -42,41 +42,66 @@
 @layer base {
   :root {
     --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-heading: 'Inter', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* Color Definitions - HSL format for consistent theming */
+    --color-white: 0 0% 100%;
+    --color-platinum: 30 20% 95%;
+    --color-copper: 15 48% 58%;
+    --color-copper-hover: 15 48% 52%;
+    --color-titanium: 185 12% 33%;
+    --color-titanium-hover: 185 12% 28%;
+    --color-rose-gold: 15 60% 77%;
+    --color-bronze: 35 32% 41%;
+    --color-verdigris: 165 18% 51%;
+    --color-verdigris-hover: 165 18% 45%;
+    --color-steel: 205 15% 42%;
+    --color-pewter: 215 12% 66%;
+    --color-white-gold: 40 25% 96%;
+    --color-brass: 35 35% 57%;
+    --color-cast-iron: 0 0% 17%;
+    
+    /* Semantic Colors */
+    --color-success: 145 30% 55%; /* Bright Sage Green #6FA87F */
+    --color-warning: 35 35% 57%; /* Brass #B89A6B */
+    --color-error: 0 28% 51%; /* Terracotta Red #A85D5D */
+    --color-info: 205 15% 42%; /* Steel #5B6E7A */
+    
+    --background: var(--color-white);
+    --foreground: var(--color-cast-iron);
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: var(--color-white);
+    --card-foreground: var(--color-cast-iron);
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: var(--color-white);
+    --popover-foreground: var(--color-cast-iron);
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
-    --primary-hover: 221 83% 48%;
+    --primary: var(--color-copper);
+    --primary-foreground: var(--color-white);
+    --primary-hover: var(--color-copper-hover);
 
-    --secondary: 262 83% 58%;
-    --secondary-foreground: 0 0% 100%;
-    --secondary-hover: 262 83% 53%;
+    --secondary: var(--color-titanium);
+    --secondary-foreground: var(--color-white);
+    --secondary-hover: var(--color-titanium-hover);
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: var(--color-platinum);
+    --muted-foreground: var(--color-steel);
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 221 83% 53%;
+    --accent: var(--color-platinum);
+    --accent-foreground: var(--color-copper);
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: var(--color-error);
+    --destructive-foreground: var(--color-white);
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --border: 215 12% 85%;
+    --input: 215 12% 85%;
+    --ring: var(--color-copper);
 
     --radius: 0.75rem;
     
-    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(262 83% 58%));
-    --gradient-hero: linear-gradient(180deg, hsl(221 83% 53% / 0.1), transparent);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--color-copper)), hsl(var(--color-titanium)));
+    --gradient-hero: linear-gradient(180deg, hsl(var(--color-copper) / 0.1), transparent);
     
     --shadow-subtle: 0 1px 3px 0 hsl(222 47% 11% / 0.1);
     --shadow-medium: 0 4px 6px -1px hsl(222 47% 11% / 0.1);
@@ -85,74 +110,74 @@
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
     /* Disabled Button States - Consistent across all button variants */
-    --disabled-bg: 210 40% 96%;
-    --disabled-fg: 215 16% 47%;
-    --disabled-border: 214 32% 91%;
+    --disabled-bg: var(--color-platinum);
+    --disabled-fg: var(--color-pewter);
+    --disabled-border: 215 12% 85%;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: var(--color-white-gold);
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-foreground: var(--color-titanium);
 
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: var(--color-cast-iron);
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-primary-foreground: var(--color-white);
 
-    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent: var(--color-platinum);
 
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-accent-foreground: var(--color-cast-iron);
 
-    --sidebar-border: 220 13% 91%;
+    --sidebar-border: 215 12% 85%;
 
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: var(--color-copper);
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 0 0% 100%;
+    /* Dark mode uses darker variants of the metal palette */
+    --background: var(--color-cast-iron);
+    --foreground: var(--color-white);
 
-    --card: 217 33% 17%;
-    --card-foreground: 0 0% 100%;
+    --card: 185 12% 20%;
+    --card-foreground: var(--color-white);
 
-    --popover: 217 33% 17%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 185 12% 20%;
+    --popover-foreground: var(--color-white);
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
-    --primary-hover: 221 83% 48%;
+    --primary: var(--color-copper);
+    --primary-foreground: var(--color-white);
+    --primary-hover: var(--color-copper-hover);
 
-    --secondary: 262 83% 58%;
-    --secondary-foreground: 0 0% 100%;
-    --secondary-hover: 262 83% 53%;
+    --secondary: var(--color-titanium);
+    --secondary-foreground: var(--color-white);
+    --secondary-hover: var(--color-titanium-hover);
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 185 12% 20%;
+    --muted-foreground: var(--color-pewter);
 
-    --accent: 217 33% 17%;
-    --accent-foreground: 221 83% 53%;
+    --accent: 185 12% 20%;
+    --accent-foreground: var(--color-copper);
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: var(--color-error);
+    --destructive-foreground: var(--color-white);
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 221 83% 53%;
+    --border: 185 12% 25%;
+    --input: 185 12% 25%;
+    --ring: var(--color-copper);
     
-    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(262 83% 58%));
-    --gradient-hero: linear-gradient(180deg, hsl(221 83% 53% / 0.1), transparent);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--color-copper)), hsl(var(--color-titanium)));
+    --gradient-hero: linear-gradient(180deg, hsl(var(--color-copper) / 0.1), transparent);
     
-    /* Disabled Button States - Consistent across all button variants */
-    --disabled-bg: 217 33% 17%;
-    --disabled-fg: 215 20% 40%;
-    --disabled-border: 217 33% 20%;
+    --disabled-bg: 185 12% 20%;
+    --disabled-fg: var(--color-pewter);
+    --disabled-border: 185 12% 25%;
     
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: var(--color-cast-iron);
+    --sidebar-foreground: var(--color-pewter);
+    --sidebar-primary: var(--color-copper);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent: 185 12% 25%;
+    --sidebar-accent-foreground: var(--color-white);
+    --sidebar-border: 185 12% 25%;
+    --sidebar-ring: var(--color-copper);
   }
 }
 
@@ -163,19 +188,23 @@
 
   html,
   body {
-    font-family: var(--font-inter);
+    font-family: var(--font-body);
   }
 
   body {
     @apply bg-background text-foreground;
   }
 
-  /* Apply Inter to all text elements and form controls */
-  p, span, div, h1, h2, h3, h4, h5, h6,
-  a, button, label, li, td, th, dt, dd,
+  /* Apply heading font to all headings */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+
+  /* Apply body font to all text elements and form controls */
+  p, span, div, a, button, label, li, td, th, dt, dd,
   input, textarea, select, option,
   ::placeholder, ::-webkit-input-placeholder, ::-moz-placeholder {
-    font-family: var(--font-inter);
+    font-family: var(--font-body);
   }
 }
 

@@ -125,7 +125,7 @@ const ResetPassword = () => {
   if (verifying) {
     return (
       <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 px-3 sm:px-4 py-8">
-        <Card className="border-border/100 shadow-large shadow-pink-500/100 w-full sm:max-w-md">
+        <Card className="border-border/100 shadow-lg shadow-[#C97D60]/10 w-full sm:max-w-md">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
             <p className="text-muted-foreground">Verifying reset link...</p>

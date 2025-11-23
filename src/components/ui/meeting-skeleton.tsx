@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
  */
 export function MeetingSkeleton() {
   return (
-    <div className="min-h-screen bg-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
       {/* Header skeleton */}
       <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-4">

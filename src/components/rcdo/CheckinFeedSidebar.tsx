@@ -214,8 +214,8 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
     <div className="space-y-3">
       <div className="flex items-center justify-between px-3 py-3 border-b border-sidebar-border -mx-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-yellow-400 rounded-md flex items-center justify-center shrink-0">
-            <Zap className="h-4 w-4 text-yellow-900" />
+          <div className="w-7 h-7 bg-[#B89A6B] rounded-md flex items-center justify-center shrink-0">
+            <Zap className="h-4 w-4 text-white" />
           </div>
           <h3 className="text-sm font-medium text-foreground leading-tight flex items-center">Recent Check-ins</h3>
         </div>

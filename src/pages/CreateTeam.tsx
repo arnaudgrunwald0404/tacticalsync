@@ -104,8 +104,8 @@ const CreateTeam = () => {
   };
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className="border-b bg-card/50 backdrop-blur-sm">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+      <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">

@@ -567,7 +567,7 @@ const TeamInvite = () => {
   const inviteLink = `${window.location.origin}/join/${inviteCode}`;
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
@@ -697,7 +697,7 @@ const TeamInvite = () => {
                       </div>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="border-orange-300 text-orange-700 hover:bg-orange-100">
+                          <Button variant="outline" size="sm">
                             <LogOut className="h-4 w-4 mr-2" />
                             Leave Team
                           </Button>
@@ -753,7 +753,7 @@ const TeamInvite = () => {
                     {meetings.map((meeting) => (
                       <div
                         key={meeting.id}
-                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                        className="flex items-center justify-between p-3 bg-[#F5F3F0] rounded-lg hover:bg-[#F8F6F2] transition-colors cursor-pointer"
                         onClick={() => navigate(`/team/${teamId}/meeting/${meeting.id}`)}
                       >
                         <div>
@@ -786,7 +786,7 @@ const TeamInvite = () => {
                       : member.profiles?.first_name || member.profiles?.email?.split('@')[0] || "Unknown User";
                     
                     return (
-                      <div key={member.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                      <div key={member.id} className="flex items-center gap-3 p-2 bg-[#F5F3F0] rounded-lg">
                         <FancyAvatar 
                           name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
                           displayName={getFullNameForAvatar(member.profiles?.first_name, member.profiles?.last_name, member.profiles?.email)}

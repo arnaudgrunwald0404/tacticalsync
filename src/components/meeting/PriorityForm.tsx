@@ -411,7 +411,7 @@ export function PriorityForm({
                 <div className="flex items-center gap-2">
                   {linkedItemType === 'do' ? (
               <>
-                <Target className="h-4 w-4 text-blue-600" />
+                <Target className="h-4 w-4 text-[#C97D60]" />
                 <Badge variant="secondary" className="text-xs">DO</Badge>
                       <span className="text-sm truncate">
                         {activeDOs.find(d => d.id === linkedItemId)?.title || 'Linked to DO'}
@@ -419,7 +419,7 @@ export function PriorityForm({
               </>
             ) : (
               <>
-                <Zap className="h-4 w-4 text-purple-600" />
+                <Zap className="h-4 w-4 text-[#6B9A8F]" />
                       <Badge variant="secondary" className="text-xs">SI</Badge>
                       <span className="text-sm truncate">
                         {activeSIs.find(s => s.id === linkedItemId)?.title || 'Linked to Initiative'}

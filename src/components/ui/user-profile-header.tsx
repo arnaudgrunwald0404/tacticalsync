@@ -61,7 +61,7 @@ export function UserProfileHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <div className={cn(
-              "flex items-center cursor-pointer rounded-md hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/10 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
+              "flex items-center cursor-pointer rounded-md hover:bg-[#F5F3F0] hover:text-[#2C2C2C] ring-1 ring-[#C97D60]/10 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C97D60]",
               isMobile ? "px-2 py-2" : "px-3 py-2 gap-3"
             )} aria-label="Open account menu" role="button">
               <FancyAvatar 
@@ -72,7 +72,7 @@ export function UserProfileHeader() {
                 className="flex-shrink-0"
               />
               <div className="hidden md:flex flex-col items-start min-w-0 overflow-hidden">
-                <span className="text-sm leading-none truncate max-w-full">
+                <span className="font-body text-sm leading-none truncate max-w-full text-[#2C2C2C]">
                   {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
                 </span>
               </div>

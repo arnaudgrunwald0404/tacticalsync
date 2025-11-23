@@ -26,7 +26,7 @@ const navItems: NavItem[] = [
     id: "workspace",
     label: "My workspace",
     icon: Briefcase,
-    path: "/dashboard/checkins",
+    path: "/workspace",
   },
   {
     id: "tasks",
@@ -44,7 +44,7 @@ export function MobileBottomNav() {
     const path = location.pathname;
     if (path.includes("/dashboard/rcdo/tasks-feed")) return "tasks";
     if (path.includes("/dashboard/rcdo")) return "strategy";
-    if (path.includes("/dashboard/checkins")) return "workspace";
+    if (path.includes("/workspace")) return "workspace";
     if (path.includes("/dashboard/main")) return "meetings";
     return "meetings"; // default
   };

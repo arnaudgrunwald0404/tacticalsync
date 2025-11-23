@@ -42,7 +42,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: 'text-blue-600 underline cursor-pointer',
+          class: 'text-[#C97D60] underline cursor-pointer',
         },
       }),
       Placeholder.configure({

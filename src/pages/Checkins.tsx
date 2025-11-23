@@ -302,7 +302,7 @@ export default function CheckinsPage() {
           </section>
 
           {/* Sidebar: My check-in updates (same format as RCDO, filtered to me) */}
-          <aside className="hidden lg:block fixed right-0 top-[73px] bottom-0 w-[360px] border-l border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3 z-10">
+          <aside className="hidden lg:block fixed right-4 top-[calc(73px+1rem)] bottom-4 w-[360px] rounded-lg border border-sidebar-border bg-white/95 backdrop-blur-sm shadow-lg overflow-y-auto p-3 z-10">
             <MyCheckinFeedSidebar />
           </aside>
         </div>

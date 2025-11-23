@@ -657,11 +657,11 @@ const Auth = () => {
   };
 
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-blue-50 overscroll-none px-3 sm:px-4 py-8">
+    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none px-3 sm:px-4 py-8">
       <div className="w-full max-w-full  space-y-6">
        
 
-        <Card className="border-border/100 shadow-large shadow-pink-500/100 w-full  sm:max-w-full">
+        <Card className="border-border/100 shadow-lg shadow-[#C97D60]/10 w-full  sm:max-w-full">
 
  {/* Logo Section */}
  <div className="text-center space-y-2">
@@ -708,23 +708,23 @@ const Auth = () => {
                       <TabsTrigger value="signin" onClick={() => {
                         setIsSignUp(false);
                         setActiveTab("signin");
-                      }} className="text-base sm:text-lg">
+                      }} className="font-body text-base sm:text-lg">
                         Sign In
                       </TabsTrigger>
                       <TabsTrigger value="signup" onClick={() => {
                         setIsSignUp(true);
                         setActiveTab("signup");
-                      }} className="text-base sm:text-lg">
+                      }} className="font-body text-base sm:text-lg">
                         Sign Up
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
                 ) : (
                   <div className="space-y-2">
-                    <CardTitle className="text-2xl sm:text-3xl font-bold text-center">
+                    <CardTitle className="font-heading text-2xl sm:text-3xl font-bold text-center text-[#2C2C2C]">
                       Reset Password
                     </CardTitle>
-                    <CardDescription className="text-base sm:text-lg text-center">
+                    <CardDescription className="font-body text-base sm:text-lg text-center text-[#4A5D5F]">
                       Enter your email to receive a reset link
                     </CardDescription>
                   </div>
@@ -732,10 +732,10 @@ const Auth = () => {
               </>
             ) : (
               <div className="text-center space-y-2">
-                <CardTitle className="text-2xl sm:text-3xl font-bold mb-6">
+                <CardTitle className="font-heading text-2xl sm:text-3xl font-bold mb-6 text-[#2C2C2C]">
                   We are so glad you're here!
                 </CardTitle>
-                <CardDescription className="text-base sm:text-lg mb-6">
+                <CardDescription className="font-body text-base sm:text-lg mb-6 text-[#4A5D5F]">
                   Sign in to continue to TacticalSync
                 </CardDescription>
               </div>
@@ -746,31 +746,31 @@ const Auth = () => {
             {/* Email Verification Banner */}
             {showVerificationBanner ? (
               <div className="py-6 sm:py-8 space-y-6">
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 sm:p-6 md:p-8 text-center">
+                <div className="bg-[#F5F3F0] border-2 border-[#E8B4A0]/30 rounded-lg p-6 sm:p-6 md:p-8 text-center">
                   <div className="flex justify-center mb-4">
-                    <Mail className="h-16 w-16 sm:h-16 sm:w-16 text-blue-600" />
+                    <Mail className="h-16 w-16 sm:h-16 sm:w-16 text-[#C97D60]" />
                   </div>
-                  <h3 className="text-2xl sm:text-2xl font-bold text-blue-900 mb-3">
+                  <h3 className="font-heading text-2xl sm:text-2xl font-bold text-[#2C2C2C] mb-3">
                     Check Your Email
                   </h3>
-                  <p className="text-base sm:text-base text-blue-800 mb-2">
+                  <p className="font-body text-base sm:text-base text-[#4A5D5F] mb-2">
                     We've sent a verification email to:
                   </p>
-                  <p className="text-lg sm:text-lg font-semibold text-blue-900 mb-4 break-words">
+                  <p className="font-body text-lg sm:text-lg font-semibold text-[#2C2C2C] mb-4 break-words">
                     {verificationEmail}
                   </p>
-                  <p className="text-blue-700 text-sm sm:text-sm mb-6">
+                  <p className="font-body text-[#4A5D5F] text-sm sm:text-sm mb-6">
                     Click the link in the email to verify your account and complete your sign up.
                     The link will expire in 1 hour.
                   </p>
-                  <div className="border-t border-blue-200 pt-4 mt-4">
-                    <p className="text-sm text-blue-600 mb-3">
+                  <div className="border-t border-[#E8B4A0]/30 pt-4 mt-4">
+                    <p className="font-body text-sm text-[#C97D60] mb-3">
                       Didn't receive the email?
                     </p>
                     <div className="flex flex-col gap-2">
                       <Button
                         variant="outline"
-                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                        className="font-body w-full border-[#C97D60] text-[#C97D60] hover:bg-[#C97D60]/10"
                         onClick={() => {
                           setShowVerificationBanner(false);
                           setIsSignUp(true);
@@ -780,7 +780,7 @@ const Auth = () => {
                       </Button>
                       <Button
                         variant="link"
-                        className="text-blue-600"
+                        className="font-body text-[#C97D60]"
                         onClick={() => {
                           setShowVerificationBanner(false);
                           setEmail("");
@@ -807,7 +807,7 @@ const Auth = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base sm:text-lg font-normal bg-white text-gray-900 border-2 border-blue-600 shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors"
+                      className="font-body w-full h-12 text-base sm:text-lg font-normal bg-white text-[#2C2C2C] border-2 border-[#C97D60] shadow-sm hover:bg-[#C97D60] hover:text-white hover:border-[#B86A4F] transition-colors"
                       onClick={handleGoogleSignIn}
                       disabled={loading}
                     >
@@ -847,7 +847,7 @@ const Auth = () => {
                       <Button
                         type="button"
         
-                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-600 hover:bg-gray-50 mt-0 py-0"
+                        className="font-body w-full h-12 sm:text-lg font-normal bg-white text-[#4A5D5F] hover:bg-[#F5F3F0] mt-0 py-0"
                         onClick={() => {
                           setShowEmailForm(true);
                           setIsSignUp(false);
@@ -861,7 +861,7 @@ const Auth = () => {
                       <Button
                         type="button"
                  
-                        className="w-full h-12 sm:text-lg font-normal bg-white text-gray-600 hover:bg-gray-50"
+                        className="font-body w-full h-12 sm:text-lg font-normal bg-white text-[#4A5D5F] hover:bg-[#F5F3F0]"
                         onClick={() => {
                           setShowEmailForm(true);
                           setIsSignUp(true);
@@ -882,10 +882,10 @@ const Auth = () => {
                   >
                     {!isForgotPassword && (
                       <div className="mb-6">
-                        <h3 className="text-lg font-semibold mb-1">
+                        <h3 className="font-heading text-lg font-semibold mb-1 text-[#2C2C2C]">
                           {isSignUp ? "Create your account" : "Welcome back!"}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="font-body text-sm text-[#4A5D5F]">
                           {isSignUp ? "Enter your details below to create your account" : "Enter your email and password to sign in"}
                         </p>
                       </div>
@@ -906,7 +906,7 @@ const Auth = () => {
                       )}
                       
                       <div className="space-y-2">
-                        <Label htmlFor="email" className="text-base sm:text-base font-medium">Email address</Label>
+                        <Label htmlFor="email" className="font-body text-base sm:text-base font-medium text-[#2C2C2C]">Email address</Label>
                         <Input
                           id="email"
                           type="email"
@@ -922,7 +922,7 @@ const Auth = () => {
                       
                       {!isForgotPassword && (
                         <div className="space-y-2">
-                          <Label htmlFor="password" className="text-base sm:text-base font-medium">Password</Label>
+                          <Label htmlFor="password" className="font-body text-base sm:text-base font-medium text-[#2C2C2C]">Password</Label>
                           <Input
                             id="password"
                             type="password"
@@ -941,7 +941,7 @@ const Auth = () => {
                       {/* Primary Action Button */}
                       <Button
                         type="submit"
-                        className="w-full h-12 sm:h-12 text-base sm:text-base font-medium"
+                        className="font-body w-full h-12 sm:h-12 text-base sm:text-base font-medium bg-[#C97D60] hover:bg-[#B86A4F] text-white"
                         disabled={loading}
                       >
                         {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
@@ -954,7 +954,7 @@ const Auth = () => {
                         <Button
                           type="button"
                           variant="link"
-                          className="w-full text-base text-muted-foreground"
+                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#C97D60]"
                           onClick={() => setIsForgotPassword(true)}
                           disabled={loading}
                         >
@@ -965,7 +965,7 @@ const Auth = () => {
                         <Button
                           type="button"
                           variant="link"
-                          className="w-full text-base"
+                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#C97D60]"
                           onClick={() => setIsForgotPassword(false)}
                           disabled={loading}
                         >

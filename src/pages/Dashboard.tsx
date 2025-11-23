@@ -708,7 +708,7 @@ const DashboardOld = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
@@ -771,7 +771,7 @@ const DashboardOld = () => {
             ) : (
               <Card className="border-2 border-muted">
                 <CardContent className="flex flex-col items-center justify-center py-12 px-6">
-                  <div className="rounded-full bg-muted/50 p-4 mb-4">
+                  <div className="rounded-full bg-[#F5F3F0] p-4 mb-4">
                     <Mail className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2 text-center">Waiting for an Invitation</h3>
@@ -810,8 +810,9 @@ const DashboardOld = () => {
                   </CardHeader>
                   <CardContent className="flex flex-col sm:flex-row gap-2 p-4 sm:p-6 pt-0">
                     <Button
+                      variant="secondary"
                       onClick={() => handleAcceptInvitation(invitation)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white w-full sm:w-auto"
+                      className="w-full sm:w-auto"
                       size="sm"
                     >
                       Accept Invitation
@@ -819,7 +820,7 @@ const DashboardOld = () => {
                     <Button
                       variant="outline"
                       onClick={() => handleDeclineInvitation(invitation)}
-                      className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full sm:w-auto"
+                      className="w-full sm:w-auto"
                       size="sm"
                     >
                       Decline
@@ -883,9 +884,9 @@ const DashboardOld = () => {
                           <span>{teamMember.invitedCount} invited</span>
                         )}
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="h-6 px-2 gap-1.5 text-xs sm:text-sm font-normal hover:bg-accent"
+                          className="h-6 px-2 gap-1.5 text-xs sm:text-sm font-normal"
                           onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
                         >
                           <Settings className="h-3.5 w-3.5" />
@@ -896,7 +897,7 @@ const DashboardOld = () => {
                     {!hasNoMeetings && (
                       <div className="flex gap-2">
                         <Button 
-                          variant="outline" 
+                          variant="secondary" 
                           size="sm"
                           onClick={() => navigate(`/team/${teamMember.teams.id}/strategy`)}
                           className="w-full sm:w-auto text-xs sm:text-sm"
@@ -928,7 +929,7 @@ const DashboardOld = () => {
                       teamMeetings.map((meeting) => (
                         <Card
                           key={meeting.id}
-                          className="hover:shadow-large transition-all cursor-pointer group border border-blue-200"
+                          className="hover:shadow-large transition-all cursor-pointer group border border-[#E8B4A0]/30"
                           onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
                           <CardHeader className="p-2 sm:p-3">
@@ -938,7 +939,7 @@ const DashboardOld = () => {
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
-                            <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700">
+                            <Button variant="ghost" size="sm" className="font-body group-hover:bg-transparent text-xs sm:text-sm text-[#C97D60] hover:text-[#B86A4F]">
                               Go to meetings →
                             </Button>
                           </CardContent>

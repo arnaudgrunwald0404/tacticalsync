@@ -237,7 +237,7 @@ export function MetricDialog({
               </Select>
             </div>
 
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-3 text-sm text-gray-700 dark:text-gray-300">
+            <div className="font-body rounded-lg bg-[#F5F3F0] p-3 text-sm text-[#4A5D5F]">
               <p className="font-semibold mb-1">💡 Tip:</p>
               <p>
                 <strong>Leading metrics</strong> are predictive (e.g., "# of feature releases").{' '}

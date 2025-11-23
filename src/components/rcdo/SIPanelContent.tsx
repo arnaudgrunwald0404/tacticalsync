@@ -152,13 +152,13 @@ export function SIPanelContent({
   const panelContent = (
     <>
       <div className="mb-3">
-        <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white">Strategic Initiative</span>
+        <span className="font-body text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#5B6E7A] text-white">Strategic Initiative</span>
       </div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-base font-semibold">{si.title || "Untitled Initiative"}</h3>
           {isLocked && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border">locked</span>
+            <span className="font-body text-[10px] px-2 py-0.5 rounded-full bg-[#F5F3F0] text-[#4A5D5F] border border-[#E8B4A0]/30">locked</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -436,7 +436,7 @@ export function SIPanelContent({
   return (
     <div
       className={
-        `fixed top-0 h-full w-[420px] bg-background border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
+        `fixed top-0 h-full w-[420px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
         (isDoPanelOpen ? "right-[380px]" : "right-0")
       }
     >

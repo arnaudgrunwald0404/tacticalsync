@@ -56,8 +56,9 @@ const Logo = ({
       <span 
         className={cn(
           textSizeClasses[size],
-          "font-light tracking-tight bg-gradient-to-r from-blue-600 via-pink-500 to-blue-600 bg-clip-text text-transparent"
+          "font-bold tracking-tight bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60] bg-clip-text text-transparent"
         )}
+        style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
       >
         TacticalSync
       </span>

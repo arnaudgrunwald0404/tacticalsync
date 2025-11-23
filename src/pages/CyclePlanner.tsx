@@ -26,7 +26,7 @@ import Logo from '@/components/Logo';
 const statusColors = {
   draft: 'bg-gray-500',
   active: 'bg-green-500',
-  review: 'bg-blue-500',
+  review: 'bg-[#C97D60]',
   archived: 'bg-purple-500',
 };
 
@@ -246,7 +246,7 @@ export default function CyclePlanner() {
           )}
 
           {/* Info Card */}
-          <Card className="mt-6 p-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+          <Card className="mt-6 p-6 bg-[#F5F3F0] border-[#E8B4A0]/30">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
               About Strategy Cycles
             </h3>

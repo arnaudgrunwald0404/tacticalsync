@@ -295,11 +295,14 @@ export function AgendaSidebar({
   }, [editingItems, isEditingAgenda, actions]);
 
   return (
-    <div className="w-full h-full group">
+    <div className="w-full h-full group bg-background rounded-lg border border-sidebar-border shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-hidden flex flex-col">
       {/* Sidebar Header */}
-      <div className="flex items-center justify-between pb-4 sticky top-0 z-10 bg-white">
-        <div className="flex items-center gap-2">
-          <h2 className="font-bold text-2xl text-gray-900 flex items-center" data-testid="agenda-section">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-[#4A5D5F] rounded-md flex items-center justify-center shrink-0">
+            <Timer className="h-4 w-4 text-white" />
+          </div>
+          <h2 className="text-sm font-medium text-foreground leading-tight flex items-center" data-testid="agenda-section">
             Agenda
           </h2>
           {!isEditingAgenda && isAdmin && (
@@ -335,7 +338,8 @@ export function AgendaSidebar({
       </div>
       
       {/* Sidebar Content */}
-      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+      <div className="flex-1 overflow-y-auto p-4 pr-6">
+        <div className="space-y-2">
         {items.length === 0 && !isEditingAgenda ? (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
@@ -353,7 +357,7 @@ export function AgendaSidebar({
                     <div 
                       key={template.id} 
                       className={`border rounded-xl bg-white shadow-sm transition-all border-gray-200 ${
-                        isExpanded ? 'p-4 hover:shadow-md hover:border-blue-300' : 'hover:border-blue-300'
+                        isExpanded ? 'p-4 hover:shadow-md hover:border-[#C97D60]' : 'hover:border-[#C97D60]'
                       }`}
                     >
                       {shouldCollapseByDefault && !isExpanded ? (
@@ -369,7 +373,7 @@ export function AgendaSidebar({
                                 : 'bg-gradient-to-br from-purple-50 to-purple-100'
                             }`}>
                               <Sparkles className={`h-4 w-4 ${
-                                isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                                isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
                               }`} />
                             </div>
                             <h3 className="text-sm font-semibold text-gray-900">{template.name}</h3>
@@ -391,7 +395,7 @@ export function AgendaSidebar({
                                     : 'bg-gradient-to-br from-purple-50 to-purple-100'
                                 }`}>
                                   <Sparkles className={`h-5 w-5 ${
-                                    isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                                    isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
                                   }`} />
                                 </div>
                                 <div className="flex-1">
@@ -409,7 +413,7 @@ export function AgendaSidebar({
                                   : 'bg-gradient-to-br from-purple-50 to-purple-100'
                               }`}>
                                 <Sparkles className={`h-5 w-5 ${
-                                  isSystemTemplate ? 'text-blue-600' : 'text-purple-600'
+                                  isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
                                 }`} />
                               </div>
                               <div className="flex-1">
@@ -433,7 +437,7 @@ export function AgendaSidebar({
                           <Button 
                             onClick={() => adoptSystemTemplate?.(template)} 
                             disabled={adoptingTemplate}
-                            className="w-full"
+                            className="w-full bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
                             size="sm"
                           >
                             {adoptingTemplate ? "Adopting..." : "Use This Template"}
@@ -482,7 +486,7 @@ export function AgendaSidebar({
                           {...provided.draggableProps}
                           className={`p-1.5 transition-all relative group ${
                             snapshot.isDragging 
-                              ? 'bg-blue-50 scale-[1.02]' 
+                              ? 'bg-[#F5F3F0] scale-[1.02]' 
                               : 'hover:bg-gray-50'
                           }`}
                         >
@@ -693,6 +697,7 @@ export function AgendaSidebar({
             />
           </div>
         )}
+        </div>
       </div>
     </div>
   );

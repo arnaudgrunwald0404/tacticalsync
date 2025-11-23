@@ -149,7 +149,7 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
       style={style}
       className={cn(
         "px-3 py-1 bg-white group",
-        !isLast && "border-b border-blue-200/50",
+        !isLast && "border-b border-[#E8B4A0]/30",
         isDragging && "shadow-lg"
       )}
     >
@@ -495,7 +495,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       )}
 
       {/* Add New Topic Form */}
-      <div className="bg-blue-200 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
+      <div className="bg-[#E8B4A0]/20 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
         
         {/* Desktop Layout */}
         <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-4">
@@ -585,7 +585,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
             <Button
               onClick={handleAdd}
               disabled={adding || !newTopic.title.trim()}
-              className="h-10 w-10"
+              className="h-10 w-10 bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
               size="icon"
               aria-label="Add Topic"
             >
@@ -676,7 +676,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
           <Button
             onClick={handleAdd}
             disabled={adding || !newTopic.title.trim()}
-            className="w-full"
+            className="w-full bg-[#4A5D5F] text-white hover:bg-[#3D4F51]"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Topic

@@ -282,7 +282,7 @@ const MeetingSettings = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-8">
+      <div className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] p-8">
         <div className="max-w-4xl mx-auto">
           <div className="text-center">Loading...</div>
         </div>
@@ -291,7 +291,7 @@ const MeetingSettings = () => {
   }
 
   return (
-    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
@@ -313,8 +313,8 @@ const MeetingSettings = () => {
       <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">
 
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Meeting Settings</h1>
-          <p className="text-sm sm:text-base text-slate-600 mt-2">
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-[#2C2C2C]">Meeting Settings</h1>
+          <p className="font-body text-sm sm:text-base text-[#4A5D5F] mt-2">
             Manage your meeting configuration and team members
           </p>
         </div>
@@ -341,10 +341,10 @@ const MeetingSettings = () => {
 
             <div className="space-y-2">
               <Label className="text-sm sm:text-base">Frequency</Label>
-              <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-md">
+              <div className="font-body text-sm text-[#4A5D5F] bg-[#F5F3F0] p-3 rounded-md">
                 {recurringMeeting?.frequency || "weekly"}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="font-body text-xs text-[#5B6E7A]">
                 Frequency cannot be changed after creation
               </p>
             </div>
@@ -385,7 +385,7 @@ const MeetingSettings = () => {
                   return (
                     <div
                       key={member.id}
-                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-slate-50 rounded-lg"
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-[#F5F3F0] rounded-lg"
                     >
                       <FancyAvatar 
                         name={member.profiles?.avatar_name || member.profiles?.email || 'Unknown'} 
@@ -394,10 +394,10 @@ const MeetingSettings = () => {
                         size="sm" 
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-900 text-sm sm:text-base">
+                        <div className="font-body font-medium text-[#2C2C2C] text-sm sm:text-base">
                           {fullDisplayName}
                         </div>
-                        <div className="text-xs sm:text-sm text-slate-600 truncate">
+                        <div className="font-body text-xs sm:text-sm text-[#4A5D5F] truncate">
                           {member.profiles?.email}
                         </div>
                       </div>

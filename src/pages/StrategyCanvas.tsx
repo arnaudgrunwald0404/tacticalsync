@@ -171,28 +171,27 @@ const createDoNode = (
     <div
       className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-hidden ${
         status === "final" 
-          ? "border-slate-500 dark:border-slate-600 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950/30 dark:to-slate-900/30" 
-          : "border-slate-400 dark:border-slate-600 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950/20 dark:to-slate-900/20"
+          ? "border-[#4A5D5F] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]" 
+          : "border-[#9FA8B3] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]"
       }`}
       style={{ 
         backgroundColor: data.bgColor, 
         width: data.size?.w, 
         minHeight: data.size?.h,
-        boxShadow: status === "final" ? "0 4px 20px rgba(100, 116, 139, 0.2)" : "0 4px 20px rgba(100, 116, 139, 0.15)"
+        boxShadow: status === "final" ? "0 4px 20px rgba(74, 93, 95, 0.2)" : "0 4px 20px rgba(74, 93, 95, 0.15)"
       }}
     >
-      <Handle type="target" position={Position.Top} />
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-20 h-20 ${
-        status === "final" ? "bg-slate-500/10" : "bg-slate-500/10"
+        status === "final" ? "bg-[#4A5D5F]/10" : "bg-[#4A5D5F]/10"
       } rounded-bl-full`} />
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white`}>Defining Objective</span>
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300`}>{status === "final" ? "locked" : "draft"}</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white`}>Defining Objective</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#F5F3F0] text-[#4A5D5F]`}>{status === "final" ? "locked" : "draft"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
-        <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-slate-500 dark:bg-slate-900/20 dark:border-slate-400`}>
+              <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-[#4A5D5F]`}>
           {(() => {
             const displayName = owner?.full_name || '';
             const isUnknown = !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
@@ -211,7 +210,7 @@ const createDoNode = (
         </span>
         <textarea
           ref={textareaRef}
-          className={`flex-1 w-full bg-transparent outline-none text-sm font-bold resize-none overflow-hidden leading-tight text-slate-900 dark:text-slate-100`}
+          className={`flex-1 w-full bg-transparent outline-none text-sm font-bold resize-none overflow-hidden leading-tight text-[#2C2C2C]`}
           value={data.title || ""}
           placeholder="Name this DO"
           onChange={(e) => {
@@ -235,19 +234,19 @@ const createDoNode = (
           {items.map((it) => (
             <button
               key={it.id}
-              className={`group relative flex items-center gap-2 rounded-md border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
+              className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
                 ${(() => {
                   const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
                   if (siProg && siProg.sentiment !== null && siProg.sentiment !== undefined) {
-                    // On-track (>=1): green border + light green background
+                    // On-track (>=1): semantic green border + light green background (2px border)
                     if (siProg.sentiment >= 1) {
-                      return 'border-green-500 hover:border-green-600 dark:border-green-600 bg-green-50 dark:bg-green-950/20';
+                      return 'border-2 border-[#6FA87F] hover:border-[#5F987F] bg-[#6FA87F]/10';
                     }
-                    // Otherwise: red border + light red background
-                    return 'border-red-500 hover:border-red-600 dark:border-red-600 bg-red-50 dark:bg-red-950/20';
+                    // Otherwise: bronze border + light bronze background (2px border)
+                    return 'border-2 border-[#8B6F47] hover:border-[#7B5F37] bg-[#8B6F47]/10';
                   }
-                  // Default: slate border + neutral background
-                  return 'border-slate-300 hover:border-slate-500 dark:border-slate-700 bg-white/80 dark:bg-slate-900/10';
+                  // Default: pewter border + neutral background (1px border for less emphasis)
+                  return 'border border-[#9FA8B3] hover:border-[#5B6E7A] bg-white/80';
                 })()}
                 dark:hover:bg-slate-900/20`}
               onClick={(e) => {
@@ -255,7 +254,7 @@ const createDoNode = (
                 window.dispatchEvent(new CustomEvent("rcdo:open-si", { detail: { doId: id, siId: it.id } }));
               }}
             >
-              <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 bg-slate-50 border-slate-400 dark:bg-slate-900/30 dark:border-slate-600`}>
+              <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 bg-[#F5F3F0] border-[#9FA8B3]`}>
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
                   const displayName = prof?.full_name || '';
@@ -292,8 +291,8 @@ const createDoNode = (
                       {(showLightning || showWarning) && (
                         <div className="absolute -top-2 -right-2 pointer-events-none z-10">
                           {showLightning ? (
-                            <div className="h-6 w-6 rounded-md bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
-                              <Zap className="h-3.5 w-3.5 text-black" />
+                            <div className="h-6 w-6 rounded-md bg-[#B89A6B] border-2 border-[#2C2C2C] flex items-center justify-center shadow">
+                              <Zap className="h-3.5 w-3.5 text-white" />
                             </div>
                           ) : (
                             <div className="h-6 w-6 rounded-md bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
@@ -329,7 +328,7 @@ const createDoNode = (
                     )}
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted overflow-hidden rounded-b-lg">
                       <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
+                        className="h-full bg-gradient-to-r from-[#C97D60] to-[#6FA87F] transition-all duration-300"
                         style={{
                           width: `${percentToGoal}%`,
                           marginLeft: 'auto', // Start from right, fill leftward
@@ -395,48 +394,47 @@ function RallyNode({ data }: { data: NodeData }) {
     <div 
       className={`rounded-xl border-2 shadow-lg p-4 min-w-[220px] flex flex-col relative ${
         finalized
-          ? "border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30"
-          : "border-amber-400 dark:border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20"
+          ? "border-[#C97D60] bg-gradient-to-br from-[#F5F3F0] to-[#E8B4A0]/20"
+          : "border-[#B89A6B] bg-gradient-to-br from-[#F8F6F2] to-[#E8B4A0]/20"
       }`}
       style={{ 
         backgroundColor: bg, 
         width: data.size?.w, 
         minHeight: data.size?.h,
-        boxShadow: finalized ? "0 6px 24px rgba(168, 85, 247, 0.2)" : "0 6px 24px rgba(251, 191, 36, 0.2)",
+        boxShadow: finalized ? "0 6px 24px rgba(201, 125, 96, 0.2)" : "0 6px 24px rgba(184, 154, 107, 0.2)",
         overflow: 'visible'
       }}
     >
-      <Handle type="source" position={Position.Bottom} />
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-24 h-24 ${
-        finalized ? "bg-purple-500/10" : "bg-amber-500/10"
+        finalized ? "bg-[#C97D60]/10" : "bg-[#B89A6B]/10"
       } rounded-bl-full`} />
       
       {/* Decorative top accent */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${
+      <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl ${
         finalized 
-          ? "bg-gradient-to-r from-purple-500 via-violet-500 to-purple-500" 
-          : "bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500"
+          ? "bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60]" 
+          : "bg-gradient-to-r from-[#B89A6B] via-[#8B6F47] to-[#B89A6B]"
       }`} />
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
           finalized
-            ? "bg-purple-500 text-white"
-            : "bg-amber-500 text-white"
+            ? "bg-[#C97D60] text-white"
+            : "bg-[#B89A6B] text-white"
         }`}>Rallying Cry</span>
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
           finalized 
-            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300" 
-            : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+            ? "bg-[#F5F3F0] text-[#C97D60]" 
+            : "bg-[#F8F6F2] text-[#B89A6B]"
         }`}>
           {finalized ? "locked" : "draft"}
         </span>
       </div>
       <div className={`mt-3 text-base font-bold leading-snug break-words whitespace-normal relative z-10 ${
         finalized
-          ? "text-purple-900 dark:text-purple-100"
-          : "text-amber-900 dark:text-amber-100"
+          ? "text-[#2C2C2C]"
+          : "text-[#2C2C2C]"
       }`}
       style={{
         wordBreak: 'break-word',
@@ -646,7 +644,7 @@ export default function StrategyCanvasPage() {
   const handleTabChange = (value: string) => {
     if (value === 'main') navigate('/dashboard/main');
     else if (value === 'rcdo') navigate('/dashboard/rcdo');
-    else if (value === 'checkins') navigate('/dashboard/checkins');
+    else if (value === 'checkins') navigate('/workspace');
   };
 
   // Run a one-time de-overlap pass to ensure default layout has no collisions
@@ -1810,7 +1808,7 @@ const duplicateSelectedDo = useCallback(() => {
         >
           <MiniMap pannable zoomable />
           <Controls />
-          <Background />
+          <Background color="#E8B4A0" gap={10} size={1} />
         </ReactFlow>
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
@@ -2069,7 +2067,7 @@ const duplicateSelectedDo = useCallback(() => {
           ) : (
             <div className="fixed inset-0 z-50">
               <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
-              <div className="absolute right-0 top-0 h-full w-[380px] bg-background border-l shadow-xl p-4 flex flex-col">
+              <div className="absolute right-0 top-0 h-full w-[380px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col">
                 <DOPanelContent 
                   selectedNode={selectedNode}
                   doLockedStatus={doLockedStatus}
@@ -2248,7 +2246,7 @@ const duplicateSelectedDo = useCallback(() => {
                 Cancel
               </Button>
               <Button
-                variant="destructive"
+                variant="secondary"
                 onClick={handleConfirmOverwrite}
                 className="flex items-center gap-2"
               >
@@ -2320,7 +2318,7 @@ const duplicateSelectedDo = useCallback(() => {
             <div className="space-y-4 flex-1 overflow-y-auto">
               {/* Progress List - Prominently displayed when active */}
               {importProgress.length > 0 && (
-                <div className="space-y-3 p-4 bg-muted/40 rounded-lg border border-muted">
+                <div className="space-y-3 p-4 bg-[#F5F3F0] rounded-lg border border-[#E8B4A0]/30">
                   <div className="flex items-center justify-between">
                     <p className="text-base font-semibold">Import Progress</p>
                     {importProgress.every(p => p.status === 'success' || p.status === 'error') && (
@@ -2336,7 +2334,7 @@ const duplicateSelectedDo = useCallback(() => {
                           <div className="h-5 w-5 rounded-full border-2 border-muted flex-shrink-0" />
                         )}
                         {item.status === 'loading' && (
-                          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-blue-500" />
+                          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-[#C97D60]" />
                         )}
                         {item.status === 'success' && (
                           <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-green-600" />
@@ -2358,7 +2356,7 @@ const duplicateSelectedDo = useCallback(() => {
                 <div className={`flex items-start gap-2 p-3 rounded-md ${
                   importStatus.type === 'success' ? 'bg-green-50 text-green-900 border border-green-200' :
                   importStatus.type === 'error' ? 'bg-red-50 text-red-900 border border-red-200' :
-                  'bg-blue-50 text-blue-900 border border-blue-200'
+                  'bg-[#F5F3F0] text-[#2C2C2C] border border-[#E8B4A0]/30'
                 }`}>
                   {importStatus.type === 'success' && <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />}
                   {importStatus.type === 'error' && <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />}
@@ -2427,20 +2425,20 @@ const duplicateSelectedDo = useCallback(() => {
 
               {/* Hide format instructions when progress is shown */}
               {importProgress.length === 0 && (
-                <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950/30 border-2 border-blue-500 dark:border-blue-700 rounded-lg">
+                <div className="space-y-3 p-4 bg-[#F5F3F0] border-2 border-[#C97D60] rounded-lg">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5">
-                      <div className="h-8 w-8 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-full bg-[#C97D60] flex items-center justify-center">
                         <FileText className="h-4 w-4 text-white" />
                       </div>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="font-semibold text-sm text-blue-900 dark:text-blue-100">Markdown Format Instructions</p>
+                        <p className="font-heading font-semibold text-sm text-[#2C2C2C]">Markdown Format Instructions</p>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 flex items-center gap-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                          className="font-body h-7 px-2 flex items-center gap-1.5 hover:bg-[#C97D60]/10"
                           onClick={() => {
                       const instructions = `Please format my RCDO (Rallying Cry, Defining Objectives, and Strategic Initiatives) data according to the following markdown structure:
 
@@ -2546,17 +2544,17 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
                         </Button>
                       </div>
                       <div className="space-y-2">
-                        <p className="text-xs text-blue-800 dark:text-blue-200">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
-                        <div className="text-xs space-y-1.5 pl-3 border-l-2 border-blue-400 dark:border-blue-600">
-                          <p className="font-medium text-blue-900 dark:text-blue-100">Quick Reference:</p>
-                          <ul className="list-disc list-inside space-y-1 ml-2 text-blue-800 dark:text-blue-200">
-                            <li>Rallying Cry: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">&gt; **Text**</code></li>
-                            <li>Defining Objectives: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">## DO #1 — Title</code></li>
-                            <li>Strategic Initiatives: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">1. **Initiative**</code></li>
-                            <li>Sections: <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">**Definition**</code>, <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">**Primary Success Metric**</code></li>
-                            <li>Owners (optional): <code className="text-xs bg-white dark:bg-blue-900 px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">(Owner: Name)</code></li>
+                        <p className="font-body text-xs text-[#4A5D5F]">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
+                        <div className="font-body text-xs space-y-1.5 pl-3 border-l-2 border-[#C97D60]">
+                          <p className="font-heading font-medium text-[#2C2C2C]">Quick Reference:</p>
+                          <ul className="font-body list-disc list-inside space-y-1 ml-2 text-[#4A5D5F]">
+                            <li>Rallying Cry: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">&gt; **Text**</code></li>
+                            <li>Defining Objectives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">## DO #1 — Title</code></li>
+                            <li>Strategic Initiatives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">1. **Initiative**</code></li>
+                            <li>Sections: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">**Definition**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">**Primary Success Metric**</code></li>
+                            <li>Owners (optional): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">(Owner: Name)</code></li>
                           </ul>
-                          <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 italic">
+                          <p className="font-body text-xs text-[#4A5D5F] mt-2 italic">
                             Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.
                           </p>
                         </div>
@@ -2901,7 +2899,7 @@ function StrategyCanvasMobileView({
                       </div>
 
                       {isExpanded && doSIs.length > 0 && (
-                        <div className="border-t bg-muted/30">
+                        <div className="border-t bg-[#F5F3F0]">
                           {doSIs.map((siItem) => {
                             const siStatus = getSIStatus(siItem.id);
                             const siOwner = siItem.owner_user_id ? profilesMap[siItem.owner_user_id] : null;
@@ -2913,7 +2911,7 @@ function StrategyCanvasMobileView({
                                   setSelectedSIId(siItem.id);
                                   setSelectedDOId(null);
                                 }}
-                                className="w-full p-4 pl-12 flex items-center justify-between min-h-[44px] text-left hover:bg-accent/50 transition-colors border-b last:border-b-0"
+                                className="w-full p-4 pl-12 flex items-center justify-between min-h-[44px] text-left hover:bg-[#F5F3F0] transition-colors border-b last:border-b-0"
                               >
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                   <FileText className="h-4 w-4 text-secondary flex-shrink-0" />

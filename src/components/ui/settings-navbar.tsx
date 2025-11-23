@@ -20,7 +20,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
   ];
 
   return (
-    <nav className="w-64 border-r bg-card/50 backdrop-blur-sm min-h-[calc(100vh-73px)]">
+    <nav className="w-64 border-r border-[#E8B4A0]/30 bg-[#F5F3F0] min-h-[calc(100vh-73px)]">
       <div className="p-4 space-y-1">
         {sections.map((section) => (
           <Button
@@ -29,8 +29,10 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
             size="sm"
             onClick={() => onSectionChange(section.id)}
             className={cn(
-              "w-full justify-start",
-              activeSection === section.id && "bg-secondary font-medium"
+              "font-body w-full justify-start",
+              activeSection === section.id 
+                ? "bg-[#4A5D5F] text-white hover:bg-[#5B6E7A] font-medium" 
+                : "text-[#4A5D5F] hover:bg-[#F5F3F0] hover:text-[#2C2C2C]"
             )}
           >
             {section.label}

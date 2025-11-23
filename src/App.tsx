@@ -73,7 +73,7 @@ const App = () => (
               <DashboardWithTabs />
             </Suspense>
           } />
-          <Route path="/dashboard/checkins" element={
+          <Route path="/workspace" element={
             <Suspense fallback={<DashboardSkeleton />}>
               <DashboardWithTabs />
             </Suspense>

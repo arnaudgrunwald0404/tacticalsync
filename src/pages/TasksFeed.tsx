@@ -197,7 +197,7 @@ export default function TasksFeed() {
           <UserProfileHeader />
         </div>
       </header>
-      <div className={`min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 ${isMobile ? 'pb-20' : ''}`}>
+      <div className={`min-h-screen bg-gradient-to-b from-[#F5F3F0] via-white to-[#F8F6F2] ${isMobile ? 'pb-20' : ''}`}>
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
