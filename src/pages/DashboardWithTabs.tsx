@@ -9,13 +9,18 @@ const StrategyHome = lazy(() => import("./StrategyHome"));
 const LazyCheckinsPage = lazy(() => import("./Checkins"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 const DashboardWithTabs = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
 
   // Determine active tab from URL
-  const activeTab = location.pathname.includes('/dashboard/rcdo')
+  const activeTab = location.pathname.includes('/dashboard/rcdo/tasks-feed')
+    ? 'tasks'
+    : location.pathname.includes('/dashboard/rcdo')
     ? 'rcdo'
     : location.pathname.includes('/dashboard/checkins')
     ? 'checkins'
@@ -47,12 +52,12 @@ const DashboardWithTabs = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className="border-b bg-white">
+      <header className={`border-b bg-white ${isMobile ? 'sticky top-0 z-50' : ''}`}>
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           {/* Left: Back button and Logo */}
           <div className="flex items-center gap-4">
             {/* Back button (only show when not on main meetings) */}
-            {activeTab !== 'main' && (
+            {activeTab !== 'main' && !isMobile && (
               <button
                 onClick={() => navigate('/dashboard/main')}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -65,16 +70,18 @@ const DashboardWithTabs = () => {
             <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
           </div>
           
-          {/* Center: Tabs */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
-            <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <TabsList className="h-10">
-                <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
-                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
-                <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+          {/* Center: Tabs - Hidden on mobile */}
+          {!isMobile && (
+            <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
+              <Tabs value={activeTab} onValueChange={handleTabChange}>
+                <TabsList className="h-10">
+                  <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
+                  <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
+                  <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
           
           {/* Right: Avatar positioned absolutely to avoid clipping */}
           <UserProfileHeader />
@@ -82,7 +89,7 @@ const DashboardWithTabs = () => {
       </header>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsContent value="checkins" className="mt-0">
+        <TabsContent value="checkins" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'checkins' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-ins…</div>}>
               {/* Lazy import to keep initial bundle small */}
@@ -91,11 +98,11 @@ const DashboardWithTabs = () => {
           ) : null}
         </TabsContent>
 
-        <TabsContent value="main" className="mt-0">
+        <TabsContent value="main" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           <DashboardMain />
         </TabsContent>
         
-        <TabsContent value="rcdo" className="mt-0">
+        <TabsContent value="rcdo" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'rcdo' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading RCDO…</div>}>
               <StrategyHome />
@@ -103,6 +110,9 @@ const DashboardWithTabs = () => {
           ) : null}
         </TabsContent>
       </Tabs>
+
+      {/* Mobile Bottom Navigation */}
+      {isMobile && <MobileBottomNav />}
     </GridBackground>
   );
 };

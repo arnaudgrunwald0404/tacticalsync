@@ -16,7 +16,6 @@ import {
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
-import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
   closestCenter,
@@ -175,7 +174,7 @@ function SortableTeamItem({
                   className="hover:shadow-lg hover:border-slate-200 bg-slate-300/50 backdrop-blur-sm hover:bg-slate-400/30 transition-all duration-200 cursor-pointer group border border-slate-300/50"
                   onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
                 >
-                  <CardHeader className="p-5">
+                  <CardHeader className="p-5 sm:p-2">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center justify-between gap-3">
                         <Badge className="capitalize text-[11px] px-2 py-1 rounded-full font-medium bg-slate-600 text-white w-fit">
@@ -211,7 +210,6 @@ const DashboardMain = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useRoles();
-  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -755,7 +753,7 @@ const DashboardMain = () => {
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8">
-      <div className={`mb-8 sm:mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6 ${isMobile ? 'sticky top-0 z-50 bg-background/95 backdrop-blur-sm pb-4 pt-4 -mx-4 px-4 border-b shadow-sm' : ''}`}>
+      <div className="mb-8 sm:mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Your Teams Section */}
         <div>
           <div className="mb-6">
