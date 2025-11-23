@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Mail, GripVertical } from "lucide-react";
+import { Plus, Mail, GripVertical, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
 import {
@@ -75,7 +75,7 @@ function SortableTeamItem({
         <div className="mb-2 border-t border-border/50"></div>
       )}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex flex-col gap-3 flex-1 min-w-0">
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <div
               {...attributes}
@@ -84,8 +84,17 @@ function SortableTeamItem({
             >
               <GripVertical className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="text-xl sm:text-2xl font-bold text-foreground">
+            <h3 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
               {teamMember.teams.name}
+              {teamMember.role === "admin" && (
+                <button
+                  onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
+                  className="p-1 hover:bg-accent rounded transition-colors"
+                  aria-label="Manage team"
+                >
+                  <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                </button>
+              )}
             </h3>
           </div>
           <div className="bg-muted/30 rounded-lg p-3 sm:p-4 space-y-2.5">
@@ -137,15 +146,6 @@ function SortableTeamItem({
                   </div>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto px-2.5 gap-1.5 text-xs sm:text-sm font-normal hover:bg-accent flex-col"
-                onClick={() => navigate(`/team/${teamMember.teams.id}/invite?fromDashboard=true`)}
-              >
-                <Users className="h-3.5 w-3.5" />
-                <span className="leading-tight">Manage<br />team</span>
-              </Button>
             </div>
           </div>
         </div>
@@ -171,7 +171,7 @@ function SortableTeamItem({
               teamMeetings.map((meeting) => (
                 <Card
                   key={meeting.id}
-                  className="hover:shadow-lg hover:border-blue-300 bg-card/40 backdrop-blur-sm hover:bg-card/60 transition-all duration-200 cursor-pointer group border border-blue-200/50"
+                  className="hover:shadow-lg hover:border-slate-200 bg-slate-300/50 backdrop-blur-sm hover:bg-slate-400/30 transition-all duration-200 cursor-pointer group border border-slate-300/50"
                   onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
                 >
                   <CardHeader className="p-3">
@@ -179,12 +179,13 @@ function SortableTeamItem({
                       {meeting.frequency.replace('-', ' ')}
                     </Badge>
                     <CardTitle className="text-base sm:text-lg font-semibold">{meeting.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-4 pt-0 flex justify-end">
-                    <Button variant="ghost" size="sm" className="group-hover:bg-transparent text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium">
+           
+                    <Button variant="ghost" size="sm" className="flex justify-end group-hover:bg-transparent text-md sm:text-sm text-blue-600 hover:text-blue-700 font-semibold">
                       Go →
                     </Button>
-                  </CardContent>
+                  
+                  </CardHeader>
+                  
                 </Card>
               ))
             )}
@@ -746,7 +747,7 @@ const DashboardMain = () => {
         {/* Your Teams Section */}
         <div>
           <div className="mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Discipline Starts with Cadenced Meetings </h2>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">My Cadenced Meetings</h2>
             
             <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
               Run your recurring meetings with discipline that makes all the difference.
