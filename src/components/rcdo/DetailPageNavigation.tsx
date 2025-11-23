@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -199,9 +199,15 @@ export function DetailPageNavigation({
   // Update active and expanded states without refetching (static navigation)
   // Use a ref to avoid unnecessary updates when values haven't changed
   const prevActiveRef = useRef({ currentDOId, currentSIId, currentTaskId });
+  const navTreeRef = useRef(navTree);
+  
+  // Keep ref in sync with navTree
+  useEffect(() => {
+    navTreeRef.current = navTree;
+  }, [navTree]);
   
   useEffect(() => {
-    if (!navTree) return;
+    if (!navTreeRef.current) return;
 
     // Quick check: if active IDs haven't changed, skip update
     const activeChanged = 
@@ -264,6 +270,7 @@ export function DetailPageNavigation({
       return updatedNode;
     };
 
+    // Use functional update to avoid dependency on navTree
     setNavTree(prev => {
       if (!prev) return null;
       const updated = updateActiveStates(prev);
@@ -272,7 +279,7 @@ export function DetailPageNavigation({
     });
   }, [currentDOId, currentSIId, currentTaskId]);
 
-  const toggleExpand = (item: NavigationItem) => {
+  const toggleExpand = useCallback((item: NavigationItem) => {
     // Don't allow toggling RC level
     if (item.type === 'rce') return;
     
@@ -290,9 +297,9 @@ export function DetailPageNavigation({
       return node;
     };
     setNavTree(prev => updateItem(prev));
-  };
+  }, []);
 
-  const handleNavigate = (item: NavigationItem) => {
+  const handleNavigate = useCallback((item: NavigationItem) => {
     // Just navigate - the useEffect will handle active state updates based on URL params
     switch (item.type) {
       case 'rce':
@@ -308,7 +315,7 @@ export function DetailPageNavigation({
         navigate(`/rcdo/detail/si/${currentSIId || ''}?task=${item.id}`);
         break;
     }
-  };
+  }, [navigate, currentSIId]);
 
   const getIcon = (type: NavigationItem['type']) => {
     switch (type) {
@@ -365,7 +372,7 @@ export function DetailPageNavigation({
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  const renderItem = (item: NavigationItem, level: number = 0): JSX.Element => {
+  const renderItem = useCallback((item: NavigationItem, level: number = 0): JSX.Element => {
     if (!item || !item.id || !item.title) {
       return <div key={`error-${level}`} className="text-xs text-muted-foreground p-2">Invalid item</div>;
     }
@@ -440,7 +447,7 @@ export function DetailPageNavigation({
         )}
       </div>
     );
-  };
+  }, [toggleExpand, handleNavigate, isMobile, setMobileOpen]);
 
   const sidebarContent = (
     <>
