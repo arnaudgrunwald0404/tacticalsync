@@ -16,6 +16,7 @@ import {
 import { useRoles } from "@/hooks/useRoles";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DndContext,
   closestCenter,
@@ -99,7 +100,7 @@ function SortableTeamItem({
           </div>
           <div className="bg-muted/30 rounded-lg p-3 sm:p-4 space-y-2.5">
             <div className="space-y-2.5">
-              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground ml-[32px]">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-foreground/70">{teamMember.memberCount} active</span>
                   <span className="text-muted-foreground/50">·</span>
@@ -174,16 +175,26 @@ function SortableTeamItem({
                   className="hover:shadow-lg hover:border-slate-200 bg-slate-300/50 backdrop-blur-sm hover:bg-slate-400/30 transition-all duration-200 cursor-pointer group border border-slate-300/50"
                   onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
                 >
-                  <CardHeader className="p-3">
-                    <Badge className="mb-1 capitalize text-[10px] px-2 py-1 rounded-full font-medium bg-slate-600 text-white w-fit">
-                      {meeting.frequency.replace('-', ' ')}
-                    </Badge>
-                    <CardTitle className="text-base sm:text-lg font-semibold">{meeting.name}</CardTitle>
-           
-                    <Button variant="ghost" size="sm" className="flex justify-end group-hover:bg-transparent text-md sm:text-sm text-blue-600 hover:text-blue-700 font-semibold">
-                      Go →
-                    </Button>
-                  
+                  <CardHeader className="p-5">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <Badge className="capitalize text-[11px] px-2 py-1 rounded-full font-medium bg-slate-600 text-white w-fit">
+                          {meeting.frequency.replace('-', ' ')}
+                        </Badge>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="group-hover:bg-transparent text-md sm:text-md text-blue-600 hover:text-blue-700 font-semibold shrink-0 h-auto py-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMeetingAccess(teamMember.teams.id, meeting.id);
+                          }}
+                        >
+                          Go →
+                        </Button>
+                      </div>
+                      <CardTitle className="text-base sm:text-lg font-semibold">{meeting.name}</CardTitle>
+                    </div>
                   </CardHeader>
                   
                 </Card>
@@ -200,6 +211,7 @@ const DashboardMain = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useRoles();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -743,7 +755,7 @@ const DashboardMain = () => {
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8">
-      <div className="mb-8 sm:mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`mb-8 sm:mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6 ${isMobile ? 'sticky top-0 z-50 bg-background/95 backdrop-blur-sm pb-4 pt-4 -mx-4 px-4 border-b shadow-sm' : ''}`}>
         {/* Your Teams Section */}
         <div>
           <div className="mb-6">
