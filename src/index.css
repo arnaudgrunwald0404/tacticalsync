@@ -41,6 +41,8 @@
 
 @layer base {
   :root {
+    --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
 
@@ -159,8 +161,21 @@
     @apply border-border;
   }
 
+  html,
+  body {
+    font-family: var(--font-inter);
+  }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Apply Inter to all text elements and form controls */
+  p, span, div, h1, h2, h3, h4, h5, h6,
+  a, button, label, li, td, th, dt, dd,
+  input, textarea, select, option,
+  ::placeholder, ::-webkit-input-placeholder, ::-moz-placeholder {
+    font-family: var(--font-inter);
   }
 }
 
@@ -172,6 +187,7 @@
   padding-bottom: 0.5rem !important;
   padding-left: 0.75rem !important;
   padding-right: 0.75rem !important;
+  font-family: var(--font-inter);
 }
 
 .ProseMirror p {

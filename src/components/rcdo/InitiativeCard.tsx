@@ -19,11 +19,16 @@ interface InitiativeCardProps {
 }
 
 const statusConfig = {
-  not_started: { label: 'Not Started', color: 'bg-blue-500' },
+  draft: { label: 'Draft', color: 'bg-blue-500' },
+  initialized: { label: 'Initialized', color: 'bg-cyan-500' },
   on_track: { label: 'On Track', color: 'bg-green-500' },
-  at_risk: { label: 'At Risk', color: 'bg-yellow-500' },
-  off_track: { label: 'Off Track', color: 'bg-red-500' },
-  completed: { label: 'Completed', color: 'bg-purple-500' },
+  delayed: { label: 'Delayed', color: 'bg-yellow-500' },
+  cancelled: { label: 'Cancelled', color: 'bg-red-500' },
+  // Legacy status mappings
+  not_started: { label: 'Draft', color: 'bg-blue-500' },
+  at_risk: { label: 'Delayed', color: 'bg-yellow-500' },
+  off_track: { label: 'Delayed', color: 'bg-yellow-500' },
+  completed: { label: 'On Track', color: 'bg-green-500' },
 };
 
 export function InitiativeCard({ initiative, onClick, isDragging = false }: InitiativeCardProps) {
@@ -61,7 +66,7 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
     if (onClick) {
       onClick();
     } else {
-      navigate(`/dashboard/rcdo/si/${initiative.id}`);
+      navigate(`/rcdo/detail/si/${initiative.id}`);
     }
   };
 

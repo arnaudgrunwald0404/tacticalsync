@@ -26,6 +26,8 @@ import { format } from 'date-fns';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { isFeatureEnabled } from '@/lib/featureFlags';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface CheckInDialogProps {
   isOpen: boolean;
@@ -62,6 +64,7 @@ export function CheckInDialog({
   onSuccess,
 }: CheckInDialogProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(true);
@@ -201,7 +204,7 @@ export function CheckInDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className={cn("sm:max-w-[600px] max-h-[90vh] overflow-y-auto", isMobile && "max-w-full")}>
         <DialogHeader>
           <DialogTitle>Check-In</DialogTitle>
           <DialogDescription>
@@ -232,7 +235,7 @@ export function CheckInDialog({
                 disabled={loading || profilesLoading}
                 required
               >
-                <SelectTrigger id="reporter">
+                <SelectTrigger id="reporter" className="h-11 text-base">
                   <SelectValue>
                     {selectedReporter && (
                       <div className="flex items-center gap-2">
@@ -286,6 +289,7 @@ export function CheckInDialog({
                 }
                 disabled={loading}
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -301,6 +305,7 @@ export function CheckInDialog({
                 }
                 disabled={loading}
                 rows={4}
+                className="min-h-[80px] text-base"
               />
             </div>
 
@@ -316,6 +321,7 @@ export function CheckInDialog({
                 }
                 disabled={loading}
                 rows={4}
+                className="min-h-[80px] text-base"
               />
             </div>
 
@@ -338,7 +344,7 @@ export function CheckInDialog({
                       }
                     }}
                     disabled={loading}
-                    className="flex-1"
+                    className="flex-1 h-11 text-base"
                   />
                   <span className="text-sm text-muted-foreground">%</span>
                 </div>
@@ -358,7 +364,7 @@ export function CheckInDialog({
                 }
                 disabled={loading}
               >
-                <SelectTrigger id="colorCode">
+                <SelectTrigger id="colorCode" className="h-11 text-base">
                   <SelectValue>
                     {colorOptions.find(c => c.value === formData.colorCode)?.label}
                   </SelectValue>
@@ -377,16 +383,17 @@ export function CheckInDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="w-full sm:w-auto h-11 text-base"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || profilesLoading}>
+            <Button type="submit" disabled={loading || profilesLoading} className="w-full sm:w-auto h-11 text-base">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Check-In
             </Button>

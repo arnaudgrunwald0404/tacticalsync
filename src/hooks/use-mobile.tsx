@@ -17,3 +17,6 @@ export function useIsMobile() {
 
   return !!isMobile;
 }
+
+// Re-export from use-breakpoint for convenience
+export { useBreakpoint, useIsTablet, useIsDesktop, MOBILE_CONSTANTS } from './use-breakpoint';

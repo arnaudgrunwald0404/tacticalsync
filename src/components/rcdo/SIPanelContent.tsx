@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, MoreVertical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, MoreVertical, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -16,6 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRoles } from '@/hooks/useRoles';
 import type { InitiativeStatus } from '@/types/rcdo';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -69,52 +72,60 @@ export function SIPanelContent({
   onClose,
   isDoPanelOpen,
 }: SIPanelContentProps) {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin, isRCDOAdmin } = useRoles();
+  const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   // Fetch SI data with progress if we have a database ID
   const siDbId = si.dbId;
   const { siData: siWithProgress, refetch: refetchSI } = useSIWithProgress(siDbId);
   
-  // Get current status from database or default to 'not_started'
+  // Get current status from database or default to 'draft'
   // Handle potential null/undefined or old status values
   const getStatusLabel = (status: string | null | undefined): string => {
-    if (!status) return 'Not Started';
+    if (!status) return 'Draft';
     const statusMap: Record<string, string> = {
-      'not_started': 'Not Started',
+      'draft': 'Draft',
+      'initialized': 'Initialized',
       'on_track': 'On Track',
-      'at_risk': 'At Risk',
-      'off_track': 'Off Track',
-      'completed': 'Completed',
+      'delayed': 'Delayed',
+      'cancelled': 'Cancelled',
       // Handle old values that might still exist
-      'draft': 'Not Started',
+      'not_started': 'Draft',
+      'at_risk': 'Delayed',
+      'off_track': 'Delayed',
+      'completed': 'On Track',
       'active': 'On Track',
-      'blocked': 'At Risk',
-      'done': 'Completed',
+      'blocked': 'Delayed',
+      'done': 'On Track',
     };
-    return statusMap[status] || 'Not Started';
+    return statusMap[status] || 'Draft';
   };
 
   // Normalize status value to ensure it matches one of the valid SelectItem values
   const normalizeStatus = (status: string | null | undefined): InitiativeStatus => {
-    if (!status) return 'not_started';
-    const validStatuses: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
+    if (!status) return 'draft';
+    const validStatuses: InitiativeStatus[] = ['draft', 'initialized', 'on_track', 'delayed', 'cancelled'];
     // If it's already a valid status, return it
     if (validStatuses.includes(status as InitiativeStatus)) {
       return status as InitiativeStatus;
     }
     // Map old values to new values
     const statusMapping: Record<string, InitiativeStatus> = {
-      'draft': 'not_started',
+      'not_started': 'draft',
+      'at_risk': 'delayed',
+      'off_track': 'delayed',
+      'completed': 'on_track',
       'active': 'on_track',
-      'blocked': 'at_risk',
-      'done': 'completed',
+      'blocked': 'delayed',
+      'done': 'on_track',
     };
-    return statusMapping[status] || 'not_started';
+    return statusMapping[status] || 'draft';
   };
 
-  const rawStatus = siWithProgress?.status || 'not_started';
+  const rawStatus = siWithProgress?.status || 'draft';
   const currentStatus: InitiativeStatus = normalizeStatus(rawStatus);
   const statusLabel = getStatusLabel(rawStatus);
   
@@ -138,14 +149,12 @@ export function SIPanelContent({
     getCurrentUser();
   }, []);
 
-  return (
-    <div
-      className={
-        `fixed top-0 h-full w-[420px] bg-background border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
-        (isDoPanelOpen ? "right-[380px]" : "right-0")
-      }
-    >
-      <div className="flex items-center justify-between">
+  const panelContent = (
+    <>
+      <div className="mb-3">
+        <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white">Strategic Initiative</span>
+      </div>
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-base font-semibold">{si.title || "Untitled Initiative"}</h3>
           {isLocked && (
@@ -153,9 +162,22 @@ export function SIPanelContent({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {si.dbId && (
+            <button
+              className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
+              aria-label="Open in full page"
+              onClick={() => {
+                navigate(`/rcdo/detail/si/${si.dbId}`);
+                if (isMobile) onClose();
+              }}
+              title="Open in full page"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
+              <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="More actions">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
@@ -164,12 +186,12 @@ export function SIPanelContent({
               <DropdownMenuItem className="text-red-600" onClick={onDelete}>Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="Close" onClick={onClose}>
+          <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         {/* 1. Name */}
         <div>
           
@@ -211,21 +233,21 @@ export function SIPanelContent({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="not_started">Not Started</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="initialized">Initialized</SelectItem>
                 <SelectItem value="on_track">On Track</SelectItem>
-                <SelectItem value="at_risk">At Risk</SelectItem>
-                <SelectItem value="off_track">Off Track</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="delayed">Delayed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <label className="text-sm font-medium">Name</label>
+          <label className={`text-sm font-medium ${!si.title || si.title.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Name</label>
           <input className="w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>{ if (isLocked) return; onUpdate({ title: e.target.value }); }} disabled={isLocked} />
         </div>
         
         {/* 2. Description */}
         <div>
-          <label className="text-sm font-medium">Description</label>
+          <label className={`text-sm font-medium ${!si.description || si.description.trim().replace(/<[^>]*>/g, '').trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Description</label>
           <div className="mt-1">
             <RichTextEditor
               content={si.description || ""}
@@ -238,7 +260,7 @@ export function SIPanelContent({
         
         {/* 3. Primary Success Metric */}
         <div>
-          <label className="text-sm font-medium">Primary Success Metric</label>
+          <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
           <textarea 
             className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none" 
             rows={3}
@@ -269,7 +291,14 @@ export function SIPanelContent({
         
         {/* 4. Owner */}
         <div>
-          <label className="text-sm font-medium">Owner</label>
+          {(() => {
+            const owner = si.ownerId ? profilesMap[si.ownerId] : null;
+            const displayName = owner?.full_name || '';
+            const isUnknown = !si.ownerId || !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
+            return (
+              <label className={`text-sm font-medium ${isUnknown ? 'text-red-600 dark:text-red-400' : ''}`}>Owner</label>
+            );
+          })()}
           <div className="mt-1">
             <Select
               value={si.ownerId || ""}
@@ -389,6 +418,29 @@ export function SIPanelContent({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  // Mobile: Use Sheet (bottom sheet)
+  if (isMobile) {
+    return (
+      <Sheet open={true} onOpenChange={(open) => !open && onClose()}>
+        <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
+          {panelContent}
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  // Desktop: Fixed panel
+  return (
+    <div
+      className={
+        `fixed top-0 h-full w-[420px] bg-background border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
+        (isDoPanelOpen ? "right-[380px]" : "right-0")
+      }
+    >
+      {panelContent}
     </div>
   );
 }

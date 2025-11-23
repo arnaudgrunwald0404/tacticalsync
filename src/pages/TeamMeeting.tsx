@@ -138,8 +138,8 @@ const TeamMeeting = () => {
         .from("meeting_instance_priorities")
         .select(`
           *,
-          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+          assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+          created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
         `)
         .eq("instance_id", meeting.id)
         .order("order_index"),
@@ -150,8 +150,8 @@ const TeamMeeting = () => {
             .from("meeting_instance_priorities")
             .select(`
               *,
-              assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-              created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+              assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+              created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
             `)
             .eq("instance_id", previousMeetingId)
             .order("order_index")
@@ -181,8 +181,8 @@ const TeamMeeting = () => {
       .from("meeting_series_action_items")
       .select(`
         *,
-        assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-        created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+        assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+        created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
       `)
       .eq("series_id", currentSeriesId)
       .order("order_index");
@@ -247,21 +247,6 @@ const TeamMeeting = () => {
     }
   }, [teamId, meetingId, location.pathname]);
 
-  // Refetch data when component becomes visible (handles navigation back from settings)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && teamId && meetingId) {
-        // Small delay to ensure the component is fully mounted
-        setTimeout(() => {
-          fetchTeamAndMeeting();
-        }, 100);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [teamId, meetingId]);
-
   const fetchTeamAndMeeting = async () => {
     // OPTIMIZED: Prevent concurrent fetches
     if (isFetchingRef.current) {
@@ -272,8 +257,8 @@ const TeamMeeting = () => {
     isFetchingRef.current = true;
 
     try {
-      // OPTIMIZED: Fetch team and meeting series in parallel
-      const [teamResult, recurringResult] = await Promise.all([
+      // OPTIMIZED: Fetch team, meeting series, and all meetings in parallel
+      const [teamResult, recurringResult, allMeetingsResult] = await Promise.all([
         supabase
           .from("teams")
           .select("*")
@@ -284,7 +269,12 @@ const TeamMeeting = () => {
           .select('id,name,frequency,created_by')
           .filter('id', 'eq', meetingId)
           .limit(1)
-          .single()
+          .single(),
+        supabase
+          .from("meeting_instances")
+          .select("*")
+          .eq("series_id", meetingId)
+          .order("start_date", { ascending: false })
       ]);
 
       if (teamResult.error) throw teamResult.error;
@@ -294,29 +284,37 @@ const TeamMeeting = () => {
       const recurringData = recurringResult.data as RecurringMeeting;
       setRecurringMeeting(recurringData);
 
+      const allMeetingsData = allMeetingsResult.data || [];
+      if (allMeetingsResult.error) {
+        console.error("Error fetching meetings:", allMeetingsResult.error);
+      } else {
+        setAllMeetings(allMeetingsData);
+      }
+
       // Get or create current period's meeting
       const today = new Date();
       const periodStart = getMeetingStartDate(recurringData.frequency, today);
       const periodStartStr = getISODateString(periodStart);
       
-      console.log('Meeting creation debug:', {
-        today: today.toISOString().split('T')[0],
-        frequency: recurringData.frequency,
-        calculatedPeriodStart: periodStartStr,
-        periodStartDate: periodStart.toISOString().split('T')[0],
-        periodStartObject: periodStart,
-        recurringMeetingData: recurringData
+      // Try to find a meeting that includes today
+      let selectedMeeting = allMeetingsData.find(m => {
+        const [year, month, day] = m.start_date.split('-').map(Number);
+        const startDate = new Date(year, month - 1, day);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = getMeetingEndDate(recurringData.frequency, startDate);
+        endDate.setHours(23, 59, 59, 999);
+        
+        return today >= startDate && today <= endDate;
       });
 
-      let { data: meetingData, error: meetingError } = await supabase
-        .from("meeting_instances")
-        .select("*")
-        .eq("series_id", meetingId)
-        .eq("start_date", periodStartStr)
-        .single();
+      // If no meeting includes today, try to find one for the current period start date
+      if (!selectedMeeting) {
+        selectedMeeting = allMeetingsData.find(m => m.start_date === periodStartStr);
+      }
 
-      if (meetingError && meetingError.code === "PGRST116") {
-        // Create new meeting
+      // If still no meeting found, create a new one
+      if (!selectedMeeting) {
         console.log('Creating new meeting with data:', {
           series_id: meetingId,
           start_date: periodStartStr
@@ -332,55 +330,27 @@ const TeamMeeting = () => {
           .single();
 
         if (createError) throw createError;
-        meetingData = newMeeting;
+        selectedMeeting = newMeeting;
         console.log('New meeting created:', newMeeting);
-
-        // New meetings start with empty agenda
-        // Users can adopt templates via the Meeting Agenda UI
-      } else if (meetingError) {
-        throw meetingError;
-      }
-
-      console.log('Final meeting data:', meetingData);
-      
-      // OPTIMIZED: Fetch all meetings once (removed duplicate query)
-      const { data: allMeetingsData, error: allMeetingsError } = await supabase
-        .from("meeting_instances")
-        .select("*")
-        .eq("series_id", meetingId)
-        .order("start_date", { ascending: false });
-      
-      if (allMeetingsError) {
-        console.error("Error fetching meetings:", allMeetingsError);
-      } else {
-        setAllMeetings(allMeetingsData || []);
-      }
-      
-      let selectedMeeting = meetingData;
-      
-      if (allMeetingsData && allMeetingsData.length > 0) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         
-        // Try to find a meeting that includes today
-        const currentMeeting = allMeetingsData.find(m => {
-          const [year, month, day] = m.start_date.split('-').map(Number);
-          const startDate = new Date(year, month - 1, day);
-          startDate.setHours(0, 0, 0, 0);
+        // Update all meetings list with the new meeting
+        setAllMeetings([newMeeting, ...allMeetingsData]);
+      } else if (allMeetingsData.length > 0) {
+        // If we found a meeting but there's a more recent one that also includes today, prefer that
+        const mostRecent = allMeetingsData[0];
+        if (mostRecent.id !== selectedMeeting.id) {
+          const mostRecentIncludesToday = (() => {
+            const [year, month, day] = mostRecent.start_date.split('-').map(Number);
+            const startDate = new Date(year, month - 1, day);
+            startDate.setHours(0, 0, 0, 0);
+            const endDate = getMeetingEndDate(recurringData.frequency, startDate);
+            endDate.setHours(23, 59, 59, 999);
+            return today >= startDate && today <= endDate;
+          })();
           
-          const endDate = getMeetingEndDate(recurringData.frequency, startDate);
-          endDate.setHours(23, 59, 59, 999);
-          
-          return today >= startDate && today <= endDate;
-        });
-        
-        if (currentMeeting) {
-          selectedMeeting = currentMeeting;
-          console.log('Selected current meeting (today is within its period):', currentMeeting);
-        } else {
-          // If no meeting includes today, select the most recent one
-          selectedMeeting = allMeetingsData[0];
-          console.log('Selected most recent meeting:', selectedMeeting);
+          if (mostRecentIncludesToday) {
+            selectedMeeting = mostRecent;
+          }
         }
       }
       
@@ -513,8 +483,8 @@ const TeamMeeting = () => {
           .from("meeting_instance_priorities")
           .select(`
             *,
-            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
           `)
           .eq("instance_id", meetingId)
           .order("order_index"),
@@ -531,8 +501,8 @@ const TeamMeeting = () => {
           .from("meeting_series_action_items")
           .select(`
             *,
-            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
           `)
           .eq("series_id", meetingData.series_id)
           .order("order_index"),
@@ -609,8 +579,8 @@ const TeamMeeting = () => {
           .from("meeting_instance_priorities")
           .select(`
             *,
-            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage),
-            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name, red_percentage, blue_percentage, green_percentage, yellow_percentage)
+            assigned_to_profile:assigned_to(full_name, first_name, last_name, email, avatar_url, avatar_name),
+            created_by_profile:created_by(full_name, first_name, last_name, email, avatar_url, avatar_name)
           `)
           .eq("instance_id", previousMeetingResult.data.id)
           .order("order_index");

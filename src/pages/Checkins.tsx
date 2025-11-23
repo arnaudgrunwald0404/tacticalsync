@@ -181,7 +181,7 @@ export default function CheckinsPage() {
         ) : (
           <div className="space-y-2">
             {field === 'milestones' && st.milestones.length === 0 && (
-              <div className="text-xs text-muted-foreground">No milestones yet.</div>
+              <div className="text-xs text-muted-foreground">{title === 'Tasks' ? 'No tasks yet.' : 'No milestones yet.'}</div>
             )}
             {field === 'dependencies' && st.dependencies.length === 0 && (
               <div className="text-xs text-muted-foreground">No dependencies yet.</div>
@@ -238,8 +238,8 @@ export default function CheckinsPage() {
 
   return (
     <GridBackground>
-      <main className="container mx-auto px-4 py-6 sm:py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+      <main className="container mx-auto px-4 py-6 sm:py-8 lg:pr-[360px]">
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
           {/* My Workspace */}
           <section className="space-y-6">
             <h2 className="text-xl font-semibold">My Workspace</h2>
@@ -260,7 +260,7 @@ export default function CheckinsPage() {
                       </Button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <SectionList id={d.id} title="Milestones this cycle" field="milestones" placeholder="Add milestone" />
+                      <SectionList id={d.id} title="Tasks" field="milestones" placeholder="Add task" />
                       <SectionList id={d.id} title="To-do list" field="todos" placeholder="Add to-do" />
                       <SectionList id={d.id} title="Dependencies" field="dependencies" placeholder="Add dependency" />
                     </div>
@@ -285,7 +285,7 @@ export default function CheckinsPage() {
                       </Button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <SectionList id={s.id} title="Milestones this cycle" field="milestones" placeholder="Add milestone" />
+                      <SectionList id={s.id} title="Tasks" field="milestones" placeholder="Add task" />
                       <SectionList id={s.id} title="To-do list" field="todos" placeholder="Add to-do" />
                       <SectionList id={s.id} title="Dependencies" field="dependencies" placeholder="Add dependency" />
                     </div>
@@ -302,7 +302,7 @@ export default function CheckinsPage() {
           </section>
 
           {/* Sidebar: My check-in updates (same format as RCDO, filtered to me) */}
-          <aside className="hidden lg:block h-full border-l border-gray-200 bg-gray-50 shadow-md overflow-y-auto p-3">
+          <aside className="hidden lg:block fixed right-0 top-[73px] bottom-0 w-[360px] border-l border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3 z-10">
             <MyCheckinFeedSidebar />
           </aside>
         </div>

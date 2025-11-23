@@ -13,10 +13,13 @@ import { LogOut, Settings, User } from "lucide-react";
 import { useRoles } from "@/hooks/useRoles";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export function UserProfileHeader() {
   const navigate = useNavigate();
   const { isAdmin, isSuperAdmin } = useRoles();
+  const isMobile = useIsMobile();
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -52,12 +55,15 @@ export function UserProfileHeader() {
       {profileLoading ? (
         <div className="flex items-center gap-3">
           <Skeleton className="h-7 w-7 rounded-full" />
-          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-24 hidden md:block" />
         </div>
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div className="flex items-center gap-3 cursor-pointer rounded-md px-3 py-2 hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/70 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400" aria-label="Open account menu" role="button">
+            <div className={cn(
+              "flex items-center cursor-pointer rounded-md hover:bg-accent hover:text-accent-foreground ring-1 ring-sky-300/10 ring-offset-2 ring-offset-white shadow-sm hover:shadow-md transition-colors transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
+              isMobile ? "px-2 py-2" : "px-3 py-2 gap-3"
+            )} aria-label="Open account menu" role="button">
               <FancyAvatar 
                 name={(profile?.avatar_name && profile.avatar_name.trim()) || profile?.email || 'User'}
                 displayName={getFullNameForAvatar(profile?.first_name, profile?.last_name, profile?.email)}
@@ -65,7 +71,7 @@ export function UserProfileHeader() {
                 size="sm"
                 className="flex-shrink-0"
               />
-              <div className="flex flex-col items-start min-w-0 overflow-hidden">
+              <div className="hidden md:flex flex-col items-start min-w-0 overflow-hidden">
                 <span className="text-sm leading-none truncate max-w-full">
                   {`${profile?.first_name || profile?.email || ''} ${profile?.last_name || ''}`.trim()}
                 </span>

@@ -169,19 +169,19 @@ export default function TasksFeed() {
 
   const handleParentClick = (item: CheckinFeedItem) => {
     if (item.parent_type === 'do') {
-      navigate(`/dashboard/rcdo/do/${item.parent_id}`);
+      navigate(`/rcdo/detail/do/${item.parent_id}`);
     } else if (item.parent_type === 'initiative') {
-      navigate(`/dashboard/rcdo/si/${item.parent_id}`);
+      navigate(`/rcdo/detail/si/${item.parent_id}`);
     } else if (item.parent_type === 'task') {
       // Navigate to SI detail page (tasks are shown there)
       // We'd need to fetch the task's SI ID, but for now just navigate to SI detail
-      navigate(`/dashboard/rcdo/si/${item.parent_id}`);
+      navigate(`/rcdo/detail/si/${item.parent_id}`);
     }
   };
 
   return (
     <GridBackground>
-      <header className="border-b bg-white">
+      <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           <div className="flex items-center gap-4">
             <Button

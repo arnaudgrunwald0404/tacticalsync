@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { cn } from '@/lib/utils';
+import { MOBILE_CONSTANTS } from '@/hooks/use-breakpoint';
 
 interface TaskRowProps {
   task: TaskWithRelations;
@@ -35,25 +36,97 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
   const statusData = statusConfig[task.status] || { label: 'Unknown', color: 'bg-gray-500' };
   const isCompleted = task.status === 'completed';
 
+  const handleRowClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking on action buttons
+    if ((e.target as HTMLElement).closest('button')) {
+      return;
+    }
+    // Always allow clicking to edit if handler exists, even if canEdit is false
+    // The dialog will handle permission checks
+    if (onEdit) {
+      onEdit();
+    }
+  };
+
   return (
-    <div className="flex items-center gap-4 p-3 border rounded-lg hover:bg-accent/50 transition-colors">
-      {/* Status Badge */}
-      <Badge className={cn(statusData.color, 'min-w-[100px] justify-center')}>
+    <div 
+      className={cn(
+        // Desktop: horizontal row layout
+        "md:flex md:items-center md:gap-4",
+        // Mobile: card layout (vertical)
+        "flex flex-col gap-3 p-4 border rounded-lg hover:bg-accent/50 transition-colors",
+        onEdit && "cursor-pointer"
+      )}
+      onClick={handleRowClick}
+    >
+      {/* Mobile: Header row with status and actions */}
+      <div className="flex items-center justify-between gap-2 md:hidden">
+        <Badge className={cn(statusData.color, 'justify-center')}>
+          {statusData.label}
+        </Badge>
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {!isCompleted && onComplete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onComplete();
+              }}
+              className={cn("h-11 w-11 md:h-10 md:w-10 p-0")}
+              title="Mark as completed"
+            >
+              <CheckCircle2 className="h-5 w-5" />
+            </Button>
+          )}
+          {onEdit && canEdit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className={cn("h-11 w-11 md:h-10 md:w-10 p-0")}
+              title="Edit task"
+            >
+              <Edit className="h-5 w-5" />
+            </Button>
+          )}
+          {onDelete && canDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className={cn("h-11 w-11 md:h-10 md:w-10 p-0 text-destructive hover:text-destructive")}
+              title="Delete task"
+            >
+              <Trash2 className="h-5 w-5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop: Status Badge */}
+      <Badge className={cn(statusData.color, 'min-w-[100px] justify-center hidden md:flex')}>
         {statusData.label}
       </Badge>
 
       {/* Task Title */}
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm truncate">{task.title}</div>
+        <div className="font-medium text-base md:text-sm truncate">{task.title}</div>
         {task.completion_criteria && (
-          <div className="text-xs text-muted-foreground truncate mt-1">
+          <div className="text-sm md:text-xs text-muted-foreground mt-1 line-clamp-2 md:truncate">
             {task.completion_criteria}
           </div>
         )}
       </div>
 
       {/* Owner */}
-      <div className="flex items-center gap-2 min-w-[150px]">
+      <div className="flex items-center gap-2 md:min-w-[150px]">
         {task.owner && (
           <>
             <FancyAvatar
@@ -68,8 +141,8 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
       </div>
 
       {/* Dates */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-[200px]">
-        <Calendar className="h-3 w-3" />
+      <div className="flex items-center gap-2 text-sm md:text-xs text-muted-foreground md:min-w-[200px]">
+        <Calendar className="h-4 w-4 md:h-3 md:w-3" />
         <span>
           {task.start_date && format(new Date(task.start_date), 'MMM d')}
           {task.start_date && task.target_delivery_date && ' - '}
@@ -80,13 +153,16 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
         </span>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
+      {/* Desktop: Actions */}
+      <div className="hidden md:flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
         {!isCompleted && onComplete && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={onComplete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onComplete();
+            }}
             className="h-8 w-8 p-0"
             title="Mark as completed"
           >
@@ -97,7 +173,10 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
           <Button
             variant="ghost"
             size="sm"
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="h-8 w-8 p-0"
             title="Edit task"
           >
@@ -108,7 +187,10 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
           <Button
             variant="ghost"
             size="sm"
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="h-8 w-8 p-0 text-destructive hover:text-destructive"
             title="Delete task"
           >

@@ -22,6 +22,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CreateRallyingCryForm } from '@/types/rcdo';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface UserProfile {
   id: string;
@@ -45,6 +47,7 @@ export function RallyingCryDialog({
   onSuccess,
 }: RallyingCryDialogProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -167,7 +170,7 @@ export function RallyingCryDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className={cn("sm:max-w-[600px] max-h-[90vh] overflow-y-auto", isMobile && "max-w-full")}>
         <DialogHeader>
           <DialogTitle>Create Rallying Cry</DialogTitle>
           <DialogDescription>
@@ -191,6 +194,7 @@ export function RallyingCryDialog({
                 }
                 disabled={loading}
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -206,6 +210,7 @@ export function RallyingCryDialog({
                 }
                 disabled={loading}
                 rows={4}
+                className="min-h-[80px] text-base"
               />
             </div>
 
@@ -222,7 +227,7 @@ export function RallyingCryDialog({
                 disabled={loading || loadingUsers}
                 required
               >
-                <SelectTrigger id="owner">
+                <SelectTrigger id="owner" className="h-11 text-base">
                   <SelectValue placeholder="Select an owner..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -242,16 +247,17 @@ export function RallyingCryDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="w-full sm:w-auto h-11 text-base"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 text-base">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Rallying Cry
             </Button>

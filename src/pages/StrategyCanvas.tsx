@@ -9,7 +9,6 @@ import ReactFlow, {
   Connection,
   Edge,
   Node,
-  MarkerType,
   Position,
   ReactFlowInstance,
   Handle,
@@ -40,10 +39,12 @@ import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
 import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
+import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -129,12 +130,7 @@ function makeInitialNodes(): Node<NodeData>[] {
 }
 
 function makeInitialEdges(): Edge[] {
-  return [
-    { id: "e-s-d1", source: ROOT_ID, target: "do-1", type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } },
-    { id: "e-s-d2", source: ROOT_ID, target: "do-2", type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } },
-    { id: "e-s-d3", source: ROOT_ID, target: "do-3", type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } },
-    { id: "e-s-d4", source: ROOT_ID, target: "do-4", type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } },
-  ];
+  return [];
 }
 
 // Simple node components
@@ -193,7 +189,7 @@ const createDoNode = (
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white`}>Defining Objective</span>
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300`}>{status === "final" ? "locked" : "ideating"}</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300`}>{status === "final" ? "locked" : "draft"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
         <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-slate-500 dark:bg-slate-900/20 dark:border-slate-400`}>
@@ -239,7 +235,7 @@ const createDoNode = (
           {items.map((it) => (
             <button
               key={it.id}
-              className={`group relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
+              className={`group relative flex items-center gap-2 rounded-md border-2 px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
                 ${(() => {
                   const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
                   if (siProg && siProg.sentiment !== null && siProg.sentiment !== undefined) {
@@ -296,11 +292,11 @@ const createDoNode = (
                       {(showLightning || showWarning) && (
                         <div className="absolute -top-2 -right-2 pointer-events-none z-10">
                           {showLightning ? (
-                            <div className="h-6 w-6 rounded-full bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
+                            <div className="h-6 w-6 rounded-md bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
                               <Zap className="h-3.5 w-3.5 text-black" />
                             </div>
                           ) : (
-                            <div className="h-6 w-6 rounded-full bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
+                            <div className="h-6 w-6 rounded-md bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
                               <AlertTriangle className="h-3.5 w-3.5 text-white" />
                             </div>
                           )}
@@ -321,11 +317,11 @@ const createDoNode = (
                     {(showLightning || showWarning) && (
                       <div className="absolute -top-2 -right-2 pointer-events-none z-10">
                         {showLightning ? (
-                          <div className="h-6 w-6 rounded-full bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
+                          <div className="h-6 w-6 rounded-md bg-yellow-300 border-2 border-black flex items-center justify-center shadow">
                             <Zap className="h-3.5 w-3.5 text-black" />
                           </div>
                         ) : (
-                          <div className="h-6 w-6 rounded-full bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
+                          <div className="h-6 w-6 rounded-md bg-orange-600 flex items-center justify-center shadow ring-2 ring-white">
                             <AlertTriangle className="h-3.5 w-3.5 text-white" />
                           </div>
                         )}
@@ -434,7 +430,7 @@ function RallyNode({ data }: { data: NodeData }) {
             ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300" 
             : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
         }`}>
-          {finalized ? "locked" : "ideating"}
+          {finalized ? "locked" : "draft"}
         </span>
       </div>
       <div className={`mt-3 text-base font-bold leading-snug break-words whitespace-normal relative z-10 ${
@@ -646,7 +642,7 @@ export default function StrategyCanvasPage() {
   const [oneClickMode, setOneClickMode] = useState(false);
 
   // Header state (logo/tabs/avatar)
-  const activeTab = location.pathname.includes('/dashboard/rcdo') ? 'rcdo' : 'main';
+  const activeTab = location.pathname.includes('/dashboard/rcdo') || location.pathname.includes('/rcdo/') ? 'rcdo' : 'main';
   const handleTabChange = (value: string) => {
     if (value === 'main') navigate('/dashboard/main');
     else if (value === 'rcdo') navigate('/dashboard/rcdo');
@@ -746,8 +742,11 @@ export default function StrategyCanvasPage() {
 
       if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as any[]).length > 0 && !snapshotLooksLikeTemplate) {
         console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as any[]).length, edgeCount: (data.edges as any[]).length });
-        setNodes(data.nodes as any);
-        setEdges(data.edges as any);
+        // Filter out edges connecting ROOT_ID to DOs
+        const loadedNodes = data.nodes as any[];
+        const filteredEdges = (data.edges as any[]).filter((e: any) => !(e.source === ROOT_ID && loadedNodes.find((n: any) => n.id === e.target)?.type === 'do'));
+        setNodes(loadedNodes);
+        setEdges(filteredEdges);
         return;
       } else if (snapshotLooksLikeTemplate) {
         console.log('[Canvas] Ignoring template snapshot; rebuilding from DB…');
@@ -834,14 +833,6 @@ export default function StrategyCanvasPage() {
               size: { w: 260, h: 110 },
               dbId: d.id,
             },
-          });
-
-          builtEdges.push({
-            id: `e-rc-${doId}`,
-            source: ROOT_ID,
-            target: doId,
-            type: 'smoothstep',
-            markerEnd: { type: MarkerType.ArrowClosed },
           });
         });
 
@@ -1135,6 +1126,16 @@ export default function StrategyCanvasPage() {
   }, [nodes, edges]);
 
   const onConnect = useCallback((params: Edge | Connection) => {
+    // Prevent connections from ROOT_ID (rallying cry) to DOs
+    if ("source" in params && "target" in params) {
+      if (params.source === ROOT_ID) {
+        const target = nodes.find((n) => n.id === params.target);
+        if (target?.type === "do") {
+          // Block connection from rallying cry to DO
+          return;
+        }
+      }
+    }
     // Enforce: SI has exactly one DO parent
     if ("source" in params && "target" in params) {
       const source = nodes.find((n) => n.id === params.source);
@@ -1147,13 +1148,13 @@ export default function StrategyCanvasPage() {
         let updatedEdges = edges.filter(
           (e) => !(e.source === source.id && nodes.find((n) => n.id === e.target)?.type === "do")
         );
-        updatedEdges = addEdge({ ...(params as Edge), id: `e-${source.id}-${target.id}`, markerEnd: { type: MarkerType.ArrowClosed } }, updatedEdges);
+        updatedEdges = addEdge({ ...(params as Edge), id: `e-${source.id}-${target.id}` }, updatedEdges);
         setNodes(updatedNodes);
         setEdges(updatedEdges);
         return;
       }
     }
-    const next = addEdge({ ...(params as Edge), markerEnd: { type: MarkerType.ArrowClosed } }, edges);
+    const next = addEdge({ ...(params as Edge) }, edges);
     setEdges(next);
   }, [edges, nodes]);
 
@@ -1171,9 +1172,7 @@ const addDo = useCallback(() => {
     const preferred = { x: 200, y: 240 };
     const pos = findNonOverlappingPosition(nodes, "do", preferred.x, preferred.y);
     const newDo: Node<NodeData> = { id, type: "do", position: pos, data: { title: `DO ${count + 1}`, status: "draft", size: { w: 260, h: 110 } } };
-    const newEdge: Edge = { id: `e-s-${id}`, source: ROOT_ID, target: id, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } };
     setNodes([...nodes, newDo]);
-    setEdges([...edges, newEdge]);
   }, [nodes, edges]);
 
   const removeDo = useCallback(() => {
@@ -1210,10 +1209,8 @@ const duplicateSelectedDo = useCallback(() => {
       position: pos,
       data: { title: `${selectedNode.data.title || "DO"} (copy)`, status: selectedNode.data.status || "draft", bgColor: selectedNode.data.bgColor, size: selectedNode.data.size || { w: 260, h: 110 } },
     };
-    const newEdge: Edge = { id: `e-s-${id}`, source: ROOT_ID, target: id, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } };
     setNodes([...nodes, newDo]);
-    setEdges([...edges, newEdge]);
-  }, [nodes, edges, selectedNode]);
+  }, [nodes, selectedNode]);
 
   const deleteSelectedDo = useCallback(() => {
     if (selectedNode?.type !== "do") return;
@@ -1659,7 +1656,7 @@ const duplicateSelectedDo = useCallback(() => {
   return (
     <div className="w-full h-dvh flex flex-col">
       {/* Page header (logo, tabs, avatar) */}
-      <header className="border-b bg-white">
+      <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           {/* Left: Back (when not on main) + Logo */}
           <div className="flex items-center gap-4">
@@ -1681,7 +1678,7 @@ const duplicateSelectedDo = useCallback(() => {
               <TabsList className="h-10">
                 <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
                 <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
-                <TabsTrigger value="checkins" className="px-6">My DOSIs</TabsTrigger>
+                <TabsTrigger value="checkins" className="px-6">My Workspace</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -1816,7 +1813,7 @@ const duplicateSelectedDo = useCallback(() => {
           <Background />
         </ReactFlow>
         </div>
-        <aside className="hidden lg:block h-full border-l border-gray-200 bg-gray-50 shadow-md overflow-y-auto p-3">
+        <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
           <CheckinFeedSidebar viewAsUserId={viewAsUserId} filteredNodeIds={visibleParentIds} />
         </aside>
       </div>
@@ -2650,6 +2647,10 @@ function StrategyCanvasMobileView({
   const [loading, setLoading] = useState(true);
   const [expandedDOs, setExpandedDOs] = useState<Set<string>>(new Set());
   const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
+  const [selectedDOId, setSelectedDOId] = useState<string | null>(null);
+  const [selectedSIId, setSelectedSIId] = useState<string | null>(null);
+  const [selectedDODetails, setSelectedDODetails] = useState<any>(null);
+  const [selectedSIDetails, setSelectedSIDetails] = useState<any>(null);
 
   useEffect(() => {
     if (!cycleId) {
@@ -2734,13 +2735,64 @@ function StrategyCanvasMobileView({
 
   const getSIStatus = (siId: string) => {
     const siItem = sis.find(s => s.id === siId);
-    return siItem?.status || 'not_started';
+    return siItem?.status || 'draft';
   };
+
+  // Fetch DO details when selected
+  useEffect(() => {
+    if (!selectedDOId) {
+      setSelectedDODetails(null);
+      return;
+    }
+
+    const fetchDODetails = async () => {
+      const { data, error } = await supabase
+        .from('rc_defining_objectives')
+        .select(`
+          *,
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
+        `)
+        .eq('id', selectedDOId)
+        .single();
+
+      if (!error && data) {
+        setSelectedDODetails(data);
+      }
+    };
+
+    fetchDODetails();
+  }, [selectedDOId]);
+
+  // Fetch SI details when selected
+  useEffect(() => {
+    if (!selectedSIId) {
+      setSelectedSIDetails(null);
+      return;
+    }
+
+    const fetchSIDetails = async () => {
+      const { data, error } = await supabase
+        .from('rc_strategic_initiatives')
+        .select(`
+          *,
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
+          defining_objective:rc_defining_objectives!defining_objective_id(id, title)
+        `)
+        .eq('id', selectedSIId)
+        .single();
+
+      if (!error && data) {
+        setSelectedSIDetails(data);
+      }
+    };
+
+    fetchSIDetails();
+  }, [selectedSIId]);
 
   return (
     <div className="w-full h-dvh flex flex-col">
       {/* Page header */}
-      <header className="border-b bg-white">
+      <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -2760,7 +2812,7 @@ function StrategyCanvasMobileView({
                 <TabsList className="h-10">
                   <TabsTrigger value="rcdo" className="px-4 text-xs sm:px-6">RCDO</TabsTrigger>
                   <TabsTrigger value="main" className="px-4 text-xs sm:px-6">Meetings</TabsTrigger>
-                  <TabsTrigger value="checkins" className="px-4 text-xs sm:px-6">My DOSIs</TabsTrigger>
+                  <TabsTrigger value="checkins" className="px-4 text-xs sm:px-6">My Workspace</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -2809,39 +2861,44 @@ function StrategyCanvasMobileView({
 
                   return (
                     <Card key={doItem.id} className="overflow-hidden">
-                      <button
-                        onClick={() => {
-                          if (doStatus?.dbId) {
-                            navigate(`/dashboard/rcdo/do/${doStatus.dbId}`);
-                          } else {
-                            toggleDO(doItem.id);
-                          }
-                        }}
-                        className="w-full p-4 flex items-center justify-between min-h-[44px] text-left"
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="flex-shrink-0">
-                            {isExpanded ? (
-                              <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                            ) : (
-                              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <Layers className="h-5 w-5 text-primary flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold truncate">{doItem.title}</div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-                              <span className="capitalize">{status}</span>
-                              {owner && (
-                                <>
-                                  <span>•</span>
-                                  <span>{owner.full_name || 'Unknown'}</span>
-                                </>
-                              )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleDO(doItem.id)}
+                          className="flex-shrink-0 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (doItem.id) {
+                              setSelectedDOId(doItem.id);
+                              setSelectedSIId(null);
+                            }
+                          }}
+                          className="flex-1 p-4 flex items-center justify-between min-h-[44px] text-left"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Layers className="h-5 w-5 text-primary flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold truncate">{doItem.title}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+                                <span className="capitalize">{status}</span>
+                                {owner && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{owner.full_name || 'Unknown'}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        </button>
+                      </div>
 
                       {isExpanded && doSIs.length > 0 && (
                         <div className="border-t bg-muted/30">
@@ -2852,7 +2909,10 @@ function StrategyCanvasMobileView({
                             return (
                               <button
                                 key={siItem.id}
-                                onClick={() => navigate(`/dashboard/rcdo/si/${siItem.id}`)}
+                                onClick={() => {
+                                  setSelectedSIId(siItem.id);
+                                  setSelectedDOId(null);
+                                }}
                                 className="w-full p-4 pl-12 flex items-center justify-between min-h-[44px] text-left hover:bg-accent/50 transition-colors border-b last:border-b-0"
                               >
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -2885,6 +2945,156 @@ function StrategyCanvasMobileView({
         </div>
       </div>
       {isMobile && <MobileBottomNav />}
+
+      {/* DO Detail Sheet */}
+      <Sheet open={!!selectedDOId && !!selectedDODetails} onOpenChange={(open) => !open && setSelectedDOId(null)}>
+        <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
+          {selectedDODetails && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">{selectedDODetails.title}</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedDOId(null)}
+                  className="h-11 w-11"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Owner */}
+                {selectedDODetails.owner && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Owner</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <FancyAvatar
+                        user={selectedDODetails.owner}
+                        size="sm"
+                      />
+                      <span>{selectedDODetails.owner.full_name || 'Unknown'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge variant="outline" className="capitalize">
+                      {selectedDODetails.status || 'draft'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Hypothesis */}
+                {selectedDODetails.hypothesis && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Hypothesis</label>
+                    <p className="mt-1 text-sm">{selectedDODetails.hypothesis}</p>
+                  </div>
+                )}
+
+                {/* Primary Success Metric */}
+                {selectedDODetails.primary_success_metric && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Primary Success Metric</label>
+                    <p className="mt-1 text-sm">{selectedDODetails.primary_success_metric}</p>
+                  </div>
+                )}
+
+                {/* View Full Details Button */}
+                <Button
+                  onClick={() => {
+                    setSelectedDOId(null);
+                    navigate(`/rcdo/detail/do/${selectedDODetails.id}`);
+                  }}
+                  className="w-full"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Full Details
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* SI Detail Sheet */}
+      <Sheet open={!!selectedSIId && !!selectedSIDetails} onOpenChange={(open) => !open && setSelectedSIId(null)}>
+        <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
+          {selectedSIDetails && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">{selectedSIDetails.title}</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedSIId(null)}
+                  className="h-11 w-11"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Owner */}
+                {selectedSIDetails.owner && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Owner</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <FancyAvatar
+                        user={selectedSIDetails.owner}
+                        size="sm"
+                      />
+                      <span>{selectedSIDetails.owner.full_name || 'Unknown'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge variant="outline" className="capitalize">
+                      {selectedSIDetails.status || 'draft'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedSIDetails.description && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Description</label>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">{selectedSIDetails.description}</p>
+                  </div>
+                )}
+
+                {/* Primary Success Metric */}
+                {selectedSIDetails.primary_success_metric && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Primary Success Metric</label>
+                    <p className="mt-1 text-sm">{selectedSIDetails.primary_success_metric}</p>
+                  </div>
+                )}
+
+                {/* View Full Details Button */}
+                <Button
+                  onClick={() => {
+                    setSelectedSIId(null);
+                    navigate(`/rcdo/detail/si/${selectedSIDetails.id}`);
+                  }}
+                  className="w-full"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Full Details
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -123,15 +123,6 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
         size: { w: 260, h: 110 },
       },
     });
-
-    // Create edge from RC to DO
-    edges.push({
-      id: `e-rc-${doId}`,
-      source: ROOT_ID,
-      target: doId,
-      type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed },
-    });
   });
 
   console.log('🎨 Canvas formatting complete:', {

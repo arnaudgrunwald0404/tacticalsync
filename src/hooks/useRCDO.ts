@@ -354,7 +354,8 @@ export function useDODetails(doId: string | undefined) {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      // Fetch DO details
+      const { data: doData, error: fetchError } = await supabase
         .from('rc_defining_objectives')
         .select(`
           *,
@@ -363,15 +364,35 @@ export function useDODetails(doId: string | undefined) {
           initiatives:rc_strategic_initiatives(
             *,
             owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
-          ),
-          links:rc_links(*)
+          )
         `)
         .eq('id', doId)
         .single();
 
       if (fetchError) throw fetchError;
 
-      setDoDetails(data as DefiningObjectiveWithRelations);
+      // Fetch links separately (polymorphic relationship)
+      const { data: linksData, error: linksError } = await supabase
+        .from('rc_links')
+        .select(`
+          *,
+          creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url)
+        `)
+        .eq('parent_type', 'do')
+        .eq('parent_id', doId);
+
+      if (linksError) {
+        console.warn('Error fetching links:', linksError);
+        // Don't throw - links are optional
+      }
+
+      // Merge links into DO data
+      const doWithLinks = {
+        ...doData,
+        links: linksData || [],
+      } as DefiningObjectiveWithRelations;
+
+      setDoDetails(doWithLinks);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to fetch DO details';
       setError(errorMessage);
@@ -553,7 +574,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           participant_user_ids: form.participant_user_ids || [],
           start_date: form.start_date || null,
           end_date: form.end_date || null,
-          status: 'not_started',
+          status: 'draft',
           created_by: auth?.user?.id || null,
         })
         .select()

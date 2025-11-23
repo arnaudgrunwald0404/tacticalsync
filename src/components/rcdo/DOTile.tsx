@@ -70,7 +70,7 @@ export function DOTile({ definingObjective }: DOTileProps) {
   }, []);
 
   const handleClick = () => {
-    navigate(`/dashboard/rcdo/do/${definingObjective.id}`);
+    navigate(`/rcdo/detail/do/${definingObjective.id}`);
   };
 
   const handleCheckInClick = (e: React.MouseEvent) => {

@@ -12,6 +12,8 @@ import { Label } from "./label";
 import AvatarSelector from "@/components/AvatarSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 interface ProfileCompletionModalProps {
   isOpen: boolean;
@@ -31,6 +33,7 @@ export function ProfileCompletionModal({
   initialData = { firstName: "", lastName: "", avatarName: "" }
 }: ProfileCompletionModalProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [firstName, setFirstName] = useState(initialData.firstName);
   const [lastName, setLastName] = useState(initialData.lastName);
@@ -83,7 +86,7 @@ export function ProfileCompletionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className={cn("sm:max-w-[425px] max-h-[90vh] overflow-y-auto", isMobile && "max-w-full")}>
         <DialogHeader>
           <DialogTitle className="text-xl font-atkinson-hyperlegible">Welcome!</DialogTitle>
           <DialogDescription className="font-public-sans">
@@ -100,6 +103,7 @@ export function ProfileCompletionModal({
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="Enter your first name"
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -111,6 +115,7 @@ export function ProfileCompletionModal({
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Enter your last name"
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -132,7 +137,7 @@ export function ProfileCompletionModal({
             <Button
               type="submit"
               disabled={!isFormComplete || loading}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto h-11 text-base"
             >
               {loading ? "Updating..." : "Access Meeting"}
             </Button>

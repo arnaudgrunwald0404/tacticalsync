@@ -23,6 +23,7 @@ const JoinTeam = lazy(() => import("./pages/JoinTeam"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Settings = lazy(() => import("./pages/Settings"));
 const BrandingShowcase = lazy(() => import("./pages/BrandingShowcase"));
+const ColorPaletteShowcase = lazy(() => import("./pages/ColorPaletteShowcase"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 // RCDO Module
@@ -150,6 +151,11 @@ const App = () => (
           <Route path="/branding" element={
             <Suspense fallback={<PageSkeleton />}>
               <BrandingShowcase />
+            </Suspense>
+          } />
+          <Route path="/color-palette" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <ColorPaletteShowcase />
             </Suspense>
           } />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

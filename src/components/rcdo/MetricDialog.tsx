@@ -21,6 +21,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CreateMetricForm, MetricType, MetricDirection } from '@/types/rcdo';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface MetricDialogProps {
   isOpen: boolean;
@@ -36,6 +38,7 @@ export function MetricDialog({
   onSuccess,
 }: MetricDialogProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState<{
@@ -120,7 +123,7 @@ export function MetricDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className={cn("sm:max-w-[500px] max-h-[90vh] overflow-y-auto", isMobile && "max-w-full")}>
         <DialogHeader>
           <DialogTitle>Create Metric</DialogTitle>
           <DialogDescription>
@@ -144,6 +147,7 @@ export function MetricDialog({
                 }
                 disabled={loading}
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -160,7 +164,7 @@ export function MetricDialog({
                 disabled={loading}
                 required
               >
-                <SelectTrigger id="type">
+                <SelectTrigger id="type" className="h-11 text-base">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -175,7 +179,7 @@ export function MetricDialog({
             </div>
 
             {/* Unit and Target */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="unit">Unit</Label>
                 <Input
@@ -186,6 +190,7 @@ export function MetricDialog({
                     setFormData({ ...formData, unit: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
@@ -200,6 +205,7 @@ export function MetricDialog({
                     setFormData({ ...formData, target_numeric: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
             </div>
@@ -217,7 +223,7 @@ export function MetricDialog({
                 disabled={loading}
                 required
               >
-                <SelectTrigger id="direction">
+                <SelectTrigger id="direction" className="h-11 text-base">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -240,16 +246,17 @@ export function MetricDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="w-full sm:w-auto h-11 text-base"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 text-base">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Metric
             </Button>

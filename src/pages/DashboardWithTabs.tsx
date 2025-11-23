@@ -52,7 +52,7 @@ const DashboardWithTabs = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className={`border-b bg-white ${isMobile ? 'sticky top-0 z-50' : ''}`}>
+      <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
           {/* Left: Back button and Logo */}
           <div className="flex items-center gap-4">

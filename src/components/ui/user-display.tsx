@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { Profile } from "@/types/common";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { getFullNameForAvatar } from "@/lib/nameUtils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface UserDisplayProps {
   user?: Profile | null;
@@ -13,6 +14,8 @@ interface UserDisplayProps {
 }
 
 export function UserDisplay({ user, firstName, lastName, email, className, size = "sm" }: UserDisplayProps) {
+  const isMobile = useIsMobile();
+  
   // Use user prop if provided, otherwise fall back to individual props
   const finalFirstName = user?.first_name || firstName;
   const finalLastName = user?.last_name || lastName;
@@ -39,7 +42,7 @@ export function UserDisplay({ user, firstName, lastName, email, className, size 
   const nameForAvatar = avatarName || fullName || displayName;
 
   return (
-    <div className={cn("flex items-center gap-2 min-w-0", className)}>
+    <div className={cn("flex items-center min-w-0", isMobile ? "" : "gap-2", className)}>
       <FancyAvatar
         name={nameForAvatar}
         displayName={fullName}
@@ -48,7 +51,8 @@ export function UserDisplay({ user, firstName, lastName, email, className, size 
       />
       <span className={cn(
         "truncate min-w-0",
-        size === "sm" ? "text-sm" : "text-base"
+        size === "sm" ? "text-sm" : "text-base",
+        isMobile ? "hidden" : ""
       )}>
         {displayName}
       </span>

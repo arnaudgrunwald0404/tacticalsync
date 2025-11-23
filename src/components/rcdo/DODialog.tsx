@@ -22,6 +22,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { CreateDOForm } from '@/types/rcdo';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface UserProfile {
   id: string;
@@ -49,6 +51,7 @@ export function DODialog({
   onSuccess,
 }: DODialogProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -192,7 +195,7 @@ const fetchUsers = async () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className={cn("sm:max-w-[600px] max-h-[90vh] overflow-y-auto", isMobile && "max-w-full")}>
         <DialogHeader>
           <DialogTitle>Create Defining Objective</DialogTitle>
           <DialogDescription>
@@ -216,6 +219,7 @@ const fetchUsers = async () => {
                 }
                 disabled={loading}
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -245,7 +249,7 @@ const fetchUsers = async () => {
                 disabled={loading || loadingUsers}
                 required
               >
-                <SelectTrigger id="owner">
+                <SelectTrigger id="owner" className="h-11 text-base">
                   <SelectValue placeholder="Select an owner..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -265,7 +269,7 @@ const fetchUsers = async () => {
             </div>
 
             {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start_date">Start Date</Label>
                 <Input
@@ -276,6 +280,7 @@ const fetchUsers = async () => {
                     setFormData({ ...formData, start_date: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
@@ -288,21 +293,23 @@ const fetchUsers = async () => {
                     setFormData({ ...formData, end_date: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="w-full sm:w-auto h-11 text-base"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 text-base">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Defining Objective
             </Button>

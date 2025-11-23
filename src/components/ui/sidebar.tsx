@@ -186,27 +186,34 @@ const Sidebar = React.forwardRef<
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
+            ? "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
             : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]",
         )}
       />
       <div
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex",
+          "fixed z-10 hidden w-[--sidebar-width] transition-[left,right,width,top,bottom] duration-200 ease-linear md:flex",
+          // Stuck to edge: no margins
+          "top-0 bottom-0 h-svh",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-          // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-            : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_2px)]"
+            : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]",
           className,
         )}
         {...props}
       >
         <div
           data-sidebar="sidebar"
-          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+          className={cn(
+            "flex h-full w-full flex-col bg-sidebar",
+            // Edge-stuck: no rounded corners, keep border and shadow
+            "border-r border-sidebar-border",
+            side === "right" && "border-l border-r-0",
+            "shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)]"
+          )}
         >
           {children}
         </div>
@@ -302,7 +309,17 @@ const SidebarInput = React.forwardRef<React.ElementRef<typeof Input>, React.Comp
 SidebarInput.displayName = "SidebarInput";
 
 const SidebarHeader = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(({ className, ...props }, ref) => {
-  return <div ref={ref} data-sidebar="header" className={cn("flex flex-col gap-2 p-2", className)} {...props} />;
+  return (
+    <div 
+      ref={ref} 
+      data-sidebar="header" 
+      className={cn(
+        "flex items-center justify-between px-4 py-3 border-b border-sidebar-border",
+        className
+      )} 
+      {...props} 
+    />
+  );
 });
 SidebarHeader.displayName = "SidebarHeader";
 

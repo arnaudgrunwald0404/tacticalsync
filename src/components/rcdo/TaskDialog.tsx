@@ -290,7 +290,7 @@ export function TaskDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{taskId ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
@@ -314,6 +314,7 @@ export function TaskDialog({
                 }
                 disabled={loading}
                 required
+                className="h-11 text-base"
               />
             </div>
 
@@ -329,6 +330,7 @@ export function TaskDialog({
                 }
                 disabled={loading}
                 rows={3}
+                className="text-base min-h-[44px]"
               />
             </div>
 
@@ -345,7 +347,7 @@ export function TaskDialog({
                 disabled={loading || loadingSIs || !!strategicInitiativeId}
                 required
               >
-                <SelectTrigger id="strategic_initiative">
+                <SelectTrigger id="strategic_initiative" className="h-11 text-base">
                   <SelectValue placeholder="Select a strategic initiative..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -377,7 +379,7 @@ export function TaskDialog({
                 disabled={loading || loadingUsers}
                 required
               >
-                <SelectTrigger id="owner">
+                <SelectTrigger id="owner" className="h-11 text-base">
                   <SelectValue placeholder="Select an owner..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -406,7 +408,7 @@ export function TaskDialog({
                 }
                 disabled={loading}
               >
-                <SelectTrigger id="status">
+                <SelectTrigger id="status" className="h-11 text-base">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -420,7 +422,7 @@ export function TaskDialog({
             </div>
 
             {/* Dates */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start_date">Start Date</Label>
                 <Input
@@ -431,6 +433,7 @@ export function TaskDialog({
                     setFormData({ ...formData, start_date: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
@@ -443,6 +446,7 @@ export function TaskDialog({
                     setFormData({ ...formData, target_delivery_date: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
               <div className="space-y-2">
@@ -455,6 +459,7 @@ export function TaskDialog({
                     setFormData({ ...formData, actual_delivery_date: e.target.value })
                   }
                   disabled={loading}
+                  className="h-11 text-base"
                 />
               </div>
             </div>
@@ -471,20 +476,22 @@ export function TaskDialog({
                 }
                 disabled={loading}
                 rows={3}
+                className="text-base min-h-[44px]"
               />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="w-full sm:w-auto h-11"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {taskId ? 'Update Task' : 'Create Task'}
             </Button>

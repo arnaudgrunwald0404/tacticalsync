@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
-import { Calendar } from 'lucide-react';
+import { Calendar, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 
@@ -212,8 +212,16 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
 
   return (
     <div className="space-y-3">
-      <div className="px-1 py-1">
-        <h3 className="text-sm font-semibold">Recent Check-ins</h3>
+      <div className="flex items-center justify-between px-3 py-3 border-b border-sidebar-border -mx-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-yellow-400 rounded-md flex items-center justify-center shrink-0">
+            <Zap className="h-4 w-4 text-yellow-900" />
+          </div>
+          <h3 className="text-sm font-medium text-foreground leading-tight flex items-center">Recent Check-ins</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Icons can be added here */}
+        </div>
       </div>
       {updates.map((c) => {
         const reporter = getFullNameForAvatar(

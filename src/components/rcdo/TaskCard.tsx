@@ -59,7 +59,7 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
   const handleSIClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (task.strategic_initiative?.id) {
-      navigate(`/dashboard/rcdo/si/${task.strategic_initiative.id}`);
+      navigate(`/rcdo/detail/si/${task.strategic_initiative.id}`);
     }
   };
 
