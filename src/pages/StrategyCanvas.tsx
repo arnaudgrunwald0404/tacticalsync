@@ -15,7 +15,7 @@ import ReactFlow, {
   Handle,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, ChevronDown, ChevronUp, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers } from "lucide-react";
+import { Plus, MoreVertical, X, ArrowLeft, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -25,6 +25,7 @@ import FancyAvatar from "@/components/ui/fancy-avatar";
 import Logo from "@/components/Logo";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
@@ -35,11 +36,14 @@ import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
 import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
+import { Card } from "@/components/ui/card";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 // Types
 type NodeKind = "strategy" | "do" | "sai" | "rally";
@@ -509,6 +513,7 @@ export default function StrategyCanvasPage() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
   
   // Get cycle ID from URL query parameter
   const searchParams = new URLSearchParams(location.search);
@@ -1272,14 +1277,29 @@ const duplicateSelectedDo = useCallback(() => {
         return;
       }
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: 'Lock failed', description: 'You must be logged in to lock items.', variant: 'destructive' });
+        return;
+      }
+
       const nowIso = new Date().toISOString();
       const { error: doLockErr } = await supabase
         .from('rc_defining_objectives')
-        .update({ status: 'final', locked_at: nowIso })
+        .update({ 
+          status: 'final', 
+          locked_at: nowIso,
+          locked_by: user.id
+        })
         .in('id', doDbIds);
 
       if (doLockErr) {
-        toast({ title: 'Lock failed', description: 'Could not persist lock to the server.', variant: 'destructive' });
+        console.error('Lock error:', doLockErr);
+        toast({ 
+          title: 'Lock failed', 
+          description: doLockErr.message || 'Could not persist lock to the server. You may not have permission to lock these items.', 
+          variant: 'destructive' 
+        });
         return;
       }
 
@@ -1621,6 +1641,20 @@ const duplicateSelectedDo = useCallback(() => {
     }, 0);
     return () => window.clearTimeout(t);
   }, [nodes, optimizeViewport]);
+
+  // Mobile: Show simplified list view instead of canvas
+  if (isMobile) {
+    return (
+      <StrategyCanvasMobileView
+        cycleId={cycleId}
+        navigate={navigate}
+        profiles={profiles}
+        profilesMap={profilesMap}
+        activeTab={activeTab}
+        handleTabChange={handleTabChange}
+      />
+    );
+  }
 
   return (
     <div className="w-full h-dvh flex flex-col">
@@ -2012,454 +2046,54 @@ const duplicateSelectedDo = useCallback(() => {
 
       {/* Right-side DO panel */}
       {selectedNode?.type === "do" && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
-          <div className="absolute right-0 top-0 h-full w-[380px] bg-background border-l shadow-xl p-4 flex flex-col">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">
-                DO: {selectedNode.data.titleCandidates?.[0] || selectedNode.data.title || "Untitled"}
-              </h3>
-              <div className="flex items-center gap-1">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={duplicateSelectedDo}>Duplicate</DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600" onClick={deleteSelectedDo}>Delete</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="Close" onClick={closePanel}>
-                  <X className="h-4 w-4" />
-                </button>
+        <>
+          {isMobile ? (
+            <Sheet open={true} onOpenChange={(open) => !open && closePanel()}>
+              <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
+                <DOPanelContent 
+                  selectedNode={selectedNode}
+                  doLockedStatus={doLockedStatus}
+                  profilesMap={profilesMap}
+                  profiles={profiles}
+                  nodes={nodes}
+                  setNodes={setNodes}
+                  setSelectedNode={setSelectedNode}
+                  advancedOptionsOpen={advancedOptionsOpen}
+                  setAdvancedOptionsOpen={setAdvancedOptionsOpen}
+                  duplicateSelectedDo={duplicateSelectedDo}
+                  deleteSelectedDo={deleteSelectedDo}
+                  addSaiToSelectedDo={addSaiToSelectedDo}
+                  setFocusedSI={setFocusedSI}
+                  navigate={navigate}
+                  closePanel={closePanel}
+                />
+              </SheetContent>
+            </Sheet>
+          ) : (
+            <div className="fixed inset-0 z-50">
+              <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
+              <div className="absolute right-0 top-0 h-full w-[380px] bg-background border-l shadow-xl p-4 flex flex-col">
+                <DOPanelContent 
+                  selectedNode={selectedNode}
+                  doLockedStatus={doLockedStatus}
+                  profilesMap={profilesMap}
+                  profiles={profiles}
+                  nodes={nodes}
+                  setNodes={setNodes}
+                  setSelectedNode={setSelectedNode}
+                  advancedOptionsOpen={advancedOptionsOpen}
+                  setAdvancedOptionsOpen={setAdvancedOptionsOpen}
+                  duplicateSelectedDo={duplicateSelectedDo}
+                  deleteSelectedDo={deleteSelectedDo}
+                  addSaiToSelectedDo={addSaiToSelectedDo}
+                  setFocusedSI={setFocusedSI}
+                  navigate={navigate}
+                  closePanel={closePanel}
+                />
               </div>
             </div>
-
-            <div className="mt-3 space-y-3 flex-1 overflow-y-auto">
-              <div className="space-y-3">
-                {/* 1. Name */}
-                <div>
-                  <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white mb-2 inline-block">Defining Objective</span>
-                  <label className="block text-sm font-medium">
-                    Name
-                  </label>
-                  <div className="flex items-center gap-2 mt-1 mb-2">
-                    <label className="text-xs text-muted-foreground">Status</label>
-                    <select
-                      className="rounded border bg-background px-2 py-1 text-xs"
-                      value={selectedNode.data.status || "draft"}
-                      onChange={(e) => {
-                        if (!selectedNode) return;
-                        const value = e.target.value as "draft" | "final";
-                        const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, status: value } } : n);
-                        setNodes(next);
-                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, status: value } });
-                      }}
-                    >
-                      <option value="draft">ideating</option>
-                      <option value="final">locked</option>
-                    </select>
-                  </div>
-                  
-                  {selectedNode.data.status === "final" ? (
-                    // Final mode: just show the locked title
-                    <input
-                      className="w-full rounded border px-2 py-1 text-sm bg-background mt-1"
-                      value={selectedNode?.data.title || ""}
-                      onChange={(e) => {
-                        if (!selectedNode) return;
-                        const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, title: e.target.value } } : n);
-                        setNodes(next);
-                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, title: e.target.value } });
-                      }}
-                      placeholder="Name this DO"
-                    />
-                  ) : (
-                    // Draft mode: show candidates with ranking
-                    <div className="space-y-2 mt-1">
-                      {(selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).map((candidate, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          {/* Up/Down chevrons for reordering */}
-                          <div className="flex flex-col">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (!selectedNode || idx === 0) return;
-                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                                // Swap with previous item
-                                [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
-                                const next = nodes.map((n) => 
-                                  n.id === selectedNode.id 
-                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                    : n
-                                );
-                                setNodes(next);
-                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                              }}
-                              disabled={idx === 0}
-                              className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (!selectedNode) return;
-                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                                if (idx >= arr.length - 1) return;
-                                // Swap with next item
-                                [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
-                                const next = nodes.map((n) => 
-                                  n.id === selectedNode.id 
-                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                    : n
-                                );
-                                setNodes(next);
-                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                              }}
-                              disabled={idx >= (selectedNode.data.titleCandidates || [selectedNode.data.title || "New DO"]).length - 1}
-                              className="h-5 w-6 p-0 hover:bg-accent disabled:opacity-30"
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </Button>
-                          </div>
-                          
-                          {/* Rank number badge */}
-                          <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold flex-shrink-0 ${
-                            idx === 0 ? "bg-blue-500 text-white" : "bg-muted text-foreground"
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          
-                          <input
-                            className="flex-1 rounded border px-2 py-1 text-sm bg-background"
-                            value={candidate}
-                            onChange={(e) => {
-                              if (!selectedNode) return;
-                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                              arr[idx] = e.target.value;
-                              const next = nodes.map((n) => 
-                                n.id === selectedNode.id 
-                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                  : n
-                              );
-                              setNodes(next);
-                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                            }}
-                            placeholder={`Candidate ${idx + 1}`}
-                          />
-                          
-                          {/* Remove button (only for non-first items) */}
-                          {idx > 0 && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (!selectedNode) return;
-                                const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                                arr.splice(idx, 1);
-                                const next = nodes.map((n) => 
-                                  n.id === selectedNode.id 
-                                    ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                    : n
-                                );
-                                setNodes(next);
-                                setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                              }}
-                              className="h-8 w-8 p-0"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      
-                      {/* Add new candidate */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          className="flex-1 rounded border px-2 py-1 text-sm bg-background"
-                          placeholder="Add another candidate..."
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              const val = (e.target as HTMLInputElement).value.trim();
-                              if (!val) return;
-                              const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                              arr.push(val);
-                              (e.target as HTMLInputElement).value = "";
-                              const next = nodes.map((n) => 
-                                n.id === selectedNode.id 
-                                  ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                  : n
-                              );
-                              setNodes(next);
-                              setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                            }
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const arr = [...(selectedNode.data.titleCandidates || [selectedNode.data.title || ""])];
-                            arr.push("New candidate");
-                            const next = nodes.map((n) => 
-                              n.id === selectedNode.id 
-                                ? { ...n, data: { ...n.data, titleCandidates: arr, title: arr[0] } } 
-                                : n
-                            );
-                            setNodes(next);
-                            setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, titleCandidates: arr, title: arr[0] } });
-                          }}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                      
-                      <p className="text-xs text-muted-foreground">
-                        The #1 ranked candidate is displayed on the canvas. Change status to "final" to lock it.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Description */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium">Definition & Hypothesis</label>
-                  <RichTextEditor
-                    content={selectedNode?.data.hypothesis || ""}
-                    onChange={(content) => {
-                      if (!selectedNode) return;
-                      const next = nodes.map((n) => 
-                        n.id === selectedNode.id ? { ...n, data: { ...n.data, hypothesis: content } } : n
-                      );
-                      setNodes(next);
-                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, hypothesis: content } });
-                    }}
-                    placeholder="If we do X, then Y will happen because Z..."
-                    minHeight="96px"
-                  />
-                </div>
-
-                {/* 3. Primary Success Metric */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium">Primary Success Metric</label>
-                  <textarea
-                    className="w-full rounded border px-2 py-2 text-sm bg-background resize-none"
-                    rows={3}
-                    value={selectedNode?.data.primarySuccessMetric || ""}
-                    onChange={(e) => {
-                      if (!selectedNode) return;
-                      const next = nodes.map((n) => 
-                        n.id === selectedNode.id ? { ...n, data: { ...n.data, primarySuccessMetric: e.target.value } } : n
-                      );
-                      setNodes(next);
-                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, primarySuccessMetric: e.target.value } });
-                    }}
-                    placeholder="e.g., OpEx management and achievement of SI-level metrics"
-                    style={{ 
-                      wordBreak: 'break-word',
-                      overflowWrap: 'break-word',
-                      whiteSpace: 'pre-wrap'
-                    }}
-                  />
-                </div>
-
-                {/* 4. Owner */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium">Owner</label>
-                  <Select
-                      value={selectedNode.data.ownerId || ""}
-                      onValueChange={async (val) => {
-                        if (!selectedNode) return;
-                        // Update local canvas state immediately for responsiveness
-                        const next = nodes.map((n) => 
-                          n.id === selectedNode.id ? { ...n, data: { ...n.data, ownerId: val || undefined } } : n
-                        );
-                        setNodes(next);
-                        setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ownerId: val || undefined } });
-
-                        // Persist to DB if this DO is linked to a DB row
-                        try {
-                          const doStatus = doLockedStatus.get(selectedNode.id);
-                          const doDbId = doStatus?.dbId;
-                          if (doDbId && val) {
-                            const { error } = await supabase
-                              .from('rc_defining_objectives')
-                              .update({ owner_user_id: val })
-                              .eq('id', doDbId);
-                            if (error) {
-                              console.warn('[Canvas] Failed to persist DO owner change', error);
-                            } else {
-                              // Optional toast could be added here
-                            }
-                          }
-                        } catch (e) {
-                          console.warn('[Canvas] Error updating DO owner in DB', e);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="flex-1 h-9">
-                        <SelectValue placeholder="Select owner">
-                          {selectedNode.data.ownerId && (() => {
-                            const owner = profilesMap[selectedNode.data.ownerId];
-                            if (!owner) return null;
-                            const displayName = owner.full_name || '';
-                            const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                            return (
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                  {isUnknown ? (
-                                    <span className="font-semibold">?</span>
-                                  ) : (
-                                    <FancyAvatar 
-                                      name={owner.avatar_name || displayName} 
-                                      displayName={displayName}
-                                      avatarUrl={owner.avatar_url}
-                                      size="sm" 
-                                    />
-                                  )}
-                                </span>
-                                <span className="text-sm">{isUnknown ? 'Unknown' : displayName}</span>
-                              </div>
-                            );
-                          })()}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profiles.map((p) => {
-                          const displayName = p.full_name || '';
-                          const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                          return (
-                            <SelectItem key={p.id} value={p.id}>
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                                  {isUnknown ? (
-                                    <span className="font-semibold">?</span>
-                                  ) : (
-                                    <FancyAvatar 
-                                      name={p.avatar_name || displayName} 
-                                      displayName={displayName}
-                                      avatarUrl={p.avatar_url}
-                                      size="sm" 
-                                    />
-                                  )}
-                                </span>
-                                <span>{isUnknown ? 'Unknown' : displayName}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                </div>
-
-                {/* 5. Other Participants - Not applicable for DO, skipping */}
-
-                <div className="pt-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">Strategic Initiatives</div>
-                      <Button size="sm" variant="link" className="px-0 h-auto hover:no-underline" onClick={addSaiToSelectedDo}>+ Add</Button>
-                    </div>
-                  <div className="space-y-2 max-h-48 overflow-auto pr-1">
-                    {(selectedNode?.data.saiItems || []).map((it) => (
-                      <button
-                        key={it.id}
-                        className="w-full flex items-center gap-2 rounded border px-2 py-1 text-xs bg-background hover:bg-accent"
-                        onClick={() => setFocusedSI({ doId: selectedNode!.id, siId: it.id })}
-                      >
-                        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                          {(() => {
-                            // Prefer explicit avatar URL; otherwise resolve via ownerId -> profilesMap; fallback to initial from ownerName or '?'
-                            if (it.ownerAvatarUrl) {
-                              return <img src={it.ownerAvatarUrl} className="h-full w-full object-cover" />;
-                            }
-                            const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
-                            const displayName = prof?.full_name || '';
-                            const isUnknown = !prof || !displayName || displayName.trim().toLowerCase() === 'unknown';
-                            if (!isUnknown) {
-                              return (
-                                <FancyAvatar
-                                  name={prof.avatar_name || displayName}
-                                  displayName={displayName}
-                                  avatarUrl={prof.avatar_url}
-                                  size="sm"
-                                />
-                              );
-                            }
-                            const ch = (it.ownerName?.charAt(0).toUpperCase() || '?');
-                            return <span className="font-semibold">{ch}</span>;
-                          })()}
-                        </span>
-                        <span className="flex-1 truncate text-left">{it.title || "Untitled SI"}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Advanced Options - Collapsible Section */}
-              <div className="pt-4 border-t mt-auto">
-                <Collapsible open={advancedOptionsOpen} onOpenChange={setAdvancedOptionsOpen}>
-                  <CollapsibleTrigger className="flex items-center justify-between w-full text-sm font-medium py-2 hover:bg-accent rounded px-2">
-                    <span>Advanced Options</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform ${advancedOptionsOpen ? 'rotate-180' : ''}`} />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-3 pt-3">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm">Background</label>
-                      <input
-                        type="color"
-                        value={selectedNode?.data.bgColor || "#ffffff"}
-                        onChange={(e) => {
-                          if (!selectedNode) return;
-                          const value = e.target.value;
-                          const next = nodes.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, bgColor: value } } : n);
-                          setNodes(next);
-                          setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, bgColor: value } });
-                        }}
-                      />
-                    </div>
-
-                    {/* Size controls for DO */}
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm">Size</label>
-                      <input
-                        type="number"
-                        min={160}
-                        max={600}
-                        className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                        value={selectedNode?.data.size?.w || 200}
-                        onChange={(e) => {
-                          const w = Math.max(160, Math.min(600, Number(e.target.value)));
-                          const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w, h: n.data.size?.h || 110 } } } : n);
-                          setNodes(next);
-                          setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w, h: selectedNode!.data.size?.h || 110 } } });
-                        }}
-                      />
-                      <span className="text-xs">×</span>
-                      <input
-                        type="number"
-                        min={80}
-                        max={400}
-                        className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                        value={selectedNode?.data.size?.h || 110}
-                        onChange={(e) => {
-                          const h = Math.max(80, Math.min(400, Number(e.target.value)));
-                          const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w: n.data.size?.w || 200, h } } } : n);
-                          setNodes(next);
-                          setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w: selectedNode!.data.size?.w || 200, h } } });
-                        }}
-                      />
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Secondary drawer for SI details - position left of DO panel when both are open */}
@@ -2990,6 +2624,267 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Mobile List View Component
+function StrategyCanvasMobileView({
+  cycleId,
+  navigate,
+  profiles,
+  profilesMap,
+  activeTab,
+  handleTabChange,
+}: {
+  cycleId: string | null;
+  navigate: (path: string) => void;
+  profiles: Tables<'profiles'>[];
+  profilesMap: Record<string, Tables<'profiles'>>;
+  activeTab: string;
+  handleTabChange: (value: string) => void;
+}) {
+  const [rallyingCry, setRallyingCry] = useState<any>(null);
+  const [dos, setDos] = useState<any[]>([]);
+  const [sis, setSis] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedDOs, setExpandedDOs] = useState<Set<string>>(new Set());
+  const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
+
+  useEffect(() => {
+    if (!cycleId) {
+      navigate('/dashboard/rcdo');
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+
+        // Fetch Rallying Cry
+        const { data: rc } = await supabase
+          .from('rc_rallying_cries')
+          .select('id, title, narrative')
+          .eq('cycle_id', cycleId)
+          .maybeSingle();
+
+        if (!rc) {
+          setLoading(false);
+          return;
+        }
+
+        setRallyingCry(rc);
+
+        // Fetch DOs
+        const { data: dosData } = await supabase
+          .from('rc_defining_objectives')
+          .select('id, title, status, owner_user_id, locked_at')
+          .eq('rallying_cry_id', rc.id)
+          .order('display_order', { ascending: true });
+
+        if (dosData) {
+          setDos(dosData);
+          
+          // Populate DO locked status map
+          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = dosData.map((d: any, index: number) => {
+            const uiId = `do-${index + 1}`;
+            const locked = !!d.locked_at;
+            return [uiId, { locked, dbId: d.id }];
+          });
+          setDoLockedStatus(new Map(doStatusEntries));
+          
+          // Fetch SIs for all DOs
+          const doIds = dosData.map(d => d.id);
+          if (doIds.length > 0) {
+            const { data: sisData } = await supabase
+              .from('rc_strategic_initiatives')
+              .select('id, title, defining_objective_id, status, owner_user_id')
+              .in('defining_objective_id', doIds)
+              .order('display_order', { ascending: true });
+            
+            setSis(sisData || []);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [cycleId, navigate]);
+
+  const toggleDO = (doId: string) => {
+    setExpandedDOs(prev => {
+      const next = new Set(prev);
+      if (next.has(doId)) {
+        next.delete(doId);
+      } else {
+        next.add(doId);
+      }
+      return next;
+    });
+  };
+
+  const getDOStatus = (doId: string) => {
+    const doItem = dos.find(d => d.id === doId);
+    return doItem?.status || 'draft';
+  };
+
+  const getSIStatus = (siId: string) => {
+    const siItem = sis.find(s => s.id === siId);
+    return siItem?.status || 'not_started';
+  };
+
+  return (
+    <div className="w-full h-dvh flex flex-col">
+      {/* Page header */}
+      <header className="border-b bg-white">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/dashboard/rcdo')}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <Logo variant="minimal" size="lg" className="scale-75" />
+          </div>
+
+          {/* Center: Tabs - Hidden on mobile */}
+          {!isMobile && (
+            <div className="absolute left-1/2 -translate-x-1/2">
+              <Tabs value={activeTab} onValueChange={handleTabChange}>
+                <TabsList className="h-10">
+                  <TabsTrigger value="rcdo" className="px-4 text-xs sm:px-6">RCDO</TabsTrigger>
+                  <TabsTrigger value="main" className="px-4 text-xs sm:px-6">Meetings</TabsTrigger>
+                  <TabsTrigger value="checkins" className="px-4 text-xs sm:px-6">My DOSIs</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
+
+          <UserProfileHeader />
+        </div>
+      </header>
+
+      {/* Mobile List View */}
+      <div className={`flex-1 overflow-y-auto bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 ${isMobile ? 'pb-20' : ''}`}>
+        <div className="container mx-auto px-4 py-6 max-w-2xl">
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-muted-foreground">Loading strategy...</div>
+            </div>
+          ) : !rallyingCry ? (
+            <div className="text-center py-12">
+              <div className="text-muted-foreground">No rallying cry found for this cycle</div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Rallying Cry Header */}
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="h-5 w-5 text-primary" />
+                  <h1 className="text-xl font-bold">{rallyingCry.title}</h1>
+                </div>
+                {rallyingCry.narrative && (
+                  <p className="text-sm text-muted-foreground mt-2">{rallyingCry.narrative}</p>
+                )}
+              </Card>
+
+              {/* DOs and SIs */}
+              {dos.length === 0 ? (
+                <Card className="p-6 text-center">
+                  <p className="text-muted-foreground">No defining objectives yet</p>
+                </Card>
+              ) : (
+                dos.map((doItem, index) => {
+                  const doSIs = sis.filter(s => s.defining_objective_id === doItem.id);
+                  const isExpanded = expandedDOs.has(doItem.id);
+                  const status = getDOStatus(doItem.id);
+                  const owner = doItem.owner_user_id && profilesMap ? profilesMap[doItem.owner_user_id] : null;
+                  const doStatus = doLockedStatus.get(`do-${index + 1}`);
+
+                  return (
+                    <Card key={doItem.id} className="overflow-hidden">
+                      <button
+                        onClick={() => {
+                          if (doStatus?.dbId) {
+                            navigate(`/dashboard/rcdo/do/${doStatus.dbId}`);
+                          } else {
+                            toggleDO(doItem.id);
+                          }
+                        }}
+                        className="w-full p-4 flex items-center justify-between min-h-[44px] text-left"
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="flex-shrink-0">
+                            {isExpanded ? (
+                              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <Layers className="h-5 w-5 text-primary flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold truncate">{doItem.title}</div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+                              <span className="capitalize">{status}</span>
+                              {owner && (
+                                <>
+                                  <span>•</span>
+                                  <span>{owner.full_name || 'Unknown'}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {isExpanded && doSIs.length > 0 && (
+                        <div className="border-t bg-muted/30">
+                          {doSIs.map((siItem) => {
+                            const siStatus = getSIStatus(siItem.id);
+                            const siOwner = siItem.owner_user_id ? profilesMap[siItem.owner_user_id] : null;
+
+                            return (
+                              <button
+                                key={siItem.id}
+                                onClick={() => navigate(`/dashboard/rcdo/si/${siItem.id}`)}
+                                className="w-full p-4 pl-12 flex items-center justify-between min-h-[44px] text-left hover:bg-accent/50 transition-colors border-b last:border-b-0"
+                              >
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  <FileText className="h-4 w-4 text-secondary flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium truncate">{siItem.title}</div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+                                      <span className="capitalize">{siStatus}</span>
+                                      {siOwner && (
+                                        <>
+                                          <span>•</span>
+                                          <span>{siOwner.full_name || 'Unknown'}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {isMobile && <MobileBottomNav />}
     </div>
   );
 }

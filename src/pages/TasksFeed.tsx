@@ -13,8 +13,9 @@ import GridBackground from '@/components/ui/grid-background';
 import { useNavigate } from 'react-router-dom';
 import { UserProfileHeader } from '@/components/ui/user-profile-header';
 import Logo from '@/components/Logo';
-import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileBottomNav } from '@/components/ui/mobile-bottom-nav';
 
 interface CheckinFeedItem {
   id: string;
@@ -40,6 +41,7 @@ interface CheckinFeedItem {
 
 export default function TasksFeed() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [checkins, setCheckins] = useState<CheckinFeedItem[]>([]);
   const [filterType, setFilterType] = useState<'all' | 'do' | 'initiative' | 'task'>('all');
@@ -195,7 +197,7 @@ export default function TasksFeed() {
           <UserProfileHeader />
         </div>
       </header>
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className={`min-h-screen bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 ${isMobile ? 'pb-20' : ''}`}>
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -208,35 +210,37 @@ export default function TasksFeed() {
 
           {/* Filters */}
           <Card className="p-4 mb-6">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filter:</span>
               </div>
-              <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="do">DOs</SelectItem>
-                  <SelectItem value="initiative">SIs</SelectItem>
-                  <SelectItem value="task">Tasks</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterOwner} onValueChange={setFilterOwner}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Owners</SelectItem>
-                  {owners.map((owner) => (
-                    <SelectItem key={owner.id} value={owner.id}>
-                      {owner.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-11 text-base">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="do">DOs</SelectItem>
+                    <SelectItem value="initiative">SIs</SelectItem>
+                    <SelectItem value="task">Tasks</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterOwner} onValueChange={setFilterOwner}>
+                  <SelectTrigger className="w-full sm:w-[200px] h-11 text-base">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Owners</SelectItem>
+                    {owners.map((owner) => (
+                      <SelectItem key={owner.id} value={owner.id}>
+                        {owner.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </Card>
 
@@ -264,7 +268,7 @@ export default function TasksFeed() {
                 return (
                   <Card
                     key={checkin.id}
-                    className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+                    className="p-4 sm:p-4 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]"
                     onClick={() => handleParentClick(checkin)}
                   >
                     <div className="flex items-start gap-3">
@@ -315,6 +319,7 @@ export default function TasksFeed() {
           )}
         </div>
       </div>
+      {isMobile && <MobileBottomNav />}
     </GridBackground>
   );
 }
