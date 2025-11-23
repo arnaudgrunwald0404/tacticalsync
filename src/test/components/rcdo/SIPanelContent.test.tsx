@@ -122,7 +122,7 @@ describe('SIPanelContent - Status Field', () => {
       
       await waitFor(() => {
         const select = screen.getByRole('combobox', { name: /status/i });
-        expect(select).toHaveTextContent('Not Started');
+        expect(select).toHaveTextContent('Draft');
       });
     });
 

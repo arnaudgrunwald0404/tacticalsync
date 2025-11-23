@@ -33,7 +33,7 @@ describe('Button', () => {
     it('should render default variant', () => {
       render(<Button variant="default">Default</Button>);
       const button = screen.getByRole('button');
-      expect(button).toHaveClass('bg-primary');
+      expect(button).toHaveClass('bg-[#C97D60]');
     });
 
     it('should render destructive variant', () => {
@@ -45,19 +45,19 @@ describe('Button', () => {
     it('should render outline variant', () => {
       render(<Button variant="outline">Outline</Button>);
       const button = screen.getByRole('button');
-      expect(button).toHaveClass('border');
+      expect(button).toHaveClass('border-2');
     });
 
     it('should render secondary variant', () => {
       render(<Button variant="secondary">Secondary</Button>);
       const button = screen.getByRole('button');
-      expect(button).toHaveClass('bg-secondary');
+      expect(button).toHaveClass('bg-[#6B9A8F]');
     });
 
     it('should render ghost variant', () => {
       render(<Button variant="ghost">Ghost</Button>);
       const button = screen.getByRole('button');
-      expect(button).toHaveClass('hover:bg-accent');
+      expect(button).toHaveClass('hover:bg-[#F5F3F0]');
     });
 
     it('should render link variant', () => {

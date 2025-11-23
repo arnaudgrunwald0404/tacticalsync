@@ -206,11 +206,11 @@ describe('InitiativeCard', () => {
   });
 
   describe('Status Display', () => {
-    it('should display "Not Started" status badge', () => {
+    it('should display "Draft" status badge for not_started', () => {
       const initiative = createMockInitiative('not_started');
       render(<InitiativeCard initiative={initiative} />);
       
-      expect(screen.getByText('Not Started')).toBeInTheDocument();
+      expect(screen.getByText('Draft')).toBeInTheDocument();
     });
 
     it('should display "On Track" status badge', () => {
@@ -220,25 +220,25 @@ describe('InitiativeCard', () => {
       expect(screen.getByText('On Track')).toBeInTheDocument();
     });
 
-    it('should display "At Risk" status badge', () => {
+    it('should display "Delayed" status badge for at_risk', () => {
       const initiative = createMockInitiative('at_risk');
       render(<InitiativeCard initiative={initiative} />);
       
-      expect(screen.getByText('At Risk')).toBeInTheDocument();
+      expect(screen.getByText('Delayed')).toBeInTheDocument();
     });
 
-    it('should display "Off Track" status badge', () => {
+    it('should display "Delayed" status badge for off_track', () => {
       const initiative = createMockInitiative('off_track');
       render(<InitiativeCard initiative={initiative} />);
       
-      expect(screen.getByText('Off Track')).toBeInTheDocument();
+      expect(screen.getByText('Delayed')).toBeInTheDocument();
     });
 
-    it('should display "Completed" status badge', () => {
+    it('should display "On Track" status badge for completed', () => {
       const initiative = createMockInitiative('completed');
       render(<InitiativeCard initiative={initiative} />);
       
-      expect(screen.getByText('Completed')).toBeInTheDocument();
+      expect(screen.getByText('On Track')).toBeInTheDocument();
     });
 
     it('should handle unknown status gracefully', () => {
@@ -256,8 +256,8 @@ describe('InitiativeCard', () => {
       const initiative = createMockInitiative('not_started');
       const { container } = render(<InitiativeCard initiative={initiative} />);
       
-      const badge = screen.getByText('Not Started');
-      expect(badge).toHaveClass('bg-blue-500');
+      const badge = screen.getByText('Draft');
+      expect(badge).toHaveClass('bg-[#5B6E7A]');
     });
 
     it('should apply correct color class for on_track status', () => {
@@ -265,14 +265,14 @@ describe('InitiativeCard', () => {
       render(<InitiativeCard initiative={initiative} />);
       
       const badge = screen.getByText('On Track');
-      expect(badge).toHaveClass('bg-green-500');
+      expect(badge).toHaveClass('bg-[#6FA87F]');
     });
 
     it('should apply correct color class for at_risk status', () => {
       const initiative = createMockInitiative('at_risk');
       render(<InitiativeCard initiative={initiative} />);
       
-      const badge = screen.getByText('At Risk');
+      const badge = screen.getByText('Delayed');
       expect(badge).toHaveClass('bg-yellow-500');
     });
 
@@ -280,16 +280,16 @@ describe('InitiativeCard', () => {
       const initiative = createMockInitiative('off_track');
       render(<InitiativeCard initiative={initiative} />);
       
-      const badge = screen.getByText('Off Track');
-      expect(badge).toHaveClass('bg-red-500');
+      const badge = screen.getByText('Delayed');
+      expect(badge).toHaveClass('bg-yellow-500');
     });
 
     it('should apply correct color class for completed status', () => {
       const initiative = createMockInitiative('completed');
       render(<InitiativeCard initiative={initiative} />);
       
-      const badge = screen.getByText('Completed');
-      expect(badge).toHaveClass('bg-purple-500');
+      const badge = screen.getByText('On Track');
+      expect(badge).toHaveClass('bg-[#6FA87F]');
     });
   });
 
