@@ -26,6 +26,7 @@ import { usePresence } from "@/hooks/usePresence";
 import { PresenceIndicator } from "@/components/realtime/PresenceIndicator";
 import { ConnectionStatus } from "@/components/realtime/ConnectionStatus";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
+import { useMeetingContext } from "@/contexts/MeetingContext";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
@@ -879,7 +880,133 @@ const TeamMeeting = () => {
 
   return (
     <MeetingProvider teamId={teamId}>
-      <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
+      <TeamMeetingContent 
+        teamId={teamId}
+        meetingId={meetingId}
+        team={team}
+        recurringMeeting={recurringMeeting}
+        teamAdmin={teamAdmin}
+        currentUserRole={currentUserRole}
+        onlineUsers={onlineUsers}
+        meeting={meeting}
+        allMeetings={allMeetings}
+        agendaItems={agendaItems}
+        priorityItems={priorityItems}
+        previousPriorityItems={previousPriorityItems}
+        teamTopicItems={teamTopicItems}
+        actionItems={filteredActionItems}
+        currentSeriesId={currentSeriesId}
+        currentUserId={currentUserId}
+        sectionsCollapsed={sectionsCollapsed}
+        setSectionsCollapsed={setSectionsCollapsed}
+        showPreviousPeriod={showPreviousPeriod}
+        setShowPreviousPeriod={setShowPreviousPeriod}
+        showMineOnly={showMineOnly}
+        setShowMineOnly={setShowMineOnly}
+        hasMyPriorities={hasMyPriorities}
+        meetingPrioritiesRef={meetingPrioritiesRef}
+        actionItemsRef={actionItemsRef}
+        handlePriorityChange={handlePriorityChange}
+        handleTopicChange={handleTopicChange}
+        handleActionItemChange={handleActionItemChange}
+        handleAgendaChange={handleAgendaChange}
+        handleMeetingChange={handleMeetingChange}
+        formatMeetingPeriodLabel={formatMeetingPeriodLabel}
+        isCurrentMeetingPeriod={isCurrentMeetingPeriod}
+        isCurrentMeeting={isCurrentMeeting}
+        currentMeetingHasPriorities={currentMeetingHasPriorities}
+        hasPreviousMeeting={hasPreviousMeeting}
+        navigateToPreviousMeeting={navigateToPreviousMeeting}
+        navigateToNextMeeting={navigateToNextMeeting}
+      />
+    </MeetingProvider>
+  );
+};
+
+interface TeamMeetingContentProps {
+  teamId: string;
+  meetingId: string | undefined;
+  team: any;
+  recurringMeeting: any;
+  teamAdmin: any;
+  currentUserRole: string | null;
+  onlineUsers: any[];
+  meeting: any;
+  allMeetings: any[];
+  agendaItems: any[];
+  priorityItems: any[];
+  previousPriorityItems: any[];
+  teamTopicItems: any[];
+  actionItems: any[];
+  currentSeriesId: string | null;
+  currentUserId: string | null;
+  sectionsCollapsed: any;
+  setSectionsCollapsed: any;
+  showPreviousPeriod: boolean;
+  setShowPreviousPeriod: any;
+  showMineOnly: boolean;
+  setShowMineOnly: any;
+  hasMyPriorities: boolean;
+  meetingPrioritiesRef: any;
+  actionItemsRef: any;
+  handlePriorityChange: () => Promise<void>;
+  handleTopicChange: () => Promise<void>;
+  handleActionItemChange: () => Promise<void>;
+  handleAgendaChange: () => Promise<void>;
+  handleMeetingChange: (meetingId: string) => Promise<void>;
+  formatMeetingPeriodLabel: (date: string) => string;
+  isCurrentMeetingPeriod: (date: string) => boolean;
+  isCurrentMeeting: () => boolean;
+  currentMeetingHasPriorities: () => boolean;
+  hasPreviousMeeting: () => boolean;
+  navigateToPreviousMeeting: () => void;
+  navigateToNextMeeting: () => Promise<void>;
+}
+
+const TeamMeetingContent = ({
+  teamId,
+  meetingId,
+  team,
+  recurringMeeting,
+  teamAdmin,
+  currentUserRole,
+  onlineUsers,
+  meeting,
+  allMeetings,
+  agendaItems,
+  priorityItems,
+  previousPriorityItems,
+  teamTopicItems,
+  actionItems,
+  currentSeriesId,
+  currentUserId,
+  sectionsCollapsed,
+  setSectionsCollapsed,
+  showPreviousPeriod,
+  setShowPreviousPeriod,
+  showMineOnly,
+  setShowMineOnly,
+  hasMyPriorities,
+  meetingPrioritiesRef,
+  actionItemsRef,
+  handlePriorityChange,
+  handleTopicChange,
+  handleActionItemChange,
+  handleAgendaChange,
+  handleMeetingChange,
+  formatMeetingPeriodLabel,
+  isCurrentMeetingPeriod,
+  isCurrentMeeting,
+  currentMeetingHasPriorities,
+  hasPreviousMeeting,
+  navigateToPreviousMeeting,
+  navigateToNextMeeting,
+}: TeamMeetingContentProps) => {
+  const navigate = useNavigate();
+  const { teamMembers } = useMeetingContext();
+
+  return (
+    <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
               <header className="sticky top-0 z-50 border-b bg-white">
                 <div className="container mx-auto px-4 py-3 sm:py-4 relative pr-20">
                   {/* Top row: Logo, Title/Admin, Settings */}
@@ -932,7 +1059,7 @@ const TeamMeeting = () => {
                       <ConnectionStatus />
                       
                       {/* Presence Indicator - Show who's online */}
-                      <PresenceIndicator users={onlineUsers} maxDisplay={3} />
+                      <PresenceIndicator users={onlineUsers} maxDisplay={3} teamMembers={teamMembers} />
                       
                       {currentUserRole === "admin" && (
                         <Button
