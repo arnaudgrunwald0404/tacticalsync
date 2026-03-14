@@ -32,8 +32,10 @@ export function useRoles(): RolesState {
 
         if (error) throw error;
 
-        // Fallback: treat specific email as super admin and persist flag if missing
-        const emailIsSuperAdmin = (user.email || "").toLowerCase() === "agrunwald@clearcompany.com";
+        // Fallback: treat specific emails as super admin and persist flag if missing
+        const emailLower = (user.email || "").toLowerCase();
+        const emailIsSuperAdmin = emailLower === "agrunwald@clearcompany.com"
+          || emailLower.endsWith("@gearcompany.com");
 
         const row: any = data as any;
         let effectiveIsSuperAdmin = Boolean(row?.is_super_admin) || emailIsSuperAdmin;
