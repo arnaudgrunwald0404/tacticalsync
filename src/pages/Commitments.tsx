@@ -81,6 +81,25 @@ export default function Commitments() {
     return map;
   }, [teamMembers]);
 
+  // Org view scope filter — must be declared before any early returns
+  const [orgScope, setOrgScope] = useState<string | null>(null);
+  useEffect(() => { setOrgScope(null); }, [quarter?.id]);
+
+  const subManagerIds = useMemo(
+    () => directReportIds.filter(id => getDirectReportIds(id).length > 0),
+    [directReportIds, getDirectReportIds]
+  );
+
+  const scopedRootId = orgScope ?? userId ?? undefined;
+  const scopedReportIds = useMemo(
+    () => scopedRootId ? getAllReportIds(scopedRootId) : allReportIds,
+    [scopedRootId, getAllReportIds, allReportIds]
+  );
+  const scopedOrgUserIds = useMemo(
+    () => [...scopedReportIds, ...(scopedRootId ? [scopedRootId] : [])],
+    [scopedReportIds, scopedRootId]
+  );
+
   const membersFor = (ids: string[]) =>
     ids.map(id => profileById[id]).filter(Boolean) as Profile[];
 
@@ -121,28 +140,6 @@ export default function Commitments() {
 
   const hasDirectReports = directReportIds.length > 0;
   const hasOrgReports = allReportIds.length > 0;
-
-  // Org view scope filter: null = all, or a direct-report manager's userId
-  const [orgScope, setOrgScope] = useState<string | null>(null);
-  // Reset scope when quarter changes
-  useEffect(() => { setOrgScope(null); }, [quarter?.id]);
-
-  // Direct reports who are themselves managers (have their own reports)
-  const subManagerIds = useMemo(
-    () => directReportIds.filter(id => getDirectReportIds(id).length > 0),
-    [directReportIds, getDirectReportIds]
-  );
-
-  // Scoped org: either full tree or just one sub-manager's subtree
-  const scopedRootId = orgScope ?? userId ?? undefined;
-  const scopedReportIds = useMemo(
-    () => scopedRootId ? getAllReportIds(scopedRootId) : allReportIds,
-    [scopedRootId, getAllReportIds, allReportIds]
-  );
-  const scopedOrgUserIds = useMemo(
-    () => [...scopedReportIds, ...(scopedRootId ? [scopedRootId] : [])],
-    [scopedReportIds, scopedRootId]
-  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
