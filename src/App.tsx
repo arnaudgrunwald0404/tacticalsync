@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
@@ -163,6 +163,8 @@ const App = () => (
               <ColorPaletteShowcase />
             </Suspense>
           } />
+          {/* Legacy redirects */}
+          <Route path="/dashboard/main" element={<Navigate to="/my-meetings" replace />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={
             <Suspense fallback={<PageSkeleton />}>

@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { Target, Calendar, Briefcase, CheckSquare } from "lucide-react";
+import { Target, Calendar, Briefcase, CheckSquare, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -18,9 +18,9 @@ const navItems: NavItem[] = [
   },
   {
     id: "meetings",
-    label: "Meetings",
+    label: "My Meetings",
     icon: Calendar,
-    path: "/dashboard/main",
+    path: "/my-meetings",
   },
   {
     id: "workspace",
@@ -34,6 +34,12 @@ const navItems: NavItem[] = [
     icon: CheckSquare,
     path: "/dashboard/rcdo/tasks-feed",
   },
+  {
+    id: "commitments",
+    label: "Commitments",
+    icon: ClipboardList,
+    path: "/commitments",
+  },
 ];
 
 export function MobileBottomNav() {
@@ -45,8 +51,9 @@ export function MobileBottomNav() {
     if (path.includes("/dashboard/rcdo/tasks-feed")) return "tasks";
     if (path.includes("/dashboard/rcdo")) return "strategy";
     if (path.includes("/workspace")) return "workspace";
-    if (path.includes("/dashboard/main")) return "meetings";
-    return "meetings"; // default
+    if (path.includes("/commitments")) return "commitments";
+    if (path.includes("/my-meetings")) return "meetings";
+    return "commitments"; // default
   };
 
   const activeTab = getActiveTab();
@@ -57,7 +64,7 @@ export function MobileBottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border safe-area-bottom">
-      <div className="grid grid-cols-4 h-16">
+      <div className="grid grid-cols-5 h-16">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
