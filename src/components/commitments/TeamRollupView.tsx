@@ -158,7 +158,7 @@ function MemberRow({
   );
 }
 
-/** Build a depth-annotated ordered list for tree rendering (BFS) */
+/** Build a depth-annotated ordered list for tree rendering (DFS pre-order) */
 function buildTree(
   rootId: string,
   members: TeamMember[],
@@ -171,13 +171,20 @@ function buildTree(
     lines.filter(l => l.manager_id === id).map(l => l.report_id);
 
   const result: { member: TeamMember; depth: number }[] = [];
-  const queue: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
+  const visited = new Set<string>();
+  // Stack-based DFS: push children in reverse so first child is processed first
+  const stack: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
 
-  while (queue.length > 0) {
-    const { id, depth } = queue.shift()!;
+  while (stack.length > 0) {
+    const { id, depth } = stack.pop()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
     const m = memberById[id];
     if (m) result.push({ member: m, depth });
-    childrenOf(id).forEach(childId => queue.push({ id: childId, depth: depth + 1 }));
+    const children = childrenOf(id);
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({ id: children[i], depth: depth + 1 });
+    }
   }
 
   return result;
