@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
@@ -121,6 +122,28 @@ export default function Commitments() {
   const hasDirectReports = directReportIds.length > 0;
   const hasOrgReports = allReportIds.length > 0;
 
+  // Org view scope filter: null = all, or a direct-report manager's userId
+  const [orgScope, setOrgScope] = useState<string | null>(null);
+  // Reset scope when quarter changes
+  useEffect(() => { setOrgScope(null); }, [quarter?.id]);
+
+  // Direct reports who are themselves managers (have their own reports)
+  const subManagerIds = useMemo(
+    () => directReportIds.filter(id => getDirectReportIds(id).length > 0),
+    [directReportIds, getDirectReportIds]
+  );
+
+  // Scoped org: either full tree or just one sub-manager's subtree
+  const scopedRootId = orgScope ?? userId ?? undefined;
+  const scopedReportIds = useMemo(
+    () => scopedRootId ? getAllReportIds(scopedRootId) : allReportIds,
+    [scopedRootId, getAllReportIds, allReportIds]
+  );
+  const scopedOrgUserIds = useMemo(
+    () => [...scopedReportIds, ...(scopedRootId ? [scopedRootId] : [])],
+    [scopedReportIds, scopedRootId]
+  );
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       {/* Header */}
@@ -186,14 +209,52 @@ export default function Commitments() {
 
         {hasOrgReports && hasDirectReports && allReportIds.length > directReportIds.length && (
           <TabsContent value="org" className="mt-6">
-            {orgLoading ? (
+            {/* Scope filter chips */}
+            {subManagerIds.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setOrgScope(null)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-sm transition-colors',
+                    orgScope === null
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:bg-muted'
+                  )}
+                >
+                  All
+                </button>
+                {subManagerIds.map(id => {
+                  const m = profileById[id];
+                  if (!m) return null;
+                  const label = m.full_name.split(' ')[0] + "'s team";
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setOrgScope(id)}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-sm transition-colors',
+                        orgScope === id
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {orgLoading || linesLoading ? (
               <Skeleton className="h-64 w-full" />
             ) : (
               <TeamRollupView
                 quarter={quarter}
-                members={membersFor(orgUserIds)}
-                priorities={orgPriorities}
-                commitments={orgCommitments}
+                members={membersFor(scopedOrgUserIds)}
+                priorities={orgPriorities.filter(p => scopedOrgUserIds.includes(p.user_id))}
+                commitments={orgCommitments.filter(c => scopedOrgUserIds.includes(c.user_id))}
+                currentUserId={scopedRootId}
+                reportingLines={reportingLines}
               />
             )}
           </TabsContent>

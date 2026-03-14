@@ -7,6 +7,7 @@ import type {
   CommitmentQuarter,
   PersonalPriority,
   MonthlyCommitment,
+  TeamReportingLine,
 } from '@/types/commitments';
 import { getQuarterMonths } from '@/types/commitments';
 
@@ -22,6 +23,9 @@ interface TeamRollupViewProps {
   members: TeamMember[];
   priorities: PersonalPriority[];
   commitments: MonthlyCommitment[];
+  /** When provided, renders a hierarchical tree rooted at this user */
+  currentUserId?: string;
+  reportingLines?: TeamReportingLine[];
 }
 
 function MemberRow({
@@ -29,11 +33,13 @@ function MemberRow({
   priorities,
   commitments,
   monthLabels,
+  depth = 0,
 }: {
   member: TeamMember;
   priorities: PersonalPriority[];
   commitments: MonthlyCommitment[];
   monthLabels: string[];
+  depth?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const myPriorities = priorities.filter(p => p.user_id === member.id).sort((a, b) => a.display_order - b.display_order);
@@ -42,13 +48,22 @@ function MemberRow({
 
   const isEmpty = myPriorities.length === 0 && myCommitments.length === 0;
 
+  const indentPx = depth * 28;
+
   return (
-    <div className="border-b border-border/50 last:border-b-0">
+    <div className={cn("border-b border-border/50 last:border-b-0", depth > 0 && "bg-muted/10")}>
       {/* Collapsed row */}
       <button
         onClick={() => setExpanded(e => !e)}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+        style={{ paddingLeft: `${16 + indentPx}px` }}
       >
+        {/* Tree connector line for indented rows */}
+        {depth > 0 && (
+          <span className="mr-1 flex-shrink-0 text-border">
+            {'└'}
+          </span>
+        )}
         <span className="text-muted-foreground/50">
           {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </span>
@@ -143,9 +158,40 @@ function MemberRow({
   );
 }
 
-export function TeamRollupView({ quarter, members, priorities, commitments }: TeamRollupViewProps) {
+/** Build a depth-annotated ordered list for tree rendering (BFS) */
+function buildTree(
+  rootId: string,
+  members: TeamMember[],
+  lines: TeamReportingLine[],
+): { member: TeamMember; depth: number }[] {
+  const memberById: Record<string, TeamMember> = {};
+  members.forEach(m => { memberById[m.id] = m; });
+
+  const childrenOf = (id: string) =>
+    lines.filter(l => l.manager_id === id).map(l => l.report_id);
+
+  const result: { member: TeamMember; depth: number }[] = [];
+  const queue: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { id, depth } = queue.shift()!;
+    const m = memberById[id];
+    if (m) result.push({ member: m, depth });
+    childrenOf(id).forEach(childId => queue.push({ id: childId, depth: depth + 1 }));
+  }
+
+  return result;
+}
+
+export function TeamRollupView({ quarter, members, priorities, commitments, currentUserId, reportingLines }: TeamRollupViewProps) {
   const months = getQuarterMonths(quarter);
   const monthLabels = [months.month1, months.month2, months.month3];
+
+  // Build tree if org mode, otherwise flat list at depth 0
+  const orderedMembers: { member: TeamMember; depth: number }[] =
+    currentUserId && reportingLines
+      ? buildTree(currentUserId, members, reportingLines)
+      : members.map(m => ({ member: m, depth: 0 }));
 
   if (members.length === 0) {
     return (
@@ -168,13 +214,14 @@ export function TeamRollupView({ quarter, members, priorities, commitments }: Te
         <span>{months.month3}</span>
       </div>
 
-      {members.map(member => (
+      {orderedMembers.map(({ member, depth }) => (
         <MemberRow
           key={member.id}
           member={member}
           priorities={priorities}
           commitments={commitments}
           monthLabels={monthLabels}
+          depth={depth}
         />
       ))}
     </div>
