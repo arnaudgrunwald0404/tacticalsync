@@ -63,7 +63,7 @@ const App = () => (
               <Dashboard />
             </Suspense>
           } />
-          <Route path="/dashboard/main" element={
+          <Route path="/my-meetings" element={
             <Suspense fallback={<DashboardSkeleton />}>
               <DashboardWithTabs />
             </Suspense>
@@ -74,6 +74,11 @@ const App = () => (
             </Suspense>
           } />
           <Route path="/workspace" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
+          <Route path="/commitments" element={
             <Suspense fallback={<DashboardSkeleton />}>
               <DashboardWithTabs />
             </Suspense>
