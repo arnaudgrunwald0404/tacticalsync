@@ -8,7 +8,9 @@ import DashboardMain from "./DashboardMain";
 const StrategyHome = lazy(() => import("./StrategyHome"));
 const LazyCheckinsPage = lazy(() => import("./Checkins"));
 const LazyCommitmentsPage = lazy(() => import("./Commitments"));
+const LazyInsightsPage = lazy(() => import("./Insights"));
 import { useActiveCycle } from "@/hooks/useRCDO";
+import { useRoles } from "@/hooks/useRoles";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
@@ -17,9 +19,13 @@ const DashboardWithTabs = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const { isAdmin, isSuperAdmin } = useRoles();
+  const showInsights = isAdmin || isSuperAdmin;
 
   // Determine active tab from URL
-  const activeTab = location.pathname.includes('/dashboard/rcdo/tasks-feed')
+  const activeTab = location.pathname.includes('/insights')
+    ? 'insights'
+    : location.pathname.includes('/dashboard/rcdo/tasks-feed')
     ? 'tasks'
     : location.pathname.includes('/dashboard/rcdo')
     ? 'rcdo'
@@ -43,6 +49,8 @@ const DashboardWithTabs = () => {
       navigate('/workspace');
     } else if (value === 'commitments') {
       navigate('/commitments');
+    } else if (value === 'insights') {
+      navigate('/insights');
     }
   };
 
@@ -87,6 +95,9 @@ const DashboardWithTabs = () => {
                     <TabsTrigger value="main" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Meetings</TabsTrigger>
                     <TabsTrigger value="checkins" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Workspace</TabsTrigger>
                     <TabsTrigger value="commitments" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Commitments</TabsTrigger>
+                    {showInsights && (
+                      <TabsTrigger value="insights" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Insights</TabsTrigger>
+                    )}
                   </TabsList>
                 </Tabs>
               </div>
@@ -127,6 +138,16 @@ const DashboardWithTabs = () => {
             </Suspense>
           ) : null}
         </TabsContent>
+
+        {showInsights && (
+          <TabsContent value="insights" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
+            {activeTab === 'insights' ? (
+              <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Insights…</div>}>
+                <LazyInsightsPage />
+              </Suspense>
+            ) : null}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Mobile Bottom Navigation */}

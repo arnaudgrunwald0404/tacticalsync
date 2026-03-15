@@ -83,6 +83,11 @@ const App = () => (
               <DashboardWithTabs />
             </Suspense>
           } />
+          <Route path="/insights" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
           <Route path="/rcdo/detail/do/:doId" element={
             <Suspense fallback={<PageSkeleton />}>
               <DODetail />
