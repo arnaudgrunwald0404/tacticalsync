@@ -13,10 +13,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    id: "strategy",
-    label: "Strategy",
-    icon: Target,
-    path: "/dashboard/rcdo",
+    id: "workspace",
+    label: "My workspace",
+    icon: Briefcase,
+    path: "/workspace",
   },
   {
     id: "meetings",
@@ -25,22 +25,22 @@ const navItems: NavItem[] = [
     path: "/my-meetings",
   },
   {
-    id: "workspace",
-    label: "My workspace",
-    icon: Briefcase,
-    path: "/workspace",
+    id: "commitments",
+    label: "Commitments",
+    icon: ClipboardList,
+    path: "/commitments",
+  },
+  {
+    id: "strategy",
+    label: "Strategy",
+    icon: Target,
+    path: "/dashboard/rcdo",
   },
   {
     id: "tasks",
     label: "My tasks",
     icon: CheckSquare,
     path: "/dashboard/rcdo/tasks-feed",
-  },
-  {
-    id: "commitments",
-    label: "Commitments",
-    icon: ClipboardList,
-    path: "/commitments",
   },
   {
     id: "insights",
@@ -116,4 +116,3 @@ export function MobileBottomNav() {
     </nav>
   );
 }
-
