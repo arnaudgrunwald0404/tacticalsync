@@ -160,6 +160,14 @@ const createDoNode = (
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
 
+    // Check if DO is missing required fields
+    // Strip HTML tags from hypothesis to check if it's actually empty
+    const hypothesisText = data.hypothesis ? data.hypothesis.replace(/<[^>]*>/g, '').trim() : '';
+    const hasMissingFields = !data.title || !data.title.trim() || 
+                            !hypothesisText || 
+                            !data.primarySuccessMetric || !data.primarySuccessMetric.trim() || 
+                            !data.ownerId;
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -169,7 +177,7 @@ const createDoNode = (
 
   return (
     <div
-      className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-hidden ${
+      className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-visible ${
         status === "final" 
           ? "border-[#4A5D5F] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]" 
           : "border-[#9FA8B3] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]"
@@ -185,6 +193,11 @@ const createDoNode = (
       <div className={`absolute top-0 right-0 w-20 h-20 ${
         status === "final" ? "bg-[#4A5D5F]/10" : "bg-[#4A5D5F]/10"
       } rounded-bl-full`} />
+      
+      {/* Red dot indicator for missing required fields */}
+      {hasMissingFields && (
+        <div className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 rounded-full bg-red-500 border-2 border-white shadow-lg z-50" title="Missing required fields: Name, Definition, Primary Success Metric, or Owner" />
+      )}
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white`}>Defining Objective</span>
@@ -230,11 +243,22 @@ const createDoNode = (
         />
       </div>
       {items.length > 0 && (
-        <div className="mt-3 flex flex-col gap-2 flex-shrink-0 relative z-10">
-          {items.map((it) => (
+        <div className="mt-3 flex flex-col gap-2 flex-shrink-0 relative z-10 overflow-visible">
+          {items.map((it) => {
+            // Check if SI is missing required fields
+            // Strip HTML tags from description to check if it's actually empty
+            const descriptionText = it.description ? it.description.replace(/<[^>]*>/g, '').trim() : '';
+            // Check if metric field is empty (it's called 'metric' for SIs)
+            const metricText = it.metric ? it.metric.trim() : '';
+            const siHasMissingFields = !it.title || !it.title.trim() || 
+                                      !descriptionText || 
+                                      !metricText ||
+                                      !it.ownerId;
+            
+            return (
             <button
               key={it.id}
-              className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02]
+              className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] overflow-visible
                 ${(() => {
                   const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
                   if (siProg && siProg.sentiment !== null && siProg.sentiment !== undefined) {
@@ -251,9 +275,13 @@ const createDoNode = (
                 dark:hover:bg-slate-900/20`}
               onClick={(e) => {
                 e.stopPropagation();
+                // Dispatch event - the event listener will navigate directly if SI has dbId
                 window.dispatchEvent(new CustomEvent("rcdo:open-si", { detail: { doId: id, siId: it.id } }));
               }}
             >
+              {siHasMissingFields && (
+                <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-white shadow-md z-30" title="Missing required fields: Name, Definition, Primary Success Metric, or Owner" />
+              )}
               <span className={`inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border text-[10px] flex-shrink-0 bg-[#F5F3F0] border-[#9FA8B3]`}>
                 {(() => {
                   const prof = it.ownerId ? profilesMap[it.ownerId] : undefined;
@@ -273,14 +301,15 @@ const createDoNode = (
                 const percentToGoal = siProgress?.percentToGoal ?? null;
                 const isSILocked = siProgress?.isLocked ?? false;
 
-                // Iconography for recency/staleness
+                // Iconography for recency/staleness - only show when we have actual progress data
                 const latestDate = siProgress?.latestDate ? new Date(siProgress.latestDate) : null;
                 const createdAt = siProgress?.createdAt ? new Date(siProgress.createdAt) : null;
+                const hasProgressData = siProgress !== null && (latestDate !== null || createdAt !== null);
                 const now = new Date();
-                const daysSinceUpdate = latestDate ? (now.getTime() - latestDate.getTime()) / (1000*60*60*24) : Infinity;
-                const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000*60*60*24) : Infinity;
-                const showLightning = latestDate && daysSinceUpdate < 3;
-                const showWarning = daysSinceUpdate > 21 && daysSinceCreated > 21;
+                const daysSinceUpdate = latestDate ? (now.getTime() - latestDate.getTime()) / (1000*60*60*24) : null;
+                const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000*60*60*24) : null;
+                const showLightning = hasProgressData && latestDate !== null && daysSinceUpdate !== null && daysSinceUpdate < 3;
+                const showWarning = hasProgressData && daysSinceUpdate !== null && daysSinceCreated !== null && daysSinceUpdate > 21 && daysSinceCreated > 21;
 
                 // Only show something when DO and SI are locked and the SI has a percent value (including 0)
                 const shouldShow = isDOLocked && isSILocked && percentToGoal !== null && percentToGoal !== undefined;
@@ -339,7 +368,8 @@ const createDoNode = (
                 );
               })()}
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -642,9 +672,10 @@ export default function StrategyCanvasPage() {
   // Header state (logo/tabs/avatar)
   const activeTab = location.pathname.includes('/dashboard/rcdo') || location.pathname.includes('/rcdo/') ? 'rcdo' : 'main';
   const handleTabChange = (value: string) => {
-    if (value === 'main') navigate('/dashboard/main');
+    if (value === 'main') navigate('/my-meetings');
     else if (value === 'rcdo') navigate('/dashboard/rcdo');
     else if (value === 'checkins') navigate('/workspace');
+    else if (value === 'commitments') navigate('/commitments');
   };
 
   // Run a one-time de-overlap pass to ensure default layout has no collisions
@@ -1048,10 +1079,14 @@ export default function StrategyCanvasPage() {
 
   // Listen to SI open events from DoNode buttons
   useEffect(() => {
-    const handler = (e: any) => setFocusedSI(e.detail);
+    const handler = (e: any) => {
+      const { doId, siId } = e.detail;
+      // Always show the panel when clicking on an SI
+      setFocusedSI(e.detail);
+    };
     window.addEventListener("rcdo:open-si", handler as any);
     return () => window.removeEventListener("rcdo:open-si", handler as any);
-  }, []);
+  }, [nodes]);
 
   // Listen to node update events from inline editing
   useEffect(() => {
@@ -1222,6 +1257,59 @@ const duplicateSelectedDo = useCallback(() => {
 
   // Bulk actions
   const lockEverything = useCallback(async () => {
+    // Check for incomplete DOs and SIs before locking
+    const incompleteDOs: string[] = [];
+    const incompleteSIs: Array<{ doTitle: string; siTitle: string }> = [];
+    
+    for (const n of nodes) {
+      if (n.type === 'do') {
+        const data = n.data;
+        const hypothesisText = data.hypothesis ? data.hypothesis.replace(/<[^>]*>/g, '').trim() : '';
+        const hasMissingFields = !data.title || !data.title.trim() || 
+                                !hypothesisText || 
+                                !data.primarySuccessMetric || !data.primarySuccessMetric.trim() || 
+                                !data.ownerId;
+        
+        if (hasMissingFields) {
+          incompleteDOs.push(data.title || n.id);
+        }
+        
+        // Check SIs within this DO
+        const items = data.saiItems || [];
+        for (const si of items) {
+          const descriptionText = si.description ? si.description.replace(/<[^>]*>/g, '').trim() : '';
+          const metricText = si.metric ? si.metric.trim() : '';
+          const siHasMissingFields = !si.title || !si.title.trim() || 
+                                    !descriptionText || 
+                                    !metricText ||
+                                    !si.ownerId;
+          
+          if (siHasMissingFields) {
+            incompleteSIs.push({ 
+              doTitle: data.title || n.id, 
+              siTitle: si.title || 'Untitled SI' 
+            });
+          }
+        }
+      }
+    }
+    
+    if (incompleteDOs.length > 0 || incompleteSIs.length > 0) {
+      const messages: string[] = [];
+      if (incompleteDOs.length > 0) {
+        messages.push(`${incompleteDOs.length} incomplete Defining Objective(s): ${incompleteDOs.slice(0, 3).join(', ')}${incompleteDOs.length > 3 ? '...' : ''}`);
+      }
+      if (incompleteSIs.length > 0) {
+        messages.push(`${incompleteSIs.length} incomplete Strategic Initiative(s)`);
+      }
+      toast({ 
+        title: 'Cannot lock incomplete items', 
+        description: `Please complete all required fields (Name, Definition, Primary Success Metric, Owner) before locking. ${messages.join('. ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     // 1) Lock all DOs locally and finalize the Rallying Cry
     setNodes((curr) => curr.map((n) => {
       if (n.type === 'do') {
@@ -1675,8 +1763,9 @@ const duplicateSelectedDo = useCallback(() => {
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="h-10">
                 <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
-                <TabsTrigger value="main" className="px-6">Meetings</TabsTrigger>
+                <TabsTrigger value="main" className="px-6">My Meetings</TabsTrigger>
                 <TabsTrigger value="checkins" className="px-6">My Workspace</TabsTrigger>
+                <TabsTrigger value="commitments" className="px-6">Commitments</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -1687,10 +1776,10 @@ const duplicateSelectedDo = useCallback(() => {
       </header>
 
       {/* Canvas toolbar */}
-      <div className="flex items-center gap-2 p-2 border-b bg-background">
+      <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" className="flex items-center gap-1">
+            <Button size="sm" className="flex items-center gap-1 ml-4">
               Actions <ChevronDown className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1759,7 +1848,7 @@ const duplicateSelectedDo = useCallback(() => {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px]">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,_1fr)_360px]">
         <div className="min-h-0 relative">
         {/* Watermark text in top-left of canvas */}
         <div className="absolute top-4 left-4 z-10 text-xs text-muted-foreground/60 pointer-events-none">
@@ -2809,8 +2898,9 @@ function StrategyCanvasMobileView({
               <Tabs value={activeTab} onValueChange={handleTabChange}>
                 <TabsList className="h-10">
                   <TabsTrigger value="rcdo" className="px-4 text-xs sm:px-6">RCDO</TabsTrigger>
-                  <TabsTrigger value="main" className="px-4 text-xs sm:px-6">Meetings</TabsTrigger>
+                  <TabsTrigger value="main" className="px-4 text-xs sm:px-6">My Meetings</TabsTrigger>
                   <TabsTrigger value="checkins" className="px-4 text-xs sm:px-6">My Workspace</TabsTrigger>
+                  <TabsTrigger value="commitments" className="px-4 text-xs sm:px-6">Commitments</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
