@@ -112,7 +112,7 @@ export default function TasksFeed() {
           .from('rc_defining_objectives')
           .select('id, title')
           .in('id', doIds);
-        (dos || []).forEach((d: any) => {
+        (dos || []).forEach((d) => {
           parentTitles[d.id] = { title: d.title, type: 'DO' };
         });
       }
@@ -122,7 +122,7 @@ export default function TasksFeed() {
           .from('rc_strategic_initiatives')
           .select('id, title')
           .in('id', siIds);
-        (sis || []).forEach((s: any) => {
+        (sis || []).forEach((s) => {
           parentTitles[s.id] = { title: s.title, type: 'SI' };
         });
       }
@@ -132,7 +132,7 @@ export default function TasksFeed() {
           .from('rc_tasks')
           .select('id, title')
           .in('id', taskIds);
-        (tasks || []).forEach((t: any) => {
+        (tasks || []).forEach((t) => {
           parentTitles[t.id] = { title: t.title, type: 'Task' };
         });
       }
@@ -143,7 +143,7 @@ export default function TasksFeed() {
         filteredData = filteredData.filter(c => c.creator?.id === filterOwner);
       }
 
-      const items: CheckinFeedItem[] = filteredData.map((c: any) => {
+      const items: CheckinFeedItem[] = filteredData.map((c) => {
         const parentInfo = parentTitles[c.parent_id] || { title: 'Unknown', type: c.parent_type.toUpperCase() };
         return {
           ...c,
@@ -153,7 +153,7 @@ export default function TasksFeed() {
       });
 
       setCheckins(items);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching check-ins:', err);
     } finally {
       setLoading(false);
@@ -216,7 +216,7 @@ export default function TasksFeed() {
                 <span className="text-sm font-medium">Filter:</span>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
+                <Select value={filterType} onValueChange={(val) => setFilterType(val as typeof filterType)}>
                   <SelectTrigger className="w-full sm:w-[180px] h-11 text-base">
                     <SelectValue />
                   </SelectTrigger>

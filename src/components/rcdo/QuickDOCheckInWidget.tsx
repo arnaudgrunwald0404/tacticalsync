@@ -63,7 +63,7 @@ export function QuickDOCheckInWidget() {
         .eq('owner_user_id', userId)
         .order('title', { ascending: true });
 
-      const owned = (ownerDOs || []).map((d) => ({ id: d.id, title: d.title, status: (d as any).status ?? null }));
+      const owned = (ownerDOs || []).map((d) => ({ id: d.id, title: d.title, status: d.status ?? null }));
       setOwnedDOs(owned);
 
       // Fetch latest check-in for all DOs we will display

@@ -109,7 +109,7 @@ export function TaskDialog({
 
       if (error) throw error;
       setUsers(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
         description: 'Failed to load users',
@@ -130,7 +130,7 @@ export function TaskDialog({
 
       if (error) throw error;
       setStrategicInitiatives(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
         description: 'Failed to load strategic initiatives',
@@ -163,7 +163,7 @@ export function TaskDialog({
         notes: data.notes || '',
         status: data.status || 'not_assigned',
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
         description: 'Failed to load task',
@@ -253,10 +253,10 @@ export function TaskDialog({
 
       handleClose();
       onSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err.message || `Failed to ${taskId ? 'update' : 'create'} task`,
+        description: err instanceof Error ? err.message : `Failed to ${taskId ? 'update' : 'create'} task`,
         variant: 'destructive',
       });
     } finally {

@@ -78,7 +78,7 @@ export function usePresence({
         const users: PresenceUser[] = [];
         
         Object.keys(state).forEach((key) => {
-          const presences = state[key] as any[];
+          const presences = state[key] as PresenceUser[];
           presences.forEach((presence) => {
             users.push({
               userId: presence.userId,

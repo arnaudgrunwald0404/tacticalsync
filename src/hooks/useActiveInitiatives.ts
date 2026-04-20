@@ -80,19 +80,19 @@ export function useActiveInitiatives(teamId: string | undefined) {
       console.log('🔵 useActiveInitiatives - Data length:', data?.length || 0);
 
       // Transform the data
-      const transformed: ActiveInitiative[] = (data || []).map((item: any) => ({
+      const transformed: ActiveInitiative[] = (data || []).map((item) => ({
         id: item.id,
         title: item.title,
         doId: item.defining_objective_id,
-        doTitle: item.rc_defining_objectives?.title || 'Unknown DO',
+        doTitle: (item.rc_defining_objectives as { title?: string } | null)?.title || 'Unknown DO',
         status: item.status,
       }));
 
       console.log('🔵 useActiveInitiatives - Transformed initiatives:', transformed);
       setInitiatives(transformed);
-    } catch (err: any) {
+    } catch (err) {
       console.error('❌ useActiveInitiatives - Failed to fetch active initiatives:', err);
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
       setInitiatives([]);
     } finally {
       setLoading(false);

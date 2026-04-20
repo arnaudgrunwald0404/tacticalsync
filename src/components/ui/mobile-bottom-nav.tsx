@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, BarChart3 } from "lucide-react";
+import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, BarChart3, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRoles } from "@/hooks/useRoles";
 
@@ -13,16 +13,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    id: "strategy",
-    label: "Strategy",
-    icon: Target,
-    path: "/dashboard/rcdo",
-  },
-  {
-    id: "meetings",
-    label: "My Meetings",
-    icon: Calendar,
-    path: "/my-meetings",
+    id: "cos",
+    label: "CoS",
+    icon: Brain,
+    path: "/chief-of-staff",
   },
   {
     id: "workspace",
@@ -31,16 +25,28 @@ const navItems: NavItem[] = [
     path: "/workspace",
   },
   {
-    id: "tasks",
-    label: "My tasks",
-    icon: CheckSquare,
-    path: "/dashboard/rcdo/tasks-feed",
+    id: "meetings",
+    label: "My Meetings",
+    icon: Calendar,
+    path: "/my-meetings",
   },
   {
     id: "commitments",
     label: "Commitments",
     icon: ClipboardList,
     path: "/commitments",
+  },
+  {
+    id: "strategy",
+    label: "Strategy",
+    icon: Target,
+    path: "/dashboard/rcdo",
+  },
+  {
+    id: "tasks",
+    label: "My tasks",
+    icon: CheckSquare,
+    path: "/dashboard/rcdo/tasks-feed",
   },
   {
     id: "insights",
@@ -61,6 +67,7 @@ export function MobileBottomNav() {
 
   const getActiveTab = (): string => {
     const path = location.pathname;
+    if (path.includes("/chief-of-staff")) return "cos";
     if (path.includes("/insights")) return "insights";
     if (path.includes("/dashboard/rcdo/tasks-feed")) return "tasks";
     if (path.includes("/dashboard/rcdo")) return "strategy";
@@ -78,7 +85,7 @@ export function MobileBottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border safe-area-bottom">
-      <div className={cn("grid h-16", showAdmin ? "grid-cols-6" : "grid-cols-5")}>
+      <div className={cn("grid h-16", showAdmin ? "grid-cols-7" : "grid-cols-6")}>
         {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -116,4 +123,3 @@ export function MobileBottomNav() {
     </nav>
   );
 }
-

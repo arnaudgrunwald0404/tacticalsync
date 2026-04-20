@@ -104,10 +104,10 @@ export function CheckInDialog({
 
         if (error) throw error;
         setProfiles(profilesData || []);
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast({
           title: 'Error',
-          description: err.message || 'Failed to load profiles',
+          description: err instanceof Error ? err.message : 'Failed to load profiles',
           variant: 'destructive',
         });
       } finally {
@@ -172,10 +172,10 @@ export function CheckInDialog({
 
       handleClose();
       onSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create check-in',
+        description: err instanceof Error ? err.message : 'Failed to create check-in',
         variant: 'destructive',
       });
     } finally {

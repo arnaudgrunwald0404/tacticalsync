@@ -200,7 +200,7 @@ test.describe('Security Tests', () => {
         .filter(entry => entry.name.includes('/rest/v1/'))
         .map(entry => ({
           url: entry.name,
-          status: (entry as any).responseStatus || 'unknown'
+          status: (entry as unknown as { responseStatus?: number }).responseStatus || 'unknown'
         }));
     });
 

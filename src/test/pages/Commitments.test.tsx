@@ -1,17 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@/test/test-utils';
 
+// ── Types for mock builder ────────────────────────────────────────
+interface MockBuilder {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+  then: (
+    res: (v: { data: unknown; error: null }) => unknown,
+    rej: (e: unknown) => unknown
+  ) => Promise<unknown>;
+}
+
 // ─── Supabase mock ────────────────────────────────────────────────
 vi.mock('@/integrations/supabase/client', () => {
-  const makeBuilder = (returnData: any = null, error: any = null) => {
-    const builder: any = {
+  const makeBuilder = (returnData: unknown = null, error: unknown = null): MockBuilder => {
+    const builder: MockBuilder = {
       select: vi.fn(() => builder),
       eq: vi.fn(() => builder),
       in: vi.fn(() => builder),
       limit: vi.fn(() => builder),
       order: vi.fn(() => builder),
       single: vi.fn(() => Promise.resolve({ data: returnData, error })),
-      then: (res: any, rej: any) =>
+      then: (res, rej) =>
         Promise.resolve({ data: returnData ?? [], error }).then(res, rej),
     };
     Object.setPrototypeOf(builder, Promise.prototype);
@@ -36,15 +50,15 @@ const mockUseTeamCommitments = vi.fn();
 const mockUseReportingLines = vi.fn();
 
 vi.mock('@/hooks/useCommitments', () => ({
-  useActiveQuarter: (...args: any[]) => mockUseActiveQuarter(...args),
-  useMyCommitments: (...args: any[]) => mockUseMyCommitments(...args),
-  useTeamCommitments: (...args: any[]) => mockUseTeamCommitments(...args),
-  useReportingLines: (...args: any[]) => mockUseReportingLines(...args),
+  useActiveQuarter: (...args: unknown[]) => mockUseActiveQuarter(...args),
+  useMyCommitments: (...args: unknown[]) => mockUseMyCommitments(...args),
+  useTeamCommitments: (...args: unknown[]) => mockUseTeamCommitments(...args),
+  useReportingLines: (...args: unknown[]) => mockUseReportingLines(...args),
 }));
 
 // ─── Sub-component mocks ──────────────────────────────────────────
 vi.mock('@/components/commitments/QuarterSelector', () => ({
-  QuarterSelector: ({ quarters, selected }: any) => (
+  QuarterSelector: ({ quarters, selected }: { quarters: unknown[]; selected: { label: string } | null }) => (
     <div data-testid="quarter-selector">
       {selected ? selected.label : 'No quarter selected'}
     </div>
@@ -52,20 +66,32 @@ vi.mock('@/components/commitments/QuarterSelector', () => ({
 }));
 
 vi.mock('@/components/commitments/MyCommitmentsPanel', () => ({
-  MyCommitmentsPanel: ({ quarter }: any) => (
+  MyCommitmentsPanel: ({ quarter }: { quarter: { label: string } }) => (
     <div data-testid="my-commitments-panel">{quarter.label}</div>
   ),
 }));
 
 vi.mock('@/components/commitments/TeamRollupView', () => ({
-  TeamRollupView: ({ quarter }: any) => (
+  TeamRollupView: ({ quarter }: { quarter: { label: string } }) => (
     <div data-testid="team-rollup-view">{quarter.label}</div>
   ),
 }));
 
 import Commitments from '@/pages/Commitments';
 
-const makeQuarter = (overrides: any = {}) => ({
+interface MockQuarter {
+  id: string;
+  team_id: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const makeQuarter = (overrides: Partial<MockQuarter> = {}): MockQuarter => ({
   id: 'q-1',
   team_id: 't-1',
   label: 'Q1 2026',

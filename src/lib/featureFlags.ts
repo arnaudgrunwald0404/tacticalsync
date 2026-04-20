@@ -5,7 +5,7 @@
 export const featureFlags = {
   siProgress:
     (typeof localStorage !== 'undefined' && localStorage.getItem('ff.siProgress') === '1') ||
-    String((import.meta as any).env?.VITE_FEATURE_SI_PROGRESS || '').toLowerCase() === 'true',
+    String(import.meta.env?.VITE_FEATURE_SI_PROGRESS || '').toLowerCase() === 'true',
 } as const;
 
 export type FeatureFlagKey = keyof typeof featureFlags;

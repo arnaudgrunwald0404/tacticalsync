@@ -1,20 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@/test/test-utils';
 
+// ── Types for mock query builder ────────────────────────────────────
+interface MockQueryBuilder {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+  then: ReturnType<typeof vi.fn>;
+  catch: ReturnType<typeof vi.fn>;
+}
+
 // Create a chainable query builder mock
-const createQueryBuilder = () => {
-  const builder: any = {
-    select: vi.fn(function(this: any) { return this; }),
-    eq: vi.fn(function(this: any) { return this; }),
-    in: vi.fn(function(this: any) { return this; }),
-    order: vi.fn(function(this: any) { return this; }),
-    limit: vi.fn(function(this: any) { return this; }),
-    single: vi.fn(function(this: any) { return Promise.resolve({ data: null, error: null }); }),
-    then: vi.fn(function(this: any, onResolve?: any) { 
-      return Promise.resolve({ data: [], error: null }).then(onResolve); 
+const createQueryBuilder = (): MockQueryBuilder => {
+  const builder: MockQueryBuilder = {
+    select: vi.fn(function() { return builder; }),
+    eq: vi.fn(function() { return builder; }),
+    in: vi.fn(function() { return builder; }),
+    order: vi.fn(function() { return builder; }),
+    limit: vi.fn(function() { return builder; }),
+    single: vi.fn(function() { return Promise.resolve({ data: null, error: null }); }),
+    then: vi.fn(function(onResolve?: (v: { data: unknown[]; error: null }) => unknown) {
+      return Promise.resolve({ data: [], error: null }).then(onResolve);
     }),
-    catch: vi.fn(function(this: any, onReject?: any) { 
-      return Promise.resolve({ data: [], error: null }).catch(onReject); 
+    catch: vi.fn(function(onReject?: (e: unknown) => unknown) {
+      return Promise.resolve({ data: [], error: null }).catch(onReject);
     }),
   };
   return builder;
@@ -109,8 +121,8 @@ vi.mock('reactflow', () => ({
     setEdges: vi.fn(),
     fitView: vi.fn(),
   }),
-  useNodesState: vi.fn((initial) => [[], vi.fn(), vi.fn()]),
-  useEdgesState: vi.fn((initial) => [[], vi.fn(), vi.fn()]),
+  useNodesState: vi.fn((initial: unknown) => [[], vi.fn(), vi.fn()]),
+  useEdgesState: vi.fn((initial: unknown) => [[], vi.fn(), vi.fn()]),
   MarkerType: {
     Arrow: 'arrow',
     ArrowClosed: 'arrowclosed',
@@ -192,4 +204,3 @@ describe('Page Load Tests - Basic Rendering', () => {
     unmount();
   });
 });
-

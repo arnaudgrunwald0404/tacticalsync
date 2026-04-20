@@ -10,17 +10,31 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@/test/test-utils';
 
+// ── Types for mock builder ────────────────────────────────────────
+interface MockBuilder {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+  then: (
+    res: (v: { data: unknown; error: null }) => unknown,
+    rej: (e: unknown) => unknown
+  ) => Promise<unknown>;
+}
+
 // ─── Supabase mock ────────────────────────────────────────────────
 vi.mock('@/integrations/supabase/client', () => {
-  const makeBuilder = (returnData: any = null) => {
-    const builder: any = {
+  const makeBuilder = (returnData: unknown = null): MockBuilder => {
+    const builder: MockBuilder = {
       select: vi.fn(() => builder),
       eq: vi.fn(() => builder),
       in: vi.fn(() => builder),
       limit: vi.fn(() => builder),
       order: vi.fn(() => builder),
       single: vi.fn(() => Promise.resolve({ data: returnData, error: null })),
-      then: (res: any, rej: any) =>
+      then: (res, rej) =>
         Promise.resolve({ data: returnData ?? [], error: null }).then(res, rej),
     };
     Object.setPrototypeOf(builder, Promise.prototype);
@@ -76,7 +90,7 @@ vi.mock('@/hooks/useCommitments', () => ({
 }));
 
 vi.mock('@/components/commitments/QuarterSelector', () => ({
-  QuarterSelector: ({ selected }: any) => (
+  QuarterSelector: ({ selected }: { selected: { label: string } | null }) => (
     <div data-testid="quarter-selector">{selected?.label ?? 'none'}</div>
   ),
 }));

@@ -61,7 +61,7 @@ export function MyCheckinFeedSidebar() {
           ...(ownerSIs || []), 
           ...(containsErr || !participantSIs ? [] : participantSIs)
         ];
-        const siIds = Array.from(new Set(siAll.map((s: any) => s.id)));
+        const siIds = Array.from(new Set(siAll.map((s) => s.id)));
 
         // Fetch recent check-ins for my DOs and SIs
         const feed: CheckinRow[] = [];
@@ -85,7 +85,7 @@ export function MyCheckinFeedSidebar() {
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(40);
-          feed.push(...((data as any) || []));
+          feed.push(...((data as unknown as CheckinRow[]) || []));
         }
         if (siIds.length) {
           const { data } = await supabase
@@ -107,7 +107,7 @@ export function MyCheckinFeedSidebar() {
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(40);
-          feed.push(...((data as any) || []));
+          feed.push(...((data as unknown as CheckinRow[]) || []));
         }
 
         // Sort combined feed by date/created_at desc
@@ -121,7 +121,7 @@ export function MyCheckinFeedSidebar() {
         // Build title map
         const titleMap: Record<string, string> = {};
         (myDOs || []).forEach((d) => { titleMap[d.id] = d.title; });
-        siAll.forEach((s: any) => { titleMap[s.id] = s.title; });
+        siAll.forEach((s) => { titleMap[s.id] = s.title; });
         setTitlesById(titleMap);
       } finally {
         setLoading(false);

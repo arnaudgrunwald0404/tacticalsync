@@ -66,11 +66,11 @@ export function useSIWithProgress(siId: string | undefined) {
       };
 
       setSiData(result);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching SI with progress:', err);
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch SI data',
+        description: err instanceof Error ? err.message : 'Failed to fetch SI data',
         variant: 'destructive',
       });
       setSiData(null);
@@ -158,11 +158,11 @@ export function useSIsWithProgressForDO(doId: string | undefined) {
       }
 
       setSisWithProgress(result);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching SIs with progress:', err);
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch SI data',
+        description: err instanceof Error ? err.message : 'Failed to fetch SI data',
         variant: 'destructive',
       });
       setSisWithProgress(new Map());

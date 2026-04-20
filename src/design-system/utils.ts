@@ -13,7 +13,7 @@ import { colors, spacing, typography, borderRadius, shadows } from './tokens';
  */
 export function getColor(path: string): string {
   const parts = path.split('.');
-  let value: any = colors;
+  let value: Record<string, unknown> = colors as Record<string, unknown>;
   
   for (const part of parts) {
     value = value[part];
@@ -68,9 +68,8 @@ export function hexToHsl(hex: string): string {
 
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  let h: number, s: number, l: number;
-
-  l = (max + min) / 2;
+  let h: number, s: number;
+  const l = (max + min) / 2;
 
   if (max === min) {
     h = s = 0;
@@ -106,7 +105,7 @@ export function getTailwindColor(
   colorName: string,
   property: 'bg' | 'text' | 'border' = 'bg'
 ): string {
-  const colorMap: Record<string, any> = {
+  const colorMap: Record<string, Record<string, { hex?: string } | string>> = {
     primary: colors.primary,
     secondary: colors.secondary,
     semantic: colors.semantic,

@@ -66,7 +66,7 @@ export function QuickUnifiedCheckInWidget() {
         .order('title', { ascending: true });
 
       // Participant SIs
-      let participantSIs: any[] | null = null;
+      let participantSIs: Array<{ id: string; title: string; status: string | null; participant_user_ids: string[] }> | null = null;
       const { data: participantContains, error: containsErr } = await supabase
         .from('rc_strategic_initiatives')
         .select('id, title, status, participant_user_ids')
@@ -84,7 +84,7 @@ export function QuickUnifiedCheckInWidget() {
         siItems.push({ id: s.id, title: s.title, status: s.status ?? null, kind: 'si' });
       }
 
-      const doItems: DOItem[] = (ownerDOs || []).map((d) => ({ id: d.id, title: d.title, status: (d as any).status ?? null, kind: 'do' }));
+      const doItems: DOItem[] = (ownerDOs || []).map((d) => ({ id: d.id, title: d.title, status: d.status ?? null, kind: 'do' }));
 
       // Combine and sort alphabetically by title
       const combined: Item[] = [...doItems, ...siItems].sort((a, b) => a.title.localeCompare(b.title));

@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
-interface UseRealtimeSubscriptionOptions<T = any> {
+interface UseRealtimeSubscriptionOptions<T = Record<string, unknown>> {
   table: string;
   filter?: string;
   onInsert?: (payload: RealtimePostgresChangesPayload<T>) => void;
@@ -15,7 +15,7 @@ interface UseRealtimeSubscriptionOptions<T = any> {
  * Hook to subscribe to real-time database changes from Supabase
  * Automatically handles cleanup and reconnection
  */
-export function useRealtimeSubscription<T = any>({
+export function useRealtimeSubscription<T = Record<string, unknown>>({
   table,
   filter,
   onInsert,
@@ -44,7 +44,7 @@ export function useRealtimeSubscription<T = any>({
     const channel = supabase.channel(channelName);
 
     // Build the subscription query
-    let subscriptionQuery = channel.on(
+    const subscriptionQuery = channel.on(
       'postgres_changes',
       {
         event: '*',

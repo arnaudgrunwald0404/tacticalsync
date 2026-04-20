@@ -37,15 +37,15 @@ export function useRoles(): RolesState {
         const emailIsSuperAdmin = emailLower === "agrunwald@clearcompany.com"
           || emailLower.endsWith("@gearcompany.com");
 
-        const row: any = data as any;
-        let effectiveIsSuperAdmin = Boolean(row?.is_super_admin) || emailIsSuperAdmin;
-        let effectiveIsAdmin = Boolean(row?.is_admin) || effectiveIsSuperAdmin;
-        let effectiveIsRCDOAdmin = Boolean(row?.is_rcdo_admin) || effectiveIsSuperAdmin;
+        const row = data as { is_super_admin?: boolean; is_admin?: boolean; is_rcdo_admin?: boolean } | null;
+        const effectiveIsSuperAdmin = Boolean(row?.is_super_admin) || emailIsSuperAdmin;
+        const effectiveIsAdmin = Boolean(row?.is_admin) || effectiveIsSuperAdmin;
+        const effectiveIsRCDOAdmin = Boolean(row?.is_rcdo_admin) || effectiveIsSuperAdmin;
 
         // If email implies super admin but DB flag is false, try to persist it (best-effort)
-        if (emailIsSuperAdmin && !Boolean(row?.is_super_admin)) {
+        if (emailIsSuperAdmin && !row?.is_super_admin) {
           try {
-            await supabase.from("profiles").update({ is_super_admin: true } as any).eq("id", user.id);
+            await supabase.from("profiles").update({ is_super_admin: true }).eq("id", user.id);
           } catch {
             // non-fatal
           }

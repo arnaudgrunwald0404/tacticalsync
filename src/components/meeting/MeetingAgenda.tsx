@@ -6,12 +6,29 @@ import { AgendaItem } from "@/types/agenda";
 import { useToast } from "@/components/ui/use-toast";
 import debounce from "lodash/debounce";
 
-const MeetingAgenda = forwardRef<any, any>((props, ref) => {
+interface MeetingAgendaProps {
+  items: AgendaItem[];
+  meetingId: string;
+  onUpdate: () => void | Promise<void>;
+  isAdmin?: boolean;
+  currentUserId?: string;
+}
+
+const MeetingAgenda = forwardRef<{ startEditing: () => void; isEditing: () => boolean; saveChanges: () => Promise<void>; cancelEditing: () => void }, MeetingAgendaProps>((props, ref) => {
   const { items, meetingId, onUpdate, isAdmin: isAdminProp } = props;
   const { state, actions } = useMeetingData(props);
   const { toast } = useToast();
-  const [systemTemplates, setSystemTemplates] = useState<any[]>([]);
-  const [userTemplates, setUserTemplates] = useState<any[]>([]);
+  interface AgendaTemplate {
+    id: string;
+    name: string;
+    description?: string;
+    is_system: boolean;
+    user_id?: string;
+    created_at: string;
+    items: Array<{ id: string; title: string; order_index: number; duration_minutes?: number }>;
+  }
+  const [systemTemplates, setSystemTemplates] = useState<AgendaTemplate[]>([]);
+  const [userTemplates, setUserTemplates] = useState<AgendaTemplate[]>([]);
   const [adoptingTemplate, setAdoptingTemplate] = useState(false);
 
   // Fetch both system and user templates
@@ -54,7 +71,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
     return items.every(item => item.title.trim().length > 0);
   };
 
-  const adoptSystemTemplate = async (template: any) => {
+  const adoptSystemTemplate = async (template: AgendaTemplate) => {
     if (!meetingId) return;
     setAdoptingTemplate(true);
 
@@ -81,7 +98,7 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
       if (deleteError) throw deleteError;
 
       // Create agenda items from template
-      const items = template.items.map((item: any, index: number) => ({
+      const items = template.items.map((item, index) => ({
         series_id: meetingData.series_id,
         title: item.title,
         notes: "",
@@ -181,10 +198,10 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
         title: "Started new agenda",
         description: "You can now add your agenda items",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to start new agenda",
+        description: error instanceof Error ? error.message : "Failed to start new agenda",
         variant: "destructive",
       });
     }
@@ -211,15 +228,24 @@ const MeetingAgenda = forwardRef<any, any>((props, ref) => {
 
       // Build upsert payload (existing keep id, new omit id)
       const upsertRows = state.editingItems.map(item => {
-        const base = {
-          series_id: undefined as any, // to be filled below
+        const base: {
+          series_id: string | undefined;
+          title: string;
+          notes: string | null;
+          assigned_to: string | null;
+          time_minutes: number | null;
+          order_index: number;
+          created_by: string;
+          id?: string;
+        } = {
+          series_id: undefined, // to be filled below
           title: item.title,
           notes: item.notes || null,
           assigned_to: item.assigned_to || null,
           time_minutes: item.time_minutes ?? null,
           order_index: item.order_index,
           created_by: user.id,
-        } as any;
+        };
         if (!item.id.startsWith('temp-')) {
           base.id = item.id;
         }

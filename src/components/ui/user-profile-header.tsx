@@ -20,7 +20,14 @@ export function UserProfileHeader() {
   const navigate = useNavigate();
   const { isAdmin, isSuperAdmin } = useRoles();
   const isMobile = useIsMobile();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<{
+    first_name?: string | null;
+    last_name?: string | null;
+    full_name?: string | null;
+    avatar_name?: string | null;
+    avatar_url?: string | null;
+    email?: string | null;
+  } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {

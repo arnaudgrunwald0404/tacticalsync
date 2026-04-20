@@ -25,7 +25,13 @@ interface CommentsDialogProps {
 
 const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialogProps) => {
   const { toast } = useToast();
-  const [comments, setComments] = useState<any[]>([]);
+  interface Comment {
+    id: string;
+    content: string;
+    created_at: string;
+    profiles?: { id?: string; full_name?: string | null; first_name?: string | null; last_name?: string | null; email?: string | null; avatar_url?: string | null; avatar_name?: string | null } | null;
+  }
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -53,7 +59,7 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
     }
   };
 
-  const getDisplayName = (profile: any) => {
+  const getDisplayName = (profile: { full_name?: string | null; first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined) => {
     if (!profile) return "Unknown";
     const firstName = profile.first_name || "";
     const lastName = profile.last_name || "";

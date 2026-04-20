@@ -85,7 +85,7 @@ export function InitiativeDialog({
 
       if (error) throw error;
       setUsers(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
         description: 'Failed to load users',
@@ -164,10 +164,10 @@ export function InitiativeDialog({
 
       handleClose();
       onSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create initiative',
+        description: err instanceof Error ? err.message : 'Failed to create initiative',
         variant: 'destructive',
       });
     } finally {

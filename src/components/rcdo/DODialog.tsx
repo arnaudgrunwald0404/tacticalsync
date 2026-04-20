@@ -92,7 +92,7 @@ const fetchUsers = async () => {
 
       if (error) throw error;
       setUsers(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
         description: 'Failed to load users',
@@ -171,10 +171,10 @@ const fetchUsers = async () => {
 
       handleClose();
       onSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create defining objective',
+        description: err instanceof Error ? err.message : 'Failed to create defining objective',
         variant: 'destructive',
       });
     } finally {

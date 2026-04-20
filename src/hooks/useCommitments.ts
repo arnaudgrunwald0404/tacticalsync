@@ -33,8 +33,8 @@ export function useActiveQuarter(teamId: string | null) {
       const rows = (data ?? []) as CommitmentQuarter[];
       setQuarters(rows);
       setQuarter(rows.find(q => q.status === 'active') ?? rows[0] ?? null);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -89,8 +89,8 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
       if (comRes.error) throw comRes.error;
       setPriorities((priRes.data ?? []) as PersonalPriority[]);
       setCommitments((comRes.data ?? []) as MonthlyCommitment[]);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -171,8 +171,8 @@ export function useReportingLines(teamId: string | null) {
         .eq('team_id', teamId);
       if (error) throw error;
       setLines((data ?? []) as TeamReportingLine[]);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -261,8 +261,8 @@ export function useTeamCommitments(
         priorities: (priRes.data ?? []) as PersonalPriority[],
         commitments: (comRes.data ?? []) as MonthlyCommitment[],
       });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, MessageSquare } from 'lucide-react';
 import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins } from '@/hooks/useRCDO';
+import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
@@ -34,7 +35,7 @@ export default function DODetail() {
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [selectedInitiative, setSelectedInitiative] = useState<any>(null);
+  const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
@@ -87,10 +88,11 @@ export default function DODetail() {
 
   const loading = doLoading || metricsLoading || initiativesLoading || linksLoading || checkinsLoading;
 
+  type ProfileEntry = { id: string; full_name?: string | null; avatar_name?: string | null; avatar_url?: string | null };
   // Profiles for owner selection - load on mount
-  const [profiles, setProfiles] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(true);
-  
+
   useEffect(() => {
     const loadProfiles = async () => {
       setProfilesLoading(true);
@@ -98,7 +100,7 @@ export default function DODetail() {
         .from('profiles')
         .select('id, full_name, avatar_name, avatar_url')
         .order('full_name', { ascending: true });
-      if (!error && data) setProfiles(data as any[]);
+      if (!error && data) setProfiles(data as ProfileEntry[]);
       setProfilesLoading(false);
     };
     loadProfiles();
@@ -130,7 +132,7 @@ export default function DODetail() {
         if (error || !data || data.length === 0) return;
         setProfiles((prev) => {
           const map = new Map(prev.map((p) => [p.id, p] as const));
-          for (const row of data as any[]) map.set(row.id, row);
+          for (const row of data as ProfileEntry[]) map.set(row.id, row);
           return Array.from(map.values());
         });
       });
@@ -187,8 +189,8 @@ export default function DODetail() {
     if (!doDetails) return;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const updates: any = { 
-        locked_at: new Date().toISOString(), 
+      const updates: Record<string, unknown> = {
+        locked_at: new Date().toISOString(),
         locked_by: user?.id || null,
         status: 'final'
       };
@@ -206,8 +208,8 @@ export default function DODetail() {
   const handleUnlock = async () => {
     if (!doDetails) return;
     try {
-      const updates: any = { 
-        locked_at: null, 
+      const updates: Record<string, unknown> = {
+        locked_at: null,
         locked_by: null,
         status: 'draft'
       };

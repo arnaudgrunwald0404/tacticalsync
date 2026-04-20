@@ -9,7 +9,7 @@ describe('utils', () => {
     });
 
     it('should handle conditional classes', () => {
-      const result = cn('base', true && 'conditional', false && 'not-included');
+      const result = cn('base', (true as boolean) && 'conditional', (false as boolean) && 'not-included');
       expect(result).toBe('base conditional');
     });
 

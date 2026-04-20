@@ -53,8 +53,7 @@ export function useUserCheckins() {
         .select('id, title, owner_user_id, participant_user_ids')
         .contains('participant_user_ids', [user.id]);
 
-      let uniqueSIs: any[];
-      let siIds: string[];
+      let uniqueSIs: { id: string; title: string; owner_user_id: string; participant_user_ids: string[] | null }[];
 
       if (participantSiError) {
         console.error('Error fetching participant SIs:', participantSiError);
@@ -89,11 +88,11 @@ export function useUserCheckins() {
 
       console.log(`Found ${uniqueSIs.length} SIs for user (${ownerSIs?.length || 0} owned, ${participantSiError ? 'error fetching participants' : (participantSIs?.length || 0)} as participant)`);
 
-      siIds = uniqueSIs.map(si => si.id);
+      const siIds = uniqueSIs.map(si => si.id);
 
 
       // Fetch check-ins for user's SIs
-      let filteredSICheckins: any[] = [];
+      let filteredSICheckins: UserCheckinWithParent[] = [];
       if (siIds.length > 0) {
         const { data: siCheckins, error: checkinSiError } = await supabase
           .from('rc_checkins')
@@ -109,18 +108,18 @@ export function useUserCheckins() {
         if (checkinSiError) throw checkinSiError;
 
         // Map to include parent name
-        filteredSICheckins = (siCheckins || []).map((checkin: any) => {
+        filteredSICheckins = (siCheckins || []).map((checkin) => {
           const si = uniqueSIs.find(s => s.id === checkin.parent_id);
           return {
             ...checkin,
             parent_name: si?.title,
             parent_type_label: 'SI' as const,
-          };
+          } as UserCheckinWithParent;
         });
       }
 
       // Fetch check-ins for user's DOs
-      let filteredDOCheckins: any[] = [];
+      let filteredDOCheckins: UserCheckinWithParent[] = [];
       if (doIds.length > 0) {
         const { data: doCheckins, error: checkinDoError } = await supabase
           .from('rc_checkins')
@@ -136,13 +135,13 @@ export function useUserCheckins() {
         if (checkinDoError) throw checkinDoError;
 
         // Map to include parent name
-        filteredDOCheckins = (doCheckins || []).map((checkin: any) => {
+        filteredDOCheckins = (doCheckins || []).map((checkin) => {
           const definingObjective = userDOs?.find(d => d.id === checkin.parent_id);
           return {
             ...checkin,
             parent_name: definingObjective?.title,
             parent_type_label: 'DO' as const,
-          };
+          } as UserCheckinWithParent;
         });
       }
 
@@ -155,10 +154,10 @@ export function useUserCheckins() {
       });
 
       setCheckins(allCheckins as UserCheckinWithParent[]);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch check-ins',
+        description: err instanceof Error ? err.message : 'Failed to fetch check-ins',
         variant: 'destructive',
       });
       setCheckins([]);

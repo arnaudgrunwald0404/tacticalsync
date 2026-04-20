@@ -133,10 +133,10 @@ export default function StrategyHome() {
       });
 
       await refetchCycles();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to activate cycle',
+        description: err instanceof Error ? err.message : 'Failed to activate cycle',
         variant: 'destructive',
       });
     } finally {
@@ -164,10 +164,10 @@ export default function StrategyHome() {
       });
 
       await refetchCycles();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to delete cycle',
+        description: err instanceof Error ? err.message : 'Failed to delete cycle',
         variant: 'destructive',
       });
     } finally {

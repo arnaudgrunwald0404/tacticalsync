@@ -9,6 +9,7 @@ const StrategyHome = lazy(() => import("./StrategyHome"));
 const LazyCheckinsPage = lazy(() => import("./Checkins"));
 const LazyCommitmentsPage = lazy(() => import("./Commitments"));
 const LazyInsightsPage = lazy(() => import("./Insights"));
+const LazyChiefOfStaffPage = lazy(() => import("./ChiefOfStaff"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
@@ -25,6 +26,8 @@ const DashboardWithTabs = () => {
   // Determine active tab from URL
   const activeTab = location.pathname.includes('/insights')
     ? 'insights'
+    : location.pathname.includes('/chief-of-staff')
+    ? 'cos'
     : location.pathname.includes('/dashboard/rcdo/tasks-feed')
     ? 'tasks'
     : location.pathname.includes('/dashboard/rcdo')
@@ -51,6 +54,8 @@ const DashboardWithTabs = () => {
       navigate('/commitments');
     } else if (value === 'insights') {
       navigate('/insights');
+    } else if (value === 'cos') {
+      navigate('/chief-of-staff');
     }
   };
 
@@ -66,7 +71,7 @@ const DashboardWithTabs = () => {
   }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
 
   return (
-    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+    <GridBackground inverted className="min-h-screen bg-gradient-to-br from-platinum via-white to-white-gold overscroll-none">
       <header className="sticky top-0 z-50 border-b bg-white">
         <div className="container mx-auto px-4 py-3 sm:py-4 relative">
           {/* Reserve space for absolutely positioned avatar (right-4 = 1rem = 16px, plus ~180px for avatar+name) */}
@@ -78,12 +83,12 @@ const DashboardWithTabs = () => {
                   onClick={() => navigate('/my-meetings')}
                   className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap flex-shrink-0"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4"/>
                   Back
                 </button>
               )}
 
-              <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100 flex-shrink-0" />
+              <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100 flex-shrink-0"/>
             </div>
 
             {/* Center: Tabs - Hidden on mobile, centered with constraints to prevent overlap */}
@@ -91,10 +96,11 @@ const DashboardWithTabs = () => {
               <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
                 <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full max-w-fit">
                   <TabsList className="h-10">
-                    <TabsTrigger value="rcdo" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">RCDO</TabsTrigger>
-                    <TabsTrigger value="main" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Meetings</TabsTrigger>
+                    <TabsTrigger value="cos" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">CoS 🧠</TabsTrigger>
                     <TabsTrigger value="checkins" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Workspace</TabsTrigger>
+                    <TabsTrigger value="main" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Meetings</TabsTrigger>
                     <TabsTrigger value="commitments" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Commitments</TabsTrigger>
+                    <TabsTrigger value="rcdo" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">RCDO</TabsTrigger>
                     {showInsights && (
                       <TabsTrigger value="insights" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Insights</TabsTrigger>
                     )}
@@ -110,6 +116,14 @@ const DashboardWithTabs = () => {
       </header>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsContent value="cos" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
+          {activeTab === 'cos' ? (
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Chief of Staff…</div>}>
+              <LazyChiefOfStaffPage />
+            </Suspense>
+          ) : null}
+        </TabsContent>
+
         <TabsContent value="checkins" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'checkins' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-ins…</div>}>
@@ -122,7 +136,7 @@ const DashboardWithTabs = () => {
         <TabsContent value="main" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           <DashboardMain />
         </TabsContent>
-        
+
         <TabsContent value="rcdo" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'rcdo' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading RCDO…</div>}>
@@ -157,4 +171,3 @@ const DashboardWithTabs = () => {
 };
 
 export default DashboardWithTabs;
-
