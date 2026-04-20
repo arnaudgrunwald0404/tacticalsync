@@ -251,10 +251,10 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 w-full sm:w-auto">
-          <TabsTrigger value="brief">Tonight's Brief</TabsTrigger>
+        <TabsList className="mb-6 w-full grid grid-cols-4">
+          <TabsTrigger value="brief">Brief</TabsTrigger>
           <TabsTrigger value="priorities">Priorities</TabsTrigger>
-          <TabsTrigger value="dci">DCI History</TabsTrigger>
+          <TabsTrigger value="dci">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
@@ -387,8 +387,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onMove, onCo
                 <h3 className="font-semibold">{CATEGORY_LABELS[category]}</h3>
                 <Badge variant="secondary" className="text-xs">{items.length}</Badge>
               </div>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onAdd(category)}>
-                <Plus className="h-3.5 w-3.5 mr-1" />
+              <Button size="sm" variant="ghost" className="h-9 text-sm" onClick={() => onAdd(category)}>
+                <Plus className="h-4 w-4 mr-1" />
                 Add
               </Button>
             </div>
@@ -452,28 +452,28 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start gap-2">
-          {/* Reorder arrows */}
-          <div className="flex flex-col gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+          {/* Reorder arrows — always visible on mobile, hover-only on desktop */}
+          <div className="flex flex-col flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => onMove(item.id, 'up')}
               disabled={isFirst}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
             >
-              <ChevronUp className="h-3.5 w-3.5" />
+              <ChevronUp className="h-4 w-4" />
             </button>
             <button
               onClick={() => onMove(item.id, 'down')}
               disabled={isLast}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
             >
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className="h-4 w-4" />
             </button>
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
             {editing ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <Input
                   value={editText}
                   onChange={e => setEditText(e.target.value)}
@@ -481,14 +481,14 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     if (e.key === 'Enter') saveText();
                     if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
                   }}
-                  className="h-7 text-sm"
+                  className="h-10 text-sm"
                   autoFocus
                 />
-                <button onClick={saveText} className="text-green-600 hover:text-green-700 flex-shrink-0">
-                  <Check className="h-4 w-4" />
+                <button onClick={saveText} className="p-2 text-green-600 hover:text-green-700 flex-shrink-0">
+                  <Check className="h-5 w-5" />
                 </button>
-                <button onClick={() => { setEditText(item.text); setEditing(false); }} className="text-muted-foreground hover:text-foreground flex-shrink-0">
-                  <X className="h-4 w-4" />
+                <button onClick={() => { setEditText(item.text); setEditing(false); }} className="p-2 text-muted-foreground hover:text-foreground flex-shrink-0">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             ) : (
@@ -515,17 +515,15 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
+                    className="h-10 text-sm"
                     onClick={() => onCopy(buildPrompt('recommend'))}
                   >
                     💡 Recommend next step
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
+                    className="h-10 text-sm"
                     onClick={() => onCopy(buildPrompt('draft'))}
                   >
                     ✍️ Draft message
@@ -536,7 +534,7 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     placeholder="Ask agent..."
                     value={agentQuery}
                     onChange={e => setAgentQuery(e.target.value)}
-                    className="h-7 text-sm"
+                    className="h-10 text-sm"
                     onKeyDown={e => {
                       if (e.key === 'Enter' && agentQuery.trim()) {
                         onCopy(buildPrompt('custom', agentQuery.trim()));
@@ -545,9 +543,8 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     }}
                   />
                   <Button
-                    size="sm"
                     variant="ghost"
-                    className="h-7 px-2 flex-shrink-0"
+                    className="h-10 px-3 flex-shrink-0"
                     disabled={!agentQuery.trim()}
                     onClick={() => {
                       if (agentQuery.trim()) {
@@ -556,28 +553,28 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                       }
                     }}
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    <Send className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right controls */}
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Right controls — always visible on mobile, hover-only on desktop */}
+          <div className="flex items-center flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-muted-foreground hover:text-foreground"
+              className="p-2 text-muted-foreground hover:text-foreground"
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
-              <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+              <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="text-muted-foreground hover:text-destructive"
+              className="p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -616,13 +613,13 @@ function DciLogItem({
             {text}
           </p>
           {/* Status picker */}
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {STATUS_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => onStatusChange(status === opt.value ? null : opt.value)}
                 className={cn(
-                  'text-xs px-2 py-0.5 rounded-full border transition-all',
+                  'text-sm px-3 py-2 rounded-full border transition-all touch-manipulation',
                   status === opt.value
                     ? opt.color
                     : 'bg-transparent text-muted-foreground border-border hover:border-foreground/40',
@@ -639,8 +636,8 @@ function DciLogItem({
               onChange={e => setLocalComment(e.target.value)}
               onBlur={() => onCommentChange(localComment)}
               placeholder="Add a note..."
-              rows={1}
-              className="text-xs resize-none min-h-0 h-auto py-1.5"
+              rows={2}
+              className="text-sm resize-none"
             />
           )}
         </div>
@@ -654,7 +651,7 @@ function DciLogCard({ log, onUpdate, onRerun }: {
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
   onRerun: (log: CosDciLog) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const items = [
     { text: log.priority_1, statusKey: 'priority_1_status' as const, commentKey: 'priority_1_comment' as const, status: log.priority_1_status, comment: log.priority_1_comment },
     { text: log.priority_2, statusKey: 'priority_2_status' as const, commentKey: 'priority_2_comment' as const, status: log.priority_2_status, comment: log.priority_2_comment },
@@ -681,10 +678,10 @@ function DciLogCard({ log, onUpdate, onRerun }: {
           </div>
           <button
             onClick={() => setExpanded(e => !e)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors"
             aria-label={expanded ? 'Collapse' : 'Expand'}
           >
-            <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+            <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
           </button>
         </div>
 
@@ -711,18 +708,15 @@ function DciLogCard({ log, onUpdate, onRerun }: {
         )}
 
         {/* Actions */}
-        {expanded && (
-          <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={() => onRerun(log)}
-            >
-              🔄 Rerun DCI
-            </Button>
-          </div>
-        )}
+        <div className="mt-4 pt-3 border-t border-border/50">
+          <Button
+            variant="outline"
+            className="h-10 text-sm w-full sm:w-auto"
+            onClick={() => onRerun(log)}
+          >
+            🔄 Rerun DCI
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -819,9 +813,8 @@ function TeamSection({ members, onCopy }: {
             )}
           </div>
           <Button
-            size="sm"
             variant="outline"
-            className="h-7 text-xs flex-shrink-0"
+            className="h-10 text-sm flex-shrink-0"
             onClick={() => onCopy(buildPrepPrompt(member), 'Prep prompt copied — paste into Cowork')}
           >
             Prep 1:1
