@@ -27,6 +27,8 @@ interface CosPriority {
   updated_at: string;
 }
 
+type DciItemStatus = 'done' | 'in_progress' | 'blocked' | 'deferred';
+
 interface CosDciLog {
   id: string;
   user_id: string;
@@ -37,6 +39,12 @@ interface CosDciLog {
   topic_raised: string | null;
   notes: string | null;
   created_at: string;
+  priority_1_status: DciItemStatus | null;
+  priority_1_comment: string | null;
+  priority_2_status: DciItemStatus | null;
+  priority_2_comment: string | null;
+  priority_3_status: DciItemStatus | null;
+  priority_3_comment: string | null;
 }
 
 interface CosTeamMember {
@@ -161,6 +169,65 @@ export default function ChiefOfStaff() {
     }
   };
 
+  const updateDciLog = async (id: string, updates: Partial<CosDciLog>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_dci_logs').update(updates).eq('id', id).select().single();
+    if (!error && data) setDciLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } as CosDciLog : l));
+  };
+
+  const rerunDci = async (log: CosDciLog) => {
+    if (!userId) return;
+    const items = [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text && i.status !== 'done');
+
+    const newPriorities = items.map(i => i.text!);
+    const topic = `Rerun from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}`;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
+      user_id: userId,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      priority_1: newPriorities[0] ?? null,
+      priority_2: newPriorities[1] ?? null,
+      priority_3: newPriorities[2] ?? null,
+      topic_raised: topic,
+    }).select().single();
+
+    if (!error && data) {
+      setDciLogs(prev => [data as CosDciLog, ...prev]);
+      toast({ title: 'New brief created from undone items' });
+    }
+
+    // Also build agentic context and copy to clipboard
+    const statusLabel: Record<string, string> = {
+      done: '✅ Done', in_progress: '🔄 In Progress', blocked: '🚫 Blocked', deferred: '⏭️ Deferred',
+    };
+    const lines = [
+      `DCI Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
+      `Original brief from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}:`,
+      '',
+    ];
+    [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text).forEach((item, i) => {
+      lines.push(`${i + 1}. ${item.text}`);
+      if (item.status) lines.push(`   Status: ${statusLabel[item.status] ?? item.status}`);
+      if (item.comment) lines.push(`   Note: ${item.comment}`);
+    });
+    if (newPriorities.length > 0) {
+      lines.push('', 'Still open for next DCI:');
+      newPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
+    }
+    lines.push('', 'Given this context, please: (1) identify what needs the most attention right now, (2) suggest any adjustments to the remaining priorities, and (3) draft a brief update I can share with my team.');
+
+    copyToClipboard(lines.join('\n'), 'Review prompt copied — paste into Cowork');
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-6 max-w-4xl space-y-4">
@@ -211,7 +278,7 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="dci">
-          <DciHistory logs={dciLogs} />
+          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={rerunDci} />
         </TabsContent>
 
         <TabsContent value="team">
@@ -521,7 +588,155 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
 
 // ── DCI History ───────────────────────────────────────────────────────────────
 
-function DciHistory({ logs }: { logs: CosDciLog[] }) {
+const STATUS_OPTIONS: { value: DciItemStatus; label: string; color: string }[] = [
+  { value: 'done',        label: '✅ Done',        color: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400' },
+  { value: 'in_progress', label: '🔄 In Progress', color: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400' },
+  { value: 'blocked',     label: '🚫 Blocked',     color: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-400' },
+  { value: 'deferred',    label: '⏭️ Deferred',   color: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-400' },
+];
+
+function DciLogItem({
+  index, text, status, comment, onStatusChange, onCommentChange,
+}: {
+  index: number;
+  text: string;
+  status: DciItemStatus | null;
+  comment: string | null;
+  onStatusChange: (s: DciItemStatus | null) => void;
+  onCommentChange: (c: string) => void;
+}) {
+  const [localComment, setLocalComment] = useState(comment ?? '');
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start gap-2">
+        <span className="flex-shrink-0 w-5 text-xs text-muted-foreground mt-0.5">{index}.</span>
+        <div className="flex-1 min-w-0 space-y-2">
+          <p className={cn('text-sm font-medium leading-snug', status === 'done' && 'line-through text-muted-foreground')}>
+            {text}
+          </p>
+          {/* Status picker */}
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => onStatusChange(status === opt.value ? null : opt.value)}
+                className={cn(
+                  'text-xs px-2 py-0.5 rounded-full border transition-all',
+                  status === opt.value
+                    ? opt.color
+                    : 'bg-transparent text-muted-foreground border-border hover:border-foreground/40',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Comment field — shown when status set or comment exists */}
+          {(status || localComment) && (
+            <Textarea
+              value={localComment}
+              onChange={e => setLocalComment(e.target.value)}
+              onBlur={() => onCommentChange(localComment)}
+              placeholder="Add a note..."
+              rows={1}
+              className="text-xs resize-none min-h-0 h-auto py-1.5"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DciLogCard({ log, onUpdate, onRerun }: {
+  log: CosDciLog;
+  onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
+  onRerun: (log: CosDciLog) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const items = [
+    { text: log.priority_1, statusKey: 'priority_1_status' as const, commentKey: 'priority_1_comment' as const, status: log.priority_1_status, comment: log.priority_1_comment },
+    { text: log.priority_2, statusKey: 'priority_2_status' as const, commentKey: 'priority_2_comment' as const, status: log.priority_2_status, comment: log.priority_2_comment },
+    { text: log.priority_3, statusKey: 'priority_3_status' as const, commentKey: 'priority_3_comment' as const, status: log.priority_3_status, comment: log.priority_3_comment },
+  ].filter(i => i.text);
+
+  const doneCount = items.filter(i => i.status === 'done').length;
+  const hasAnyStatus = items.some(i => i.status);
+
+  return (
+    <Card className={cn('transition-colors', hasAnyStatus && 'border-primary/20')}>
+      <CardContent className="p-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold">
+              {format(new Date(log.date + 'T12:00:00'), 'EEEE, MMM d yyyy')}
+            </p>
+            {hasAnyStatus && (
+              <Badge variant="secondary" className="text-xs">
+                {doneCount}/{items.length} done
+              </Badge>
+            )}
+          </div>
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+          >
+            <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+          </button>
+        </div>
+
+        {/* Priority items */}
+        <div className="space-y-3">
+          {items.map((item, i) => (
+            <DciLogItem
+              key={i}
+              index={i + 1}
+              text={item.text!}
+              status={item.status}
+              comment={item.comment}
+              onStatusChange={s => onUpdate(log.id, { [item.statusKey]: s })}
+              onCommentChange={c => onUpdate(log.id, { [item.commentKey]: c || null })}
+            />
+          ))}
+        </div>
+
+        {log.topic_raised && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <span className="text-xs text-muted-foreground">Topic raised: </span>
+            <span className="text-sm">{log.topic_raised}</span>
+          </div>
+        )}
+
+        {/* Actions */}
+        {expanded && (
+          <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => onRerun(log)}
+            >
+              🔄 Rerun DCI
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DciHistory({ logs, onUpdate, onRerun }: {
+  logs: CosDciLog[];
+  onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
+  onRerun: (log: CosDciLog) => void;
+}) {
+  const totalDone = logs.reduce((acc, log) => {
+    return acc + [log.priority_1_status, log.priority_2_status, log.priority_3_status].filter(s => s === 'done').length;
+  }, 0);
+
   return (
     <div className="space-y-6">
       <div>
@@ -537,8 +752,7 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
         </Card>
       ) : (
         <>
-          {/* Simple theme analytics */}
-          {logs.length >= 3 && (
+          {logs.length >= 2 && (
             <Card className="bg-muted/40 border-dashed">
               <CardContent className="p-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick stats</p>
@@ -548,9 +762,11 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
                     <span className="text-muted-foreground ml-1">briefs</span>
                   </div>
                   <div>
-                    <span className="font-semibold">
-                      {logs.filter(l => l.topic_raised).length}
-                    </span>
+                    <span className="font-semibold">{totalDone}</span>
+                    <span className="text-muted-foreground ml-1">items marked done</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold">{logs.filter(l => l.topic_raised).length}</span>
                     <span className="text-muted-foreground ml-1">had topics raised</span>
                   </div>
                 </div>
@@ -560,27 +776,7 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
 
           <div className="space-y-3">
             {logs.map(log => (
-              <Card key={log.id}>
-                <CardContent className="p-4">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    {format(new Date(log.date + 'T12:00:00'), 'EEEE, MMM d yyyy')}
-                  </p>
-                  <div className="space-y-1">
-                    {[log.priority_1, log.priority_2, log.priority_3].filter(Boolean).map((p, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="text-xs text-muted-foreground mt-0.5 flex-shrink-0">{i + 1}.</span>
-                        <span className="text-sm">{p}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {log.topic_raised && (
-                    <div className="mt-2 pt-2 border-t border-border/50">
-                      <span className="text-xs text-muted-foreground">Topic raised: </span>
-                      <span className="text-sm">{log.topic_raised}</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <DciLogCard key={log.id} log={log} onUpdate={onUpdate} onRerun={onRerun} />
             ))}
           </div>
         </>
