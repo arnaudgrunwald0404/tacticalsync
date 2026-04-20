@@ -32,9 +32,7 @@ jobs:
       run: npx playwright install --with-deps
 
     - name: Setup Supabase CLI
-      uses: supabase/setup-cli@v1
-      with:
-        version: latest
+      run: npm install -g supabase@latest
 
     - name: Start Supabase
       run: |
