@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, type RefObject } from 'react';
 import {
   Command,
   CommandEmpty,
@@ -42,7 +42,7 @@ export function DOHashtagSelector({
   return (
     <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <PopoverTrigger asChild>
-        <div ref={triggerRef as any} />
+        <div ref={triggerRef as unknown as RefObject<HTMLDivElement>} />
       </PopoverTrigger>
       <PopoverContent className="w-96 p-0" align="start" side="bottom">
         <Command shouldFilter={true}>

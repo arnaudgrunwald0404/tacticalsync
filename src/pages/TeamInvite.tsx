@@ -26,6 +26,29 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+type TeamMemberRow = {
+  id: string;
+  user_id?: string;
+  role?: string;
+  profiles?: {
+    id?: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    avatar_url?: string | null;
+    avatar_name?: string | null;
+  } | null;
+};
+
+type MeetingSeriesRow = {
+  id: string;
+  name?: string;
+  frequency?: string;
+  team_id?: string;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
 const TeamInvite = () => {
   const navigate = useNavigate();
   const { teamId } = useParams();
@@ -43,13 +66,13 @@ const TeamInvite = () => {
   const [emails, setEmails] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [updatingName, setUpdatingName] = useState(false);
-  const [currentMembers, setCurrentMembers] = useState<any[]>([]);
+  const [currentMembers, setCurrentMembers] = useState<TeamMemberRow[]>([]);
   const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [pendingInvitations, setPendingInvitations] = useState<string[]>([]);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState("");
   const [userRole, setUserRole] = useState<string>("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [meetings, setMeetings] = useState<any[]>([]);
+  const [meetings, setMeetings] = useState<MeetingSeriesRow[]>([]);
 
   useEffect(() => {
     fetchTeam();
@@ -87,7 +110,7 @@ const TeamInvite = () => {
           .eq("id", currentUser.id)
           .single();
         
-        setIsSuperAdmin((profileData as any)?.is_super_admin === true);
+        setIsSuperAdmin((profileData as { is_super_admin?: boolean } | null)?.is_super_admin === true);
 
         // Get user's role in the team
         const { data: memberData } = await supabase

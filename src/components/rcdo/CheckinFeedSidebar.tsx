@@ -157,8 +157,8 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
             .from('rc_defining_objectives')
             .select('id, title')
             .in('id', doIds);
-          (dos || []).forEach((d: any) => { 
-            map[d.id] = { title: d.title, type: 'DO' }; 
+          (dos || []).forEach((d) => {
+            map[d.id] = { title: d.title, type: 'DO' };
           });
         }
 
@@ -167,18 +167,19 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
             .from('rc_strategic_initiatives')
             .select('id, title')
             .in('id', siIds);
-          (sis || []).forEach((s: any) => { 
-            map[s.id] = { title: s.title, type: 'SI' }; 
+          (sis || []).forEach((s) => {
+            map[s.id] = { title: s.title, type: 'SI' };
           });
         }
 
         if (taskIds.length) {
-          const { data: tasks } = await supabase
-            .from('rc_tasks' as any)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: tasks } = await (supabase as any)
+            .from('rc_tasks')
             .select('id, title')
             .in('id', taskIds);
-          (tasks || []).forEach((t: any) => { 
-            map[t.id] = { title: t.title, type: 'Task' }; 
+          (tasks as Array<{ id: string; title: string }> || []).forEach((t) => {
+            map[t.id] = { title: t.title, type: 'Task' };
           });
         }
 

@@ -25,6 +25,28 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+type TeamMember = {
+  id: string;
+  role?: string;
+  title?: string;
+  profiles?: {
+    id?: string;
+    email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_url?: string | null;
+    avatar_name?: string | null;
+  } | null;
+};
+
+type Invitation = {
+  id: string;
+  email: string;
+  status: string;
+  created_at: string;
+  team_id?: string;
+};
+
 const MeetingSettings = () => {
   const { teamId, meetingId } = useParams();
   const navigate = useNavigate();
@@ -32,13 +54,13 @@ const MeetingSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
+
   const [team, setTeam] = useState<unknown>(null);
   const [recurringMeeting, setRecurringMeeting] = useState<unknown>(null);
   const [meetingName, setMeetingName] = useState("");
-  
-  const [currentMembers, setCurrentMembers] = useState<any[]>([]);
-  const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+
+  const [currentMembers, setCurrentMembers] = useState<TeamMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<Invitation[]>([]);
   const [emailInput, setEmailInput] = useState("");
   const [sendingInvites, setSendingInvites] = useState(false);
 
@@ -164,7 +186,7 @@ const MeetingSettings = () => {
       .filter((e) => e.length > 0 && e.includes("@"));
 
     // Filter out existing members and pending invitations
-    const existingEmails = currentMembers.map((m: any) => m.profiles?.email?.toLowerCase());
+    const existingEmails = currentMembers.map((m) => m.profiles?.email?.toLowerCase());
     const pendingEmails = pendingInvitations.map((i) => i.email.toLowerCase());
     
     return emails.filter(
@@ -415,7 +437,7 @@ const MeetingSettings = () => {
               <div className="space-y-3">
                 <Label className="text-sm sm:text-base">Pending Invitations ({pendingInvitations.length})</Label>
                 <div className="space-y-2">
-                  {pendingInvitations.map((invitation: any) => (
+                  {pendingInvitations.map((invitation) => (
                     <div
                       key={invitation.id}
                       className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg"

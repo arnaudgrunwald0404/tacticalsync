@@ -185,10 +185,10 @@ const Auth = () => {
               }
               
               // Find password reset emails for this user
-              const userEmails = emails.filter((email: any) => {
+              const userEmails = emails.filter((email: { to?: string; recipient?: string; subject?: string }) => {
                 const emailTo = (email.to?.toLowerCase() || email.recipient?.toLowerCase() || '');
                 const subject = (email.subject?.toLowerCase() || '');
-                return emailTo === trimmedEmail.toLowerCase() && 
+                return emailTo === trimmedEmail.toLowerCase() &&
                        (subject.includes('reset') || subject.includes('password'));
               });
               
@@ -196,19 +196,19 @@ const Auth = () => {
               
               if (userEmails.length === 0) {
                 console.log('%c⚠️ No password reset email found for', 'color: #FF9800;', trimmedEmail);
-                console.log('Available emails:', emails.slice(0, 5).map((e: any) => ({ 
-                  to: e.to || e.recipient, 
+                console.log('Available emails:', emails.slice(0, 5).map((e: { to?: string; recipient?: string; subject?: string; created_at?: string; createdAt?: string }) => ({
+                  to: e.to || e.recipient,
                   subject: e.subject,
                   created: e.created_at || e.createdAt
                 })));
-                
+
                 if (attempt < 5) {
                   tryFetchEmail(attempt + 1, delay * 1.5);
                 }
                 return;
               }
-              
-              const userEmail = userEmails.sort((a: any, b: any) => {
+
+              const userEmail = userEmails.sort((a: { created_at?: string; createdAt?: string }, b: { created_at?: string; createdAt?: string }) => {
                 const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
                 const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
                 return dateB - dateA;
@@ -261,12 +261,12 @@ const Auth = () => {
                   console.log('%c💡 Tip: Check Supabase Studio at http://localhost:54323 or terminal logs for the reset link', 'color: #2196F3; font-size: 11px;');
                 }
               }
-            } catch (emailErr: any) {
+            } catch (emailErr) {
               console.log(`[DEBUG] Password reset fetch error on attempt ${attempt}:`, emailErr);
               if (attempt < 5) {
                 tryFetchEmail(attempt + 1, delay * 1.5);
               } else {
-                console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr?.message || emailErr);
+                console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr instanceof Error ? emailErr.message : emailErr);
                 console.log('Email service URL:', emailServiceUrl);
                 console.log('%c💡 Tip: Make sure Supabase is running locally and email service is on port 54324', 'color: #2196F3; font-size: 11px;');
                 console.log('%c💡 Check Supabase logs or Studio at http://localhost:54323 for the reset link', 'color: #2196F3; font-size: 11px;');
@@ -283,8 +283,8 @@ const Auth = () => {
           console.log('%c💡 Password reset email has been sent. Please check your inbox.', 'color: #2196F3; font-size: 11px;');
           console.log('%cNote: For security reasons, Supabase sends the email even if the user doesn\'t exist.', 'color: #666; font-size: 10px; font-style: italic;');
         }
-      } catch (err: any) {
-        console.log('[DEBUG] Error setting up password reset email fetch:', err?.message || err);
+      } catch (err) {
+        console.log('[DEBUG] Error setting up password reset email fetch:', err instanceof Error ? err.message : err);
       }
       
       setIsForgotPassword(false);
@@ -393,7 +393,7 @@ const Auth = () => {
                   }
                   
                   // Find the most recent email for this user
-                  const userEmails = emails.filter((email: any) => {
+                  const userEmails = emails.filter((email: { to?: string; recipient?: string }) => {
                     const emailTo = email.to?.toLowerCase() || email.recipient?.toLowerCase() || '';
                     return emailTo === trimmedEmail.toLowerCase();
                   });
@@ -402,8 +402,8 @@ const Auth = () => {
                   
                   if (userEmails.length === 0) {
                     console.log('%c⚠️ No email found for', 'color: #FF9800;', trimmedEmail);
-                    console.log('Available emails:', emails.slice(0, 5).map((e: any) => ({ 
-                      to: e.to || e.recipient, 
+                    console.log('Available emails:', emails.slice(0, 5).map((e: { to?: string; recipient?: string; subject?: string; created_at?: string; createdAt?: string }) => ({
+                      to: e.to || e.recipient,
                       subject: e.subject,
                       created: e.created_at || e.createdAt
                     })));
@@ -419,7 +419,7 @@ const Auth = () => {
                     return;
                   }
                   
-                  const userEmail = userEmails.sort((a: any, b: any) => {
+                  const userEmail = userEmails.sort((a: { created_at?: string; createdAt?: string }, b: { created_at?: string; createdAt?: string }) => {
                     const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
                     const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
                     return dateB - dateA;
@@ -476,13 +476,13 @@ const Auth = () => {
                       tryGetLinkFromFunction();
                     }
                   }
-                } catch (emailErr: any) {
+                } catch (emailErr) {
                   console.log(`[DEBUG] Fetch error on attempt ${attempt}:`, emailErr);
                   if (attempt < 5) {
                     // Retry with longer delay
                     tryFetchEmail(attempt + 1, delay * 1.5);
                   } else {
-                    console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr?.message || emailErr);
+                    console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr instanceof Error ? emailErr.message : emailErr);
                     console.log('Email service URL:', emailServiceUrl);
                     console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
                     // Fallback to Edge Function
@@ -543,13 +543,13 @@ const Auth = () => {
                     }
                     console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
                   }
-                } catch (err: any) {
-                  console.log('[DEBUG] Error calling get-verification-link function:', err?.message || err);
+                } catch (err) {
+                  console.log('[DEBUG] Error calling get-verification-link function:', err instanceof Error ? err.message : err);
                   console.log('[DEBUG] Full error:', err);
                   console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
                 }
               }
-              
+
               // Start fetching with initial delay
               tryFetchEmail(1, 500);
             } else {
@@ -605,14 +605,14 @@ const Auth = () => {
                   }
                   console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
                 }
-              } catch (err: any) {
-                console.log('[DEBUG] Error calling get-verification-link function:', err?.message || err);
+              } catch (err) {
+                console.log('[DEBUG] Error calling get-verification-link function:', err instanceof Error ? err.message : err);
                 console.log('[DEBUG] Full error:', err);
                 console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
               }
             }
-          } catch (err: any) {
-            console.log('[DEBUG] Error setting up email fetch:', err?.message || err);
+          } catch (err) {
+            console.log('[DEBUG] Error setting up email fetch:', err instanceof Error ? err.message : err);
           }
         }
         

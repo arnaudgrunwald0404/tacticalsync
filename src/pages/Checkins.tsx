@@ -83,14 +83,14 @@ export default function CheckinsPage() {
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) setWorkspace(JSON.parse(raw));
-    } catch (_) {}
+    } catch { /* ignore parse errors */ }
   }, []);
 
   // Persist workspace
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(workspace));
-    } catch (_) {}
+    } catch { /* ignore quota errors */ }
   }, [workspace]);
 
   const ensureState = useCallback((id: string) => {

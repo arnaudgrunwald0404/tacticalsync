@@ -109,7 +109,7 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
     }
     try {
       // Basic URL validation
-      // eslint-disable-next-line no-new
+       
       new URL(normalized)
     } catch {
       setLinkError('Please enter a valid URL (e.g., https://example.com)')

@@ -76,15 +76,66 @@ const Dashboard = () => {
   return null;
 };
 
+interface MeetingSeries {
+  id: string;
+  name: string;
+  frequency: string;
+  team_id: string;
+  created_at: string;
+}
+
+interface TeamRow {
+  id: string;
+  name: string;
+  created_at: string;
+  invite_code?: string;
+}
+
+interface MemberProfile {
+  id: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  avatar_url?: string;
+  avatar_name?: string;
+  display_name?: string;
+}
+
+interface TeamMemberRow {
+  id?: string;
+  team_id: string;
+  user_id: string;
+  role: string;
+  teams: TeamRow;
+  profile?: MemberProfile | null;
+  memberCount: number;
+  invitedCount: number;
+  invitedEmails: string[];
+  teamMembers: (TeamMemberRow & { profile: MemberProfile | null })[];
+  meetings: MeetingSeries[];
+}
+
+interface InvitationRow {
+  id: string;
+  team_id: string;
+  email: string;
+  status: string;
+  expires_at: string;
+  invited_by_profile?: { full_name?: string };
+  teams: TeamRow;
+  meetings: MeetingSeries[];
+}
+
 const DashboardOld = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin } = useRoles();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown>(null);
-  const [teams, setTeams] = useState<any[]>([]);
-  const [meetings, setMeetings] = useState<Record<string, any[]>>({});
-  const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [teams, setTeams] = useState<TeamMemberRow[]>([]);
+  const [meetings, setMeetings] = useState<Record<string, MeetingSeries[]>>({});
+  const [pendingInvitations, setPendingInvitations] = useState<InvitationRow[]>([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [selectedMeetingNavigation, setSelectedMeetingNavigation] = useState<{
     teamId: string;
@@ -107,7 +158,7 @@ const DashboardOld = () => {
     
     // Clean up hash fragment with access_token after authentication
     const hash = window.location.hash;
-    let authSubscription: any = null;
+    let authSubscription: { unsubscribe: () => void } | null = null;
     
     if (hash.includes('access_token=')) {
       // Listen for auth state change to detect when Supabase processes the token
@@ -153,7 +204,7 @@ const DashboardOld = () => {
           await fetchPendingInvitations();
           
           // If an invitation was accepted, also refresh teams
-          if (payload.eventType === 'UPDATE' && (payload.new as any).status === 'accepted') {
+          if (payload.eventType === 'UPDATE' && (payload.new as Record<string, unknown>).status === 'accepted') {
             await fetchTeams();
           }
         }
@@ -205,7 +256,7 @@ const DashboardOld = () => {
 
     if (!profile) {
       // Create minimal profile if missing (helps in local/dev when DB trigger isn't installed)
-      const userMeta: Record<string, any> = (session.user as any).user_metadata || {};
+      const userMeta: Record<string, unknown> = (session.user.user_metadata as Record<string, unknown>) || {};
       const firstName = (userMeta.given_name || "").toString();
       const lastName = (userMeta.family_name || "").toString();
       const fullName = (userMeta.full_name || `${firstName} ${lastName}`.trim() || session.user.email || "").toString();
@@ -261,7 +312,7 @@ const DashboardOld = () => {
         .eq("id", userData.user.id)
         .single();
       
-      const isSuperAdmin = !profileError && (profileData as any)?.is_super_admin === true;
+      const isSuperAdmin = !profileError && (profileData as { is_super_admin?: boolean } | null)?.is_super_admin === true;
       
       if (isSuperAdmin) {
         // Super admin can see all teams
@@ -305,7 +356,7 @@ const DashboardOld = () => {
         .eq("id", userData.user.id)
         .single();
       
-      const isSuperAdmin = !profileError && (profileData as any)?.is_super_admin === true;
+      const isSuperAdmin = !profileError && (profileData as { is_super_admin?: boolean } | null)?.is_super_admin === true;
 
       let data;
       let error;
@@ -383,7 +434,7 @@ const DashboardOld = () => {
       const profilesById = allProfiles?.reduce((acc, profile) => {
         acc[profile.id] = profile;
         return acc;
-      }, {} as Record<string, any>) || {};
+      }, {} as Record<string, MemberProfile>) || {};
 
       // Fetch all meeting series for all teams in one query
       const { data: allMeetingSeries } = await supabase
@@ -393,7 +444,7 @@ const DashboardOld = () => {
         .order("created_at", { ascending: true });
 
       // Fetch all invitations for all teams in one query
-      let allInvitations: any[] = [];
+      let allInvitations: { email: string; team_id: string }[] = [];
       try {
         const { data: invitationsData } = await supabase
           .from("invitations")
@@ -407,23 +458,23 @@ const DashboardOld = () => {
       }
 
       // Group data by team
-      const membersByTeam = (allTeamMembers || []).reduce((acc, member) => {
+      const membersByTeam = (allTeamMembers || []).reduce<Record<string, typeof allTeamMembers>>((acc, member) => {
         if (!acc[member.team_id]) acc[member.team_id] = [];
         acc[member.team_id].push(member);
         return acc;
-      }, {} as Record<string, any[]>);
+      }, {});
 
-      const meetingsByTeam = (allMeetingSeries || []).reduce((acc, meeting) => {
+      const meetingsByTeam = (allMeetingSeries || []).reduce<Record<string, MeetingSeries[]>>((acc, meeting) => {
         if (!acc[meeting.team_id]) acc[meeting.team_id] = [];
         acc[meeting.team_id].push(meeting);
         return acc;
-      }, {} as Record<string, any[]>);
+      }, {});
 
-      const invitationsByTeam = allInvitations.reduce((acc, invitation) => {
+      const invitationsByTeam = allInvitations.reduce<Record<string, { email: string; team_id: string }[]>>((acc, invitation) => {
         if (!acc[invitation.team_id]) acc[invitation.team_id] = [];
         acc[invitation.team_id].push(invitation);
         return acc;
-      }, {} as Record<string, any[]>);
+      }, {});
 
       // Map teams with their data
       const teamsWithData = data.map((teamMember) => {
@@ -458,7 +509,7 @@ const DashboardOld = () => {
       setTeams(teamsWithData);
 
       // Organize meetings by team for state
-      const meetingsForState: Record<string, any[]> = {};
+      const meetingsForState: Record<string, MeetingSeries[]> = {};
       teamsWithData.forEach((team) => {
         meetingsForState[team.teams.id] = team.meetings;
       });
@@ -604,7 +655,7 @@ const DashboardOld = () => {
     }
   };
 
-  const handleAcceptInvitation = async (invitation: any) => {
+  const handleAcceptInvitation = async (invitation: InvitationRow) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -675,7 +726,7 @@ const DashboardOld = () => {
     }
   };
 
-  const handleDeclineInvitation = async (invitation: any) => {
+  const handleDeclineInvitation = async (invitation: InvitationRow) => {
     try {
       const { error } = await supabase
         .from("invitations")
@@ -753,7 +804,8 @@ const DashboardOld = () => {
 
         {teams.length === 0 && pendingInvitations.length === 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {false && (isAdmin || isSuperAdmin) ? (
+          {/* Hidden admin card — re-enable when needed */}
+          {(false as boolean) && (isAdmin || isSuperAdmin) ? (
             <Card
               className="border-dashed border-2 hover:border-primary transition-all cursor-pointer group"
               onClick={handleCreateTeam}
@@ -802,7 +854,7 @@ const DashboardOld = () => {
                         </div>
                         {invitation.meetings && invitation.meetings.length > 0 && (
                           <CardDescription className="mt-1 text-xs sm:text-sm">
-                            {invitation.meetings.length} meeting{invitation.meetings.length > 1 ? 's' : ''}: {invitation.meetings.map((m: any) => m.name).join(', ')}
+                            {invitation.meetings.length} meeting{invitation.meetings.length > 1 ? 's' : ''}: {invitation.meetings.map((m) => m.name).join(', ')}
                           </CardDescription>
                         )}
                       </div>
@@ -848,7 +900,7 @@ const DashboardOld = () => {
                         {teamMember.teamMembers && teamMember.teamMembers.length > 0 && (
                           <div>
                             <AnimatedTooltip 
-                              items={teamMember.teamMembers.map((member: any, index: number) => ({
+                              items={teamMember.teamMembers.map((member, index) => ({
                                 id: index,
                                 name: member.profile?.display_name || member.profile?.full_name || "Unknown",
                                 designation: member.role === "admin" ? "Admin" : "Member",

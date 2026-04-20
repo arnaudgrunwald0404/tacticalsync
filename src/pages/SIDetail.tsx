@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MessageSquare } from 'lucide-react';
 import { useCheckins } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
+import type { TaskWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
@@ -98,7 +99,7 @@ const getDummyTasks = (siId: string | undefined) => [
     updated_at: new Date().toISOString(),
     display_order: 4,
   },
-] as any[];
+] as unknown as TaskWithRelations[];
 
 export default function SIDetail() {
   const { siId } = useParams<{ siId: string }>();
@@ -111,11 +112,11 @@ export default function SIDetail() {
   const [editingTaskId, setEditingTaskId] = useState<string | undefined>();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Fetch SI details
-  const [siDetails, setSiDetails] = useState<any>(null);
+  const [siDetails, setSiDetails] = useState<Record<string, unknown> | null>(null);
   const [siLoading, setSiLoading] = useState(true);
 
   // Fetch tasks
@@ -173,7 +174,7 @@ export default function SIDetail() {
 
         if (error) throw error;
         setSiDetails(data);
-      } catch (err: any) {
+      } catch (err) {
         console.error('Error fetching SI:', err);
       } finally {
         setSiLoading(false);
@@ -249,12 +250,12 @@ export default function SIDetail() {
     setActiveTab('tasks');
   };
 
-  const handleTaskClickFromGantt = (task: any) => {
+  const handleTaskClickFromGantt = (task: TaskWithRelations) => {
     // Open edit dialog when clicking task in Gantt
     handleEditTask(task.id);
   };
 
-  const handleTaskDateUpdate = async (task: any, newStartDate: Date, newEndDate: Date) => {
+  const handleTaskDateUpdate = async (task: TaskWithRelations, newStartDate: Date, newEndDate: Date) => {
     try {
       const { updateTask } = await import('@/hooks/useTasks');
       await updateTask(task.id, {
@@ -263,7 +264,7 @@ export default function SIDetail() {
       });
       // Refetch to update both table and Gantt views
       refetchTasks();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error updating task dates:', err);
     }
   };
@@ -274,7 +275,7 @@ export default function SIDetail() {
       const { deleteTask } = await import('@/hooks/useTasks');
       await deleteTask(taskId);
       refetchTasks();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error deleting task:', err);
     }
   };
@@ -282,12 +283,12 @@ export default function SIDetail() {
   const handleCompleteTask = async (taskId: string) => {
     try {
       const { updateTask } = await import('@/hooks/useTasks');
-      await updateTask(taskId, { 
+      await updateTask(taskId, {
         status: 'completed',
         actual_delivery_date: new Date().toISOString().split('T')[0]
       });
       refetchTasks();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error completing task:', err);
     }
   };
@@ -318,19 +319,19 @@ export default function SIDetail() {
     siDetails.created_by
   );
   
-  const canEditTaskForItem = (task: any) => {
-    return canEditTask(task.owner_user_id, siDetails.owner_user_id);
+  const canEditTaskForItem = (task: TaskWithRelations) => {
+    return canEditTask(task.owner_user_id, siDetails?.owner_user_id as string | undefined);
   };
-  
-  const canDeleteTaskForItem = (task: any) => {
-    return canDeleteTask(task.owner_user_id, siDetails.owner_user_id);
+
+  const canDeleteTaskForItem = (task: TaskWithRelations) => {
+    return canDeleteTask(task.owner_user_id, siDetails?.owner_user_id as string | undefined);
   };
 
   const handleUnlock = async () => {
     if (!siDetails) return;
     try {
-      const updates: any = { 
-        locked_at: null, 
+      const updates: Record<string, unknown> = {
+        locked_at: null,
         locked_by: null,
         status: 'draft'
       };

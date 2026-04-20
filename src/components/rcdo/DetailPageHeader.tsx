@@ -87,7 +87,7 @@ export function DetailPageHeader({
   // Calculate health for DOs
   let healthResult: { health: 'on_track' | 'at_risk' | 'off_track' | 'done' } = { health: 'on_track' };
   if (type === 'do' && doId) {
-    healthResult = calculateDOHealth(doId, metrics as any);
+    healthResult = calculateDOHealth(doId, metrics as unknown as Parameters<typeof calculateDOHealth>[1]);
   }
   const isDefaultState = status === 'draft' || (type === 'do' && metrics.length === 0);
   const healthColor = isDefaultState ? 'text-[#5B6E7A]' : getHealthColor(healthResult.health);

@@ -24,7 +24,7 @@ interface ActiveInitiative {
 interface PriorityFormProps {
   priority: PriorityRow;
   teamMembers: TeamMember[];
-  currentUser: any;
+  currentUser: { user_id: string; profiles?: { avatar_name?: string | null; email?: string | null; avatar_url?: string | null; first_name?: string | null; last_name?: string | null } | null } | null;
   teamId: string;
   activeDOs: DOHashtagOption[];
   activeSIs: ActiveInitiative[];
@@ -169,13 +169,14 @@ export function PriorityForm({
               description: `Priority linked to Defining Objective: ${selectedDO?.title || 'Unknown'}`,
             });
           }
-        } catch (linkError: any) {
+        } catch (linkError: unknown) {
           console.error('Error creating DO link:', linkError);
           // Don't show error for duplicate keys - it's already handled
-          if (linkError?.code !== '23505' && !linkError?.message?.includes('duplicate key')) {
+          const le = linkError as { code?: string; message?: string };
+          if (le?.code !== '23505' && !le?.message?.includes('duplicate key')) {
             toast({
               title: 'Error',
-              description: linkError?.message || 'Failed to link priority to Defining Objective',
+              description: le?.message || 'Failed to link priority to Defining Objective',
               variant: 'destructive',
             });
           } else {
@@ -192,27 +193,28 @@ export function PriorityForm({
             kind: 'meeting_priority',
             ref_id: priority.id,
           });
-          
+
           // Only update state if link was created/found successfully
           if (result) {
             setLinkedItemId(id);
             setLinkedItemType('initiative');
             // Save to local storage
             saveToLocalStorage(priority.id, { type: 'initiative', id });
-            
+
             const selectedSI = activeSIs.find(s => s.id === id);
             toast({
               title: 'Success',
               description: `Priority linked to Strategic Initiative: ${selectedSI?.title || 'Unknown'}`,
             });
           }
-        } catch (linkError: any) {
+        } catch (linkError: unknown) {
           console.error('Error creating SI link:', linkError);
           // Don't show error for duplicate keys - it's already handled
-          if (linkError?.code !== '23505' && !linkError?.message?.includes('duplicate key')) {
+          const le = linkError as { code?: string; message?: string };
+          if (le?.code !== '23505' && !le?.message?.includes('duplicate key')) {
             toast({
               title: 'Error',
-              description: linkError?.message || 'Failed to link priority to Strategic Initiative',
+              description: le?.message || 'Failed to link priority to Strategic Initiative',
               variant: 'destructive',
             });
           } else {
@@ -222,13 +224,14 @@ export function PriorityForm({
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in handleLinkChange:', error);
+      const e = error as { code?: string; message?: string };
       // Don't show toast for duplicate key errors
-      if (error?.code !== '23505' && !error?.message?.includes('duplicate key')) {
+      if (e?.code !== '23505' && !e?.message?.includes('duplicate key')) {
         toast({
           title: 'Error',
-          description: error?.message || 'Failed to link priority',
+          description: e?.message || 'Failed to link priority',
           variant: 'destructive',
         });
       }
@@ -282,11 +285,11 @@ export function PriorityForm({
         title: 'Success',
         description: 'Priority unlinked',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in handleUnlink:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to unlink',
+        description: error instanceof Error ? error.message : 'Failed to unlink',
         variant: 'destructive',
       });
       // Don't rethrow - prevent drawer from closing

@@ -47,8 +47,8 @@ export function useTasks(siId?: string) {
       if (fetchError) throw fetchError;
 
       setTasks((data || []) as TaskWithRelations[]);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch tasks';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tasks';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -110,8 +110,8 @@ export function useTaskDetails(taskId: string | undefined) {
       if (fetchError) throw fetchError;
 
       setTask(data as TaskWithRelations);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch task';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch task';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -171,8 +171,8 @@ export function useMyTasks() {
       if (fetchError) throw fetchError;
 
       setTasks((data || []) as TaskWithRelations[]);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch my tasks';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch my tasks';
       setError(errorMessage);
       toast({
         title: 'Error',

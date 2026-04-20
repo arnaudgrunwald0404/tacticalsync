@@ -23,7 +23,7 @@ export async function createMeetingItem(options: {
   if (meetingError || !meetingData) throw meetingError || new Error('Meeting not found');
 
   let tableName: string;
-  let insertData: any;
+  let insertData: Record<string, unknown>;
 
   switch (options.type) {
     case 'action_item':
@@ -95,7 +95,7 @@ export async function updateMeetingItem(itemId: string, updates: {
     
     if (!error && data) {
       // Found the item in this table, update it
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         title: updates.title,
         notes: updates.notes,
         assigned_to: updates.assignedTo,
@@ -175,7 +175,7 @@ export async function getMeetingItem(itemId: string) {
 }
 
 export async function getMeetingItems(meetingId: string, type?: 'action_item' | 'topic' | 'priority') {
-  const results: any[] = [];
+  const results: Record<string, unknown>[] = [];
   
   if (!type || type === 'action_item') {
     // Get action items from meeting_series_action_items

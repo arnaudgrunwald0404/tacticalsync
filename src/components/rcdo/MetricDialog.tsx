@@ -99,10 +99,10 @@ export function MetricDialog({
 
       handleClose();
       onSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create metric',
+        description: err instanceof Error ? err.message : 'Failed to create metric',
         variant: 'destructive',
       });
     } finally {

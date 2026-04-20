@@ -152,7 +152,8 @@ export function MultiSelectParticipants({
                       className="ml-1 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-muted"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          handleRemove(profile.id, e as any);
+                          e.stopPropagation();
+                          onSelectionChange(selectedIds.filter((id) => id !== profile.id));
                         }
                       }}
                       onMouseDown={(e) => {

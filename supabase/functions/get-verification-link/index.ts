@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
     // Find user and get email if only userId provided
     let targetEmail = email
-    let userInfo: any = null
+    let userInfo: { id: string; email?: string; email_confirmed_at?: string | null; app_metadata?: { providers?: string[]; provider?: string }; created_at?: string } | null = null
     
     if (!targetEmail && userId) {
       const { data: user, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId)
@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
         } else if (listError) {
           console.log('[DEBUG] Error listing users:', listError)
         }
-      } catch (checkError: any) {
-        console.log('[DEBUG] Could not check user existence:', checkError?.message || checkError)
+      } catch (checkError: unknown) {
+        console.log('[DEBUG] Could not check user existence:', checkError instanceof Error ? checkError.message : checkError)
       }
       
       console.log('[DEBUG] Will attempt to generate link - generateLink will validate if user exists')
@@ -139,7 +139,6 @@ Deno.serve(async (req) => {
     // 'email' works for both new and existing users
     // 'magiclink' can also work for existing users
     let linkType = 'email'
-    let lastError: any = null
     
     // If user exists and is already confirmed, try magiclink instead
     if (userInfo && userInfo.email_confirmed_at) {
@@ -229,15 +228,16 @@ Deno.serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error:', error)
-    console.error('Error stack:', error.stack)
-    console.error('Error name:', error.name)
-    return new Response(JSON.stringify({ 
-      error: error.message || 'Internal server error',
-      errorName: error.name,
-      errorStack: error.stack,
-      errorString: error.toString()
+    const err = error instanceof Error ? error : null
+    console.error('Error stack:', err?.stack)
+    console.error('Error name:', err?.name)
+    return new Response(JSON.stringify({
+      error: err?.message || 'Internal server error',
+      errorName: err?.name,
+      errorStack: err?.stack,
+      errorString: String(error)
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

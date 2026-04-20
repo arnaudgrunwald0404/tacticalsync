@@ -75,7 +75,7 @@ export function usePriorityAnalysis(
         .eq('quarter_id', quarterId);
       if (error) throw error;
       setCategorizations((data ?? []) as PriorityCategorization[]);
-    } catch (err: any) {
+    } catch (err) {
       // Table may not exist yet — treat as empty
       setCategorizations([]);
     } finally {
@@ -106,8 +106,8 @@ export function usePriorityAnalysis(
         );
       if (error) throw error;
       await fetchCategorizations();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     }
   }, [quarterId, fetchCategorizations, toast]);
 

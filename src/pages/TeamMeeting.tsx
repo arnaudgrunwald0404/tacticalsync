@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -38,49 +38,65 @@ import { getFullNameForAvatar } from "@/lib/nameUtils";
 
 // Removed hardcoded STATIC_AGENDA - meetings should use standing agenda items from team settings
 
+interface Team {
+  id: string;
+  name: string;
+  abbreviated_name?: string;
+}
+
+interface RecurringMeeting {
+  id: string;
+  name: string;
+  frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
+  created_by?: string;
+}
+
+interface Meeting {
+  id: string;
+  start_date: string;
+}
+
+interface TeamAdmin {
+  id: string;
+  role: string;
+  profiles: {
+    full_name?: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+interface UserProfile {
+  full_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+  avatar_name?: string | null;
+}
+
+type SectionsCollapsed = {
+  priorities: boolean;
+  topics: boolean;
+  actionItems: boolean;
+};
+
 const TeamMeeting = () => {
   const { teamId, meetingId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  interface Team {
-    id: string;
-    name: string;
-    abbreviated_name?: string;
-  }
-
-  interface RecurringMeeting {
-    id: string;
-    name: string;
-    frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "quarter";
-    created_by?: string;
-  }
-
-  interface Meeting {
-    id: string;
-    start_date: string;
-  }
-
-  interface TeamAdmin {
-    id: string;
-    role: string;
-    profiles: {
-      full_name?: string;
-      first_name?: string;
-      last_name?: string;
-    };
-  }
 
   const [team, setTeam] = useState<Team | null>(null);
   const [recurringMeeting, setRecurringMeeting] = useState<RecurringMeeting | null>(null);
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
-  const [agendaItems, setAgendaItems] = useState<any[]>([]);
-  const [priorityItems, setPriorityItems] = useState<any[]>([]);
-  const [previousPriorityItems, setPreviousPriorityItems] = useState<any[]>([]);
-  const [teamTopicItems, setTeamTopicItems] = useState<any[]>([]);
-  const [actionItems, setActionItems] = useState<any[]>([]);
+  const [agendaItems, setAgendaItems] = useState<Record<string, unknown>[]>([]);
+  const [priorityItems, setPriorityItems] = useState<Record<string, unknown>[]>([]);
+  const [previousPriorityItems, setPreviousPriorityItems] = useState<Record<string, unknown>[]>([]);
+  const [teamTopicItems, setTeamTopicItems] = useState<Record<string, unknown>[]>([]);
+  const [actionItems, setActionItems] = useState<Record<string, unknown>[]>([]);
   const [currentSeriesId, setCurrentSeriesId] = useState<string | null>(null);
   const [teamAdmin, setTeamAdmin] = useState<TeamAdmin | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -102,7 +118,7 @@ const TeamMeeting = () => {
   const [currentUserName, setCurrentUserName] = useState<string>("Team Member");
   const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string>("");
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Fetch current user profile for presence
   useEffect(() => {
@@ -217,18 +233,18 @@ const TeamMeeting = () => {
       .map(item => item.assigned_to)
       .filter((id): id is string => id != null);
     
-    let profilesById: Record<string, any> = {};
+    let profilesById: Record<string, UserProfile & { id: string }> = {};
     if (assignedUserIds.length > 0) {
       const uniqueUserIds = [...new Set(assignedUserIds)];
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
         .in("id", uniqueUserIds);
-      
+
       profilesById = (profiles || []).reduce((acc, profile) => {
         acc[profile.id] = profile;
         return acc;
-      }, {} as Record<string, any>);
+      }, {} as Record<string, UserProfile & { id: string }>);
     }
 
     const transformedAgendaData = (agendaData || []).map(item => ({
@@ -538,8 +554,8 @@ const TeamMeeting = () => {
           .map(item => item.assigned_to)
           .filter((id): id is string => id != null);
         
-        let profilesById: Record<string, any> = {};
-        
+        let profilesById: Record<string, UserProfile & { id: string }> = {};
+
         // Only fetch profiles if there are assigned users
         if (assignedUserIds.length > 0) {
           const uniqueUserIds = [...new Set(assignedUserIds)];
@@ -547,11 +563,11 @@ const TeamMeeting = () => {
             .from("profiles")
             .select("id, full_name, first_name, last_name, email, avatar_url, avatar_name")
             .in("id", uniqueUserIds);
-          
+
           profilesById = (profiles || []).reduce((acc, profile) => {
             acc[profile.id] = profile;
             return acc;
-          }, {} as Record<string, any>);
+          }, {} as Record<string, UserProfile & { id: string }>);
         }
 
         // Transform the data
@@ -639,7 +655,7 @@ const TeamMeeting = () => {
     }
   };
 
-  const updatePreviousMeetingId = (currentMeeting: any) => {
+  const updatePreviousMeetingId = (currentMeeting: Meeting) => {
     if (!allMeetings || allMeetings.length === 0) return;
     
     // Sort meetings by date descending
@@ -909,31 +925,31 @@ const TeamMeeting = () => {
 interface TeamMeetingContentProps {
   teamId: string;
   meetingId: string | undefined;
-  team: any;
-  recurringMeeting: any;
-  teamAdmin: any;
+  team: Team | null;
+  recurringMeeting: RecurringMeeting | null;
+  teamAdmin: TeamAdmin | null;
   currentUserRole: string | null;
-  onlineUsers: any[];
-  meeting: any;
-  allMeetings: any[];
-  agendaItems: any[];
-  priorityItems: any[];
-  previousPriorityItems: any[];
-  teamTopicItems: any[];
-  actionItems: any[];
+  onlineUsers: { id?: string; name?: string; email?: string; avatarUrl?: string }[];
+  meeting: Meeting | null;
+  allMeetings: Meeting[];
+  agendaItems: Record<string, unknown>[];
+  priorityItems: Record<string, unknown>[];
+  previousPriorityItems: Record<string, unknown>[];
+  teamTopicItems: Record<string, unknown>[];
+  actionItems: Record<string, unknown>[];
   currentSeriesId: string | null;
   currentUserId: string | null;
   previousMeetingId: string | null;
-  userProfile: any;
-  sectionsCollapsed: any;
-  setSectionsCollapsed: any;
+  userProfile: UserProfile | null;
+  sectionsCollapsed: SectionsCollapsed;
+  setSectionsCollapsed: React.Dispatch<React.SetStateAction<SectionsCollapsed>>;
   showPreviousPeriod: boolean;
-  setShowPreviousPeriod: any;
+  setShowPreviousPeriod: React.Dispatch<React.SetStateAction<boolean>>;
   showMineOnly: boolean;
-  setShowMineOnly: any;
+  setShowMineOnly: React.Dispatch<React.SetStateAction<boolean>>;
   hasMyPriorities: boolean;
-  meetingPrioritiesRef: any;
-  actionItemsRef: any;
+  meetingPrioritiesRef: React.RefObject<MeetingPrioritiesRef>;
+  actionItemsRef: React.RefObject<ActionItemsRef>;
   handlePriorityChange: () => Promise<void>;
   handleTopicChange: () => Promise<void>;
   handleActionItemChange: () => Promise<void>;

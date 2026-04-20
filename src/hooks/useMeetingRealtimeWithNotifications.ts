@@ -53,17 +53,17 @@ export function useMeetingRealtimeWithNotifications({
   useRealtimeSubscription({
     table: 'meeting_instance_priorities',
     filter: meetingId ? `instance_id=eq.${meetingId}` : undefined,
-    onInsert: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onInsert: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Priority added:', payload.new);
-      showUpdateNotification('Priority', 'added', payload.new.created_by);
+      showUpdateNotification('Priority', 'added', payload.new.created_by as string | undefined);
       onPriorityChange?.();
     }, [onPriorityChange, showUpdateNotification]),
-    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Priority updated:', payload.new);
-      showUpdateNotification('Priority', 'updated', payload.new.created_by);
+      showUpdateNotification('Priority', 'updated', payload.new.created_by as string | undefined);
       onPriorityChange?.();
     }, [onPriorityChange, showUpdateNotification]),
-    onDelete: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onDelete: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Priority deleted:', payload.old);
       showUpdateNotification('Priority', 'deleted');
       onPriorityChange?.();
@@ -75,9 +75,9 @@ export function useMeetingRealtimeWithNotifications({
   useRealtimeSubscription({
     table: 'meeting_instance_priorities',
     filter: previousMeetingId ? `instance_id=eq.${previousMeetingId}` : undefined,
-    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Previous priority updated:', payload.new);
-      showUpdateNotification('Previous priority', 'updated', payload.new.created_by);
+      showUpdateNotification('Previous priority', 'updated', payload.new.created_by as string | undefined);
       onPriorityChange?.();
     }, [onPriorityChange, showUpdateNotification]),
     enabled: enabled && !!previousMeetingId,
@@ -87,17 +87,17 @@ export function useMeetingRealtimeWithNotifications({
   useRealtimeSubscription({
     table: 'meeting_instance_topics',
     filter: meetingId ? `instance_id=eq.${meetingId}` : undefined,
-    onInsert: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onInsert: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Topic added:', payload.new);
-      showUpdateNotification('Topic', 'added', payload.new.created_by);
+      showUpdateNotification('Topic', 'added', payload.new.created_by as string | undefined);
       onTopicChange?.();
     }, [onTopicChange, showUpdateNotification]),
-    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Topic updated:', payload.new);
-      showUpdateNotification('Topic', 'updated', payload.new.created_by);
+      showUpdateNotification('Topic', 'updated', payload.new.created_by as string | undefined);
       onTopicChange?.();
     }, [onTopicChange, showUpdateNotification]),
-    onDelete: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onDelete: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Topic deleted:', payload.old);
       showUpdateNotification('Topic', 'deleted');
       onTopicChange?.();
@@ -109,17 +109,17 @@ export function useMeetingRealtimeWithNotifications({
   useRealtimeSubscription({
     table: 'meeting_series_action_items',
     filter: seriesId ? `series_id=eq.${seriesId}` : undefined,
-    onInsert: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onInsert: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Action item added:', payload.new);
-      showUpdateNotification('Action item', 'added', payload.new.created_by);
+      showUpdateNotification('Action item', 'added', payload.new.created_by as string | undefined);
       onActionItemChange?.();
     }, [onActionItemChange, showUpdateNotification]),
-    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Action item updated:', payload.new);
-      showUpdateNotification('Action item', 'updated', payload.new.created_by);
+      showUpdateNotification('Action item', 'updated', payload.new.created_by as string | undefined);
       onActionItemChange?.();
     }, [onActionItemChange, showUpdateNotification]),
-    onDelete: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onDelete: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Action item deleted:', payload.old);
       showUpdateNotification('Action item', 'deleted');
       onActionItemChange?.();
@@ -131,17 +131,17 @@ export function useMeetingRealtimeWithNotifications({
   useRealtimeSubscription({
     table: 'meeting_series_agenda',
     filter: seriesId ? `series_id=eq.${seriesId}` : undefined,
-    onInsert: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onInsert: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Agenda item added:', payload.new);
-      showUpdateNotification('Agenda item', 'added', payload.new.created_by);
+      showUpdateNotification('Agenda item', 'added', payload.new.created_by as string | undefined);
       onAgendaChange?.();
     }, [onAgendaChange, showUpdateNotification]),
-    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onUpdate: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Agenda item updated:', payload.new);
-      showUpdateNotification('Agenda item', 'updated', payload.new.created_by);
+      showUpdateNotification('Agenda item', 'updated', payload.new.created_by as string | undefined);
       onAgendaChange?.();
     }, [onAgendaChange, showUpdateNotification]),
-    onDelete: useCallback((payload: RealtimePostgresChangesPayload<any>) => {
+    onDelete: useCallback((payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       console.log('[Realtime] Agenda item deleted:', payload.old);
       showUpdateNotification('Agenda item', 'deleted');
       onAgendaChange?.();

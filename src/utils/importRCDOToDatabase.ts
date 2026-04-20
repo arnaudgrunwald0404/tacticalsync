@@ -225,10 +225,10 @@ export async function importRCDOToDatabase(
       doIds,
       siIds
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
-      error: `Import failed: ${error.message || 'Unknown error'}`
+      error: `Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }

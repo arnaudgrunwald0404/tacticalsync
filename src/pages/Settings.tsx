@@ -150,7 +150,7 @@ const Settings = () => {
           .eq("id", user.id)
           .maybeSingle();
         if (!profileErr) {
-          dbIsSuperAdmin = Boolean((profileRow as any)?.is_super_admin);
+          dbIsSuperAdmin = Boolean((profileRow as { is_super_admin?: boolean } | null)?.is_super_admin);
         }
       } catch (e) {
         // keep existing value
@@ -252,12 +252,12 @@ const Settings = () => {
     if (!isSuperAdmin && !dbVerifiedSuperAdmin) return;
     setLoadingAdmins(true);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("profiles")
         .select("id,email")
         .eq("is_admin", true);
       if (error) throw error;
-      setAdminList((data || []).map((p: any) => ({ id: p.id, email: p.email })));
+      setAdminList((data || []).map((p) => ({ id: p.id, email: p.email || '' })));
     } catch (e) {
       // noop toast minimal
     } finally {
@@ -269,12 +269,12 @@ const Settings = () => {
     if (!isSuperAdmin && !dbVerifiedSuperAdmin) return;
     setLoadingUsers(true);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("profiles")
         .select("id,email")
         .order("email", { ascending: true });
       if (error) throw error;
-      setAllUsers((data || []).map((p: any) => ({ id: p.id, email: p.email })));
+      setAllUsers((data || []).map((p) => ({ id: p.id, email: p.email || '' })));
     } catch (e) {
       console.error("Error fetching users:", e);
       toast({
@@ -329,9 +329,10 @@ const Settings = () => {
       if (!profiles) return;
 
       // For each user, fetch their team memberships and login info
+      type ProfileRow = { id: string; email?: string | null; full_name?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; created_at?: string | null; updated_at?: string | null };
       const usersWithTeams = await Promise.all(
-        profiles.map(async (profile: any) => {
-          const { data: memberships, error: membershipsError } = await supabase
+        profiles.map(async (profile: ProfileRow) => {
+          const { data: memberships } = await supabase
             .from("team_members")
             .select(`
               team_id,
@@ -343,22 +344,22 @@ const Settings = () => {
             `)
             .eq("user_id", profile.id);
 
-          const teams = memberships?.map((m: any) => ({
+          const teams = (memberships || []).map((m) => ({
             team_id: m.team_id,
-            team_name: m.teams?.name || "Unknown Team",
+            team_name: (m.teams as { name?: string } | null)?.name || "Unknown Team",
             role: m.role,
-          })) || [];
+          }));
 
           // Try to get login info from database function, fallback to profile timestamps
           let hasLoggedIn = false;
           let lastActive: string | null = null;
 
           try {
-            const { data: loginInfo, error: rpcError } = await (supabase as any)
-              .rpc('get_user_login_info', { user_id: profile.id });
-            
-            if (!rpcError && loginInfo && loginInfo.length > 0) {
-              const info = loginInfo[0] as any;
+            const { data: loginInfo, error: rpcError } = await supabase
+              .rpc('get_user_login_info' as never, { user_id: profile.id } as never);
+
+            if (!rpcError && loginInfo && (loginInfo as Array<{ has_logged_in?: boolean; last_active?: string | null }>).length > 0) {
+              const info = (loginInfo as Array<{ has_logged_in?: boolean; last_active?: string | null }>)[0];
               hasLoggedIn = Boolean(info.has_logged_in);
               lastActive = info.last_active || null;
             } else {
@@ -418,7 +419,8 @@ const Settings = () => {
       // Add pending invitations to existing users or create pending user entries
       const pendingUsers: typeof usersWithDetails = [];
       if (pendingInvitations) {
-        pendingInvitations.forEach((invitation: any) => {
+        type InvitationRow = { id: string; email: string; team_id: string; teams?: { name?: string } | null; role: string; created_at: string; expires_at: string; invited_by: string };
+        (pendingInvitations as InvitationRow[]).forEach((invitation) => {
           const email = invitation.email.toLowerCase();
           const existingUser = usersByEmail.get(email);
           
@@ -488,14 +490,14 @@ const Settings = () => {
 
       const { error: updateErr } = await supabase
         .from("profiles")
-        .update({ is_admin: true } as any)
+        .update({ is_admin: true } as Record<string, unknown>)
         .eq("id", target.id);
       if (updateErr) throw updateErr;
 
       // Send notification email via Edge Function (best-effort)
       try {
         const granterName = userEmail || currentUser?.email || "A super admin";
-        await fetch(`${(supabase as any)._restUrl?.replace('/rest/v1','') || ''}/functions/v1/send-admin-granted-email`, {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL?.replace('/rest/v1','') || ''}/functions/v1/send-admin-granted-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -511,8 +513,8 @@ const Settings = () => {
       setAdminSearchEmail("");
       fetchAdmins();
       fetchAllUsers();
-    } catch (e: any) {
-      toast({ title: "Failed to grant admin", description: e.message || String(e), variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Failed to grant admin", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -520,15 +522,15 @@ const Settings = () => {
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ is_admin: false } as any)
+        .update({ is_admin: false } as Record<string, unknown>)
         .eq("id", id);
       if (error) throw error;
       toast({ title: "Admin removed", description: "The user no longer has admin rights." });
       fetchAdmins();
       fetchAllUsers();
       fetchUsersWithDetails();
-    } catch (e: any) {
-      toast({ title: "Failed to remove admin", description: e.message || String(e), variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Failed to remove admin", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -638,10 +640,10 @@ const Settings = () => {
       setInviteRole("member");
       setSkipSendingInvitations(false);
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to invite users",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -691,10 +693,10 @@ const Settings = () => {
 
       // Refresh the user list
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to send reminder",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -704,7 +706,7 @@ const Settings = () => {
     if (!selectedUser) return;
 
     try {
-      const updates: any = {};
+      const updates: Record<string, unknown> = {};
       if (editingUserEmail.trim() && editingUserEmail !== selectedUser.email) {
         updates.email = editingUserEmail.trim();
       }
@@ -788,10 +790,10 @@ const Settings = () => {
       fetchUsersWithDetails();
       fetchAllUsers();
       fetchAdmins();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to update user",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -835,10 +837,10 @@ const Settings = () => {
       setSelectedUser(null);
       setRemovingFromTeamId("");
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to remove user",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -848,7 +850,7 @@ const Settings = () => {
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ is_admin: !currentAdminStatus } as any)
+        .update({ is_admin: !currentAdminStatus } as Record<string, unknown>)
         .eq("id", userId);
 
       if (error) throw error;
@@ -861,10 +863,10 @@ const Settings = () => {
       fetchAdmins();
       fetchAllUsers();
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to update admin status",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -952,11 +954,11 @@ const Settings = () => {
       setSelectedUser(null);
       setSelectedUserIds(new Set());
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       console.error('Delete user exception:', e);
       toast({
         title: "Failed to delete user",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     } finally {
@@ -1000,8 +1002,8 @@ const Settings = () => {
           } else {
             deletedInvitationsCount = pendingInvitationIds.length;
           }
-        } catch (e: any) {
-          errors.push(`Failed to delete invitations: ${e.message || String(e)}`);
+        } catch (e) {
+          errors.push(`Failed to delete invitations: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
@@ -1026,7 +1028,7 @@ const Settings = () => {
           if (data?.error) {
             errors.push(data.error + (data.details ? `: ${data.details}` : ''));
           } else if (data?.errors && data.errors.length > 0) {
-            const errorMessages = data.errors.map((e: any) => e.error).join(', ');
+            const errorMessages = data.errors.map((e: { error?: string }) => e.error).join(', ');
             errors.push(`Some users failed to delete: ${errorMessages}`);
           } else {
             deletedUsersCount = data?.deletedCount || realUserIds.length;
@@ -1055,11 +1057,11 @@ const Settings = () => {
       setShowDeleteDialog(false);
       setSelectedUserIds(new Set());
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       console.error('Bulk delete exception:', e);
       toast({
         title: "Failed to delete users",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     } finally {
@@ -1174,7 +1176,7 @@ const Settings = () => {
             console.warn(`Failed to send email to ${user.email}:`, e);
             errorCount++;
           }
-        } catch (e: any) {
+        } catch (e) {
           errorCount++;
           console.error(`Failed to reinvite ${user.email}:`, e);
         }
@@ -1189,10 +1191,10 @@ const Settings = () => {
       setShowBulkReinviteDialog(false);
       setSelectedUserIds(new Set());
       fetchUsersWithDetails();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Failed to reinvite users",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     }
@@ -1334,8 +1336,8 @@ const Settings = () => {
           if (existingProfile) {
             // Update profile with name and admin status if needed
             const shouldBeAdmin = userData.status === 'admin';
-            const profile = existingProfile as any;
-            const updates: any = {};
+            const profile = existingProfile;
+            const updates: Record<string, unknown> = {};
             
             if (fullName && profile.full_name !== fullName) {
               updates.full_name = fullName;
@@ -1423,9 +1425,9 @@ const Settings = () => {
 
             successCount++;
           }
-        } catch (e: any) {
+        } catch (e) {
           errorCount++;
-          errors.push(`${userData.email}: ${e.message || String(e)}`);
+          errors.push(`${userData.email}: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
@@ -1444,10 +1446,10 @@ const Settings = () => {
       setBulkImportSkipEmail(false);
       fetchUsersWithDetails();
       fetchAvailableTeams();
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Bulk import failed",
-        description: e.message || String(e),
+        description: e instanceof Error ? e.message : String(e),
         variant: "destructive",
       });
     } finally {
@@ -1465,7 +1467,7 @@ const Settings = () => {
 
   const handleEditTemplate = (template: Template) => {
     // Check if user is trying to edit a system template without superadmin privileges
-    if ((template as any).is_system && !isSuperAdmin) {
+    if (template.is_system && !isSuperAdmin) {
       toast({
         title: "Access Denied",
         description: "Only superadmin can edit system templates",
@@ -1721,7 +1723,7 @@ const Settings = () => {
 
   const handleDeleteTemplate = async (template: Template) => {
     // Check if user is trying to delete a system template without superadmin privileges
-    if ((template as any).is_system && !isSuperAdmin) {
+    if (template.is_system && !isSuperAdmin) {
       toast({
         title: "Access Denied",
         description: "Only superadmin can delete system templates",
@@ -2164,23 +2166,23 @@ const Settings = () => {
               </Card>
             ) : (
               templates.map((template) => (
-                <Card key={template.id} className={`hover:shadow-lg transition-all ${(template as any).is_system ? 'border-primary/30 bg-primary/5' : ''}`}>
+                <Card key={template.id} className={`hover:shadow-lg transition-all ${template.is_system ? 'border-primary/30 bg-primary/5' : ''}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg flex items-center gap-2">
                           {template.name}
-                          {(template as any).is_system && (
+                          {template.is_system && (
                             <span className="text-xs font-normal bg-primary/10 text-primary px-2 py-1 rounded-full">
                               System
                             </span>
                           )}
                         </CardTitle>
-                        {(template as any).description && (
-                          <p className="text-sm text-muted-foreground mt-1">{(template as any).description}</p>
+                        {template.description && (
+                          <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                         )}
                       </div>
-                      {(!(template as any).is_system || isSuperAdmin) && (
+                      {(!template.is_system || isSuperAdmin) && (
                         <div className="flex gap-2">
                           <Button
                             variant="ghost"

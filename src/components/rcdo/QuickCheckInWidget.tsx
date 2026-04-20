@@ -67,7 +67,7 @@ export function QuickCheckInWidget() {
         .order('title', { ascending: true });
 
       // Participant SIs (array contains)
-      let participantSIsData: any[] | null = null;
+      let participantSIsData: Array<{ id: string; title: string; status: string | null; participant_user_ids: string[] | null }> | null = null;
       const { data: participantContains, error: containsErr } = await supabase
         .from('rc_strategic_initiatives')
         .select('id, title, status, participant_user_ids')

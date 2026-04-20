@@ -400,7 +400,7 @@ export function SIPanelContent({
                     if (si.dbId) {
                       const { error } = await supabase
                         .from('rc_strategic_initiatives')
-                        .update({ participant_user_ids: ids } as any)
+                        .update({ participant_user_ids: ids })
                         .eq('id', si.dbId);
                       if (error) {
                         console.warn('[SIPanel] Failed to persist SI participants change', error);

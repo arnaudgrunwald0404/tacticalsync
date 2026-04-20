@@ -88,10 +88,10 @@ export default function CyclePlanner() {
       });
 
       await refetch();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to activate cycle',
+        description: err instanceof Error ? err.message : 'Failed to activate cycle',
         variant: 'destructive',
       });
     } finally {

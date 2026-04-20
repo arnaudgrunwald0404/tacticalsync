@@ -55,7 +55,7 @@ export function useActiveDOs() {
           .in('status', ['active', 'draft']);
 
         if (dosData) {
-          const doOptions: DOHashtagOption[] = dosData.map((doItem: any) => ({
+          const doOptions: DOHashtagOption[] = dosData.map((doItem) => ({
             id: doItem.id,
             title: doItem.title,
             status: doItem.status,

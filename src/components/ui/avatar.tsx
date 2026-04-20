@@ -38,10 +38,11 @@ const AvatarImage = React.forwardRef<
 >(({ className, src, ...props }, ref) => {
   if (!isAllowedAvatarUrl(typeof src === 'string' ? src : undefined)) {
     // Block third-party avatar hosts; show fallback initials instead
-    return null as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return null as any; // Radix requires a ref-compatible element; null signals fallback rendering
   }
   return (
-    <AvatarPrimitive.Image ref={ref} className={cn("aspect-square h-full w-full object-cover", className)} src={src as any} {...props} />
+    <AvatarPrimitive.Image ref={ref} className={cn("aspect-square h-full w-full object-cover", className)} src={src as string} {...props} />
   );
 });
 AvatarImage.displayName = AvatarPrimitive.Image.displayName;

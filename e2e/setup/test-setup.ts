@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { test as baseTest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types';
@@ -25,6 +26,7 @@ export type TestFixtures = {
 };
 
 export const test = baseTest.extend<TestFixtures>({
+  // eslint-disable-next-line no-empty-pattern
   supabase: async ({}, use) => {
     const supabase = createClient<Database>(
       'http://127.0.0.1:54321',
@@ -40,6 +42,7 @@ export const test = baseTest.extend<TestFixtures>({
     await use(supabase);
   },
 
+  // eslint-disable-next-line no-empty-pattern
   testInfo: async ({}, use) => {
     const testInfo = {};
     await use(testInfo);

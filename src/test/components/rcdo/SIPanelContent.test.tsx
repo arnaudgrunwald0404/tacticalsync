@@ -31,9 +31,31 @@ vi.mock('@/hooks/use-toast', () => ({
   }),
 }));
 
+// Partial siData used in mocks — only the fields the component reads
+interface MockSIData {
+  id: string;
+  status: string;
+  locked_at: string | null;
+}
+
+const makeSIWithProgressReturn = (siData: MockSIData) =>
+  ({
+    siData,
+    loading: false,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useSIWithProgressModule.useSIWithProgress>);
+
+const makeRolesReturn = (isAdmin: boolean) =>
+  ({
+    isAdmin,
+    isSuperAdmin: false,
+    isRCDOAdmin: false,
+    loading: false,
+  } as ReturnType<typeof useRolesModule.useRoles>);
+
 describe('SIPanelContent - Status Field', () => {
   const mockUser = { id: 'user-1', email: 'test@example.com' };
-  
+
   const mockDoNode: Node = {
     id: 'do-1',
     type: 'do',
@@ -90,36 +112,25 @@ describe('SIPanelContent - Status Field', () => {
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
       data: { user: mockUser },
       error: null,
-    } as any);
-    
-    vi.mocked(useRolesModule.useRoles).mockReturnValue({
-      isAdmin: false,
-      isSuperAdmin: false,
-      isRCDOAdmin: false,
-      loading: false,
-    });
+    } as unknown as Awaited<ReturnType<typeof supabase.auth.getUser>>);
 
-    vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-      siData: {
-        id: 'si-db-1',
-        status: 'not_started',
-        locked_at: null,
-      },
-      loading: false,
-      refetch: vi.fn(),
-    } as any);
+    vi.mocked(useRolesModule.useRoles).mockReturnValue(makeRolesReturn(false));
+
+    vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+      makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: null })
+    );
   });
 
   describe('Status Field Rendering', () => {
     it('should render status select field', () => {
       render(<SIPanelContent {...defaultProps} />);
-      
+
       expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument();
     });
 
     it('should display current status value', async () => {
       render(<SIPanelContent {...defaultProps} />);
-      
+
       await waitFor(() => {
         const select = screen.getByRole('combobox', { name: /status/i });
         expect(select).toHaveTextContent('Draft');
@@ -130,10 +141,10 @@ describe('SIPanelContent - Status Field', () => {
       // Skipped: Radix UI Select dropdown doesn't open properly in jsdom test environment
       const user = userEvent.setup();
       render(<SIPanelContent {...defaultProps} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
-      
+
       await waitFor(async () => {
         expect(await screen.findByText('Not Started', undefined, { timeout: 3000 })).toBeInTheDocument();
         expect(await screen.findByText('On Track', undefined, { timeout: 3000 })).toBeInTheDocument();
@@ -146,93 +157,59 @@ describe('SIPanelContent - Status Field', () => {
 
   describe('Status Field Permissions', () => {
     it('should be enabled when SI is unlocked', () => {
-      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: null,
-        },
-        loading: false,
-        refetch: vi.fn(),
-      } as any);
+      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+        makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: null })
+      );
 
       render(<SIPanelContent {...defaultProps} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
     it('should be enabled when user is admin even if locked', () => {
-      vi.mocked(useRolesModule.useRoles).mockReturnValue({
-        isAdmin: true,
-        isSuperAdmin: false,
-        isRCDOAdmin: false,
-        loading: false,
-      });
+      vi.mocked(useRolesModule.useRoles).mockReturnValue(makeRolesReturn(true));
 
-      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: '2024-01-01T00:00:00Z',
-        },
-        loading: false,
-        refetch: vi.fn(),
-      } as any);
+      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+        makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: '2024-01-01T00:00:00Z' })
+      );
 
       const lockedStatus = new Map([
         ['do-1', { locked: true, dbId: 'do-db-1' }],
       ]);
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
     it('should be enabled when user is SI owner even if locked', async () => {
-      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: '2024-01-01T00:00:00Z',
-        },
-        loading: false,
-        refetch: vi.fn(),
-      } as any);
+      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+        makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: '2024-01-01T00:00:00Z' })
+      );
 
       const lockedStatus = new Map([
         ['do-1', { locked: true, dbId: 'do-db-1' }],
       ]);
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
-      
+
       // Wait for currentUserId to be set
       await waitFor(() => {
         expect(supabase.auth.getUser).toHaveBeenCalled();
       });
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).not.toBeDisabled();
     });
 
     it('should be disabled when SI is locked and user is not owner/admin', () => {
-      vi.mocked(useRolesModule.useRoles).mockReturnValue({
-        isAdmin: false,
-        isSuperAdmin: false,
-        isRCDOAdmin: false,
-        loading: false,
-      });
+      vi.mocked(useRolesModule.useRoles).mockReturnValue(makeRolesReturn(false));
 
-      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: '2024-01-01T00:00:00Z',
-        },
-        loading: false,
-        refetch: vi.fn(),
-      } as any);
+      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+        makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: '2024-01-01T00:00:00Z' })
+      );
 
       const lockedStatus = new Map([
         ['do-1', { locked: true, dbId: 'do-db-1' }],
@@ -250,7 +227,7 @@ describe('SIPanelContent - Status Field', () => {
           doLockedStatus={lockedStatus}
         />
       );
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       expect(select).toBeDisabled();
     });
@@ -261,25 +238,21 @@ describe('SIPanelContent - Status Field', () => {
       // Skipped: Radix UI Select dropdown doesn't open properly in jsdom test environment
       const user = userEvent.setup();
       const mockRefetch = vi.fn();
-      
+
       vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: null,
-        },
+        siData: { id: 'si-db-1', status: 'not_started', locked_at: null } as unknown as ReturnType<typeof useSIWithProgressModule.useSIWithProgress>['siData'],
         loading: false,
         refetch: mockRefetch,
-      } as any);
+      } as unknown as ReturnType<typeof useSIWithProgressModule.useSIWithProgress>);
 
       render(<SIPanelContent {...defaultProps} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
-      
+
       const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
       await user.click(onTrackOption);
-      
+
       await waitFor(() => {
         expect(supabase.from).toHaveBeenCalledWith('rc_strategic_initiatives');
       });
@@ -291,29 +264,23 @@ describe('SIPanelContent - Status Field', () => {
       const mockUpdate = vi.fn(() => ({
         eq: vi.fn(() => Promise.resolve({ data: null, error: null })),
       }));
-      
+
       vi.mocked(supabase.from).mockReturnValue({
         update: mockUpdate,
-      } as any);
+      } as unknown as ReturnType<typeof supabase.from>);
 
-      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue({
-        siData: {
-          id: 'si-db-1',
-          status: 'not_started',
-          locked_at: null,
-        },
-        loading: false,
-        refetch: vi.fn(),
-      } as any);
+      vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
+        makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: null })
+      );
 
       render(<SIPanelContent {...defaultProps} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
-      
+
       const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
       await user.click(onTrackOption);
-      
+
       await waitFor(() => {
         expect(mockUpdate).toHaveBeenCalledWith({ status: 'on_track' });
       });
@@ -328,13 +295,13 @@ describe('SIPanelContent - Status Field', () => {
       };
 
       render(<SIPanelContent {...defaultProps} si={siWithoutDbId} />);
-      
+
       const select = screen.getByRole('combobox', { name: /status/i });
       await user.click(select);
-      
+
       const onTrackOption = await screen.findByText('On Track', undefined, { timeout: 3000 });
       await user.click(onTrackOption);
-      
+
       // Should not call supabase.from for update
       await waitFor(() => {
         expect(supabase.from).not.toHaveBeenCalled();
@@ -342,4 +309,3 @@ describe('SIPanelContent - Status Field', () => {
     });
   });
 });
-

@@ -49,8 +49,8 @@ export function useActiveCycle() {
       if (fetchError) throw fetchError;
 
       setCycle(data as RCCycleWithRelations);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch active cycle';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch active cycle';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -91,8 +91,8 @@ export function useCycles() {
       if (fetchError) throw fetchError;
 
       setCycles(data || []);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch cycles';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch cycles';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -147,10 +147,10 @@ export function useCycles() {
 
       await fetchCycles();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create cycle',
+        description: err instanceof Error ? err.message : 'Failed to create cycle',
         variant: 'destructive',
       });
       throw err;
@@ -191,8 +191,8 @@ export function useRallyingCry(cycleId: string | undefined) {
       if (fetchError) throw fetchError;
 
       setRallyingCry(data as RallyingCryWithRelations);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch rallying cry';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch rallying cry';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -231,10 +231,10 @@ export function useRallyingCry(cycleId: string | undefined) {
 
       await fetchRallyingCry();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create rallying cry',
+        description: err instanceof Error ? err.message : 'Failed to create rallying cry',
         variant: 'destructive',
       });
       throw err;
@@ -276,8 +276,8 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
       if (fetchError) throw fetchError;
 
       setDos(data as DefiningObjectiveWithRelations[] || []);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch defining objectives';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch defining objectives';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -322,10 +322,10 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
 
       await fetchDOs();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create defining objective',
+        description: err instanceof Error ? err.message : 'Failed to create defining objective',
         variant: 'destructive',
       });
       throw err;
@@ -393,8 +393,8 @@ export function useDODetails(doId: string | undefined) {
       } as DefiningObjectiveWithRelations;
 
       setDoDetails(doWithLinks);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch DO details';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch DO details';
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -439,10 +439,10 @@ export function useDOMetrics(doId: string | undefined) {
       if (fetchError) throw fetchError;
 
       setMetrics(data || []);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch metrics',
+        description: err instanceof Error ? err.message : 'Failed to fetch metrics',
         variant: 'destructive',
       });
     } finally {
@@ -479,10 +479,10 @@ export function useDOMetrics(doId: string | undefined) {
 
       await fetchMetrics();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create metric',
+        description: err instanceof Error ? err.message : 'Failed to create metric',
         variant: 'destructive',
       });
       throw err;
@@ -491,7 +491,7 @@ export function useDOMetrics(doId: string | undefined) {
 
   const updateMetric = async (metricId: string, updates: UpdateMetricForm) => {
     try {
-      const updateData: any = {
+      const updateData = {
         ...updates,
         last_updated_at: new Date().toISOString(),
       };
@@ -504,10 +504,10 @@ export function useDOMetrics(doId: string | undefined) {
       if (updateError) throw updateError;
 
       await fetchMetrics();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to update metric',
+        description: err instanceof Error ? err.message : 'Failed to update metric',
         variant: 'destructive',
       });
       throw err;
@@ -546,10 +546,10 @@ export function useStrategicInitiatives(doId: string | undefined) {
       if (fetchError) throw fetchError;
 
       setInitiatives(data as StrategicInitiativeWithRelations[] || []);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch initiatives',
+        description: err instanceof Error ? err.message : 'Failed to fetch initiatives',
         variant: 'destructive',
       });
     } finally {
@@ -589,10 +589,10 @@ export function useStrategicInitiatives(doId: string | undefined) {
 
       await fetchInitiatives();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to create initiative',
+        description: err instanceof Error ? err.message : 'Failed to create initiative',
         variant: 'destructive',
       });
       throw err;
@@ -631,10 +631,10 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
       if (fetchError) throw fetchError;
 
       setLinks(data as RCLinkWithDetails[] || []);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch links',
+        description: err instanceof Error ? err.message : 'Failed to fetch links',
         variant: 'destructive',
       });
     } finally {
@@ -706,12 +706,13 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
 
       await fetchLinks();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       // Only show error if it's not a duplicate key error
-      if (!err.code || err.code !== '23505') {
+      const errCode = (err as { code?: string }).code;
+      if (!errCode || errCode !== '23505') {
         toast({
           title: 'Error',
-          description: err.message || 'Failed to create link',
+          description: err instanceof Error ? err.message : 'Failed to create link',
           variant: 'destructive',
         });
       }
@@ -734,10 +735,10 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
       });
 
       await fetchLinks();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to remove link',
+        description: err instanceof Error ? err.message : 'Failed to remove link',
         variant: 'destructive',
       });
       throw err;
@@ -778,10 +779,10 @@ export function useCheckins(parentType: CheckinParentType, parentId: string | un
       if (fetchError) throw fetchError;
 
       setCheckins(data as RCCheckinWithRelations[] || []);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to fetch check-ins',
+        description: err instanceof Error ? err.message : 'Failed to fetch check-ins',
         variant: 'destructive',
       });
     } finally {

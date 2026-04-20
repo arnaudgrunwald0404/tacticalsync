@@ -73,7 +73,7 @@ const SortablePriorityRow = ({
   onUpdateActivities,
   onOpenComments 
 }: SortablePriorityRowProps) => {
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<Array<Record<string, unknown>>>([]);
   const [loadingComments, setLoadingComments] = useState(false);
 
   const {
@@ -271,11 +271,11 @@ const MeetingPriorities = forwardRef<MeetingPrioritiesRef, MeetingPrioritiesProp
       });
 
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating completion status:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to update completion status",
+        description: error instanceof Error ? error.message : "Failed to update completion status",
         variant: "destructive",
       });
     }

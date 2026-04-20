@@ -124,8 +124,8 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
           .eq('team_id', teamId)
       ]);
 
-      const superAdmin = !!(profileResult.data as any)?.is_super_admin;
-      const teamAdmin = (membershipResult.data as any)?.role === 'admin';
+      const superAdmin = !!(profileResult.data as { is_super_admin?: boolean } | null)?.is_super_admin;
+      const teamAdmin = (membershipResult.data as { role?: string } | null)?.role === 'admin';
       
       setIsSuperAdmin(superAdmin);
       setIsTeamAdmin(teamAdmin);

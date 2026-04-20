@@ -70,7 +70,7 @@ async function applyMigrations() {
         } else {
           successCount++;
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error(`Error executing statement: ${error.message}`);
         errorCount++;
       }
@@ -83,8 +83,8 @@ async function applyMigrations() {
     }
     console.log('');
     console.log('Migration complete! Please refresh your dashboard.');
-  } catch (error: any) {
-    console.error('Fatal error:', error.message);
+  } catch (error) {
+    console.error('Fatal error:', error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }

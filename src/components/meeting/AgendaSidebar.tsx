@@ -28,10 +28,10 @@ interface AgendaSidebarProps {
   onStartEdit: () => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
-  systemTemplates?: any[];
-  userTemplates?: any[];
+  systemTemplates?: Array<{ id: string; name: string; description?: string; is_system: boolean; items?: Array<{ id: string; title: string; order_index: number; duration_minutes?: number }> }>;
+  userTemplates?: Array<{ id: string; name: string; description?: string; is_system: boolean; items?: Array<{ id: string; title: string; order_index: number; duration_minutes?: number }> }>;
   adoptingTemplate?: boolean;
-  adoptSystemTemplate?: (template: any) => Promise<void>;
+  adoptSystemTemplate?: (template: { id: string; name: string; description?: string; is_system: boolean; items?: Array<{ id: string; title: string; order_index: number; duration_minutes?: number }> }) => Promise<void>;
   meetingId?: string;
   startAddingManually?: () => void;
 }
@@ -279,7 +279,7 @@ export function AgendaSidebar({
     if (!isEditingAgenda && isAdmin) onStartEdit();
   }, [isEditingAgenda, isAdmin, onStartEdit]);
 
-  const handleDragEnd = useCallback((result: any) => {
+  const handleDragEnd = useCallback((result: { destination?: { index: number }; source: { index: number } }) => {
     if (!result.destination || !isEditingAgenda) return;
 
     const items = Array.from(editingItems);
@@ -424,8 +424,8 @@ export function AgendaSidebar({
                           )}
                           <div className="space-y-1 mb-3">
                             {(template.items || [])
-                              .sort((a: any, b: any) => a.order_index - b.order_index)
-                              .map((item: any) => (
+                              .sort((a, b) => a.order_index - b.order_index)
+                              .map((item) => (
                                 <div key={item.id} className="flex justify-between text-xs text-muted-foreground">
                                   <span>• {item.title}</span>
                                   {item.duration_minutes && (

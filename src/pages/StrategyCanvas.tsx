@@ -149,7 +149,7 @@ import type { NodeProps } from "reactflow";
 
 // Create a factory function that accepts profilesMap, showProgress, SI progress data, and DO locked status
 const createDoNode = (
-  profilesMap: Record<string, any>,
+  profilesMap: Record<string, Tables<'profiles'>>,
   showProgress: boolean,
   siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>,
   doLockedStatus: Map<string, { locked: boolean; dbId?: string }>
@@ -470,7 +470,7 @@ function RallyNode({ data }: { data: NodeData }) {
         wordBreak: 'break-word',
         overflowWrap: 'break-word',
         display: '-webkit-box',
-        WebkitBoxOrient: 'vertical' as any,
+        WebkitBoxOrient: 'vertical' as React.CSSProperties['WebkitBoxOrient'],
       }}>
         {headline}
       </div>
@@ -491,8 +491,8 @@ const DEFAULT_NODE_DIMENSIONS: Record<NodeKind, { w: number; h: number }> = {
 function rectForNode(n: Node<NodeData>) {
   const data = (n.data as NodeData) || {};
   const kind = (n.type as NodeKind) || "do";
-  const w = (n as any).width || data.size?.w || DEFAULT_NODE_DIMENSIONS[kind].w;
-  const h = (n as any).height || data.size?.h || DEFAULT_NODE_DIMENSIONS[kind].h;
+  const w = (n as unknown as { width?: number }).width || data.size?.w || DEFAULT_NODE_DIMENSIONS[kind].w;
+  const h = (n as unknown as { height?: number }).height || data.size?.h || DEFAULT_NODE_DIMENSIONS[kind].h;
   return { x: n.position.x, y: n.position.y, w, h };
 }
 
@@ -581,20 +581,21 @@ export default function StrategyCanvasPage() {
     // Filter DOs: keep only if they have at least one SI where the user is owner or contributor
     const doNodes = nodes.filter(n => n.type === 'do');
     for (const doNode of doNodes) {
-      const saiItems = (doNode.data.saiItems || []) as any[];
-      
+      type SaiItem = { id: string; title: string; ownerId?: string; participantIds?: string[] };
+      const saiItems = (doNode.data.saiItems || []) as SaiItem[];
+
       // Check if any SI in this DO has the user as owner or contributor
-      const hasRelevantSI = saiItems.some((si: any) => {
+      const hasRelevantSI = saiItems.some((si) => {
         const isOwner = si.ownerId === viewAsUserId;
-        const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId);
+        const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId!);
         return isOwner || isContributor;
       });
-      
+
       if (hasRelevantSI) {
         // Filter SIs within this DO: keep only where user is owner or contributor
-        const filteredSaiItems = saiItems.filter((si: any) => {
+        const filteredSaiItems = saiItems.filter((si) => {
           const isOwner = si.ownerId === viewAsUserId;
-          const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId);
+          const isContributor = Array.isArray(si.participantIds) && si.participantIds.includes(viewAsUserId!);
           return isOwner || isContributor;
         });
         
@@ -634,8 +635,8 @@ export default function StrategyCanvasPage() {
         }
         
         // Collect SI IDs from this DO
-        const saiItems = (node.data.saiItems || []) as any[];
-        saiItems.forEach((si: any) => {
+        const saiItems = (node.data.saiItems || []) as Array<{ dbId?: string }>;
+        saiItems.forEach((si) => {
           if (si.dbId) {
             siIds.push(si.dbId);
           }
@@ -711,8 +712,8 @@ export default function StrategyCanvasPage() {
       // no-op (offline/local only)
     }
 
-    const yNodes = doc.getArray<any>("nodes");
-    const yEdges = doc.getArray<any>("edges");
+    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
+    const yEdges = doc.getArray<Edge[]>("edges");
 
     // First client seeds the arrays
     if (yNodes.length === 0) yNodes.push(makeInitialNodes());
@@ -760,20 +761,23 @@ export default function StrategyCanvasPage() {
       let snapshotLooksLikeTemplate = false;
       if (!error && data && Array.isArray(data.nodes)) {
         try {
-          const nodeList = (data.nodes as any[]);
-          const rally = nodeList.find((n: any) => n?.type === 'rally');
-          const doTitles = nodeList.filter((n: any) => n?.type === 'do').map((n: any) => String(n?.data?.title || ''));
+          type RawNode = { type?: string; data?: { rallyCandidates?: string[]; title?: string } };
+          const nodeList = (data.nodes as RawNode[]);
+          const rally = nodeList.find((n) => n?.type === 'rally');
+          const doTitles = nodeList.filter((n) => n?.type === 'do').map((n) => String(n?.data?.title || ''));
           const hasDraftRally = !!(rally && Array.isArray(rally.data?.rallyCandidates) && rally.data?.rallyCandidates?.[0] === 'Draft your rallying cry');
           const hasDefaultDOs = doTitles.length === 4 && doTitles.every((t: string, i: number) => t === `DO ${i+1}`);
           snapshotLooksLikeTemplate = hasDraftRally && hasDefaultDOs;
         } catch { /* ignore */ }
       }
 
-      if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as any[]).length > 0 && !snapshotLooksLikeTemplate) {
-        console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as any[]).length, edgeCount: (data.edges as any[]).length });
+      type RawNode = { id: string; type?: string; data?: Record<string, unknown> };
+      type RawEdge = { source: string; target: string };
+      if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as RawNode[]).length > 0 && !snapshotLooksLikeTemplate) {
+        console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as RawNode[]).length, edgeCount: (data.edges as RawEdge[]).length });
         // Filter out edges connecting ROOT_ID to DOs
-        const loadedNodes = data.nodes as any[];
-        const filteredEdges = (data.edges as any[]).filter((e: any) => !(e.source === ROOT_ID && loadedNodes.find((n: any) => n.id === e.target)?.type === 'do'));
+        const loadedNodes = data.nodes as RawNode[];
+        const filteredEdges = (data.edges as RawEdge[]).filter((e) => !(e.source === ROOT_ID && loadedNodes.find((n) => n.id === e.target)?.type === 'do'));
         setNodes(loadedNodes);
         setEdges(filteredEdges);
         return;
@@ -819,7 +823,7 @@ export default function StrategyCanvasPage() {
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
 
-        const builtNodes: any[] = [
+        const builtNodes: Node<NodeData>[] = [
           {
             id: ROOT_ID,
             type: 'rally',
@@ -833,13 +837,15 @@ export default function StrategyCanvasPage() {
             },
           },
         ];
-        const builtEdges: any[] = [];
+        const builtEdges: Edge[] = [];
 
-        (dos || []).forEach((d: any, index: number) => {
+        type DORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
+        type SIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; defining_objective_id: string; status?: string; locked_at?: string | null; created_at?: string };
+        (dos || []).forEach((d: DORow, index: number) => {
           const doId = `do-${index + 1}`;
           const posX = startX + index * gapX;
-          const relatedSIs = (sis || []).filter((s: any) => s.defining_objective_id === d.id);
-          const saiItems = relatedSIs.map((si: any) => ({
+          const relatedSIs = (sis || []).filter((s: SIRow) => s.defining_objective_id === d.id);
+          const saiItems = relatedSIs.map((si: SIRow) => ({
             id: `si-${doId}-${String(si.id).slice(0, 6)}`,
             title: si.title,
             ownerId: si.owner_user_id || undefined,
@@ -870,7 +876,7 @@ export default function StrategyCanvasPage() {
           setEdges(builtEdges);
 
           // Populate DO locked status map keyed by canvas DO node id (e.g. 'do-1')
-          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = (dos || []).map((d: any, index: number) => {
+          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = (dos || []).map((d: DORow, index: number) => {
             const uiId = `do-${index + 1}`;
             const locked = !!d.locked_at;
             return [uiId, { locked, dbId: d.id }];
@@ -878,7 +884,7 @@ export default function StrategyCanvasPage() {
           setDoLockedStatus(new Map(doStatusEntries));
 
           // Populate SI progress map with latest percent_to_goal and SI locked state
-          const siIds = (sis || []).map((s: any) => s.id);
+          const siIds = (sis || []).map((s: SIRow) => s.id);
           if (siIds.length > 0) {
             const { data: checkins, error: checkinsErr } = await supabase
               .from('rc_checkins')
@@ -896,7 +902,7 @@ export default function StrategyCanvasPage() {
                 latestBySi.set(c.parent_id, { percent_to_goal: c.percent_to_goal ?? null, sentiment: c.sentiment ?? null, date: c.date ?? null });
               }
             }
-            const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }]> = (sis || []).map((si: any) => {
+            const progressEntries: Array<[string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }]> = (sis || []).map((si: SIRow) => {
               const latest = latestBySi.get(si.id);
               const pct = latest?.percent_to_goal ?? null;
               const sent = latest?.sentiment ?? null;
@@ -926,8 +932,8 @@ export default function StrategyCanvasPage() {
           nodes
             .filter((n) => n.type === 'do')
             .map((n) => ({
-              t: String((n.data as any)?.title || ''),
-              s: (((n.data as any)?.saiItems) || []).map((x: any) => String(x?.title || '')),
+              t: String(n.data?.title || ''),
+              s: ((n.data?.saiItems) || []).map((x) => String(x?.title || '')),
             }))
         );
         if (hydrationGuardRef.current.inFlight) return;
@@ -938,9 +944,9 @@ export default function StrategyCanvasPage() {
 
         // Skip if the snapshot looks like the empty template
         const rallyNode = nodes.find((n) => n.type === 'rally');
-        const doTitles = nodes.filter((n) => n.type === 'do').map((n) => String((n.data as any)?.title || ''));
-        const looksLikeTemplate = !!rallyNode && Array.isArray((rallyNode.data as any)?.rallyCandidates)
-          && ((rallyNode.data as any).rallyCandidates[0] === 'Draft your rallying cry')
+        const doTitles = nodes.filter((n) => n.type === 'do').map((n) => String(n.data?.title || ''));
+        const looksLikeTemplate = !!rallyNode && Array.isArray(rallyNode.data?.rallyCandidates)
+          && (rallyNode.data.rallyCandidates?.[0] === 'Draft your rallying cry')
           && doTitles.length === 4 && doTitles.every((t, i) => t === `DO ${i+1}`);
         if (looksLikeTemplate) return;
 
@@ -953,7 +959,7 @@ export default function StrategyCanvasPage() {
         if (!rc?.id) return;
 
         // Map DO titles -> db rows (no node changes)
-        const doTitleList = doNodes.map((n) => String((n.data as any).title || '')).filter(Boolean);
+        const doTitleList = doNodes.map((n) => String(n.data.title || '')).filter(Boolean);
         if (doTitleList.length === 0) return;
         const { data: doRows } = await supabase
           .from('rc_defining_objectives')
@@ -967,7 +973,7 @@ export default function StrategyCanvasPage() {
         // Update lock map
         const doLockEntries: Array<[string, { locked: boolean; dbId?: string }]> = [];
         for (const n of doNodes) {
-          const t = String((n.data as any).title || '');
+          const t = String(n.data.title || '');
           const match = doByTitle.get(t);
           if (match) doLockEntries.push([n.id, { locked: match.locked, dbId: match.id }]);
         }
@@ -980,7 +986,7 @@ export default function StrategyCanvasPage() {
         const siTitleRequests: Array<{ doDbId: string; title: string }>= [];
         for (const n of doNodes) {
           const doDbId = doIdByNodeId.get(n.id);
-          const items = (((n.data as any).saiItems) || []) as any[];
+          const items = (n.data.saiItems || []) as Array<{ title?: string }>;
           if (!doDbId || !items.length) continue;
           for (const s of items) {
             const t = String(s.title || '');
@@ -1036,7 +1042,7 @@ export default function StrategyCanvasPage() {
       .from('profiles')
       .select('id, full_name, avatar_name, avatar_url, first_name, email')
       .then(({ data, error }) => {
-        if (!error && data) setProfiles(data as any);
+        if (!error && data) setProfiles(data as Tables<'profiles'>[]);
       });
   }, []);
 
@@ -1048,9 +1054,9 @@ export default function StrategyCanvasPage() {
     // Collect all profile IDs referenced by the canvas (DO owners and SI owners/participants)
     const needed = new Set<string>();
     for (const n of nodes) {
-      const d: any = n.data || {};
+      const d = n.data || {} as NodeData;
       if (d.ownerId) needed.add(String(d.ownerId));
-      const items: any[] = Array.isArray(d.saiItems) ? d.saiItems : [];
+      const items = Array.isArray(d.saiItems) ? d.saiItems : [];
       for (const s of items) {
         if (s?.ownerId) needed.add(String(s.ownerId));
         if (Array.isArray(s?.participantIds)) for (const pid of s.participantIds) needed.add(String(pid));
@@ -1071,35 +1077,35 @@ export default function StrategyCanvasPage() {
         if (error || !data || data.length === 0) return;
         setProfiles((prev) => {
           const map = new Map(prev.map((p) => [p.id, p] as const));
-          for (const row of data as any[]) map.set(row.id, row);
-          return Array.from(map.values()) as any;
+          for (const row of data as Tables<'profiles'>[]) map.set(row.id, row);
+          return Array.from(map.values());
         });
       });
   }, [nodes, profiles]);
 
   // Listen to SI open events from DoNode buttons
   useEffect(() => {
-    const handler = (e: any) => {
-      const { doId, siId } = e.detail;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ doId: string; siId: string }>).detail;
       // Always show the panel when clicking on an SI
-      setFocusedSI(e.detail);
+      setFocusedSI(detail);
     };
-    window.addEventListener("rcdo:open-si", handler as any);
-    return () => window.removeEventListener("rcdo:open-si", handler as any);
+    window.addEventListener("rcdo:open-si", handler);
+    return () => window.removeEventListener("rcdo:open-si", handler);
   }, [nodes]);
 
   // Listen to node update events from inline editing
   useEffect(() => {
-    const handler = (e: any) => {
-      const { nodeId, updates } = e.detail;
+    const handler = (e: Event) => {
+      const { nodeId, updates } = (e as CustomEvent<{ nodeId: string; updates: Partial<NodeData> }>).detail;
       setNodes((currentNodes) => 
         currentNodes.map((n) => 
           n.id === nodeId ? { ...n, data: { ...n.data, ...updates } } : n
         )
       );
     };
-    window.addEventListener("rcdo:update-node", handler as any);
-    return () => window.removeEventListener("rcdo:update-node", handler as any);
+    window.addEventListener("rcdo:update-node", handler);
+    return () => window.removeEventListener("rcdo:update-node", handler);
   }, [setNodes]);
 
   // Push local changes to Yjs, but avoid echoing remote updates back
@@ -1110,7 +1116,7 @@ export default function StrategyCanvasPage() {
       updatingFromRemoteNodes.current = false;
       return;
     }
-    const yNodes = doc.getArray<any>("nodes");
+    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
     yNodes.delete(0, yNodes.length);
     yNodes.insert(0, [nodes]);
   }, [nodes]);
@@ -1122,7 +1128,7 @@ export default function StrategyCanvasPage() {
       updatingFromRemoteEdges.current = false;
       return;
     }
-    const yEdges = doc.getArray<any>("edges");
+    const yEdges = doc.getArray<Edge[]>("edges");
     yEdges.delete(0, yEdges.length);
     yEdges.insert(0, [edges]);
   }, [edges]);
@@ -1140,8 +1146,8 @@ export default function StrategyCanvasPage() {
           .upsert(
             {
               room: roomName,
-              nodes: nodes as any,
-              edges: edges as any,
+              nodes: nodes as unknown as import('@/integrations/supabase/types').Json,
+              edges: edges as unknown as import('@/integrations/supabase/types').Json,
               updated_by: auth?.user?.id || null,
             },
             { onConflict: 'room' }
@@ -1191,8 +1197,8 @@ export default function StrategyCanvasPage() {
     setEdges(next);
   }, [edges, nodes]);
 
-  const onNodeClick = useCallback((_e: any, node: Node<NodeData>) => setSelectedNode(node), []);
-  const onNodeDoubleClick = useCallback((_e: any, node: Node<NodeData>) => {
+  const onNodeClick = useCallback((_e: React.MouseEvent, node: Node<NodeData>) => setSelectedNode(node), []);
+  const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: Node<NodeData>) => {
     if (node.type === "rally") setSelectedNode(node);
   }, []);
 
@@ -1313,10 +1319,10 @@ const duplicateSelectedDo = useCallback(() => {
     // 1) Lock all DOs locally and finalize the Rallying Cry
     setNodes((curr) => curr.map((n) => {
       if (n.type === 'do') {
-        return { ...n, data: { ...(n.data as any), status: 'final' } } as Node<NodeData>;
+        return { ...n, data: { ...n.data, status: 'final' } } as Node<NodeData>;
       }
       if (n.type === 'rally') {
-        const d: any = n.data || {};
+        const d = n.data || {} as NodeData;
         const top = Array.isArray(d.rallyCandidates) && d.rallyCandidates.length > 0 ? d.rallyCandidates[0] : (d.title || '');
         return { ...n, data: { ...d, rallyCandidates: top ? [top] : d.rallyCandidates, rallyFinalized: true } } as Node<NodeData>;
       }
@@ -1329,7 +1335,7 @@ const duplicateSelectedDo = useCallback(() => {
       for (const n of nodes) {
         if (n.type === 'do') {
           const existing = updated.get(n.id);
-          const dbId = (existing?.dbId || (n as any)?.data?.dbId);
+          const dbId = (existing?.dbId || (n.data as NodeData & { dbId?: string })?.dbId);
           updated.set(n.id, { locked: true, dbId });
         }
       }
@@ -1351,7 +1357,7 @@ const duplicateSelectedDo = useCallback(() => {
         .filter((n) => n.type === 'do')
         .map((n) => {
           const existing = doLockedStatus.get(n.id);
-          return (existing?.dbId || (n as any)?.data?.dbId) as string | undefined;
+          return (existing?.dbId || (n.data as NodeData & { dbId?: string })?.dbId) as string | undefined;
         })
         .filter(Boolean) as string[];
 
@@ -1587,14 +1593,15 @@ const duplicateSelectedDo = useCallback(() => {
       // Keep dialog open to show success state
       // User can close manually
 
-    } catch (error: any) {
-      setImportStatus({ 
-        type: 'error', 
-        message: error.message || 'An error occurred during import' 
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'An error occurred during import';
+      setImportStatus({
+        type: 'error',
+        message: errorMsg,
       });
       toast({
         title: "Import Error",
-        description: error.message,
+        description: errorMsg,
         variant: "destructive"
       });
     } finally {
@@ -1614,10 +1621,10 @@ const duplicateSelectedDo = useCallback(() => {
     try {
       const text = await file.text();
       await processMarkdownImport(text);
-    } catch (error: any) {
-      setImportStatus({ 
-        type: 'error', 
-        message: error.message || 'Failed to read file' 
+    } catch (error) {
+      setImportStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to read file',
       });
     } finally {
       // Reset file input
@@ -1680,7 +1687,7 @@ const duplicateSelectedDo = useCallback(() => {
 
   // Ensure content fits and rallying cry sits near the top (~1–2 cm ≈ 38–76 px; we use ~60 px)
   const optimizeViewport = useCallback(() => {
-    const inst = rfInstanceRef.current as any;
+    const inst = rfInstanceRef.current as ReactFlowInstance<Node<NodeData>, Edge> & { fitView?: (opts?: { padding: number; includeHiddenNodes: boolean; duration: number }) => void; getViewport?: () => { x: number; y: number; zoom: number }; toObject?: () => { viewport: { x: number; y: number; zoom: number } }; setViewport?: (vp: { x: number; y: number; zoom: number }, opts?: { duration: number }) => void } | null;
     if (!inst) return;
 
     // First fit everything into view with a modest padding
@@ -1863,7 +1870,7 @@ const duplicateSelectedDo = useCallback(() => {
           onNodeClick={onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
           onInit={(inst) => {
-            rfInstanceRef.current = inst as any;
+            rfInstanceRef.current = inst;
             // Perform an initial fit + top offset when the instance is ready
             requestAnimationFrame(() => optimizeViewport());
           }}
@@ -1875,7 +1882,7 @@ const duplicateSelectedDo = useCallback(() => {
             function overlaps(a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) {
               return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
             }
-            let next = nodes.map((n) => ({ ...n }));
+            const next = nodes.map((n) => ({ ...n }));
             const idx = next.findIndex((n) => n.id === node.id);
             if (idx === -1) return;
             let attempts = 0;
@@ -2728,16 +2735,19 @@ function StrategyCanvasMobileView({
   activeTab: string;
   handleTabChange: (value: string) => void;
 }) {
-  const [rallyingCry, setRallyingCry] = useState<any>(null);
-  const [dos, setDos] = useState<any[]>([]);
-  const [sis, setSis] = useState<any[]>([]);
+  type RCRow = { id: string; title: string; narrative?: string };
+  type DORow = { id: string; title: string; status?: string; owner_user_id?: string; locked_at?: string | null };
+  type SIRow = { id: string; title: string; defining_objective_id: string; status?: string; owner_user_id?: string };
+  const [rallyingCry, setRallyingCry] = useState<RCRow | null>(null);
+  const [dos, setDos] = useState<DORow[]>([]);
+  const [sis, setSis] = useState<SIRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDOs, setExpandedDOs] = useState<Set<string>>(new Set());
   const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
   const [selectedDOId, setSelectedDOId] = useState<string | null>(null);
   const [selectedSIId, setSelectedSIId] = useState<string | null>(null);
-  const [selectedDODetails, setSelectedDODetails] = useState<any>(null);
-  const [selectedSIDetails, setSelectedSIDetails] = useState<any>(null);
+  const [selectedDODetails, setSelectedDODetails] = useState<Record<string, unknown> | null>(null);
+  const [selectedSIDetails, setSelectedSIDetails] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!cycleId) {
@@ -2774,7 +2784,7 @@ function StrategyCanvasMobileView({
           setDos(dosData);
           
           // Populate DO locked status map
-          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = dosData.map((d: any, index: number) => {
+          const doStatusEntries: Array<[string, { locked: boolean; dbId?: string }]> = dosData.map((d: DORow, index: number) => {
             const uiId = `do-${index + 1}`;
             const locked = !!d.locked_at;
             return [uiId, { locked, dbId: d.id }];

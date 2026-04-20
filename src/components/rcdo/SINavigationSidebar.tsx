@@ -125,7 +125,7 @@ export function SINavigationSidebar({
             .filter(si => si.defining_objective_id === doItem.id)
             .map(si => {
               const taskItems = (tasks || [])
-                .filter(task => (task as any).strategic_initiative_id === si.id)
+                .filter(task => task.strategic_initiative_id === si.id)
                 .map(task => ({
                   id: task.id,
                   title: task.title,

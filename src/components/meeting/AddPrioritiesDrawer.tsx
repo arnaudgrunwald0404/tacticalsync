@@ -237,13 +237,14 @@ const AddPrioritiesDrawer = ({
           periodNumber = format(actualStartDate, 'MMM yyyy');
           break;
         
-        case 'quarter':
+        case 'quarter': {
           actualStartDate = startOfQuarter(startDate);
           endDate = getMeetingEndDate('quarterly', actualStartDate);
           periodType = 'quarter';
           const quarter = Math.floor((startDate.getMonth() + 3) / 3);
           periodNumber = `Q${quarter}`;
           break;
+        }
         
         default:
           actualStartDate = startOfWeek(startDate, { weekStartsOn: 1 });
@@ -493,9 +494,10 @@ const AddPrioritiesDrawer = ({
                     }
                   }
                 }
-              } catch (linkErr: any) {
+              } catch (linkErr: unknown) {
                 // Ignore duplicate key errors
-                if (linkErr?.code !== '23505' && !linkErr?.message?.includes('duplicate key')) {
+                const le = linkErr as { code?: string; message?: string };
+                if (le?.code !== '23505' && !le?.message?.includes('duplicate key')) {
                   console.error('Error creating link for priority:', linkErr);
                 }
                 // Don't throw - link creation failure shouldn't block priority save
