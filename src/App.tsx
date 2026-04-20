@@ -26,6 +26,8 @@ const BrandingShowcase = lazy(() => import("./pages/BrandingShowcase"));
 const ColorPaletteShowcase = lazy(() => import("./pages/ColorPaletteShowcase"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+// Chief of Staff
+const ChiefOfStaff = lazy(() => import("./pages/ChiefOfStaff"));
 // RCDO Module
 const StrategyHome = lazy(() => import("./pages/StrategyHome"));
 const DODetail = lazy(() => import("./pages/DODetail"));
@@ -84,6 +86,11 @@ const App = () => (
             </Suspense>
           } />
           <Route path="/insights" element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DashboardWithTabs />
+            </Suspense>
+          } />
+          <Route path="/chief-of-staff" element={
             <Suspense fallback={<DashboardSkeleton />}>
               <DashboardWithTabs />
             </Suspense>

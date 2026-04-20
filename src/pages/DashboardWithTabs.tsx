@@ -9,6 +9,7 @@ const StrategyHome = lazy(() => import("./StrategyHome"));
 const LazyCheckinsPage = lazy(() => import("./Checkins"));
 const LazyCommitmentsPage = lazy(() => import("./Commitments"));
 const LazyInsightsPage = lazy(() => import("./Insights"));
+const LazyChiefOfStaffPage = lazy(() => import("./ChiefOfStaff"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
@@ -25,6 +26,8 @@ const DashboardWithTabs = () => {
   // Determine active tab from URL
   const activeTab = location.pathname.includes('/insights')
     ? 'insights'
+    : location.pathname.includes('/chief-of-staff')
+    ? 'cos'
     : location.pathname.includes('/dashboard/rcdo/tasks-feed')
     ? 'tasks'
     : location.pathname.includes('/dashboard/rcdo')
@@ -51,6 +54,8 @@ const DashboardWithTabs = () => {
       navigate('/commitments');
     } else if (value === 'insights') {
       navigate('/insights');
+    } else if (value === 'cos') {
+      navigate('/chief-of-staff');
     }
   };
 
@@ -91,6 +96,7 @@ const DashboardWithTabs = () => {
               <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
                 <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full max-w-fit">
                   <TabsList className="h-10">
+                    <TabsTrigger value="cos" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">CoS 🧠</TabsTrigger>
                     <TabsTrigger value="checkins" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Workspace</TabsTrigger>
                     <TabsTrigger value="main" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Meetings</TabsTrigger>
                     <TabsTrigger value="commitments" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Commitments</TabsTrigger>
@@ -110,6 +116,14 @@ const DashboardWithTabs = () => {
       </header>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsContent value="cos" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
+          {activeTab === 'cos' ? (
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Chief of Staff…</div>}>
+              <LazyChiefOfStaffPage />
+            </Suspense>
+          ) : null}
+        </TabsContent>
+
         <TabsContent value="checkins" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'checkins' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-ins…</div>}>
