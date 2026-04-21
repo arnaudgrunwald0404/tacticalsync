@@ -1127,6 +1127,29 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+  const [sharing, setSharing] = useState(false);
+
+  const sharePrep = async () => {
+    if (!prepSheet) return;
+    setSharing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('share-prep', {
+        body: { memberName: prepSheet.member.name, content: prepSheet.content },
+      });
+      if (error) throw error;
+      const channel = (data as { channel?: string })?.channel ?? 'unknown';
+      toast({
+        title: channel === 'slack' ? 'Sent via Slack ✓' : 'Sent via email ✓',
+        description: channel === 'slack'
+          ? `Prep note for ${prepSheet.member.name} sent to your Slack DM`
+          : `Prep note for ${prepSheet.member.name} sent to your email`,
+      });
+    } catch (err) {
+      toast({ title: 'Share failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSharing(false);
+    }
+  };
 
   // Build tree: roots = direct_reports with no reports_to_id
   const directReports = members.filter(
@@ -1244,10 +1267,24 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       <Sheet open={!!prepSheet} onOpenChange={open => { if (!open) setPrepSheet(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader className="mb-4">
-            <SheetTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              {prepSheet?.member.name} — 1:1 Prep
-            </SheetTitle>
+            <div className="flex items-center justify-between gap-3">
+              <SheetTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                {prepSheet?.member.name} — 1:1 Prep
+              </SheetTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-shrink-0 gap-1.5"
+                disabled={sharing}
+                onClick={sharePrep}
+              >
+                {sharing
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Send className="h-4 w-4" />}
+                <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
+              </Button>
+            </div>
           </SheetHeader>
           <div className="prose-sm text-foreground">
             {prepSheet && renderMarkdown(prepSheet.content)}
