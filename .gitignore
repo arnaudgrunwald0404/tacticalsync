@@ -40,3 +40,7 @@ login-error-*.png
 potential_backup.sql
 *.dump
 *.backup.sql
+
+# Claude Code internal
+.claude/worktrees/
+.claude/settings.local.json
