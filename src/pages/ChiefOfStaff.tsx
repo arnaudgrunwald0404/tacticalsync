@@ -67,6 +67,7 @@ interface CosTeamMember {
   relationship_type: 'direct_report' | 'collaborator';
   context_notes: string | null;
   last_1on1_date: string | null;
+  reports_to_id: string | null;
 }
 
 const COL1_CATEGORIES = ['now', 'this_week', 'this_month', 'next_month'] as const;
@@ -1084,32 +1085,33 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
 
 // ── Team ──────────────────────────────────────────────────────────────────────
 
-function MemberCard({ member, onViewPrep }: {
+function MemberCard({ member, onViewPrep, compact }: {
   member: CosTeamMember;
   onViewPrep: (member: CosTeamMember) => void;
+  compact?: boolean;
 }) {
   return (
-    <Card className="border border-border/50">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
+    <Card className={cn('border border-border/50', compact && 'bg-muted/20')}>
+      <CardContent className={cn('p-4', compact && 'p-3')}>
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-medium text-sm">{member.name}</p>
+            <p className={cn('font-medium', compact ? 'text-sm' : 'text-sm')}>{member.name}</p>
             <p className="text-xs text-muted-foreground">{member.role}</p>
-            {member.last_1on1_date && (
+            {!compact && member.last_1on1_date && (
               <p className="text-xs text-muted-foreground mt-1">
                 Last 1:1: {format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d')}
               </p>
             )}
-            {member.context_notes && (
+            {!compact && member.context_notes && (
               <p className="text-xs text-muted-foreground mt-1 italic leading-snug">{member.context_notes}</p>
             )}
           </div>
           <Button
             variant="outline"
-            className="h-10 text-sm flex-shrink-0 gap-1.5"
+            className={cn('flex-shrink-0 gap-1.5 touch-manipulation', compact ? 'h-8 text-xs' : 'h-10 text-sm')}
             onClick={() => onViewPrep(member)}
           >
-            <FileText className="h-4 w-4" />
+            <FileText className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
             <span className="hidden sm:inline">View 1:1 Prep</span>
             <span className="sm:hidden">Prep</span>
           </Button>
@@ -1119,14 +1121,55 @@ function MemberCard({ member, onViewPrep }: {
   );
 }
 
+
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+  const [sharing, setSharing] = useState(false);
 
-  const directReports = members.filter(m => m.relationship_type === 'direct_report');
-  const collaborators = members.filter(m => m.relationship_type === 'collaborator');
+  const sharePrep = async () => {
+    if (!prepSheet) return;
+    setSharing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('share-prep', {
+        body: { memberName: prepSheet.member.name, content: prepSheet.content },
+      });
+      if (error) throw error;
+      const channel = (data as { channel?: string })?.channel ?? 'unknown';
+      toast({
+        title: channel === 'slack' ? 'Sent via Slack ✓' : 'Sent via email ✓',
+        description: channel === 'slack'
+          ? `Prep note for ${prepSheet.member.name} sent to your Slack DM`
+          : `Prep note for ${prepSheet.member.name} sent to your email`,
+      });
+    } catch (err) {
+      toast({ title: 'Share failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  // Build tree: roots = direct_reports with no reports_to_id
+  const directReports = members.filter(
+    m => m.relationship_type === 'direct_report' && !m.reports_to_id
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Map manager id → their reports
+  const reportsByManager: Record<string, CosTeamMember[]> = {};
+  for (const m of members) {
+    if (m.reports_to_id) {
+      (reportsByManager[m.reports_to_id] ??= []).push(m);
+    }
+  }
+  // Sort each manager's reports alphabetically
+  for (const list of Object.values(reportsByManager)) {
+    list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const collaborators = members.filter(m => m.relationship_type === 'collaborator')
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const openPrepFile = async (member: CosTeamMember) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1135,17 +1178,13 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       toast({ title: 'File System API not supported', description: 'Try Chrome or Edge', variant: 'destructive' });
       return;
     }
-
-    // Pick directory once per session
     if (!dirHandleRef.current) {
       try {
         dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
       } catch {
-        return; // user cancelled
+        return;
       }
     }
-
-    // Derive filename: "Dan Pope" → "dan_pope.md"
     const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
     try {
       const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
@@ -1153,52 +1192,99 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       const content = await file.text();
       setPrepSheet({ member, content });
     } catch {
-      // reset handle in case directory changed, prompt again next time
       dirHandleRef.current = null;
       toast({
-        title: `No prep file found for ${member.name}`,
+        title: `No prep file for ${member.name}`,
         description: `Expected ~/claude/1-1s/${slug}.md`,
         variant: 'destructive',
       });
     }
   };
 
+  const totalDirectLine = directReports.length +
+    Object.values(reportsByManager).reduce((s, arr) => s + arr.length, 0);
+
   return (
     <>
       <div className="space-y-8">
-        <h2 className="text-lg font-semibold">Team</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Team</h2>
+          <Badge variant="secondary" className="text-xs">{totalDirectLine}</Badge>
+        </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
-            <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
+        {/* Org tree */}
+        <div className="space-y-3">
+          {/* You (root) */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-sm font-semibold text-primary">You</span>
           </div>
-          <div className="space-y-2">
-            {directReports.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
-            {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+
+          {/* Direct reports + their trees */}
+          <div className="pl-4 border-l-2 border-border space-y-4">
+            {directReports.map(manager => {
+              const reports = reportsByManager[manager.id] ?? [];
+              return (
+                <div key={manager.id} className="space-y-2">
+                  {/* Manager row */}
+                  <MemberCard member={manager} onViewPrep={openPrepFile} />
+
+                  {/* Their direct reports indented */}
+                  {reports.length > 0 && (
+                    <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
+                      {reports.map(r => (
+                        <div key={r.id}>
+                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {directReports.length === 0 && (
+              <p className="text-xs text-muted-foreground py-2">No direct reports yet.</p>
+            )}
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
-            <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
+        {/* Collaborators */}
+        {collaborators.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
+              <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
+            </div>
+            <div className="space-y-2">
+              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+            </div>
           </div>
-          <div className="space-y-2">
-            {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
-            {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* 1:1 Prep Sheet */}
       <Sheet open={!!prepSheet} onOpenChange={open => { if (!open) setPrepSheet(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader className="mb-4">
-            <SheetTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              {prepSheet?.member.name} — 1:1 Prep
-            </SheetTitle>
+            <div className="flex items-center justify-between gap-3">
+              <SheetTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                {prepSheet?.member.name} — 1:1 Prep
+              </SheetTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-shrink-0 gap-1.5"
+                disabled={sharing}
+                onClick={sharePrep}
+              >
+                {sharing
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Send className="h-4 w-4" />}
+                <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
+              </Button>
+            </div>
           </SheetHeader>
           <div className="prose-sm text-foreground">
             {prepSheet && renderMarkdown(prepSheet.content)}
