@@ -1,8 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, ChevronUp, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText,
 } from 'lucide-react';
+import {
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent,
+  PointerSensor, KeyboardSensor, useSensor, useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -20,7 +32,7 @@ interface CosPriority {
   id: string;
   user_id: string;
   text: string;
-  category: 'this_week' | 'april' | 'strategic' | 'people';
+  category: 'now' | 'this_week' | 'this_month' | 'next_month' | 'strategic' | 'people';
   tier_order: number;
   notes: string | null;
   created_at: string;
@@ -57,14 +69,25 @@ interface CosTeamMember {
   last_1on1_date: string | null;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  this_week: 'This Week',
-  april: 'April',
-  strategic: 'Strategic',
-  people: 'People',
-};
+const COL1_CATEGORIES = ['now', 'this_week', 'this_month', 'next_month'] as const;
+const COL2_CATEGORIES = ['strategic', 'people'] as const;
+const ALL_CATEGORIES = [...COL1_CATEGORIES, ...COL2_CATEGORIES] as const;
+type CategoryKey = CosPriority['category'];
 
-const CATEGORY_ORDER = ['this_week', 'april', 'strategic', 'people'] as const;
+function getCategoryLabels(): Record<CategoryKey, string> {
+  const now = new Date();
+  const thisMonth = now.toLocaleString('default', { month: 'long' });
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    .toLocaleString('default', { month: 'long' });
+  return {
+    now: 'Now',
+    this_week: 'This Week',
+    this_month: thisMonth,
+    next_month: nextMonth,
+    strategic: 'Strategic Opportunities',
+    people: 'People to Meet',
+  };
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -131,25 +154,58 @@ export default function ChiefOfStaff() {
     setPriorities(prev => prev.filter(p => p.id !== id));
   };
 
-  const movePriority = async (id: string, direction: 'up' | 'down') => {
-    const p = priorities.find(x => x.id === id);
-    if (!p) return;
-    const catItems = priorities.filter(x => x.category === p.category).sort((a, b) => a.tier_order - b.tier_order);
-    const idx = catItems.findIndex(x => x.id === id);
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= catItems.length) return;
-    const swap = catItems[swapIdx];
+  const reorderPriority = async (
+    id: string,
+    targetCategory: CategoryKey,
+    insertBeforeId: string | null,
+  ) => {
+    const activeItem = priorities.find(p => p.id === id);
+    if (!activeItem) return;
+    const sourceCategory = activeItem.category;
+
+    // Build new target list (excluding the moved item, then insert at position)
+    const targetItems = priorities
+      .filter(p => p.category === targetCategory && p.id !== id)
+      .sort((a, b) => a.tier_order - b.tier_order);
+    const insertIdx = insertBeforeId
+      ? Math.max(0, targetItems.findIndex(p => p.id === insertBeforeId))
+      : targetItems.length;
+    const newTargetItems: CosPriority[] = [
+      ...targetItems.slice(0, insertIdx === -1 ? targetItems.length : insertIdx),
+      { ...activeItem, category: targetCategory },
+      ...targetItems.slice(insertIdx === -1 ? targetItems.length : insertIdx),
+    ];
+
+    // Optimistic update
+    setPriorities(prev => {
+      const sourceItems = sourceCategory !== targetCategory
+        ? prev.filter(p => p.category === sourceCategory && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
+            .map((p, i) => ({ ...p, tier_order: i + 1 }))
+        : [];
+      const others = prev.filter(
+        p => p.category !== targetCategory && p.id !== id && p.category !== sourceCategory,
+      );
+      const reindexedTarget = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
+      return sourceCategory !== targetCategory
+        ? [...others, ...sourceItems, ...reindexedTarget]
+        : [...others, ...reindexedTarget];
+    });
+
+    // Persist
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await Promise.all([
-      db.from('cos_priorities').update({ tier_order: swap.tier_order }).eq('id', p.id),
-      db.from('cos_priorities').update({ tier_order: p.tier_order }).eq('id', swap.id),
+      ...newTargetItems.map((p, i) =>
+        db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id),
+      ),
+      ...(sourceCategory !== targetCategory
+        ? priorities
+            .filter(p => p.category === sourceCategory && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
+            .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
+        : []),
     ]);
-    setPriorities(prev => prev.map(x => {
-      if (x.id === p.id) return { ...x, tier_order: swap.tier_order };
-      if (x.id === swap.id) return { ...x, tier_order: p.tier_order };
-      return x;
-    }));
   };
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string) => {
@@ -272,7 +328,7 @@ export default function ChiefOfStaff() {
             onUpdate={updatePriority}
             onAdd={addPriority}
             onDelete={deletePriority}
-            onMove={movePriority}
+            onReorder={reorderPriority}
             onCopy={copyToClipboard}
           />
         </TabsContent>
@@ -282,7 +338,7 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="team">
-          <TeamSection members={teamMembers} onCopy={copyToClipboard} />
+          <TeamSection members={teamMembers} />
         </TabsContent>
       </Tabs>
     </div>
@@ -366,63 +422,181 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
 
 // ── Priorities ────────────────────────────────────────────────────────────────
 
-function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onMove, onCopy }: {
-  priorities: CosPriority[];
+function CategoryBucket({
+  category, label, items, onUpdate, onAdd, onDelete, onCopy,
+}: {
+  category: CategoryKey;
+  label: string;
+  items: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
-  onAdd: (category: CosPriority['category']) => void;
+  onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
-  onMove: (id: string, direction: 'up' | 'down') => void;
   onCopy: (text: string, label?: string) => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id: category });
   return (
-    <div className="space-y-10">
-      {CATEGORY_ORDER.map(category => {
-        const items = priorities
-          .filter(p => p.category === category)
-          .sort((a, b) => a.tier_order - b.tier_order);
-        return (
-          <div key={category}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold">{CATEGORY_LABELS[category]}</h3>
-                <Badge variant="secondary" className="text-xs">{items.length}</Badge>
-              </div>
-              <Button size="sm" variant="ghost" className="h-9 text-sm" onClick={() => onAdd(category)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
+    <div
+      ref={setNodeRef}
+      className={cn('rounded-lg transition-colors', isOver && 'bg-primary/5')}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{label}</h3>
+          <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+        </div>
+        <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => onAdd(category)}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
+        </Button>
+      </div>
+      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1.5">
+          {items.map(item => (
+            <SortablePriorityCard
+              key={item.id}
+              item={item}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+          {items.length === 0 && (
+            <div className={cn(
+              'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
+              isOver && 'border-primary/40 bg-primary/5',
+            )}>
+              Drop here
             </div>
-            <div className="space-y-1.5">
-              {items.map((item, idx) => (
-                <PriorityCard
-                  key={item.id}
-                  item={item}
-                  isFirst={idx === 0}
-                  isLast={idx === items.length - 1}
-                  onUpdate={onUpdate}
-                  onDelete={onDelete}
-                  onMove={onMove}
-                  onCopy={onCopy}
-                />
-              ))}
-              {items.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2 pl-1">No items yet.</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          )}
+        </div>
+      </SortableContext>
     </div>
   );
 }
 
-function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCopy }: {
+function SortablePriorityCard({
+  item, onUpdate, onDelete, onCopy,
+}: {
   item: CosPriority;
-  isFirst: boolean;
-  isLast: boolean;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
-  onMove: (id: string, direction: 'up' | 'down') => void;
+  onCopy: (text: string, label?: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+    >
+      <PriorityCard
+        item={item}
+        dragListeners={listeners}
+        dragAttributes={attributes}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onCopy={onCopy}
+      />
+    </div>
+  );
+}
+
+function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy }: {
+  priorities: CosPriority[];
+  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
+  onAdd: (category: CategoryKey) => void;
+  onDelete: (id: string) => void;
+  onReorder: (id: string, targetCategory: CategoryKey, insertBeforeId: string | null) => void;
+  onCopy: (text: string, label?: string) => void;
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeItem = priorities.find(p => p.id === activeId);
+  const categoryLabels = getCategoryLabels();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragStart = ({ active }: DragStartEvent) => setActiveId(active.id as string);
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveId(null);
+    if (!over || active.id === over.id) return;
+    const activeItem = priorities.find(p => p.id === active.id);
+    if (!activeItem) return;
+
+    const overId = over.id as string;
+    const targetCategory = ALL_CATEGORIES.includes(overId as CategoryKey)
+      ? (overId as CategoryKey)
+      : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
+
+    const insertBeforeId = ALL_CATEGORIES.includes(overId as CategoryKey) ? null : overId;
+    onReorder(activeItem.id, targetCategory, insertBeforeId);
+  };
+
+  const sortedFor = (cat: CategoryKey) =>
+    priorities.filter(p => p.category === cat).sort((a, b) => a.tier_order - b.tier_order);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid gap-8 md:grid-cols-[3fr_2fr]">
+        {/* Column 1 — time buckets */}
+        <div className="space-y-6">
+          {COL1_CATEGORIES.map(cat => (
+            <CategoryBucket
+              key={cat}
+              category={cat}
+              label={categoryLabels[cat]}
+              items={sortedFor(cat)}
+              onUpdate={onUpdate}
+              onAdd={onAdd}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+        </div>
+        {/* Column 2 — strategic buckets */}
+        <div className="space-y-6">
+          {COL2_CATEGORIES.map(cat => (
+            <CategoryBucket
+              key={cat}
+              category={cat}
+              label={categoryLabels[cat]}
+              items={sortedFor(cat)}
+              onUpdate={onUpdate}
+              onAdd={onAdd}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+        </div>
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeItem ? (
+          <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
+            <CardContent className="p-3">
+              <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
+            </CardContent>
+          </Card>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function PriorityCard({
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy,
+}: {
+  item: CosPriority;
+  dragListeners?: React.HTMLAttributes<HTMLElement>;
+  dragAttributes?: React.HTMLAttributes<HTMLElement>;
+  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
+  onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -451,24 +625,16 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
   return (
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
-        <div className="flex items-start gap-2">
-          {/* Reorder arrows — always visible on mobile, hover-only on desktop */}
-          <div className="flex flex-col flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => onMove(item.id, 'up')}
-              disabled={isFirst}
-              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <ChevronUp className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => onMove(item.id, 'down')}
-              disabled={isLast}
-              className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <ChevronDown className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="flex items-start gap-1.5">
+          {/* Drag handle */}
+          <button
+            {...dragListeners}
+            {...dragAttributes}
+            className="flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
@@ -514,18 +680,10 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-10 text-sm"
-                    onClick={() => onCopy(buildPrompt('recommend'))}
-                  >
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('recommend'))}>
                     💡 Recommend next step
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-sm"
-                    onClick={() => onCopy(buildPrompt('draft'))}
-                  >
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('draft'))}>
                     ✍️ Draft message
                   </Button>
                 </div>
@@ -547,10 +705,7 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     className="h-10 px-3 flex-shrink-0"
                     disabled={!agentQuery.trim()}
                     onClick={() => {
-                      if (agentQuery.trim()) {
-                        onCopy(buildPrompt('custom', agentQuery.trim()));
-                        setAgentQuery('');
-                      }
+                      if (agentQuery.trim()) { onCopy(buildPrompt('custom', agentQuery.trim())); setAgentQuery(''); }
                     }}
                   >
                     <Send className="h-4 w-4" />
@@ -560,21 +715,21 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
             )}
           </div>
 
-          {/* Right controls — always visible on mobile, hover-only on desktop */}
+          {/* Right controls */}
           <div className="flex items-center flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => setExpanded(!expanded)}
               className="p-2 text-muted-foreground hover:text-foreground"
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
-              <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
+              <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
             </button>
             <button
               onClick={() => onDelete(item.id)}
               className="p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
-              <Trash2 className="h-5 w-5" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -779,6 +934,53 @@ function DciHistory({ logs, onUpdate, onRerun }: {
   );
 }
 
+// ── 1:1 prep — local markdown renderer ───────────────────────────────────────
+
+function inlineMarkdown(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={i}>{part.slice(1, -1)}</em>;
+    return part;
+  });
+}
+
+function renderMarkdown(content: string): React.ReactNode {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('### ')) {
+      elements.push(<h3 key={i} className="font-semibold text-sm mt-4 mb-1 text-foreground">{inlineMarkdown(line.slice(4))}</h3>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h2 key={i} className="font-bold text-base mt-5 mb-1 border-b border-border pb-1">{inlineMarkdown(line.slice(3))}</h2>);
+    } else if (line.startsWith('# ')) {
+      elements.push(<h1 key={i} className="font-bold text-lg mt-4 mb-2">{inlineMarkdown(line.slice(2))}</h1>);
+    } else if (line.match(/^---+$/)) {
+      elements.push(<hr key={i} className="my-3 border-border" />);
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      const items: string[] = [];
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('* '))) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-0.5 my-1">
+          {items.map((it, j) => <li key={j} className="text-sm leading-snug">{inlineMarkdown(it)}</li>)}
+        </ul>
+      );
+      continue;
+    } else if (line.trim() === '') {
+      elements.push(<div key={i} className="h-1.5" />);
+    } else {
+      elements.push(<p key={i} className="text-sm leading-relaxed">{inlineMarkdown(line)}</p>);
+    }
+    i++;
+  }
+  return <>{elements}</>;
+}
+
 // ── Team — ClearGO API types ──────────────────────────────────────────────────
 
 interface CleargoMember { id: string; name: string; role: string; }
@@ -882,31 +1084,10 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
 
 // ── Team ──────────────────────────────────────────────────────────────────────
 
-function MemberCard({ member, onCopy }: { member: CosTeamMember; onCopy: (text: string, label?: string) => void }) {
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
-
-  const handlePrep = async () => {
-    if (!CLEARGO_API_KEY) {
-      onCopy(buildStaticPrepPrompt(member), 'Prep prompt copied — paste into Cowork');
-      return;
-    }
-    setLoading(true);
-    try {
-      const prompt = await fetchCleargoPrep(member);
-      onCopy(prompt, '📋 Live 1:1 prep copied — paste into Cowork');
-    } catch (err) {
-      // Fall back silently to static prompt; surface only unexpected errors
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('not found in ClearGO') && !msg.includes('fetch failed')) {
-        toast({ title: 'ClearGO unavailable — using static prep', variant: 'destructive' });
-      }
-      onCopy(buildStaticPrepPrompt(member), 'Prep prompt copied — paste into Cowork');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+function MemberCard({ member, onViewPrep }: {
+  member: CosTeamMember;
+  onViewPrep: (member: CosTeamMember) => void;
+}) {
   return (
     <Card className="border border-border/50">
       <CardContent className="p-4">
@@ -922,17 +1103,15 @@ function MemberCard({ member, onCopy }: { member: CosTeamMember; onCopy: (text: 
             {member.context_notes && (
               <p className="text-xs text-muted-foreground mt-1 italic leading-snug">{member.context_notes}</p>
             )}
-            {CLEARGO_API_KEY && (
-              <p className="text-xs text-primary/60 mt-1">Live data from ClearGO</p>
-            )}
           </div>
           <Button
             variant="outline"
-            className="h-10 text-sm flex-shrink-0 min-w-[90px]"
-            onClick={handlePrep}
-            disabled={loading}
+            className="h-10 text-sm flex-shrink-0 gap-1.5"
+            onClick={() => onViewPrep(member)}
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Prep 1:1'}
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">View 1:1 Prep</span>
+            <span className="sm:hidden">Prep</span>
           </Button>
         </div>
       </CardContent>
@@ -940,43 +1119,92 @@ function MemberCard({ member, onCopy }: { member: CosTeamMember; onCopy: (text: 
   );
 }
 
-function TeamSection({ members, onCopy }: {
-  members: CosTeamMember[];
-  onCopy: (text: string, label?: string) => void;
-}) {
+function TeamSection({ members }: { members: CosTeamMember[] }) {
+  const { toast } = useToast();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dirHandleRef = React.useRef<any>(null);
+  const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+
   const directReports = members.filter(m => m.relationship_type === 'direct_report');
   const collaborators = members.filter(m => m.relationship_type === 'collaborator');
 
+  const openPrepFile = async (member: CosTeamMember) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fsApi = (window as any).showDirectoryPicker;
+    if (!fsApi) {
+      toast({ title: 'File System API not supported', description: 'Try Chrome or Edge', variant: 'destructive' });
+      return;
+    }
+
+    // Pick directory once per session
+    if (!dirHandleRef.current) {
+      try {
+        dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
+      } catch {
+        return; // user cancelled
+      }
+    }
+
+    // Derive filename: "Dan Pope" → "dan_pope.md"
+    const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
+    try {
+      const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
+      const file = await fileHandle.getFile();
+      const content = await file.text();
+      setPrepSheet({ member, content });
+    } catch {
+      // reset handle in case directory changed, prompt again next time
+      dirHandleRef.current = null;
+      toast({
+        title: `No prep file found for ${member.name}`,
+        description: `Expected ~/claude/1-1s/${slug}.md`,
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
+    <>
+      <div className="space-y-8">
         <h2 className="text-lg font-semibold">Team</h2>
-        {CLEARGO_API_KEY && (
-          <Badge variant="secondary" className="text-xs">🟢 ClearGO live</Badge>
-        )}
+
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
+            <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {directReports.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+            {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
+            <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+            {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+          </div>
+        </div>
       </div>
 
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
-          <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
-        </div>
-        <div className="space-y-2">
-          {directReports.map(m => <MemberCard key={m.id} member={m} onCopy={onCopy} />)}
-          {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
-          <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
-        </div>
-        <div className="space-y-2">
-          {collaborators.map(m => <MemberCard key={m.id} member={m} onCopy={onCopy} />)}
-          {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
-        </div>
-      </div>
-    </div>
+      {/* 1:1 Prep Sheet */}
+      <Sheet open={!!prepSheet} onOpenChange={open => { if (!open) setPrepSheet(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              {prepSheet?.member.name} — 1:1 Prep
+            </SheetTitle>
+          </SheetHeader>
+          <div className="prose-sm text-foreground">
+            {prepSheet && renderMarkdown(prepSheet.content)}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
