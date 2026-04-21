@@ -37,9 +37,7 @@ jobs:
         version: latest
 
     - name: Start Supabase
-      run: |
-        supabase init
-        supabase start
+      run: supabase start
 
     - name: Run Playwright tests
       run: npm run test:e2e
