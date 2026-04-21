@@ -1,8 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, ChevronUp, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText,
 } from 'lucide-react';
+import {
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent,
+  PointerSensor, KeyboardSensor, useSensor, useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -20,12 +32,14 @@ interface CosPriority {
   id: string;
   user_id: string;
   text: string;
-  category: 'this_week' | 'april' | 'strategic' | 'people';
+  category: 'now' | 'this_week' | 'this_month' | 'next_month' | 'strategic' | 'people';
   tier_order: number;
   notes: string | null;
   created_at: string;
   updated_at: string;
 }
+
+type DciItemStatus = 'done' | 'in_progress' | 'blocked' | 'deferred';
 
 interface CosDciLog {
   id: string;
@@ -37,6 +51,12 @@ interface CosDciLog {
   topic_raised: string | null;
   notes: string | null;
   created_at: string;
+  priority_1_status: DciItemStatus | null;
+  priority_1_comment: string | null;
+  priority_2_status: DciItemStatus | null;
+  priority_2_comment: string | null;
+  priority_3_status: DciItemStatus | null;
+  priority_3_comment: string | null;
 }
 
 interface CosTeamMember {
@@ -49,14 +69,25 @@ interface CosTeamMember {
   last_1on1_date: string | null;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  this_week: 'This Week',
-  april: 'April',
-  strategic: 'Strategic',
-  people: 'People',
-};
+const COL1_CATEGORIES = ['now', 'this_week', 'this_month', 'next_month'] as const;
+const COL2_CATEGORIES = ['strategic', 'people'] as const;
+const ALL_CATEGORIES = [...COL1_CATEGORIES, ...COL2_CATEGORIES] as const;
+type CategoryKey = CosPriority['category'];
 
-const CATEGORY_ORDER = ['this_week', 'april', 'strategic', 'people'] as const;
+function getCategoryLabels(): Record<CategoryKey, string> {
+  const now = new Date();
+  const thisMonth = now.toLocaleString('default', { month: 'long' });
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    .toLocaleString('default', { month: 'long' });
+  return {
+    now: 'Now',
+    this_week: 'This Week',
+    this_month: thisMonth,
+    next_month: nextMonth,
+    strategic: 'Strategic Opportunities',
+    people: 'People to Meet',
+  };
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -123,25 +154,58 @@ export default function ChiefOfStaff() {
     setPriorities(prev => prev.filter(p => p.id !== id));
   };
 
-  const movePriority = async (id: string, direction: 'up' | 'down') => {
-    const p = priorities.find(x => x.id === id);
-    if (!p) return;
-    const catItems = priorities.filter(x => x.category === p.category).sort((a, b) => a.tier_order - b.tier_order);
-    const idx = catItems.findIndex(x => x.id === id);
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= catItems.length) return;
-    const swap = catItems[swapIdx];
+  const reorderPriority = async (
+    id: string,
+    targetCategory: CategoryKey,
+    insertBeforeId: string | null,
+  ) => {
+    const activeItem = priorities.find(p => p.id === id);
+    if (!activeItem) return;
+    const sourceCategory = activeItem.category;
+
+    // Build new target list (excluding the moved item, then insert at position)
+    const targetItems = priorities
+      .filter(p => p.category === targetCategory && p.id !== id)
+      .sort((a, b) => a.tier_order - b.tier_order);
+    const insertIdx = insertBeforeId
+      ? Math.max(0, targetItems.findIndex(p => p.id === insertBeforeId))
+      : targetItems.length;
+    const newTargetItems: CosPriority[] = [
+      ...targetItems.slice(0, insertIdx === -1 ? targetItems.length : insertIdx),
+      { ...activeItem, category: targetCategory },
+      ...targetItems.slice(insertIdx === -1 ? targetItems.length : insertIdx),
+    ];
+
+    // Optimistic update
+    setPriorities(prev => {
+      const sourceItems = sourceCategory !== targetCategory
+        ? prev.filter(p => p.category === sourceCategory && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
+            .map((p, i) => ({ ...p, tier_order: i + 1 }))
+        : [];
+      const others = prev.filter(
+        p => p.category !== targetCategory && p.id !== id && p.category !== sourceCategory,
+      );
+      const reindexedTarget = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
+      return sourceCategory !== targetCategory
+        ? [...others, ...sourceItems, ...reindexedTarget]
+        : [...others, ...reindexedTarget];
+    });
+
+    // Persist
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await Promise.all([
-      db.from('cos_priorities').update({ tier_order: swap.tier_order }).eq('id', p.id),
-      db.from('cos_priorities').update({ tier_order: p.tier_order }).eq('id', swap.id),
+      ...newTargetItems.map((p, i) =>
+        db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id),
+      ),
+      ...(sourceCategory !== targetCategory
+        ? priorities
+            .filter(p => p.category === sourceCategory && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
+            .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
+        : []),
     ]);
-    setPriorities(prev => prev.map(x => {
-      if (x.id === p.id) return { ...x, tier_order: swap.tier_order };
-      if (x.id === swap.id) return { ...x, tier_order: p.tier_order };
-      return x;
-    }));
   };
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string) => {
@@ -159,6 +223,65 @@ export default function ChiefOfStaff() {
       setDciLogs(prev => [data as CosDciLog, ...prev]);
       toast({ title: 'Brief logged' });
     }
+  };
+
+  const updateDciLog = async (id: string, updates: Partial<CosDciLog>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_dci_logs').update(updates).eq('id', id).select().single();
+    if (!error && data) setDciLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } as CosDciLog : l));
+  };
+
+  const rerunDci = async (log: CosDciLog) => {
+    if (!userId) return;
+    const items = [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text && i.status !== 'done');
+
+    const newPriorities = items.map(i => i.text!);
+    const topic = `Rerun from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}`;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
+      user_id: userId,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      priority_1: newPriorities[0] ?? null,
+      priority_2: newPriorities[1] ?? null,
+      priority_3: newPriorities[2] ?? null,
+      topic_raised: topic,
+    }).select().single();
+
+    if (!error && data) {
+      setDciLogs(prev => [data as CosDciLog, ...prev]);
+      toast({ title: 'New brief created from undone items' });
+    }
+
+    // Also build agentic context and copy to clipboard
+    const statusLabel: Record<string, string> = {
+      done: '✅ Done', in_progress: '🔄 In Progress', blocked: '🚫 Blocked', deferred: '⏭️ Deferred',
+    };
+    const lines = [
+      `DCI Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
+      `Original brief from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}:`,
+      '',
+    ];
+    [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text).forEach((item, i) => {
+      lines.push(`${i + 1}. ${item.text}`);
+      if (item.status) lines.push(`   Status: ${statusLabel[item.status] ?? item.status}`);
+      if (item.comment) lines.push(`   Note: ${item.comment}`);
+    });
+    if (newPriorities.length > 0) {
+      lines.push('', 'Still open for next DCI:');
+      newPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
+    }
+    lines.push('', 'Given this context, please: (1) identify what needs the most attention right now, (2) suggest any adjustments to the remaining priorities, and (3) draft a brief update I can share with my team.');
+
+    copyToClipboard(lines.join('\n'), 'Review prompt copied — paste into Cowork');
   };
 
   if (loading) {
@@ -184,10 +307,10 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 w-full sm:w-auto">
-          <TabsTrigger value="brief">Tonight's Brief</TabsTrigger>
+        <TabsList className="mb-6 w-full grid grid-cols-4">
+          <TabsTrigger value="brief">Brief</TabsTrigger>
           <TabsTrigger value="priorities">Priorities</TabsTrigger>
-          <TabsTrigger value="dci">DCI History</TabsTrigger>
+          <TabsTrigger value="dci">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
@@ -205,17 +328,17 @@ export default function ChiefOfStaff() {
             onUpdate={updatePriority}
             onAdd={addPriority}
             onDelete={deletePriority}
-            onMove={movePriority}
+            onReorder={reorderPriority}
             onCopy={copyToClipboard}
           />
         </TabsContent>
 
         <TabsContent value="dci">
-          <DciHistory logs={dciLogs} />
+          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={rerunDci} />
         </TabsContent>
 
         <TabsContent value="team">
-          <TeamSection members={teamMembers} onCopy={copyToClipboard} />
+          <TeamSection members={teamMembers} />
         </TabsContent>
       </Tabs>
     </div>
@@ -299,63 +422,181 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
 
 // ── Priorities ────────────────────────────────────────────────────────────────
 
-function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onMove, onCopy }: {
-  priorities: CosPriority[];
+function CategoryBucket({
+  category, label, items, onUpdate, onAdd, onDelete, onCopy,
+}: {
+  category: CategoryKey;
+  label: string;
+  items: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
-  onAdd: (category: CosPriority['category']) => void;
+  onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
-  onMove: (id: string, direction: 'up' | 'down') => void;
   onCopy: (text: string, label?: string) => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id: category });
   return (
-    <div className="space-y-10">
-      {CATEGORY_ORDER.map(category => {
-        const items = priorities
-          .filter(p => p.category === category)
-          .sort((a, b) => a.tier_order - b.tier_order);
-        return (
-          <div key={category}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold">{CATEGORY_LABELS[category]}</h3>
-                <Badge variant="secondary" className="text-xs">{items.length}</Badge>
-              </div>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onAdd(category)}>
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                Add
-              </Button>
+    <div
+      ref={setNodeRef}
+      className={cn('rounded-lg transition-colors', isOver && 'bg-primary/5')}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{label}</h3>
+          <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+        </div>
+        <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => onAdd(category)}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
+        </Button>
+      </div>
+      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1.5">
+          {items.map(item => (
+            <SortablePriorityCard
+              key={item.id}
+              item={item}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+          {items.length === 0 && (
+            <div className={cn(
+              'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
+              isOver && 'border-primary/40 bg-primary/5',
+            )}>
+              Drop here
             </div>
-            <div className="space-y-1.5">
-              {items.map((item, idx) => (
-                <PriorityCard
-                  key={item.id}
-                  item={item}
-                  isFirst={idx === 0}
-                  isLast={idx === items.length - 1}
-                  onUpdate={onUpdate}
-                  onDelete={onDelete}
-                  onMove={onMove}
-                  onCopy={onCopy}
-                />
-              ))}
-              {items.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2 pl-1">No items yet.</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          )}
+        </div>
+      </SortableContext>
     </div>
   );
 }
 
-function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCopy }: {
+function SortablePriorityCard({
+  item, onUpdate, onDelete, onCopy,
+}: {
   item: CosPriority;
-  isFirst: boolean;
-  isLast: boolean;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
-  onMove: (id: string, direction: 'up' | 'down') => void;
+  onCopy: (text: string, label?: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+    >
+      <PriorityCard
+        item={item}
+        dragListeners={listeners}
+        dragAttributes={attributes}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onCopy={onCopy}
+      />
+    </div>
+  );
+}
+
+function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy }: {
+  priorities: CosPriority[];
+  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
+  onAdd: (category: CategoryKey) => void;
+  onDelete: (id: string) => void;
+  onReorder: (id: string, targetCategory: CategoryKey, insertBeforeId: string | null) => void;
+  onCopy: (text: string, label?: string) => void;
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeItem = priorities.find(p => p.id === activeId);
+  const categoryLabels = getCategoryLabels();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragStart = ({ active }: DragStartEvent) => setActiveId(active.id as string);
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveId(null);
+    if (!over || active.id === over.id) return;
+    const activeItem = priorities.find(p => p.id === active.id);
+    if (!activeItem) return;
+
+    const overId = over.id as string;
+    const targetCategory = ALL_CATEGORIES.includes(overId as CategoryKey)
+      ? (overId as CategoryKey)
+      : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
+
+    const insertBeforeId = ALL_CATEGORIES.includes(overId as CategoryKey) ? null : overId;
+    onReorder(activeItem.id, targetCategory, insertBeforeId);
+  };
+
+  const sortedFor = (cat: CategoryKey) =>
+    priorities.filter(p => p.category === cat).sort((a, b) => a.tier_order - b.tier_order);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid gap-8 md:grid-cols-[3fr_2fr]">
+        {/* Column 1 — time buckets */}
+        <div className="space-y-6">
+          {COL1_CATEGORIES.map(cat => (
+            <CategoryBucket
+              key={cat}
+              category={cat}
+              label={categoryLabels[cat]}
+              items={sortedFor(cat)}
+              onUpdate={onUpdate}
+              onAdd={onAdd}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+        </div>
+        {/* Column 2 — strategic buckets */}
+        <div className="space-y-6">
+          {COL2_CATEGORIES.map(cat => (
+            <CategoryBucket
+              key={cat}
+              category={cat}
+              label={categoryLabels[cat]}
+              items={sortedFor(cat)}
+              onUpdate={onUpdate}
+              onAdd={onAdd}
+              onDelete={onDelete}
+              onCopy={onCopy}
+            />
+          ))}
+        </div>
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeItem ? (
+          <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
+            <CardContent className="p-3">
+              <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
+            </CardContent>
+          </Card>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function PriorityCard({
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy,
+}: {
+  item: CosPriority;
+  dragListeners?: React.HTMLAttributes<HTMLElement>;
+  dragAttributes?: React.HTMLAttributes<HTMLElement>;
+  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
+  onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -384,29 +625,21 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
   return (
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
-        <div className="flex items-start gap-2">
-          {/* Reorder arrows */}
-          <div className="flex flex-col gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
-            <button
-              onClick={() => onMove(item.id, 'up')}
-              disabled={isFirst}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => onMove(item.id, 'down')}
-              disabled={isLast}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-          </div>
+        <div className="flex items-start gap-1.5">
+          {/* Drag handle */}
+          <button
+            {...dragListeners}
+            {...dragAttributes}
+            className="flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
             {editing ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <Input
                   value={editText}
                   onChange={e => setEditText(e.target.value)}
@@ -414,14 +647,14 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     if (e.key === 'Enter') saveText();
                     if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
                   }}
-                  className="h-7 text-sm"
+                  className="h-10 text-sm"
                   autoFocus
                 />
-                <button onClick={saveText} className="text-green-600 hover:text-green-700 flex-shrink-0">
-                  <Check className="h-4 w-4" />
+                <button onClick={saveText} className="p-2 text-green-600 hover:text-green-700 flex-shrink-0">
+                  <Check className="h-5 w-5" />
                 </button>
-                <button onClick={() => { setEditText(item.text); setEditing(false); }} className="text-muted-foreground hover:text-foreground flex-shrink-0">
-                  <X className="h-4 w-4" />
+                <button onClick={() => { setEditText(item.text); setEditing(false); }} className="p-2 text-muted-foreground hover:text-foreground flex-shrink-0">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             ) : (
@@ -447,20 +680,10 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => onCopy(buildPrompt('recommend'))}
-                  >
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('recommend'))}>
                     💡 Recommend next step
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => onCopy(buildPrompt('draft'))}
-                  >
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('draft'))}>
                     ✍️ Draft message
                   </Button>
                 </div>
@@ -469,7 +692,7 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     placeholder="Ask agent..."
                     value={agentQuery}
                     onChange={e => setAgentQuery(e.target.value)}
-                    className="h-7 text-sm"
+                    className="h-10 text-sm"
                     onKeyDown={e => {
                       if (e.key === 'Enter' && agentQuery.trim()) {
                         onCopy(buildPrompt('custom', agentQuery.trim()));
@@ -478,18 +701,14 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
                     }}
                   />
                   <Button
-                    size="sm"
                     variant="ghost"
-                    className="h-7 px-2 flex-shrink-0"
+                    className="h-10 px-3 flex-shrink-0"
                     disabled={!agentQuery.trim()}
                     onClick={() => {
-                      if (agentQuery.trim()) {
-                        onCopy(buildPrompt('custom', agentQuery.trim()));
-                        setAgentQuery('');
-                      }
+                      if (agentQuery.trim()) { onCopy(buildPrompt('custom', agentQuery.trim())); setAgentQuery(''); }
                     }}
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    <Send className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -497,20 +716,20 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
           </div>
 
           {/* Right controls */}
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-muted-foreground hover:text-foreground"
+              className="p-2 text-muted-foreground hover:text-foreground"
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
               <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="text-muted-foreground hover:text-destructive"
+              className="p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -521,7 +740,152 @@ function PriorityCard({ item, isFirst, isLast, onUpdate, onDelete, onMove, onCop
 
 // ── DCI History ───────────────────────────────────────────────────────────────
 
-function DciHistory({ logs }: { logs: CosDciLog[] }) {
+const STATUS_OPTIONS: { value: DciItemStatus; label: string; color: string }[] = [
+  { value: 'done',        label: '✅ Done',        color: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400' },
+  { value: 'in_progress', label: '🔄 In Progress', color: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400' },
+  { value: 'blocked',     label: '🚫 Blocked',     color: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-400' },
+  { value: 'deferred',    label: '⏭️ Deferred',   color: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-400' },
+];
+
+function DciLogItem({
+  index, text, status, comment, onStatusChange, onCommentChange,
+}: {
+  index: number;
+  text: string;
+  status: DciItemStatus | null;
+  comment: string | null;
+  onStatusChange: (s: DciItemStatus | null) => void;
+  onCommentChange: (c: string) => void;
+}) {
+  const [localComment, setLocalComment] = useState(comment ?? '');
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start gap-2">
+        <span className="flex-shrink-0 w-5 text-xs text-muted-foreground mt-0.5">{index}.</span>
+        <div className="flex-1 min-w-0 space-y-2">
+          <p className={cn('text-sm font-medium leading-snug', status === 'done' && 'line-through text-muted-foreground')}>
+            {text}
+          </p>
+          {/* Status picker */}
+          <div className="flex flex-wrap gap-2">
+            {STATUS_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => onStatusChange(status === opt.value ? null : opt.value)}
+                className={cn(
+                  'text-sm px-3 py-2 rounded-full border transition-all touch-manipulation',
+                  status === opt.value
+                    ? opt.color
+                    : 'bg-transparent text-muted-foreground border-border hover:border-foreground/40',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Comment field — shown when status set or comment exists */}
+          {(status || localComment) && (
+            <Textarea
+              value={localComment}
+              onChange={e => setLocalComment(e.target.value)}
+              onBlur={() => onCommentChange(localComment)}
+              placeholder="Add a note..."
+              rows={2}
+              className="text-sm resize-none"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DciLogCard({ log, onUpdate, onRerun }: {
+  log: CosDciLog;
+  onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
+  onRerun: (log: CosDciLog) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const items = [
+    { text: log.priority_1, statusKey: 'priority_1_status' as const, commentKey: 'priority_1_comment' as const, status: log.priority_1_status, comment: log.priority_1_comment },
+    { text: log.priority_2, statusKey: 'priority_2_status' as const, commentKey: 'priority_2_comment' as const, status: log.priority_2_status, comment: log.priority_2_comment },
+    { text: log.priority_3, statusKey: 'priority_3_status' as const, commentKey: 'priority_3_comment' as const, status: log.priority_3_status, comment: log.priority_3_comment },
+  ].filter(i => i.text);
+
+  const doneCount = items.filter(i => i.status === 'done').length;
+  const hasAnyStatus = items.some(i => i.status);
+
+  return (
+    <Card className={cn('transition-colors', hasAnyStatus && 'border-primary/20')}>
+      <CardContent className="p-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold">
+              {format(new Date(log.date + 'T12:00:00'), 'EEEE, MMM d yyyy')}
+            </p>
+            {hasAnyStatus && (
+              <Badge variant="secondary" className="text-xs">
+                {doneCount}/{items.length} done
+              </Badge>
+            )}
+          </div>
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+          >
+            <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
+          </button>
+        </div>
+
+        {/* Priority items */}
+        <div className="space-y-3">
+          {items.map((item, i) => (
+            <DciLogItem
+              key={i}
+              index={i + 1}
+              text={item.text!}
+              status={item.status}
+              comment={item.comment}
+              onStatusChange={s => onUpdate(log.id, { [item.statusKey]: s })}
+              onCommentChange={c => onUpdate(log.id, { [item.commentKey]: c || null })}
+            />
+          ))}
+        </div>
+
+        {log.topic_raised && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <span className="text-xs text-muted-foreground">Topic raised: </span>
+            <span className="text-sm">{log.topic_raised}</span>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="mt-4 pt-3 border-t border-border/50">
+          <Button
+            variant="outline"
+            className="h-10 text-sm w-full sm:w-auto"
+            onClick={() => onRerun(log)}
+          >
+            🔄 Rerun DCI
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DciHistory({ logs, onUpdate, onRerun }: {
+  logs: CosDciLog[];
+  onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
+  onRerun: (log: CosDciLog) => void;
+}) {
+  const totalDone = logs.reduce((acc, log) => {
+    return acc + [log.priority_1_status, log.priority_2_status, log.priority_3_status].filter(s => s === 'done').length;
+  }, 0);
+
   return (
     <div className="space-y-6">
       <div>
@@ -537,8 +901,7 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
         </Card>
       ) : (
         <>
-          {/* Simple theme analytics */}
-          {logs.length >= 3 && (
+          {logs.length >= 2 && (
             <Card className="bg-muted/40 border-dashed">
               <CardContent className="p-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick stats</p>
@@ -548,9 +911,11 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
                     <span className="text-muted-foreground ml-1">briefs</span>
                   </div>
                   <div>
-                    <span className="font-semibold">
-                      {logs.filter(l => l.topic_raised).length}
-                    </span>
+                    <span className="font-semibold">{totalDone}</span>
+                    <span className="text-muted-foreground ml-1">items marked done</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold">{logs.filter(l => l.topic_raised).length}</span>
                     <span className="text-muted-foreground ml-1">had topics raised</span>
                   </div>
                 </div>
@@ -560,27 +925,7 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
 
           <div className="space-y-3">
             {logs.map(log => (
-              <Card key={log.id}>
-                <CardContent className="p-4">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    {format(new Date(log.date + 'T12:00:00'), 'EEEE, MMM d yyyy')}
-                  </p>
-                  <div className="space-y-1">
-                    {[log.priority_1, log.priority_2, log.priority_3].filter(Boolean).map((p, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="text-xs text-muted-foreground mt-0.5 flex-shrink-0">{i + 1}.</span>
-                        <span className="text-sm">{p}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {log.topic_raised && (
-                    <div className="mt-2 pt-2 border-t border-border/50">
-                      <span className="text-xs text-muted-foreground">Topic raised: </span>
-                      <span className="text-sm">{log.topic_raised}</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <DciLogCard key={log.id} log={log} onUpdate={onUpdate} onRerun={onRerun} />
             ))}
           </div>
         </>
@@ -589,24 +934,161 @@ function DciHistory({ logs }: { logs: CosDciLog[] }) {
   );
 }
 
+// ── 1:1 prep — local markdown renderer ───────────────────────────────────────
+
+function inlineMarkdown(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={i}>{part.slice(1, -1)}</em>;
+    return part;
+  });
+}
+
+function renderMarkdown(content: string): React.ReactNode {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('### ')) {
+      elements.push(<h3 key={i} className="font-semibold text-sm mt-4 mb-1 text-foreground">{inlineMarkdown(line.slice(4))}</h3>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h2 key={i} className="font-bold text-base mt-5 mb-1 border-b border-border pb-1">{inlineMarkdown(line.slice(3))}</h2>);
+    } else if (line.startsWith('# ')) {
+      elements.push(<h1 key={i} className="font-bold text-lg mt-4 mb-2">{inlineMarkdown(line.slice(2))}</h1>);
+    } else if (line.match(/^---+$/)) {
+      elements.push(<hr key={i} className="my-3 border-border" />);
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      const items: string[] = [];
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('* '))) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-0.5 my-1">
+          {items.map((it, j) => <li key={j} className="text-sm leading-snug">{inlineMarkdown(it)}</li>)}
+        </ul>
+      );
+      continue;
+    } else if (line.trim() === '') {
+      elements.push(<div key={i} className="h-1.5" />);
+    } else {
+      elements.push(<p key={i} className="text-sm leading-relaxed">{inlineMarkdown(line)}</p>);
+    }
+    i++;
+  }
+  return <>{elements}</>;
+}
+
+// ── Team — ClearGO API types ──────────────────────────────────────────────────
+
+interface CleargoMember { id: string; name: string; role: string; }
+interface CleargoEpic {
+  name: string; tier: string;
+  target_launch_date: string | null;
+  risk_level: string | null;
+  readiness_score: number | null;
+}
+interface CleargoEscalation {
+  epic_name: string; blocker_title: string;
+  severity: string; days_blocked: number;
+}
+interface CleargoPrep {
+  person: CleargoMember;
+  summary: { active_epics: number; completed_this_week: number; open_blockers: number; escalations_needed: number };
+  active_epics: CleargoEpic[];
+  completed_this_week: CleargoEpic[];
+  escalations_needed: CleargoEscalation[];
+  suggested_talking_points: string[];
+}
+
+const CLEARGO_API_URL = import.meta.env.VITE_CLEARGO_API_URL ?? 'https://cleargo.netlify.app';
+const CLEARGO_API_KEY = import.meta.env.VITE_CLEARGO_API_KEY ?? '';
+
+function buildStaticPrepPrompt(member: CosTeamMember): string {
+  const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
+  if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
+  if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
+  parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
+  return parts.join(' ');
+}
+
+function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember): string {
+  const lines: string[] = [
+    `1:1 Prep — ${prep.person.name} (${prep.person.role})`,
+    `Generated: ${format(new Date(), 'MMM d yyyy, h:mm a')}`,
+    '',
+    `📊 ${prep.summary.active_epics} active epics · ${prep.summary.open_blockers} open blockers · ${prep.summary.escalations_needed} escalation${prep.summary.escalations_needed !== 1 ? 's' : ''}`,
+    '',
+  ];
+
+  if (prep.escalations_needed.length > 0) {
+    lines.push('🚨 Escalations:');
+    prep.escalations_needed.forEach(e =>
+      lines.push(`  • [${e.severity.toUpperCase()}] ${e.epic_name}: ${e.blocker_title} — ${e.days_blocked}d blocked`)
+    );
+    lines.push('');
+  }
+
+  if (prep.active_epics.length > 0) {
+    lines.push('🏗 Active epics:');
+    prep.active_epics.forEach(e => {
+      const parts: string[] = [`[${e.tier}] ${e.name}`];
+      if (e.risk_level) parts.push(`risk: ${e.risk_level}`);
+      if (e.readiness_score != null) parts.push(`readiness: ${e.readiness_score}%`);
+      if (e.target_launch_date) parts.push(`target: ${e.target_launch_date}`);
+      lines.push(`  • ${parts.join(' · ')}`);
+    });
+    lines.push('');
+  }
+
+  if (prep.completed_this_week.length > 0) {
+    lines.push(`🎉 Shipped this week: ${prep.completed_this_week.map(e => e.name).join(', ')}`);
+    lines.push('');
+  }
+
+  if (prep.suggested_talking_points.length > 0) {
+    lines.push('💬 Suggested talking points:');
+    prep.suggested_talking_points.forEach(p => lines.push(`  • ${p}`));
+    lines.push('');
+  }
+
+  if (member.context_notes) lines.push(`📝 Context: ${member.context_notes}`);
+  if (member.last_1on1_date) lines.push(`📅 Last 1:1: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}`);
+
+  lines.push('', 'Based on the above, help me prepare for this 1:1: what should I prioritise, what questions should I ask, and how can I best support this person?');
+  return lines.join('\n');
+}
+
+async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
+  const headers = { 'X-ClearGo-Key': CLEARGO_API_KEY };
+
+  const membersRes = await fetch(`${CLEARGO_API_URL}/api/v1/team-members`, { headers });
+  if (!membersRes.ok) throw new Error('team-members fetch failed');
+  const { data: cleargoMembers }: { data: CleargoMember[] } = await membersRes.json();
+
+  // Match by first name (case-insensitive)
+  const firstName = member.name.split(' ')[0].toLowerCase();
+  const matched = cleargoMembers.find(m =>
+    m.name.toLowerCase().includes(firstName) || firstName.includes(m.name.toLowerCase().split(' ')[0])
+  );
+  if (!matched) throw new Error(`${member.name} not found in ClearGO`);
+
+  const prepRes = await fetch(`${CLEARGO_API_URL}/api/v1/1on1-prep/${matched.id}`, { headers });
+  if (!prepRes.ok) throw new Error('1on1-prep fetch failed');
+  const prep: CleargoPrep = await prepRes.json();
+
+  return buildLivePrepPrompt(prep, member);
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
-function TeamSection({ members, onCopy }: {
-  members: CosTeamMember[];
-  onCopy: (text: string, label?: string) => void;
+function MemberCard({ member, onViewPrep }: {
+  member: CosTeamMember;
+  onViewPrep: (member: CosTeamMember) => void;
 }) {
-  const directReports = members.filter(m => m.relationship_type === 'direct_report');
-  const collaborators = members.filter(m => m.relationship_type === 'collaborator');
-
-  const buildPrepPrompt = (member: CosTeamMember) => {
-    const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
-    if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
-    if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
-    parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
-    return parts.join(' ');
-  };
-
-  const MemberCard = ({ member }: { member: CosTeamMember }) => (
+  return (
     <Card className="border border-border/50">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -623,43 +1105,106 @@ function TeamSection({ members, onCopy }: {
             )}
           </div>
           <Button
-            size="sm"
             variant="outline"
-            className="h-7 text-xs flex-shrink-0"
-            onClick={() => onCopy(buildPrepPrompt(member), 'Prep prompt copied — paste into Cowork')}
+            className="h-10 text-sm flex-shrink-0 gap-1.5"
+            onClick={() => onViewPrep(member)}
           >
-            Prep 1:1
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">View 1:1 Prep</span>
+            <span className="sm:hidden">Prep</span>
           </Button>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function TeamSection({ members }: { members: CosTeamMember[] }) {
+  const { toast } = useToast();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dirHandleRef = React.useRef<any>(null);
+  const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+
+  const directReports = members.filter(m => m.relationship_type === 'direct_report');
+  const collaborators = members.filter(m => m.relationship_type === 'collaborator');
+
+  const openPrepFile = async (member: CosTeamMember) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fsApi = (window as any).showDirectoryPicker;
+    if (!fsApi) {
+      toast({ title: 'File System API not supported', description: 'Try Chrome or Edge', variant: 'destructive' });
+      return;
+    }
+
+    // Pick directory once per session
+    if (!dirHandleRef.current) {
+      try {
+        dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
+      } catch {
+        return; // user cancelled
+      }
+    }
+
+    // Derive filename: "Dan Pope" → "dan_pope.md"
+    const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
+    try {
+      const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
+      const file = await fileHandle.getFile();
+      const content = await file.text();
+      setPrepSheet({ member, content });
+    } catch {
+      // reset handle in case directory changed, prompt again next time
+      dirHandleRef.current = null;
+      toast({
+        title: `No prep file found for ${member.name}`,
+        description: `Expected ~/claude/1-1s/${slug}.md`,
+        variant: 'destructive',
+      });
+    }
+  };
 
   return (
-    <div className="space-y-8">
-      <h2 className="text-lg font-semibold">Team</h2>
+    <>
+      <div className="space-y-8">
+        <h2 className="text-lg font-semibold">Team</h2>
 
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
-          <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
+            <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {directReports.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+            {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+          </div>
         </div>
-        <div className="space-y-2">
-          {directReports.map(m => <MemberCard key={m.id} member={m} />)}
-          {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
+            <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+            {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
+          </div>
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
-          <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
-        </div>
-        <div className="space-y-2">
-          {collaborators.map(m => <MemberCard key={m.id} member={m} />)}
-          {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
-        </div>
-      </div>
-    </div>
+      {/* 1:1 Prep Sheet */}
+      <Sheet open={!!prepSheet} onOpenChange={open => { if (!open) setPrepSheet(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              {prepSheet?.member.name} — 1:1 Prep
+            </SheetTitle>
+          </SheetHeader>
+          <div className="prose-sm text-foreground">
+            {prepSheet && renderMarkdown(prepSheet.content)}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

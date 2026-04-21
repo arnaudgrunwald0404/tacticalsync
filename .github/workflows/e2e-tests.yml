@@ -32,9 +32,9 @@ jobs:
       run: npx playwright install --with-deps
 
     - name: Setup Supabase CLI
-      uses: supabase/setup-cli@v1
-      with:
-        version: latest
+      run: |
+        curl -sL "https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.deb" -o /tmp/supabase.deb
+        sudo dpkg -i /tmp/supabase.deb
 
     - name: Start Supabase
       run: |
@@ -63,6 +63,7 @@ jobs:
 
     - name: Notify on failure
       if: failure()
+      continue-on-error: true
       uses: slackapi/slack-github-action@v2.0.0
       with:
         webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
