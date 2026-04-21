@@ -32,7 +32,9 @@ jobs:
       run: npx playwright install --with-deps
 
     - name: Setup Supabase CLI
-      run: npm install -g supabase@latest
+      run: |
+        curl -sL "https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.deb" -o /tmp/supabase.deb
+        sudo dpkg -i /tmp/supabase.deb
 
     - name: Start Supabase
       run: |
