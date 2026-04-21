@@ -35,9 +35,12 @@ interface CosPriority {
   category: 'now' | 'this_week' | 'this_month' | 'next_month' | 'strategic' | 'people';
   tier_order: number;
   notes: string | null;
+  status: string | null;
   created_at: string;
   updated_at: string;
 }
+
+const DEFAULT_STATUS_OPTIONS = ['WIP', 'WOS', 'Done'];
 
 type DciItemStatus = 'done' | 'in_progress' | 'blocked' | 'deferred';
 
@@ -98,8 +101,12 @@ export default function ChiefOfStaff() {
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
   const [teamMembers, setTeamMembers] = useState<CosTeamMember[]>([]);
+  const [statusOptions, setStatusOptions] = useState<string[]>(DEFAULT_STATUS_OPTIONS);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('brief');
+  const isTodayMonday = new Date().getDay() === 1;
+  const [briefLogged, setBriefLogged] = useState(false);
+  const showBrief = isTodayMonday && !briefLogged;
+  const [activeTab, setActiveTab] = useState(showBrief ? 'brief' : 'priorities');
 
   useEffect(() => {
     async function load() {
@@ -109,15 +116,19 @@ export default function ChiefOfStaff() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      const [priRes, logsRes, teamRes] = await Promise.all([
+      const [priRes, logsRes, teamRes, settingsRes] = await Promise.all([
         db.from('cos_priorities').select('*').eq('user_id', user.id).order('tier_order'),
         db.from('cos_dci_logs').select('*').eq('user_id', user.id).order('date', { ascending: false }),
         db.from('cos_team_members').select('*').eq('user_id', user.id).order('name'),
+        db.from('cos_settings').select('*').eq('user_id', user.id).maybeSingle(),
       ]);
 
       setPriorities((priRes.data ?? []) as CosPriority[]);
       setDciLogs((logsRes.data ?? []) as CosDciLog[]);
       setTeamMembers((teamRes.data ?? []) as CosTeamMember[]);
+      if (settingsRes.data?.status_options) {
+        setStatusOptions(settingsRes.data.status_options as string[]);
+      }
       setLoading(false);
     }
     load();
@@ -131,6 +142,16 @@ export default function ChiefOfStaff() {
       toast({ title: 'Failed to copy', variant: 'destructive' });
     }
   }, [toast]);
+
+  const saveStatusOptions = async (options: string[]) => {
+    if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_settings').upsert(
+      { user_id: userId, status_options: options, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    setStatusOptions(options);
+  };
 
   const updatePriority = async (id: string, updates: Partial<CosPriority>) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -209,7 +230,7 @@ export default function ChiefOfStaff() {
     ]);
   };
 
-  const logBrief = async (topPriorities: CosPriority[], topicRaised: string) => {
+  const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
     if (!userId) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
@@ -219,9 +240,12 @@ export default function ChiefOfStaff() {
       priority_2: topPriorities[1]?.text ?? null,
       priority_3: topPriorities[2]?.text ?? null,
       topic_raised: topicRaised || null,
+      notes: numTopics != null ? `${numTopics} topics` : null,
     }).select().single();
     if (!error && data) {
       setDciLogs(prev => [data as CosDciLog, ...prev]);
+      setBriefLogged(true);
+      setActiveTab('priorities');
       toast({ title: 'Brief logged' });
     }
   };
@@ -300,6 +324,20 @@ export default function ChiefOfStaff() {
     .sort((a, b) => a.tier_order - b.tier_order)
     .slice(0, 3);
 
+  // Derive which priorities were tagged on Monday this week
+  const mondayOfCurrentWeek = (() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diff);
+    return monday.toISOString().split('T')[0];
+  })();
+  const mondayLog = dciLogs.find(l => l.date === mondayOfCurrentWeek);
+  const mondayTaggedTexts = mondayLog
+    ? [mondayLog.priority_1, mondayLog.priority_2, mondayLog.priority_3].filter(Boolean) as string[]
+    : [];
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl">
       <div className="flex items-center gap-2 mb-6">
@@ -308,20 +346,23 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 w-full grid grid-cols-4">
-          <TabsTrigger value="brief">Brief</TabsTrigger>
+        <TabsList className={cn('mb-6 w-full grid', showBrief ? 'grid-cols-5' : 'grid-cols-4')}>
+          {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
           <TabsTrigger value="priorities">Priorities</TabsTrigger>
           <TabsTrigger value="dci">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="brief">
-          <TonightsBrief
-            priorities={thisWeekPriorities}
-            onCopy={copyToClipboard}
-            onLog={logBrief}
-          />
-        </TabsContent>
+        {showBrief && (
+          <TabsContent value="brief">
+            <TonightsBrief
+              priorities={thisWeekPriorities}
+              onCopy={copyToClipboard}
+              onLog={logBrief}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="priorities">
           <PrioritiesSection
@@ -331,6 +372,8 @@ export default function ChiefOfStaff() {
             onDelete={deletePriority}
             onReorder={reorderPriority}
             onCopy={copyToClipboard}
+            mondayTaggedTexts={mondayTaggedTexts}
+            statusOptions={statusOptions}
           />
         </TabsContent>
 
@@ -340,6 +383,10 @@ export default function ChiefOfStaff() {
 
         <TabsContent value="team">
           <TeamSection members={teamMembers} />
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <SettingsSection statusOptions={statusOptions} onSave={saveStatusOptions} />
         </TabsContent>
       </Tabs>
     </div>
@@ -351,17 +398,20 @@ export default function ChiefOfStaff() {
 function TonightsBrief({ priorities, onCopy, onLog }: {
   priorities: CosPriority[];
   onCopy: (text: string, label?: string) => void;
-  onLog: (priorities: CosPriority[], topic: string) => void;
+  onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
 }) {
   const [topicRaised, setTopicRaised] = useState('');
+  const [numTopics, setNumTopics] = useState<number | ''>('');
   const today = format(new Date(), 'EEEE, MMMM d');
 
   const buildBriefText = () => {
     const lines = [
       `DCI Brief — ${today}`,
       '',
-      'Top priorities:',
+      'Top 3 this week:',
       ...priorities.map((p, i) => `${i + 1}. ${p.text}`),
+      '',
+      `Topics for DCI: ${numTopics !== '' ? numTopics : 'TBD'}`,
     ];
     if (topicRaised) lines.push('', `Topic to raise: ${topicRaised}`);
     return lines.join('\n');
@@ -370,7 +420,7 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Tonight's Brief</h2>
+        <h2 className="text-lg font-semibold">Monday Brief</h2>
         <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
       </div>
 
@@ -396,8 +446,20 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
         </CardContent>
       </Card>
 
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium whitespace-nowrap">Topics for DCI</label>
+        <input
+          type="number"
+          min={0}
+          placeholder="TBD"
+          value={numTopics}
+          onChange={e => setNumTopics(e.target.value === '' ? '' : Number(e.target.value))}
+          className="w-20 h-9 rounded-md border border-input bg-background px-3 text-sm text-center"
+        />
+      </div>
+
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Topic to raise (optional)</label>
+        <label className="text-sm font-medium">Topic to raise <span className="text-muted-foreground font-normal">(optional)</span></label>
         <Textarea
           placeholder="What else do you want to bring up tonight?"
           value={topicRaised}
@@ -412,7 +474,7 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
           <Copy className="h-4 w-4 mr-2" />
           Copy for DCI
         </Button>
-        <Button onClick={() => onLog(priorities, topicRaised)}>
+        <Button onClick={() => onLog(priorities, topicRaised, numTopics !== '' ? numTopics as number : undefined)}>
           <Save className="h-4 w-4 mr-2" />
           Log this brief
         </Button>
@@ -424,7 +486,7 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
 // ── Priorities ────────────────────────────────────────────────────────────────
 
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy,
+  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions,
 }: {
   category: CategoryKey;
   label: string;
@@ -433,6 +495,8 @@ function CategoryBucket({
   onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
+  mondayTaggedTexts: string[];
+  statusOptions: string[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: category });
   return (
@@ -458,6 +522,8 @@ function CategoryBucket({
               onUpdate={onUpdate}
               onDelete={onDelete}
               onCopy={onCopy}
+              isTagged={mondayTaggedTexts.includes(item.text)}
+              statusOptions={statusOptions}
             />
           ))}
           {items.length === 0 && (
@@ -475,12 +541,14 @@ function CategoryBucket({
 }
 
 function SortablePriorityCard({
-  item, onUpdate, onDelete, onCopy,
+  item, onUpdate, onDelete, onCopy, isTagged, statusOptions,
 }: {
   item: CosPriority;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
+  isTagged: boolean;
+  statusOptions: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
@@ -495,18 +563,22 @@ function SortablePriorityCard({
         onUpdate={onUpdate}
         onDelete={onDelete}
         onCopy={onCopy}
+        isTagged={isTagged}
+        statusOptions={statusOptions}
       />
     </div>
   );
 }
 
-function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy }: {
+function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
   onReorder: (id: string, targetCategory: CategoryKey, insertBeforeId: string | null) => void;
   onCopy: (text: string, label?: string) => void;
+  mondayTaggedTexts: string[];
+  statusOptions: string[];
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -557,6 +629,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
               onAdd={onAdd}
               onDelete={onDelete}
               onCopy={onCopy}
+              mondayTaggedTexts={mondayTaggedTexts}
+              statusOptions={statusOptions}
             />
           ))}
         </div>
@@ -572,6 +646,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
               onAdd={onAdd}
               onDelete={onDelete}
               onCopy={onCopy}
+              mondayTaggedTexts={mondayTaggedTexts}
+              statusOptions={statusOptions}
             />
           ))}
         </div>
@@ -590,8 +666,17 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
   );
 }
 
+// Colours cycle through these in order, looping back if there are more options than colours
+const STATUS_BADGE_COLORS = [
+  'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200',
+  'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200',
+  'bg-green-100 text-green-800 border-green-200 hover:bg-green-200',
+  'bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-200',
+  'bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200',
+];
+
 function PriorityCard({
-  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy,
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions,
 }: {
   item: CosPriority;
   dragListeners?: React.HTMLAttributes<HTMLElement>;
@@ -599,12 +684,22 @@ function PriorityCard({
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
+  isTagged?: boolean;
+  statusOptions: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const [editNotes, setEditNotes] = useState(item.notes ?? '');
   const [agentQuery, setAgentQuery] = useState('');
+
+  const cycleStatus = () => {
+    const idx = item.status ? statusOptions.indexOf(item.status) : -1;
+    const next = idx < statusOptions.length - 1 ? statusOptions[idx + 1] : null;
+    onUpdate(item.id, { status: next });
+  };
+  const statusIdx = item.status ? statusOptions.indexOf(item.status) : -1;
+  const statusColor = statusIdx >= 0 ? STATUS_BADGE_COLORS[statusIdx % STATUS_BADGE_COLORS.length] : null;
 
   const saveText = () => {
     const trimmed = editText.trim();
@@ -659,12 +754,19 @@ function PriorityCard({
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => setEditing(true)}
-                className="text-sm font-medium text-left w-full hover:text-primary transition-colors leading-snug"
-              >
-                {item.text}
-              </button>
+              <div className="flex items-start gap-2 flex-wrap">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="text-sm font-medium text-left hover:text-primary transition-colors leading-snug"
+                >
+                  {item.text}
+                </button>
+                {isTagged && (
+                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
+                    This week
+                  </Badge>
+                )}
+              </div>
             )}
 
             {expanded && (
@@ -717,7 +819,17 @@ function PriorityCard({
           </div>
 
           {/* Right controls */}
-          <div className="flex items-center flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={cycleStatus}
+              title={item.status ? `Status: ${item.status} — click to advance` : 'Click to set status'}
+              className={cn(
+                'text-xs font-medium px-2 py-0.5 rounded border transition-colors',
+                statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
+              )}
+            >
+              {item.status ?? '·'}
+            </button>
             <button
               onClick={() => setExpanded(!expanded)}
               className="p-2 text-muted-foreground hover:text-foreground"
@@ -1292,5 +1404,81 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+function SettingsSection({ statusOptions, onSave }: {
+  statusOptions: string[];
+  onSave: (options: string[]) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<string[]>(statusOptions);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  // Keep draft in sync if parent options change (e.g. on initial load)
+  React.useEffect(() => { setDraft(statusOptions); }, [statusOptions]);
+
+  const update = (idx: number, val: string) =>
+    setDraft(prev => prev.map((s, i) => (i === idx ? val : s)));
+
+  const remove = (idx: number) =>
+    setDraft(prev => prev.filter((_, i) => i !== idx));
+
+  const addOption = () => setDraft(prev => [...prev, '']);
+
+  const save = async () => {
+    const cleaned = draft.map(s => s.trim()).filter(Boolean);
+    if (cleaned.length === 0) {
+      toast({ title: 'Add at least one status option', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    await onSave(cleaned);
+    setSaving(false);
+    toast({ title: 'Status options saved' });
+  };
+
+  return (
+    <div className="max-w-sm space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Settings</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure the status options that cycle on each priority card.
+          Click a status badge once to advance to the next state; the last
+          state cycles back to none.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Priority statuses (in order)</label>
+        {draft.map((opt, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <Input
+              value={opt}
+              onChange={e => update(idx, e.target.value)}
+              placeholder={`Status ${idx + 1}`}
+              className="h-9 text-sm"
+            />
+            <button
+              onClick={() => remove(idx)}
+              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+              aria-label="Remove"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        <Button size="sm" variant="ghost" className="h-8 text-xs mt-1" onClick={addOption}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add status
+        </Button>
+      </div>
+
+      <Button onClick={save} disabled={saving} className="h-9">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+        Save
+      </Button>
+    </div>
   );
 }
