@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Team Tactical Sync Dev",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-l", "-c", "npm run dev"],
+      "port": 8080,
+      "autoPort": true
+    }
+  ]
+}

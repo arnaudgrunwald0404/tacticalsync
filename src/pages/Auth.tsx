@@ -60,7 +60,12 @@ const Auth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[Auth] Auth state changed:', event, 'Has session:', !!session);
-      
+
+      if (event === 'PASSWORD_RECOVERY') {
+        navigate('/reset-password');
+        return;
+      }
+
       if (session) {
         // Clean up URL by removing code parameter and hash fragment after successful auth
         if (hasCode || hasAccessToken) {
