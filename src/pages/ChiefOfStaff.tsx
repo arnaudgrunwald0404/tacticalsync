@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, ChevronUp, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain,
+  Plus, ChevronUp, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -779,24 +779,135 @@ function DciHistory({ logs, onUpdate, onRerun }: {
   );
 }
 
+// ── Team — ClearGO API types ──────────────────────────────────────────────────
+
+interface CleargoMember { id: string; name: string; role: string; }
+interface CleargoEpic {
+  name: string; tier: string;
+  target_launch_date: string | null;
+  risk_level: string | null;
+  readiness_score: number | null;
+}
+interface CleargoEscalation {
+  epic_name: string; blocker_title: string;
+  severity: string; days_blocked: number;
+}
+interface CleargoPrep {
+  person: CleargoMember;
+  summary: { active_epics: number; completed_this_week: number; open_blockers: number; escalations_needed: number };
+  active_epics: CleargoEpic[];
+  completed_this_week: CleargoEpic[];
+  escalations_needed: CleargoEscalation[];
+  suggested_talking_points: string[];
+}
+
+const CLEARGO_API_URL = import.meta.env.VITE_CLEARGO_API_URL ?? 'https://cleargo.netlify.app';
+const CLEARGO_API_KEY = import.meta.env.VITE_CLEARGO_API_KEY ?? '';
+
+function buildStaticPrepPrompt(member: CosTeamMember): string {
+  const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
+  if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
+  if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
+  parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
+  return parts.join(' ');
+}
+
+function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember): string {
+  const lines: string[] = [
+    `1:1 Prep — ${prep.person.name} (${prep.person.role})`,
+    `Generated: ${format(new Date(), 'MMM d yyyy, h:mm a')}`,
+    '',
+    `📊 ${prep.summary.active_epics} active epics · ${prep.summary.open_blockers} open blockers · ${prep.summary.escalations_needed} escalation${prep.summary.escalations_needed !== 1 ? 's' : ''}`,
+    '',
+  ];
+
+  if (prep.escalations_needed.length > 0) {
+    lines.push('🚨 Escalations:');
+    prep.escalations_needed.forEach(e =>
+      lines.push(`  • [${e.severity.toUpperCase()}] ${e.epic_name}: ${e.blocker_title} — ${e.days_blocked}d blocked`)
+    );
+    lines.push('');
+  }
+
+  if (prep.active_epics.length > 0) {
+    lines.push('🏗 Active epics:');
+    prep.active_epics.forEach(e => {
+      const parts: string[] = [`[${e.tier}] ${e.name}`];
+      if (e.risk_level) parts.push(`risk: ${e.risk_level}`);
+      if (e.readiness_score != null) parts.push(`readiness: ${e.readiness_score}%`);
+      if (e.target_launch_date) parts.push(`target: ${e.target_launch_date}`);
+      lines.push(`  • ${parts.join(' · ')}`);
+    });
+    lines.push('');
+  }
+
+  if (prep.completed_this_week.length > 0) {
+    lines.push(`🎉 Shipped this week: ${prep.completed_this_week.map(e => e.name).join(', ')}`);
+    lines.push('');
+  }
+
+  if (prep.suggested_talking_points.length > 0) {
+    lines.push('💬 Suggested talking points:');
+    prep.suggested_talking_points.forEach(p => lines.push(`  • ${p}`));
+    lines.push('');
+  }
+
+  if (member.context_notes) lines.push(`📝 Context: ${member.context_notes}`);
+  if (member.last_1on1_date) lines.push(`📅 Last 1:1: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}`);
+
+  lines.push('', 'Based on the above, help me prepare for this 1:1: what should I prioritise, what questions should I ask, and how can I best support this person?');
+  return lines.join('\n');
+}
+
+async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
+  const headers = { 'X-ClearGo-Key': CLEARGO_API_KEY };
+
+  const membersRes = await fetch(`${CLEARGO_API_URL}/api/v1/team-members`, { headers });
+  if (!membersRes.ok) throw new Error('team-members fetch failed');
+  const { data: cleargoMembers }: { data: CleargoMember[] } = await membersRes.json();
+
+  // Match by first name (case-insensitive)
+  const firstName = member.name.split(' ')[0].toLowerCase();
+  const matched = cleargoMembers.find(m =>
+    m.name.toLowerCase().includes(firstName) || firstName.includes(m.name.toLowerCase().split(' ')[0])
+  );
+  if (!matched) throw new Error(`${member.name} not found in ClearGO`);
+
+  const prepRes = await fetch(`${CLEARGO_API_URL}/api/v1/1on1-prep/${matched.id}`, { headers });
+  if (!prepRes.ok) throw new Error('1on1-prep fetch failed');
+  const prep: CleargoPrep = await prepRes.json();
+
+  return buildLivePrepPrompt(prep, member);
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
-function TeamSection({ members, onCopy }: {
-  members: CosTeamMember[];
-  onCopy: (text: string, label?: string) => void;
-}) {
-  const directReports = members.filter(m => m.relationship_type === 'direct_report');
-  const collaborators = members.filter(m => m.relationship_type === 'collaborator');
+function MemberCard({ member, onCopy }: { member: CosTeamMember; onCopy: (text: string, label?: string) => void }) {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  const buildPrepPrompt = (member: CosTeamMember) => {
-    const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
-    if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
-    if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
-    parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
-    return parts.join(' ');
+  const handlePrep = async () => {
+    if (!CLEARGO_API_KEY) {
+      onCopy(buildStaticPrepPrompt(member), 'Prep prompt copied — paste into Cowork');
+      return;
+    }
+    setLoading(true);
+    try {
+      const prompt = await fetchCleargoPrep(member);
+      onCopy(prompt, '📋 Live 1:1 prep copied — paste into Cowork');
+    } catch (err) {
+      // Fall back silently to static prompt; surface only unexpected errors
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('not found in ClearGO') && !msg.includes('fetch failed')) {
+        toast({ title: 'ClearGO unavailable — using static prep', variant: 'destructive' });
+      }
+      onCopy(buildStaticPrepPrompt(member), 'Prep prompt copied — paste into Cowork');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const MemberCard = ({ member }: { member: CosTeamMember }) => (
+  return (
     <Card className="border border-border/50">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -811,22 +922,39 @@ function TeamSection({ members, onCopy }: {
             {member.context_notes && (
               <p className="text-xs text-muted-foreground mt-1 italic leading-snug">{member.context_notes}</p>
             )}
+            {CLEARGO_API_KEY && (
+              <p className="text-xs text-primary/60 mt-1">Live data from ClearGO</p>
+            )}
           </div>
           <Button
             variant="outline"
-            className="h-10 text-sm flex-shrink-0"
-            onClick={() => onCopy(buildPrepPrompt(member), 'Prep prompt copied — paste into Cowork')}
+            className="h-10 text-sm flex-shrink-0 min-w-[90px]"
+            onClick={handlePrep}
+            disabled={loading}
           >
-            Prep 1:1
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Prep 1:1'}
           </Button>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function TeamSection({ members, onCopy }: {
+  members: CosTeamMember[];
+  onCopy: (text: string, label?: string) => void;
+}) {
+  const directReports = members.filter(m => m.relationship_type === 'direct_report');
+  const collaborators = members.filter(m => m.relationship_type === 'collaborator');
 
   return (
     <div className="space-y-8">
-      <h2 className="text-lg font-semibold">Team</h2>
+      <div className="flex items-start justify-between">
+        <h2 className="text-lg font-semibold">Team</h2>
+        {CLEARGO_API_KEY && (
+          <Badge variant="secondary" className="text-xs">🟢 ClearGO live</Badge>
+        )}
+      </div>
 
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -834,7 +962,7 @@ function TeamSection({ members, onCopy }: {
           <Badge variant="secondary" className="text-xs">{directReports.length}</Badge>
         </div>
         <div className="space-y-2">
-          {directReports.map(m => <MemberCard key={m.id} member={m} />)}
+          {directReports.map(m => <MemberCard key={m.id} member={m} onCopy={onCopy} />)}
           {directReports.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
         </div>
       </div>
@@ -845,7 +973,7 @@ function TeamSection({ members, onCopy }: {
           <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
         </div>
         <div className="space-y-2">
-          {collaborators.map(m => <MemberCard key={m.id} member={m} />)}
+          {collaborators.map(m => <MemberCard key={m.id} member={m} onCopy={onCopy} />)}
           {collaborators.length === 0 && <p className="text-xs text-muted-foreground">None added yet.</p>}
         </div>
       </div>
