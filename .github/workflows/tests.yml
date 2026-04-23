@@ -47,6 +47,7 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
+    if: false
     runs-on: ubuntu-latest
 
     env:

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -232,21 +233,29 @@ export default function ChiefOfStaff() {
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
     if (!userId) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const existingToday = dciLogs.find(l => l.date === today);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
-      user_id: userId,
-      date: format(new Date(), 'yyyy-MM-dd'),
+    const db = supabase as any;
+    const payload = {
       priority_1: topPriorities[0]?.text ?? null,
       priority_2: topPriorities[1]?.text ?? null,
       priority_3: topPriorities[2]?.text ?? null,
       topic_raised: topicRaised || null,
       notes: numTopics != null ? `${numTopics} topics` : null,
-    }).select().single();
+    };
+    let data, error;
+    if (existingToday) {
+      ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
+      if (!error && data) setDciLogs(prev => prev.map(l => l.id === existingToday.id ? data as CosDciLog : l));
+    } else {
+      ({ data, error } = await db.from('cos_dci_logs').insert({ user_id: userId, date: today, ...payload }).select().single());
+      if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
+    }
     if (!error && data) {
-      setDciLogs(prev => [data as CosDciLog, ...prev]);
       setBriefLogged(true);
       setActiveTab('priorities');
-      toast({ title: 'Brief logged' });
+      toast({ title: existingToday ? 'Brief updated' : 'Brief logged' });
     }
   };
 
@@ -258,6 +267,66 @@ export default function ChiefOfStaff() {
 
   const [rerunOpen, setRerunOpen] = useState(false);
   const openRerunBrief = () => setRerunOpen(true);
+  const rerunDci = async (log: CosDciLog) => {
+    if (!userId) return;
+    const items = [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text && i.status !== 'done');
+
+    const newPriorities = items.map(i => i.text!);
+    const topic = `Rerun from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}`;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const existingToday = dciLogs.find(l => l.date === today);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const payload = {
+      priority_1: newPriorities[0] ?? null,
+      priority_2: newPriorities[1] ?? null,
+      priority_3: newPriorities[2] ?? null,
+      topic_raised: topic,
+    };
+    let data, error;
+    if (existingToday) {
+      ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
+      if (!error && data) setDciLogs(prev => prev.map(l => l.id === existingToday.id ? data as CosDciLog : l));
+    } else {
+      ({ data, error } = await db.from('cos_dci_logs').insert({ user_id: userId, date: today, ...payload }).select().single());
+      if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
+    }
+
+    if (!error && data) {
+      toast({ title: existingToday ? 'Brief updated from undone items' : 'New brief created from undone items' });
+    }
+
+    // Also build agentic context and copy to clipboard
+    const statusLabel: Record<string, string> = {
+      done: '✅ Done', in_progress: '🔄 In Progress', blocked: '🚫 Blocked', deferred: '⏭️ Deferred',
+    };
+    const lines = [
+      `DCI Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
+      `Original brief from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}:`,
+      '',
+    ];
+    [
+      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
+      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
+      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
+    ].filter(i => i.text).forEach((item, i) => {
+      lines.push(`${i + 1}. ${item.text}`);
+      if (item.status) lines.push(`   Status: ${statusLabel[item.status] ?? item.status}`);
+      if (item.comment) lines.push(`   Note: ${item.comment}`);
+    });
+    if (newPriorities.length > 0) {
+      lines.push('', 'Still open for next DCI:');
+      newPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
+    }
+    lines.push('', 'Given this context, please: (1) identify what needs the most attention right now, (2) suggest any adjustments to the remaining priorities, and (3) draft a brief update I can share with my team.');
+
+    copyToClipboard(lines.join('\n'), 'Review prompt copied — paste into Cowork');
+  };
 
   if (loading) {
     return (
@@ -518,6 +587,7 @@ function SortablePriorityCard({
   isTagged: boolean;
   statusOptions: string[];
 }) {
+  const isMobile = useIsMobile();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
     <div
@@ -526,8 +596,8 @@ function SortablePriorityCard({
     >
       <PriorityCard
         item={item}
-        dragListeners={listeners}
-        dragAttributes={attributes}
+        dragListeners={isMobile ? undefined : listeners}
+        dragAttributes={isMobile ? undefined : attributes}
         onUpdate={onUpdate}
         onDelete={onDelete}
         onCopy={onCopy}
@@ -690,11 +760,11 @@ function PriorityCard({
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start gap-1.5">
-          {/* Drag handle */}
+          {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
           <button
             {...dragListeners}
             {...dragAttributes}
-            className="flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hidden sm:block flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
             <GripVertical className="h-4 w-4" />
@@ -723,17 +793,17 @@ function PriorityCard({
               </div>
             ) : (
               <div className="flex items-start gap-2 flex-wrap">
+                {isTagged && (
+                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
+                    W
+                  </Badge>
+                )}
                 <button
                   onClick={() => setEditing(true)}
                   className="text-sm font-medium text-left hover:text-primary transition-colors leading-snug"
                 >
                   {item.text}
                 </button>
-                {isTagged && (
-                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
-                    This week
-                  </Badge>
-                )}
               </div>
             )}
 
@@ -807,7 +877,7 @@ function PriorityCard({
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="p-2 text-muted-foreground hover:text-destructive"
+              className="hidden sm:inline-flex p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
               <Trash2 className="h-4 w-4" />
@@ -1163,6 +1233,28 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
   return buildLivePrepPrompt(prep, member);
 }
 
+async function generatePrep(member: CosTeamMember): Promise<{ content: string; source: 'cleargo' | 'static' }> {
+  if (CLEARGO_API_KEY) {
+    try {
+      const content = await fetchCleargoPrep(member);
+      return { content, source: 'cleargo' };
+    } catch {
+      // fall through to static
+    }
+  }
+  return { content: buildStaticPrepPrompt(member), source: 'static' };
+}
+
+function formatGeneratedAt(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return format(new Date(iso), 'MMM d, h:mm a');
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 function MemberCard({ member, onViewPrep, compact }: {
@@ -1204,10 +1296,15 @@ function MemberCard({ member, onViewPrep, compact }: {
 
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dirHandleRef = React.useRef<any>(null);
-  const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+  const [prepSheet, setPrepSheet] = useState<{
+    member: CosTeamMember;
+    content: string;
+    source: 'cleargo' | 'static';
+    generatedAt: string;
+  } | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [loadingPrep, setLoadingPrep] = useState(false);
+  const [refreshingPrep, setRefreshingPrep] = useState(false);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -1252,33 +1349,45 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const openPrepFile = async (member: CosTeamMember) => {
+    // 1. Try ClearGO API
+    try {
+      const content = await fetchCleargoPrep(member);
+      setPrepSheet({ member, content });
+      return;
+    } catch {
+      // fall through
+    }
+
+    // 2. Try local filesystem
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fsApi = (window as any).showDirectoryPicker;
-    if (!fsApi) {
-      toast({ title: 'File System API not supported', description: 'Try Chrome or Edge', variant: 'destructive' });
-      return;
-    }
-    if (!dirHandleRef.current) {
-      try {
-        dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
-      } catch {
-        return;
+    if (fsApi) {
+      if (!dirHandleRef.current) {
+        try {
+          dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
+        } catch {
+          // user cancelled — fall through
+        }
+      }
+      if (dirHandleRef.current) {
+        const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
+        try {
+          const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
+          const file = await fileHandle.getFile();
+          const content = await file.text();
+          setPrepSheet({ member, content });
+          return;
+        } catch {
+          dirHandleRef.current = null;
+        }
       }
     }
-    const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
-    try {
-      const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
-      const file = await fileHandle.getFile();
-      const content = await file.text();
-      setPrepSheet({ member, content });
-    } catch {
-      dirHandleRef.current = null;
-      toast({
-        title: `No prep file for ${member.name}`,
-        description: `Expected ~/claude/1-1s/${slug}.md`,
-        variant: 'destructive',
-      });
-    }
+
+    // 3. Fall back: show static prep prompt in the sheet and copy to clipboard
+    const content = buildStaticPrepPrompt(member);
+    setPrepSheet({ member, content });
+    try { await navigator.clipboard.writeText(content); } catch { /* ignore */ }
+    toast({ title: 'Prep prompt ready — also copied to clipboard' });
   };
 
   const totalDirectLine = directReports.length +
@@ -1307,14 +1416,14 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               return (
                 <div key={manager.id} className="space-y-2">
                   {/* Manager row */}
-                  <MemberCard member={manager} onViewPrep={openPrepFile} />
+                  <MemberCard member={manager} onViewPrep={openPrep} />
 
                   {/* Their direct reports indented */}
                   {reports.length > 0 && (
                     <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
                       {reports.map(r => (
                         <div key={r.id}>
-                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
+                          <MemberCard member={r} onViewPrep={openPrep} compact />
                         </div>
                       ))}
                     </div>
@@ -1337,7 +1446,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
             </div>
             <div className="space-y-2">
-              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrep} />)}
             </div>
           </div>
         )}
@@ -1348,22 +1457,43 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader className="mb-4">
             <div className="flex items-center justify-between gap-3">
-              <SheetTitle className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                {prepSheet?.member.name} — 1:1 Prep
-              </SheetTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-shrink-0 gap-1.5"
-                disabled={sharing}
-                onClick={sharePrep}
-              >
-                {sharing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />}
-                <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
-              </Button>
+              <div className="min-w-0">
+                <SheetTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  {prepSheet?.member.name} — 1:1 Prep
+                </SheetTitle>
+                {prepSheet && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Generated {formatGeneratedAt(prepSheet.generatedAt)} · {prepSheet.source === 'cleargo' ? 'ClearGO' : 'Static'}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={refreshingPrep}
+                  onClick={refreshPrep}
+                >
+                  {refreshingPrep
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <RefreshCw className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{refreshingPrep ? 'Refreshing…' : 'Refresh'}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={sharing}
+                  onClick={sharePrep}
+                >
+                  {sharing
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Send className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
+                </Button>
+              </div>
             </div>
           </SheetHeader>
           <div className="prose-sm text-foreground">
