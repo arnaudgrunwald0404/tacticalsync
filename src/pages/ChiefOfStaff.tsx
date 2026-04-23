@@ -265,6 +265,8 @@ export default function ChiefOfStaff() {
     if (!error && data) setDciLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } as CosDciLog : l));
   };
 
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const openRerunBrief = () => setRerunOpen(true);
   const rerunDci = async (log: CosDciLog) => {
     if (!userId) return;
     const items = [
@@ -395,7 +397,7 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="dci">
-          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={rerunDci} />
+          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
         </TabsContent>
 
         <TabsContent value="team">
@@ -406,16 +408,34 @@ export default function ChiefOfStaff() {
           <SettingsSection statusOptions={statusOptions} onSave={saveStatusOptions} />
         </TabsContent>
       </Tabs>
+
+      <Sheet open={rerunOpen} onOpenChange={setRerunOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle>Rerun DCI</SheetTitle>
+          </SheetHeader>
+          <TonightsBrief
+            priorities={thisWeekPriorities}
+            onCopy={copyToClipboard}
+            onLog={(p, t, n) => {
+              logBrief(p, t, n);
+              setRerunOpen(false);
+            }}
+            heading="Today's Brief"
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
 // ── Tonight's Brief ───────────────────────────────────────────────────────────
 
-function TonightsBrief({ priorities, onCopy, onLog }: {
+function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief' }: {
   priorities: CosPriority[];
   onCopy: (text: string, label?: string) => void;
   onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
+  heading?: string;
 }) {
   const [topicRaised, setTopicRaised] = useState('');
   const [numTopics, setNumTopics] = useState<number | ''>('');
@@ -437,7 +457,7 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Monday Brief</h2>
+        <h2 className="text-lg font-semibold">{heading}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
       </div>
 
@@ -935,7 +955,7 @@ function DciLogItem({
 function DciLogCard({ log, onUpdate, onRerun }: {
   log: CosDciLog;
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: (log: CosDciLog) => void;
+  onRerun: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const items = [
@@ -998,7 +1018,7 @@ function DciLogCard({ log, onUpdate, onRerun }: {
           <Button
             variant="outline"
             className="h-10 text-sm w-full sm:w-auto"
-            onClick={() => onRerun(log)}
+            onClick={onRerun}
           >
             🔄 Rerun DCI
           </Button>
@@ -1011,7 +1031,7 @@ function DciLogCard({ log, onUpdate, onRerun }: {
 function DciHistory({ logs, onUpdate, onRerun }: {
   logs: CosDciLog[];
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: (log: CosDciLog) => void;
+  onRerun: () => void;
 }) {
   const totalDone = logs.reduce((acc, log) => {
     return acc + [log.priority_1_status, log.priority_2_status, log.priority_3_status].filter(s => s === 'done').length;
