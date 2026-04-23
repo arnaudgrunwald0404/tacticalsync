@@ -1,6 +1,25 @@
 import { test, expect } from '@playwright/test';
 import { generateTestEmail, createVerifiedUser, deleteUser, loginViaUI } from '../helpers/auth.helper';
 
+test.describe('Logout', () => {
+  test('should log out and redirect to auth page', async ({ page }) => {
+    const userEmail = generateTestEmail('logout');
+    const user = await createVerifiedUser(userEmail, 'Test123456!');
+
+    try {
+      await loginViaUI(page, userEmail, 'Test123456!');
+      await page.waitForURL(/\/(dashboard|create-team)/, { timeout: 15000 });
+
+      await page.goto('/settings');
+      await page.getByRole('button', { name: /log out|sign out|logout/i }).click();
+
+      await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
+    } finally {
+      await deleteUser(user.id!);
+    }
+  });
+});
+
 test.describe('Session Management', () => {
   test('should maintain session during active usage', async ({ page }) => {
     const userEmail = generateTestEmail('session');
