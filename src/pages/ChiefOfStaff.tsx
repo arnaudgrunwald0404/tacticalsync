@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -566,6 +567,7 @@ function SortablePriorityCard({
   isTagged: boolean;
   statusOptions: string[];
 }) {
+  const isMobile = useIsMobile();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
     <div
@@ -574,8 +576,8 @@ function SortablePriorityCard({
     >
       <PriorityCard
         item={item}
-        dragListeners={listeners}
-        dragAttributes={attributes}
+        dragListeners={isMobile ? undefined : listeners}
+        dragAttributes={isMobile ? undefined : attributes}
         onUpdate={onUpdate}
         onDelete={onDelete}
         onCopy={onCopy}
@@ -738,11 +740,11 @@ function PriorityCard({
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start gap-1.5">
-          {/* Drag handle */}
+          {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
           <button
             {...dragListeners}
             {...dragAttributes}
-            className="flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hidden sm:block flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
             <GripVertical className="h-4 w-4" />
@@ -855,7 +857,7 @@ function PriorityCard({
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="p-2 text-muted-foreground hover:text-destructive"
+              className="hidden sm:inline-flex p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
               <Trash2 className="h-4 w-4" />
