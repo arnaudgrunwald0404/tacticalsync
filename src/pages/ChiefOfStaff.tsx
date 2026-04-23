@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -566,6 +567,7 @@ function SortablePriorityCard({
   isTagged: boolean;
   statusOptions: string[];
 }) {
+  const isMobile = useIsMobile();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
     <div
@@ -574,8 +576,8 @@ function SortablePriorityCard({
     >
       <PriorityCard
         item={item}
-        dragListeners={listeners}
-        dragAttributes={attributes}
+        dragListeners={isMobile ? undefined : listeners}
+        dragAttributes={isMobile ? undefined : attributes}
         onUpdate={onUpdate}
         onDelete={onDelete}
         onCopy={onCopy}
@@ -738,11 +740,11 @@ function PriorityCard({
     <Card className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start gap-1.5">
-          {/* Drag handle */}
+          {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
           <button
             {...dragListeners}
             {...dragAttributes}
-            className="flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hidden sm:block flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
             <GripVertical className="h-4 w-4" />
@@ -855,7 +857,7 @@ function PriorityCard({
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="p-2 text-muted-foreground hover:text-destructive"
+              className="hidden sm:inline-flex p-2 text-muted-foreground hover:text-destructive"
               aria-label="Delete"
             >
               <Trash2 className="h-4 w-4" />
@@ -1211,6 +1213,28 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
   return buildLivePrepPrompt(prep, member);
 }
 
+async function generatePrep(member: CosTeamMember): Promise<{ content: string; source: 'cleargo' | 'static' }> {
+  if (CLEARGO_API_KEY) {
+    try {
+      const content = await fetchCleargoPrep(member);
+      return { content, source: 'cleargo' };
+    } catch {
+      // fall through to static
+    }
+  }
+  return { content: buildStaticPrepPrompt(member), source: 'static' };
+}
+
+function formatGeneratedAt(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return format(new Date(iso), 'MMM d, h:mm a');
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 function MemberCard({ member, onViewPrep, compact }: {
@@ -1252,10 +1276,15 @@ function MemberCard({ member, onViewPrep, compact }: {
 
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dirHandleRef = React.useRef<any>(null);
-  const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+  const [prepSheet, setPrepSheet] = useState<{
+    member: CosTeamMember;
+    content: string;
+    source: 'cleargo' | 'static';
+    generatedAt: string;
+  } | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [loadingPrep, setLoadingPrep] = useState(false);
+  const [refreshingPrep, setRefreshingPrep] = useState(false);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -1367,14 +1396,14 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               return (
                 <div key={manager.id} className="space-y-2">
                   {/* Manager row */}
-                  <MemberCard member={manager} onViewPrep={openPrepFile} />
+                  <MemberCard member={manager} onViewPrep={openPrep} />
 
                   {/* Their direct reports indented */}
                   {reports.length > 0 && (
                     <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
                       {reports.map(r => (
                         <div key={r.id}>
-                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
+                          <MemberCard member={r} onViewPrep={openPrep} compact />
                         </div>
                       ))}
                     </div>
@@ -1397,7 +1426,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
             </div>
             <div className="space-y-2">
-              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrep} />)}
             </div>
           </div>
         )}
@@ -1408,22 +1437,43 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader className="mb-4">
             <div className="flex items-center justify-between gap-3">
-              <SheetTitle className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                {prepSheet?.member.name} — 1:1 Prep
-              </SheetTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-shrink-0 gap-1.5"
-                disabled={sharing}
-                onClick={sharePrep}
-              >
-                {sharing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />}
-                <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
-              </Button>
+              <div className="min-w-0">
+                <SheetTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  {prepSheet?.member.name} — 1:1 Prep
+                </SheetTitle>
+                {prepSheet && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Generated {formatGeneratedAt(prepSheet.generatedAt)} · {prepSheet.source === 'cleargo' ? 'ClearGO' : 'Static'}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={refreshingPrep}
+                  onClick={refreshPrep}
+                >
+                  {refreshingPrep
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <RefreshCw className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{refreshingPrep ? 'Refreshing…' : 'Refresh'}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={sharing}
+                  onClick={sharePrep}
+                >
+                  {sharing
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Send className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
+                </Button>
+              </div>
             </div>
           </SheetHeader>
           <div className="prose-sm text-foreground">
