@@ -232,21 +232,29 @@ export default function ChiefOfStaff() {
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
     if (!userId) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const existingToday = dciLogs.find(l => l.date === today);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
-      user_id: userId,
-      date: format(new Date(), 'yyyy-MM-dd'),
+    const db = supabase as any;
+    const payload = {
       priority_1: topPriorities[0]?.text ?? null,
       priority_2: topPriorities[1]?.text ?? null,
       priority_3: topPriorities[2]?.text ?? null,
       topic_raised: topicRaised || null,
       notes: numTopics != null ? `${numTopics} topics` : null,
-    }).select().single();
+    };
+    let data, error;
+    if (existingToday) {
+      ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
+      if (!error && data) setDciLogs(prev => prev.map(l => l.id === existingToday.id ? data as CosDciLog : l));
+    } else {
+      ({ data, error } = await db.from('cos_dci_logs').insert({ user_id: userId, date: today, ...payload }).select().single());
+      if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
+    }
     if (!error && data) {
-      setDciLogs(prev => [data as CosDciLog, ...prev]);
       setBriefLogged(true);
       setActiveTab('priorities');
-      toast({ title: 'Brief logged' });
+      toast({ title: existingToday ? 'Brief updated' : 'Brief logged' });
     }
   };
 
@@ -266,20 +274,28 @@ export default function ChiefOfStaff() {
 
     const newPriorities = items.map(i => i.text!);
     const topic = `Rerun from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}`;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const existingToday = dciLogs.find(l => l.date === today);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from('cos_dci_logs').insert({
-      user_id: userId,
-      date: format(new Date(), 'yyyy-MM-dd'),
+    const db = supabase as any;
+    const payload = {
       priority_1: newPriorities[0] ?? null,
       priority_2: newPriorities[1] ?? null,
       priority_3: newPriorities[2] ?? null,
       topic_raised: topic,
-    }).select().single();
+    };
+    let data, error;
+    if (existingToday) {
+      ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
+      if (!error && data) setDciLogs(prev => prev.map(l => l.id === existingToday.id ? data as CosDciLog : l));
+    } else {
+      ({ data, error } = await db.from('cos_dci_logs').insert({ user_id: userId, date: today, ...payload }).select().single());
+      if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
+    }
 
     if (!error && data) {
-      setDciLogs(prev => [data as CosDciLog, ...prev]);
-      toast({ title: 'New brief created from undone items' });
+      toast({ title: existingToday ? 'Brief updated from undone items' : 'New brief created from undone items' });
     }
 
     // Also build agentic context and copy to clipboard
@@ -755,17 +771,17 @@ function PriorityCard({
               </div>
             ) : (
               <div className="flex items-start gap-2 flex-wrap">
+                {isTagged && (
+                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
+                    W
+                  </Badge>
+                )}
                 <button
                   onClick={() => setEditing(true)}
                   className="text-sm font-medium text-left hover:text-primary transition-colors leading-snug"
                 >
                   {item.text}
                 </button>
-                {isTagged && (
-                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
-                    This week
-                  </Badge>
-                )}
               </div>
             )}
 
