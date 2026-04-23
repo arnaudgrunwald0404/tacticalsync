@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -1211,6 +1211,28 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
   return buildLivePrepPrompt(prep, member);
 }
 
+async function generatePrep(member: CosTeamMember): Promise<{ content: string; source: 'cleargo' | 'static' }> {
+  if (CLEARGO_API_KEY) {
+    try {
+      const content = await fetchCleargoPrep(member);
+      return { content, source: 'cleargo' };
+    } catch {
+      // fall through to static
+    }
+  }
+  return { content: buildStaticPrepPrompt(member), source: 'static' };
+}
+
+function formatGeneratedAt(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return format(new Date(iso), 'MMM d, h:mm a');
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 function MemberCard({ member, onViewPrep, compact }: {
@@ -1252,10 +1274,15 @@ function MemberCard({ member, onViewPrep, compact }: {
 
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dirHandleRef = React.useRef<any>(null);
-  const [prepSheet, setPrepSheet] = useState<{ member: CosTeamMember; content: string } | null>(null);
+  const [prepSheet, setPrepSheet] = useState<{
+    member: CosTeamMember;
+    content: string;
+    source: 'cleargo' | 'static';
+    generatedAt: string;
+  } | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [loadingPrep, setLoadingPrep] = useState(false);
+  const [refreshingPrep, setRefreshingPrep] = useState(false);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -1299,33 +1326,95 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   const collaborators = members.filter(m => m.relationship_type === 'collaborator')
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const openPrepFile = async (member: CosTeamMember) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fsApi = (window as any).showDirectoryPicker;
-    if (!fsApi) {
-      toast({ title: 'File System API not supported', description: 'Try Chrome or Edge', variant: 'destructive' });
-      return;
-    }
-    if (!dirHandleRef.current) {
-      try {
-        dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
-      } catch {
+  const openPrep = async (member: CosTeamMember) => {
+    if (loadingPrep) return;
+    setLoadingPrep(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const { data: existing, error: selectErr } = await db
+        .from('cos_one_on_one_prep')
+        .select('content, source, generated_at')
+        .eq('team_member_id', member.id)
+        .maybeSingle();
+      if (selectErr) throw selectErr;
+
+      if (existing) {
+        setPrepSheet({
+          member,
+          content: existing.content as string,
+          source: existing.source as 'cleargo' | 'static',
+          generatedAt: existing.generated_at as string,
+        });
         return;
       }
-    }
-    const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
-    try {
-      const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
-      const file = await fileHandle.getFile();
-      const content = await file.text();
-      setPrepSheet({ member, content });
-    } catch {
-      dirHandleRef.current = null;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { content, source } = await generatePrep(member);
+      const { data: inserted, error: insertErr } = await db
+        .from('cos_one_on_one_prep')
+        .insert({ user_id: user.id, team_member_id: member.id, content, source })
+        .select('generated_at')
+        .single();
+      if (insertErr) throw insertErr;
+
+      setPrepSheet({
+        member,
+        content,
+        source,
+        generatedAt: (inserted?.generated_at as string) ?? new Date().toISOString(),
+      });
+    } catch (err) {
       toast({
-        title: `No prep file for ${member.name}`,
-        description: `Expected ~/claude/1-1s/${slug}.md`,
+        title: `Couldn't load prep for ${member.name}`,
+        description: err instanceof Error ? err.message : String(err),
         variant: 'destructive',
       });
+    } finally {
+      setLoadingPrep(false);
+    }
+  };
+
+  const refreshPrep = async () => {
+    if (!prepSheet) return;
+    setRefreshingPrep(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { content, source } = await generatePrep(prepSheet.member);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const { data: upserted, error } = await db
+        .from('cos_one_on_one_prep')
+        .upsert(
+          {
+            user_id: user.id,
+            team_member_id: prepSheet.member.id,
+            content,
+            source,
+            generated_at: new Date().toISOString(),
+          },
+          { onConflict: 'team_member_id' },
+        )
+        .select('generated_at')
+        .single();
+      if (error) throw error;
+      setPrepSheet({
+        member: prepSheet.member,
+        content,
+        source,
+        generatedAt: (upserted?.generated_at as string) ?? new Date().toISOString(),
+      });
+      toast({ title: 'Prep refreshed' });
+    } catch (err) {
+      toast({
+        title: 'Refresh failed',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setRefreshingPrep(false);
     }
   };
 
@@ -1355,14 +1444,14 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               return (
                 <div key={manager.id} className="space-y-2">
                   {/* Manager row */}
-                  <MemberCard member={manager} onViewPrep={openPrepFile} />
+                  <MemberCard member={manager} onViewPrep={openPrep} />
 
                   {/* Their direct reports indented */}
                   {reports.length > 0 && (
                     <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
                       {reports.map(r => (
                         <div key={r.id}>
-                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
+                          <MemberCard member={r} onViewPrep={openPrep} compact />
                         </div>
                       ))}
                     </div>
@@ -1385,7 +1474,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
             </div>
             <div className="space-y-2">
-              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
+              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrep} />)}
             </div>
           </div>
         )}
@@ -1396,22 +1485,43 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader className="mb-4">
             <div className="flex items-center justify-between gap-3">
-              <SheetTitle className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                {prepSheet?.member.name} — 1:1 Prep
-              </SheetTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-shrink-0 gap-1.5"
-                disabled={sharing}
-                onClick={sharePrep}
-              >
-                {sharing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />}
-                <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
-              </Button>
+              <div className="min-w-0">
+                <SheetTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  {prepSheet?.member.name} — 1:1 Prep
+                </SheetTitle>
+                {prepSheet && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Generated {formatGeneratedAt(prepSheet.generatedAt)} · {prepSheet.source === 'cleargo' ? 'ClearGO' : 'Static'}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={refreshingPrep}
+                  onClick={refreshPrep}
+                >
+                  {refreshingPrep
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <RefreshCw className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{refreshingPrep ? 'Refreshing…' : 'Refresh'}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={sharing}
+                  onClick={sharePrep}
+                >
+                  {sharing
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Send className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
+                </Button>
+              </div>
             </div>
           </SheetHeader>
           <div className="prose-sm text-foreground">
