@@ -1338,6 +1338,83 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
 
+  // Footer: per-meeting actions
+  const [actionDraft, setActionDraft] = useState('');
+  const [savingActions, setSavingActions] = useState(false);
+
+  // Footer: person context
+  const [contextDraft, setContextDraft] = useState('');
+  const [savingContext, setSavingContext] = useState(false);
+
+  // Footer: global prep feedback
+  const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [savingFeedback, setSavingFeedback] = useState(false);
+
+  // Load global prep instructions whenever a sheet opens
+  useEffect(() => {
+    if (!prepSheet) return;
+    setActionDraft('');
+    setContextDraft(prepSheet.member.context_notes ?? '');
+    supabase
+      .from('cos_prep_settings')
+      .select('prep_instructions')
+      .single()
+      .then(({ data }) => setFeedbackDraft(data?.prep_instructions ?? ''));
+  }, [prepSheet?.member.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveActions = async () => {
+    if (!prepSheet || !actionDraft.trim()) return;
+    setSavingActions(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const lines = actionDraft.split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+      const rows = lines.map(text => ({ user_id: user.id, member_id: prepSheet.member.id, text }));
+      const { error } = await supabase.from('cos_meeting_actions').insert(rows);
+      if (error) throw error;
+      setActionDraft('');
+      toast({ title: `${rows.length} action${rows.length !== 1 ? 's' : ''} queued` });
+    } catch (err) {
+      toast({ title: 'Failed to save actions', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingActions(false);
+    }
+  };
+
+  const saveContext = async () => {
+    if (!prepSheet) return;
+    setSavingContext(true);
+    try {
+      const { error } = await supabase
+        .from('cos_team_members')
+        .update({ context_notes: contextDraft || null })
+        .eq('id', prepSheet.member.id);
+      if (error) throw error;
+      toast({ title: 'Context saved' });
+    } catch (err) {
+      toast({ title: 'Failed to save context', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingContext(false);
+    }
+  };
+
+  const saveFeedback = async () => {
+    setSavingFeedback(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase
+        .from('cos_prep_settings')
+        .upsert({ user_id: user.id, prep_instructions: feedbackDraft }, { onConflict: 'user_id' });
+      if (error) throw error;
+      toast({ title: 'Prep instructions saved' });
+    } catch (err) {
+      toast({ title: 'Failed to save feedback', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingFeedback(false);
+    }
+  };
+
   const sharePrep = async () => {
     if (!prepSheet) return;
     setSharing(true);
@@ -1530,6 +1607,78 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
           </SheetHeader>
           <div className="prose-sm text-foreground">
             {prepSheet && renderMarkdown(prepSheet.content)}
+          </div>
+
+          {/* ── Feedback footer ─────────────────────────────────────────── */}
+          <div className="mt-8 space-y-6 border-t border-border pt-6">
+
+            {/* 1. Meeting actions */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions for this meeting</p>
+              <p className="text-xs text-muted-foreground">One per line — e.g. "Draft an email about X", "Introduce Matt to Y", "Add to priorities: Z"</p>
+              <Textarea
+                value={actionDraft}
+                onChange={e => setActionDraft(e.target.value)}
+                placeholder={"- Draft a follow-up on the LMS release\n- Introduce Matt to the data team lead\n- Add to my priorities: unblock AI Course Builder"}
+                rows={4}
+                className="text-sm resize-none"
+              />
+              <Button
+                size="sm"
+                onClick={saveActions}
+                disabled={savingActions || !actionDraft.trim()}
+              >
+                {savingActions ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Queue actions
+              </Button>
+            </div>
+
+            {/* 2. Person context */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Context about {prepSheet?.member.name.split(' ')[0]}
+              </p>
+              <p className="text-xs text-muted-foreground">Goals, working style, things the AI missed — appended to every future prep for this person.</p>
+              <Textarea
+                value={contextDraft}
+                onChange={e => setContextDraft(e.target.value)}
+                placeholder="e.g. Matt cares deeply about shipping quality over speed. He's been frustrated by scope creep on Agent Studio. His long-term goal is to move into a VP role."
+                rows={4}
+                className="text-sm resize-none"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={saveContext}
+                disabled={savingContext}
+              >
+                {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Save context
+              </Button>
+            </div>
+
+            {/* 3. Global prep instructions */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Improve future 1:1 preps</p>
+              <p className="text-xs text-muted-foreground">Standing instructions applied to every prep — tell the AI what good looks like for you.</p>
+              <Textarea
+                value={feedbackDraft}
+                onChange={e => setFeedbackDraft(e.target.value)}
+                placeholder={"e.g. Disregard releases that are already past their target date. Show future releases in ascending date order. Always highlight blockers first. Don't repeat items from last week if status hasn't changed."}
+                rows={5}
+                className="text-sm resize-none"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={saveFeedback}
+                disabled={savingFeedback}
+              >
+                {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Save instructions
+              </Button>
+            </div>
+
           </div>
         </SheetContent>
       </Sheet>
