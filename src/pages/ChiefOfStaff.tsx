@@ -1110,6 +1110,38 @@ function renderMarkdown(content: string): React.ReactNode {
       elements.push(<h1 key={i} className="font-bold text-lg mt-4 mb-2">{inlineMarkdown(line.slice(2))}</h1>);
     } else if (line.match(/^---+$/)) {
       elements.push(<hr key={i} className="my-3 border-border" />);
+    } else if (line.trim().startsWith('|')) {
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        if (!cells.every(c => /^[-: ]+$/.test(c))) rows.push(cells);
+        i++;
+      }
+      if (rows.length > 0) {
+        elements.push(
+          <div key={`tbl-${i}`} className="overflow-x-auto my-3">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  {rows[0].map((cell, j) => (
+                    <th key={j} className="text-left px-2 py-1 font-semibold whitespace-nowrap">{inlineMarkdown(cell)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(1).map((row, ri) => (
+                  <tr key={ri} className="border-b border-border/50 hover:bg-muted/30">
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-2 py-1 leading-snug">{inlineMarkdown(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      continue;
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
       const items: string[] = [];
       while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('* '))) {
