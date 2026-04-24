@@ -1458,45 +1458,65 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const openPrepFile = async (member: CosTeamMember) => {
-    // 1. Try ClearGO API
+    setLoadingPrep(true);
     try {
-      const content = await fetchCleargoPrep(member);
-      setPrepSheet({ member, content });
-      return;
-    } catch {
-      // fall through
-    }
-
-    // 2. Try local filesystem
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fsApi = (window as any).showDirectoryPicker;
-    if (fsApi) {
-      if (!dirHandleRef.current) {
+      // 1. Try ClearGO API
+      if (CLEARGO_API_KEY) {
         try {
-          dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
-        } catch {
-          // user cancelled — fall through
-        }
-      }
-      if (dirHandleRef.current) {
-        const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
-        try {
-          const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
-          const file = await fileHandle.getFile();
-          const content = await file.text();
-          setPrepSheet({ member, content });
+          const content = await fetchCleargoPrep(member);
+          setPrepSheet({ member, content, source: 'cleargo', generatedAt: new Date().toISOString() });
           return;
         } catch {
-          dirHandleRef.current = null;
+          // fall through
         }
       }
-    }
 
-    // 3. Fall back: show static prep prompt in the sheet and copy to clipboard
-    const content = buildStaticPrepPrompt(member);
-    setPrepSheet({ member, content });
-    try { await navigator.clipboard.writeText(content); } catch { /* ignore */ }
-    toast({ title: 'Prep prompt ready — also copied to clipboard' });
+      // 2. Try local filesystem
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fsApi = (window as any).showDirectoryPicker;
+      if (fsApi) {
+        if (!dirHandleRef.current) {
+          try {
+            dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
+          } catch {
+            // user cancelled — fall through
+          }
+        }
+        if (dirHandleRef.current) {
+          const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
+          try {
+            const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
+            const file = await fileHandle.getFile();
+            const content = await file.text();
+            setPrepSheet({ member, content, source: 'static', generatedAt: new Date().toISOString() });
+            return;
+          } catch {
+            dirHandleRef.current = null;
+          }
+        }
+      }
+
+      // 3. Fall back to static prompt
+      const content = buildStaticPrepPrompt(member);
+      setPrepSheet({ member, content, source: 'static', generatedAt: new Date().toISOString() });
+      try { await navigator.clipboard.writeText(content); } catch { /* ignore */ }
+      toast({ title: 'Prep prompt ready — also copied to clipboard' });
+    } finally {
+      setLoadingPrep(false);
+    }
+  };
+
+  const refreshPrep = async () => {
+    if (!prepSheet) return;
+    setRefreshingPrep(true);
+    try {
+      const { content, source } = await generatePrep(prepSheet.member);
+      setPrepSheet({ ...prepSheet, content, source, generatedAt: new Date().toISOString() });
+    } catch (err) {
+      toast({ title: 'Refresh failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setRefreshingPrep(false);
+    }
   };
 
   const totalDirectLine = directReports.length +
