@@ -1525,14 +1525,14 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               return (
                 <div key={manager.id} className="space-y-2">
                   {/* Manager row */}
-                  <MemberCard member={manager} onViewPrep={openPrep} />
+                  <MemberCard member={manager} onViewPrep={openPrepFile} />
 
                   {/* Their direct reports indented */}
                   {reports.length > 0 && (
                     <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
                       {reports.map(r => (
                         <div key={r.id}>
-                          <MemberCard member={r} onViewPrep={openPrep} compact />
+                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
                         </div>
                       ))}
                     </div>
@@ -1555,7 +1555,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
               <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
             </div>
             <div className="space-y-2">
-              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrep} />)}
+              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
             </div>
           </div>
         )}
