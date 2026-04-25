@@ -1328,6 +1328,8 @@ function MemberCard({ member, onViewPrep, compact }: {
 
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{
     member: CosTeamMember;
     content: string;
