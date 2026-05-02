@@ -159,15 +159,20 @@ export default function ChiefOfStaff() {
     if (!error && data) setPriorities(prev => prev.map(p => p.id === id ? { ...p, ...data } as CosPriority : p));
   };
 
+  const [newlyAddedId, setNewlyAddedId] = useState<string | null>(null);
+
   const addPriority = async (category: CosPriority['category']) => {
     if (!userId) return;
     const catPriorities = priorities.filter(p => p.category === category);
     const maxOrder = catPriorities.length > 0 ? Math.max(...catPriorities.map(p => p.tier_order)) : 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).from('cos_priorities').insert({
-      user_id: userId, text: 'New priority', category, tier_order: maxOrder + 1,
+      user_id: userId, text: '', category, tier_order: maxOrder + 1,
     }).select().single();
-    if (!error && data) setPriorities(prev => [...prev, data as CosPriority]);
+    if (!error && data) {
+      setPriorities(prev => [...prev, data as CosPriority]);
+      setNewlyAddedId((data as CosPriority).id);
+    }
   };
 
   const deletePriority = async (id: string) => {
@@ -390,6 +395,8 @@ export default function ChiefOfStaff() {
             onCopy={copyToClipboard}
             mondayTaggedTexts={mondayTaggedTexts}
             statusOptions={statusOptions}
+            newlyAddedId={newlyAddedId}
+            onNewlyAddedConsumed={() => setNewlyAddedId(null)}
           />
         </TabsContent>
 
@@ -502,7 +509,7 @@ function TonightsBrief({ priorities, onCopy, onLog }: {
 // ── Priorities ────────────────────────────────────────────────────────────────
 
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions,
+  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
   category: CategoryKey;
   label: string;
@@ -513,6 +520,8 @@ function CategoryBucket({
   onCopy: (text: string, label?: string) => void;
   mondayTaggedTexts: string[];
   statusOptions: string[];
+  newlyAddedId: string | null;
+  onNewlyAddedConsumed: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: category });
   return (
@@ -540,6 +549,8 @@ function CategoryBucket({
               onCopy={onCopy}
               isTagged={mondayTaggedTexts.includes(item.text)}
               statusOptions={statusOptions}
+              autoEdit={item.id === newlyAddedId}
+              onAutoEditConsumed={onNewlyAddedConsumed}
             />
           ))}
           {items.length === 0 && (
@@ -557,7 +568,7 @@ function CategoryBucket({
 }
 
 function SortablePriorityCard({
-  item, onUpdate, onDelete, onCopy, isTagged, statusOptions,
+  item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
@@ -565,6 +576,8 @@ function SortablePriorityCard({
   onCopy: (text: string, label?: string) => void;
   isTagged: boolean;
   statusOptions: string[];
+  autoEdit?: boolean;
+  onAutoEditConsumed?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
@@ -581,12 +594,14 @@ function SortablePriorityCard({
         onCopy={onCopy}
         isTagged={isTagged}
         statusOptions={statusOptions}
+        autoEdit={autoEdit}
+        onAutoEditConsumed={onAutoEditConsumed}
       />
     </div>
   );
 }
 
-function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions }: {
+function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onAdd: (category: CategoryKey) => void;
@@ -595,6 +610,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
   onCopy: (text: string, label?: string) => void;
   mondayTaggedTexts: string[];
   statusOptions: string[];
+  newlyAddedId: string | null;
+  onNewlyAddedConsumed: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -647,6 +664,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
               onCopy={onCopy}
               mondayTaggedTexts={mondayTaggedTexts}
               statusOptions={statusOptions}
+              newlyAddedId={newlyAddedId}
+              onNewlyAddedConsumed={onNewlyAddedConsumed}
             />
           ))}
         </div>
@@ -664,6 +683,8 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
               onCopy={onCopy}
               mondayTaggedTexts={mondayTaggedTexts}
               statusOptions={statusOptions}
+              newlyAddedId={newlyAddedId}
+              onNewlyAddedConsumed={onNewlyAddedConsumed}
             />
           ))}
         </div>
@@ -692,7 +713,7 @@ const STATUS_BADGE_COLORS = [
 ];
 
 function PriorityCard({
-  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions,
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
   dragListeners?: React.HTMLAttributes<HTMLElement>;
@@ -702,10 +723,24 @@ function PriorityCard({
   onCopy: (text: string, label?: string) => void;
   isTagged?: boolean;
   statusOptions: string[];
+  autoEdit?: boolean;
+  onAutoEditConsumed?: () => void;
 }) {
+  const cardRef = React.useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
+
+  useEffect(() => {
+    if (!autoEdit) return;
+    setEditing(true);
+    setEditText('');
+    // Scroll the card into view, then hand focus to the input (autoFocus handles it)
+    requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    onAutoEditConsumed?.();
+  }, [autoEdit]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editNotes, setEditNotes] = useState(item.notes ?? '');
   const [agentQuery, setAgentQuery] = useState('');
 
@@ -720,6 +755,7 @@ function PriorityCard({
   const saveText = () => {
     const trimmed = editText.trim();
     if (trimmed && trimmed !== item.text) onUpdate(item.id, { text: trimmed });
+    else if (!trimmed && !item.text) onDelete(item.id); // cancelled new item with no text
     setEditing(false);
   };
 
@@ -735,7 +771,7 @@ function PriorityCard({
   };
 
   return (
-    <Card className="group border border-border/50 hover:border-border transition-colors">
+    <Card ref={cardRef} className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
         <div className="flex items-start gap-1.5">
           {/* Drag handle */}
