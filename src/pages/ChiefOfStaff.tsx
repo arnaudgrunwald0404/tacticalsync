@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -39,6 +39,7 @@ interface CosPriority {
   status: string | null;
   created_at: string;
   updated_at: string;
+  done_at: string | null;
 }
 
 const DEFAULT_STATUS_OPTIONS = ['WIP', 'WOS', 'Done'];
@@ -261,6 +262,19 @@ export default function ChiefOfStaff() {
             .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
         : []),
     ]);
+  };
+
+  const markDone = async (id: string) => {
+    const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_priorities').update({ done_at: now }).eq('id', id);
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, done_at: now } : p));
+  };
+
+  const markUndone = async (id: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_priorities').update({ done_at: null }).eq('id', id);
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, done_at: null } : p));
   };
 
   const addAccountability = async (memberId: string) => {
@@ -516,6 +530,8 @@ export default function ChiefOfStaff() {
             onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
             onDropPriorityOnAccountability={dropPriorityOnAccountability}
             onDropPriorityOnTopic={dropPriorityOnTopic}
+            onMarkDone={markDone}
+            onMarkUndone={markUndone}
           />
         </TabsContent>
 
@@ -1004,6 +1020,71 @@ function PersonSectionsRow({
   );
 }
 
+function DoneItem({ item, onRestore }: { item: CosPriority; onRestore: (id: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="group flex items-start gap-1.5 py-1.5 border-b border-border/20 last:border-0">
+      <span className="text-[10px] text-muted-foreground/50 mt-0.5 whitespace-nowrap flex-shrink-0 w-8">
+        {item.done_at ? format(new Date(item.done_at), 'M/d') : ''}
+      </span>
+      <p className={cn(
+        "flex-1 min-w-0 text-sm text-muted-foreground/60 leading-snug line-through",
+        !expanded && "truncate",
+      )}>
+        {item.text}
+      </p>
+      <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          className="p-0.5 rounded hover:bg-muted"
+          onClick={() => setExpanded(e => !e)}
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          <ChevronDown className={cn('h-3 w-3 text-muted-foreground/60 transition-transform', expanded && 'rotate-180')} />
+        </button>
+        <button
+          className="p-0.5 rounded hover:bg-muted"
+          onClick={() => onRestore(item.id)}
+          title="Restore to original bucket"
+        >
+          <RotateCcw className="h-3 w-3 text-muted-foreground/60" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DoneColumn({ items, onRestore }: { items: CosPriority[]; onRestore: (id: string) => void }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'done-column' });
+  const sorted = [...items].sort(
+    (a, b) => new Date(b.done_at!).getTime() - new Date(a.done_at!).getTime(),
+  );
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Done</h3>
+        {items.length > 0 && (
+          <Badge variant="secondary" className="text-xs px-1.5 py-0">{items.length}</Badge>
+        )}
+      </div>
+      <div
+        ref={setNodeRef}
+        className={cn(
+          'rounded-lg border border-dashed border-border/40 min-h-[60px] p-2 transition-colors',
+          isOver && 'border-green-500/40 bg-green-50/20 dark:bg-green-950/20',
+        )}
+      >
+        {sorted.length === 0 ? (
+          <p className="text-xs text-muted-foreground/40 italic text-center py-3">
+            Drag items here when done
+          </p>
+        ) : (
+          sorted.map(item => <DoneItem key={item.id} item={item} onRestore={onRestore} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CategoryBucket({
   category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
@@ -1107,6 +1188,7 @@ function PrioritiesSection({
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
   onDropPriorityOnAccountability, onDropPriorityOnTopic,
+  onMarkDone, onMarkUndone,
 }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
@@ -1133,6 +1215,8 @@ function PrioritiesSection({
   onNewlyAddedTopicConsumed: () => void;
   onDropPriorityOnAccountability: (memberId: string, text: string) => void;
   onDropPriorityOnTopic: (memberId: string, text: string) => void;
+  onMarkDone: (id: string) => void;
+  onMarkUndone: (id: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -1153,6 +1237,10 @@ function PrioritiesSection({
 
     const overId = over.id as string;
 
+    if (overId === 'done-column') {
+      onMarkDone(activeItem.id);
+      return;
+    }
     if (overId.startsWith('acct-drop-')) {
       onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
       return;
@@ -1171,7 +1259,7 @@ function PrioritiesSection({
   };
 
   const sortedFor = (cat: CategoryKey) =>
-    priorities.filter(p => p.category === cat).sort((a, b) => a.tier_order - b.tier_order);
+    priorities.filter(p => p.category === cat && !p.done_at).sort((a, b) => a.tier_order - b.tier_order);
 
   return (
     <DndContext
@@ -1180,7 +1268,7 @@ function PrioritiesSection({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid gap-8 md:grid-cols-[3fr_2fr_2fr]">
+      <div className="grid gap-6 md:grid-cols-[3fr_2fr_2fr_1.5fr]">
         {/* Column 1 — time buckets */}
         <div className="space-y-6">
           {COL1_CATEGORIES.map(cat => (
@@ -1220,6 +1308,7 @@ function PrioritiesSection({
           ))}
         </div>
         {/* Column 3 — direct reports */}
+        <div>
         <PersonSectionsRow
           members={members}
           accountabilities={accountabilities}
@@ -1237,6 +1326,12 @@ function PrioritiesSection({
           onCopy={onCopy}
           statusOptions={statusOptions}
           priorities={priorities}
+        />
+        </div>
+        {/* Column 4 — done */}
+        <DoneColumn
+          items={priorities.filter(p => !!p.done_at)}
+          onRestore={onMarkUndone}
         />
       </div>
 
