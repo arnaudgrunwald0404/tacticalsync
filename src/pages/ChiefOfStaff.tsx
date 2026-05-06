@@ -40,6 +40,7 @@ interface CosPriority {
   created_at: string;
   updated_at: string;
   done_at: string | null;
+  archived_at: string | null;
 }
 
 const DEFAULT_STATUS_OPTIONS = ['WIP', 'WOS', 'Done'];
@@ -205,9 +206,23 @@ export default function ChiefOfStaff() {
   };
 
   const deletePriority = async (id: string) => {
+    // Soft-archive instead of hard delete — item lands in the Archive section
+    const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_priorities').update({ archived_at: now }).eq('id', id);
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: now } : p));
+  };
+
+  const permanentDeletePriority = async (id: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from('cos_priorities').delete().eq('id', id);
     setPriorities(prev => prev.filter(p => p.id !== id));
+  };
+
+  const restoreArchivedPriority = async (id: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_priorities').update({ archived_at: null }).eq('id', id);
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: null } : p));
   };
 
   const reorderPriority = async (
@@ -532,6 +547,8 @@ export default function ChiefOfStaff() {
             onDropPriorityOnTopic={dropPriorityOnTopic}
             onMarkDone={markDone}
             onMarkUndone={markUndone}
+            onPermanentDelete={permanentDeletePriority}
+            onRestoreArchived={restoreArchivedPriority}
           />
         </TabsContent>
 
@@ -1020,6 +1037,66 @@ function PersonSectionsRow({
   );
 }
 
+// ── Archive section ───────────────────────────────────────────────────────────
+
+function ArchiveSection({
+  items, onRestore, onDelete,
+}: {
+  items: CosPriority[];
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const categoryLabels = getCategoryLabels();
+
+  return (
+    <div className="mt-8 border-t border-border/40 pt-4">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+      >
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+        Archive
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 normal-case tracking-normal">{items.length}</Badge>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-1">
+          {items.map(item => (
+            <div key={item.id} className="group flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/40 transition-colors">
+              <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap flex-shrink-0 w-8">
+                {format(new Date(item.archived_at!), 'M/d')}
+              </span>
+              <Badge variant="outline" className="text-[10px] px-1 py-0 flex-shrink-0 font-normal text-muted-foreground/70 border-border/40">
+                {categoryLabels[item.category]}
+              </Badge>
+              <p className="flex-1 min-w-0 text-sm text-muted-foreground/60 line-through truncate">
+                {item.text}
+              </p>
+              <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  className="p-1 rounded hover:bg-muted text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => onRestore(item.id)}
+                  title="Restore to original bucket"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+                <button
+                  className="p-1 rounded hover:bg-muted text-muted-foreground/60 hover:text-destructive"
+                  onClick={() => onDelete(item.id)}
+                  title="Permanently delete"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DoneItem({ item, onRestore }: { item: CosPriority; onRestore: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1189,6 +1266,7 @@ function PrioritiesSection({
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
   onDropPriorityOnAccountability, onDropPriorityOnTopic,
   onMarkDone, onMarkUndone,
+  onPermanentDelete, onRestoreArchived,
 }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
@@ -1217,6 +1295,8 @@ function PrioritiesSection({
   onDropPriorityOnTopic: (memberId: string, text: string) => void;
   onMarkDone: (id: string) => void;
   onMarkUndone: (id: string) => void;
+  onPermanentDelete: (id: string) => void;
+  onRestoreArchived: (id: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -1259,9 +1339,14 @@ function PrioritiesSection({
   };
 
   const sortedFor = (cat: CategoryKey) =>
-    priorities.filter(p => p.category === cat && !p.done_at).sort((a, b) => a.tier_order - b.tier_order);
+    priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at).sort((a, b) => a.tier_order - b.tier_order);
+
+  const archivedItems = priorities.filter(p => !!p.archived_at).sort(
+    (a, b) => new Date(b.archived_at!).getTime() - new Date(a.archived_at!).getTime(),
+  );
 
   return (
+    <>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -1330,7 +1415,7 @@ function PrioritiesSection({
         </div>
         {/* Column 4 — done */}
         <DoneColumn
-          items={priorities.filter(p => !!p.done_at)}
+          items={priorities.filter(p => !!p.done_at && !p.archived_at)}
           onRestore={onMarkUndone}
         />
       </div>
@@ -1345,6 +1430,11 @@ function PrioritiesSection({
         ) : null}
       </DragOverlay>
     </DndContext>
+
+    {archivedItems.length > 0 && (
+      <ArchiveSection items={archivedItems} onRestore={onRestoreArchived} onDelete={onPermanentDelete} />
+    )}
+    </>
   );
 }
 
