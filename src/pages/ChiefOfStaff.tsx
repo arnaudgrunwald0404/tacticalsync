@@ -450,7 +450,7 @@ export default function ChiefOfStaff() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-6 max-w-4xl space-y-4">
+      <div className="container mx-auto px-6 py-6 max-w-7xl space-y-4">
         <Skeleton className="h-7 w-52" />
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-40 w-full" />
@@ -478,7 +478,7 @@ export default function ChiefOfStaff() {
     : [];
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-4xl">
+    <div className="container mx-auto px-6 py-6 max-w-7xl">
       <div className="flex items-center gap-2 mb-6">
         <Brain className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-semibold">Chief of Staff</h1>
