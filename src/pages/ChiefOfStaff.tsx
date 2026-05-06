@@ -1432,23 +1432,18 @@ function PriorityCard({
           {/* Content */}
           <div className="flex-1 min-w-0">
             {editing ? (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center">
                 <Input
                   value={editText}
                   onChange={e => setEditText(e.target.value)}
+                  onBlur={saveText}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') saveText();
+                    if (e.key === 'Enter') { e.currentTarget.blur(); }
                     if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
                   }}
                   className="h-10 text-sm"
                   autoFocus
                 />
-                <button onClick={saveText} className="p-2 text-green-600 hover:text-green-700 flex-shrink-0">
-                  <Check className="h-5 w-5" />
-                </button>
-                <button onClick={() => { setEditText(item.text); setEditing(false); }} className="p-2 text-muted-foreground hover:text-foreground flex-shrink-0">
-                  <X className="h-5 w-5" />
-                </button>
               </div>
             ) : (
               <div className="flex items-start gap-2 flex-wrap">
