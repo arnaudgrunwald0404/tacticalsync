@@ -1521,7 +1521,7 @@ function PriorityCard({
               onClick={cycleStatus}
               title={item.status ? `Status: ${item.status} — click to advance` : 'Click to set status'}
               className={cn(
-                'text-xs font-medium px-2 py-0.5 rounded border transition-colors',
+                'w-12 text-xs font-medium px-2 py-0.5 rounded border transition-colors truncate text-center',
                 statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
               )}
             >
