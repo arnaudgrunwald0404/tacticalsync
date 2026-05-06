@@ -74,6 +74,25 @@ interface CosTeamMember {
   reports_to_id: string | null;
 }
 
+interface CosPersonAccountability {
+  id: string;
+  user_id: string;
+  member_id: string;
+  text: string;
+  sort_order: number;
+}
+
+interface CosPersonTopic {
+  id: string;
+  user_id: string;
+  member_id: string;
+  text: string;
+  status: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 const COL1_CATEGORIES = ['now', 'this_week', 'this_month', 'next_month'] as const;
 const COL2_CATEGORIES = ['strategic', 'people'] as const;
 const ALL_CATEGORIES = [...COL1_CATEGORIES, ...COL2_CATEGORIES] as const;
@@ -103,6 +122,10 @@ export default function ChiefOfStaff() {
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
   const [teamMembers, setTeamMembers] = useState<CosTeamMember[]>([]);
   const [statusOptions, setStatusOptions] = useState<string[]>(DEFAULT_STATUS_OPTIONS);
+  const [accountabilities, setAccountabilities] = useState<CosPersonAccountability[]>([]);
+  const [personTopics, setPersonTopics] = useState<CosPersonTopic[]>([]);
+  const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
+  const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const isTodayMonday = new Date().getDay() === 1;
   const [briefLogged, setBriefLogged] = useState(false);
@@ -117,11 +140,13 @@ export default function ChiefOfStaff() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      const [priRes, logsRes, teamRes, settingsRes] = await Promise.all([
+      const [priRes, logsRes, teamRes, settingsRes, acctRes, topicsRes] = await Promise.all([
         db.from('cos_priorities').select('*').eq('user_id', user.id).order('tier_order'),
         db.from('cos_dci_logs').select('*').eq('user_id', user.id).order('date', { ascending: false }),
         db.from('cos_team_members').select('*').eq('user_id', user.id).order('name'),
         db.from('cos_settings').select('*').eq('user_id', user.id).maybeSingle(),
+        db.from('cos_person_accountabilities').select('*').eq('user_id', user.id).order('sort_order'),
+        db.from('cos_person_topics').select('*').eq('user_id', user.id).order('sort_order'),
       ]);
 
       setPriorities((priRes.data ?? []) as CosPriority[]);
@@ -130,6 +155,8 @@ export default function ChiefOfStaff() {
       if (settingsRes.data?.status_options) {
         setStatusOptions(settingsRes.data.status_options as string[]);
       }
+      setAccountabilities((acctRes.data ?? []) as CosPersonAccountability[]);
+      setPersonTopics((topicsRes.data ?? []) as CosPersonTopic[]);
       setLoading(false);
     }
     load();
@@ -234,6 +261,58 @@ export default function ChiefOfStaff() {
             .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
         : []),
     ]);
+  };
+
+  const addAccountability = async (memberId: string) => {
+    if (!userId) return;
+    const memberAccts = accountabilities.filter(a => a.member_id === memberId);
+    const maxOrder = memberAccts.length > 0 ? Math.max(...memberAccts.map(a => a.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_accountabilities').insert({
+      user_id: userId, member_id: memberId, text: '', sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) {
+      setAccountabilities(prev => [...prev, data as CosPersonAccountability]);
+      setNewlyAddedAccountabilityId((data as CosPersonAccountability).id);
+    }
+  };
+
+  const updateAccountability = async (id: string, text: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_person_accountabilities').update({ text }).eq('id', id);
+    setAccountabilities(prev => prev.map(a => a.id === id ? { ...a, text } : a));
+  };
+
+  const deleteAccountability = async (id: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_person_accountabilities').delete().eq('id', id);
+    setAccountabilities(prev => prev.filter(a => a.id !== id));
+  };
+
+  const addPersonTopic = async (memberId: string) => {
+    if (!userId) return;
+    const memberTopics = personTopics.filter(t => t.member_id === memberId);
+    const maxOrder = memberTopics.length > 0 ? Math.max(...memberTopics.map(t => t.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_topics').insert({
+      user_id: userId, member_id: memberId, text: '', sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) {
+      setPersonTopics(prev => [...prev, data as CosPersonTopic]);
+      setNewlyAddedTopicId((data as CosPersonTopic).id);
+    }
+  };
+
+  const updatePersonTopic = async (id: string, updates: Partial<CosPersonTopic>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_person_topics').update(updates).eq('id', id);
+    setPersonTopics(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
+  const deletePersonTopic = async (id: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_person_topics').delete().eq('id', id);
+    setPersonTopics(prev => prev.filter(t => t.id !== id));
   };
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
@@ -400,6 +479,19 @@ export default function ChiefOfStaff() {
             statusOptions={statusOptions}
             newlyAddedId={newlyAddedId}
             onNewlyAddedConsumed={() => setNewlyAddedId(null)}
+            members={teamMembers}
+            accountabilities={accountabilities}
+            personTopics={personTopics}
+            onAddAccountability={addAccountability}
+            onUpdateAccountability={updateAccountability}
+            onDeleteAccountability={deleteAccountability}
+            onAddPersonTopic={addPersonTopic}
+            onUpdatePersonTopic={updatePersonTopic}
+            onDeletePersonTopic={deletePersonTopic}
+            newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+            newlyAddedTopicId={newlyAddedTopicId}
+            onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
+            onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
           />
         </TabsContent>
 
@@ -529,6 +621,347 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief' }: 
 
 // ── Priorities ────────────────────────────────────────────────────────────────
 
+// ── Person sections (Priorities tab) ─────────────────────────────────────────
+
+function AccountabilityRow({
+  item, autoFocus, onAutoFocusConsumed, onUpdate, onDelete,
+}: {
+  item: CosPersonAccountability;
+  autoFocus?: boolean;
+  onAutoFocusConsumed?: () => void;
+  onUpdate: (id: string, text: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(item.text);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    setEditing(true);
+    setEditText('');
+    onAutoFocusConsumed?.();
+  }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== item.text) onUpdate(item.id, trimmed);
+    else if (!trimmed && !item.text) onDelete(item.id);
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1 group/row py-0.5">
+      {editing ? (
+        <>
+          <Input
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
+            }}
+            className="h-7 text-xs flex-1"
+            autoFocus
+          />
+          <button onClick={save} className="p-1 text-green-600 hover:text-green-700 flex-shrink-0">
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => { setEditText(item.text); setEditing(false); }} className="p-1 text-muted-foreground hover:text-foreground flex-shrink-0">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="text-muted-foreground text-xs mr-0.5 flex-shrink-0">•</span>
+          <button
+            onClick={() => { setEditing(true); setEditText(item.text); }}
+            className="text-xs text-left flex-1 hover:text-primary transition-colors leading-snug"
+          >
+            {item.text || <span className="text-muted-foreground/60 italic">Click to add</span>}
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover/row:opacity-100 transition-opacity flex-shrink-0"
+            aria-label="Delete"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersonTopicCard({
+  topic, autoFocus, onAutoFocusConsumed, onUpdate, onDelete, statusOptions,
+}: {
+  topic: CosPersonTopic;
+  autoFocus?: boolean;
+  onAutoFocusConsumed?: () => void;
+  onUpdate: (id: string, updates: Partial<CosPersonTopic>) => void;
+  onDelete: (id: string) => void;
+  statusOptions: string[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(topic.text);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    setEditing(true);
+    setEditText('');
+    onAutoFocusConsumed?.();
+  }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== topic.text) onUpdate(topic.id, { text: trimmed });
+    else if (!trimmed && !topic.text) onDelete(topic.id);
+    setEditing(false);
+  };
+
+  const cycleStatus = () => {
+    const idx = topic.status ? statusOptions.indexOf(topic.status) : -1;
+    const next = idx < statusOptions.length - 1 ? statusOptions[idx + 1] : null;
+    onUpdate(topic.id, { status: next });
+  };
+  const statusIdx = topic.status ? statusOptions.indexOf(topic.status) : -1;
+  const statusColor = statusIdx >= 0 ? STATUS_BADGE_COLORS[statusIdx % STATUS_BADGE_COLORS.length] : null;
+
+  return (
+    <div className="flex items-center gap-1.5 group/topic py-0.5">
+      {editing ? (
+        <>
+          <Input
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') { setEditText(topic.text); setEditing(false); }
+            }}
+            className="h-7 text-xs flex-1"
+            autoFocus
+          />
+          <button onClick={save} className="p-1 text-green-600 hover:text-green-700 flex-shrink-0">
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => { setEditText(topic.text); setEditing(false); }} className="p-1 text-muted-foreground hover:text-foreground flex-shrink-0">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={() => { setEditing(true); setEditText(topic.text); }}
+            className="text-xs text-left flex-1 hover:text-primary transition-colors leading-snug"
+          >
+            {topic.text || <span className="text-muted-foreground/60 italic">Click to add</span>}
+          </button>
+          <button
+            onClick={cycleStatus}
+            title={topic.status ? `Status: ${topic.status} — click to advance` : 'Click to set status'}
+            className={cn(
+              'text-xs font-medium px-1.5 py-0.5 rounded border transition-colors flex-shrink-0',
+              statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
+            )}
+          >
+            {topic.status ?? '·'}
+          </button>
+          <button
+            onClick={() => onDelete(topic.id)}
+            className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover/topic:opacity-100 transition-opacity flex-shrink-0"
+            aria-label="Delete"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersonSectionCard({
+  member, accountabilities, topics, onAddAccountability, onUpdateAccountability,
+  onDeleteAccountability, onAddTopic, onUpdateTopic, onDeleteTopic,
+  newlyAddedAccountabilityId, newlyAddedTopicId,
+  onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
+  onCopy, statusOptions, priorities,
+}: {
+  member: CosTeamMember;
+  accountabilities: CosPersonAccountability[];
+  topics: CosPersonTopic[];
+  onAddAccountability: (memberId: string) => void;
+  onUpdateAccountability: (id: string, text: string) => void;
+  onDeleteAccountability: (id: string) => void;
+  onAddTopic: (memberId: string) => void;
+  onUpdateTopic: (id: string, updates: Partial<CosPersonTopic>) => void;
+  onDeleteTopic: (id: string) => void;
+  newlyAddedAccountabilityId: string | null;
+  newlyAddedTopicId: string | null;
+  onNewlyAddedAccountabilityConsumed: () => void;
+  onNewlyAddedTopicConsumed: () => void;
+  onCopy: (text: string, label?: string) => void;
+  statusOptions: string[];
+  priorities: CosPriority[];
+}) {
+  const firstName = member.name.split(' ')[0];
+
+  const handleSuggestTopics = () => {
+    const prompt = buildPersonTopicSuggestPrompt(member, accountabilities, priorities, topics);
+    onCopy(prompt, `Topics prompt for ${firstName} copied — paste into Cowork`);
+  };
+
+  return (
+    <Card className="flex-1 min-w-[280px] max-w-[420px] border border-border/50">
+      <CardContent className="p-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-semibold text-sm">{member.name}</p>
+            <p className="text-xs text-muted-foreground">{member.role}</p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs flex-shrink-0 gap-1"
+            onClick={handleSuggestTopics}
+            title="Copy AI prompt to suggest discussion topics"
+          >
+            <Copy className="h-3 w-3" />
+            Suggest topics
+          </Button>
+        </div>
+
+        {/* Accountabilities */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Accountabilities</h4>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs px-2"
+              onClick={() => onAddAccountability(member.id)}
+            >
+              <Plus className="h-3 w-3 mr-0.5" />Add
+            </Button>
+          </div>
+          <div className="space-y-0.5">
+            {accountabilities.map(a => (
+              <AccountabilityRow
+                key={a.id}
+                item={a}
+                autoFocus={a.id === newlyAddedAccountabilityId}
+                onAutoFocusConsumed={onNewlyAddedAccountabilityConsumed}
+                onUpdate={onUpdateAccountability}
+                onDelete={onDeleteAccountability}
+              />
+            ))}
+            {accountabilities.length === 0 && (
+              <p className="text-xs text-muted-foreground/60 italic">None yet — add what {firstName} owns</p>
+            )}
+          </div>
+        </div>
+
+        {/* Discussion topics */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Discussion Topics</h4>
+              {topics.length > 0 && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0">{topics.length}</Badge>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs px-2"
+              onClick={() => onAddTopic(member.id)}
+            >
+              <Plus className="h-3 w-3 mr-0.5" />Add
+            </Button>
+          </div>
+          <div className="space-y-0.5">
+            {topics.map(t => (
+              <PersonTopicCard
+                key={t.id}
+                topic={t}
+                autoFocus={t.id === newlyAddedTopicId}
+                onAutoFocusConsumed={onNewlyAddedTopicConsumed}
+                onUpdate={onUpdateTopic}
+                onDelete={onDeleteTopic}
+                statusOptions={statusOptions}
+              />
+            ))}
+            {topics.length === 0 && (
+              <p className="text-xs text-muted-foreground/60 italic">None yet — add manually or use "Suggest topics"</p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PersonSectionsRow({
+  members, accountabilities, topics,
+  onAddAccountability, onUpdateAccountability, onDeleteAccountability,
+  onAddTopic, onUpdateTopic, onDeleteTopic,
+  newlyAddedAccountabilityId, newlyAddedTopicId,
+  onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
+  onCopy, statusOptions, priorities,
+}: {
+  members: CosTeamMember[];
+  accountabilities: CosPersonAccountability[];
+  topics: CosPersonTopic[];
+  onAddAccountability: (memberId: string) => void;
+  onUpdateAccountability: (id: string, text: string) => void;
+  onDeleteAccountability: (id: string) => void;
+  onAddTopic: (memberId: string) => void;
+  onUpdateTopic: (id: string, updates: Partial<CosPersonTopic>) => void;
+  onDeleteTopic: (id: string) => void;
+  newlyAddedAccountabilityId: string | null;
+  newlyAddedTopicId: string | null;
+  onNewlyAddedAccountabilityConsumed: () => void;
+  onNewlyAddedTopicConsumed: () => void;
+  onCopy: (text: string, label?: string) => void;
+  statusOptions: string[];
+  priorities: CosPriority[];
+}) {
+  const directReports = members
+    .filter(m => m.relationship_type === 'direct_report' && !m.reports_to_id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (directReports.length === 0) return null;
+
+  return (
+    <div className="mt-8 pt-8 border-t border-border/40">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Direct Reports</h3>
+      <div className="flex flex-wrap gap-6">
+        {directReports.map(m => (
+          <PersonSectionCard
+            key={m.id}
+            member={m}
+            accountabilities={accountabilities.filter(a => a.member_id === m.id)}
+            topics={topics.filter(t => t.member_id === m.id)}
+            priorities={priorities}
+            statusOptions={statusOptions}
+            onAddAccountability={onAddAccountability}
+            onUpdateAccountability={onUpdateAccountability}
+            onDeleteAccountability={onDeleteAccountability}
+            onAddTopic={onAddTopic}
+            onUpdateTopic={onUpdateTopic}
+            onDeleteTopic={onDeleteTopic}
+            newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+            newlyAddedTopicId={newlyAddedTopicId}
+            onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+            onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+            onCopy={onCopy}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CategoryBucket({
   category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
@@ -623,7 +1056,15 @@ function SortablePriorityCard({
   );
 }
 
-function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed }: {
+function PrioritiesSection({
+  priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions,
+  newlyAddedId, onNewlyAddedConsumed,
+  members, accountabilities, personTopics,
+  onAddAccountability, onUpdateAccountability, onDeleteAccountability,
+  onAddPersonTopic, onUpdatePersonTopic, onDeletePersonTopic,
+  newlyAddedAccountabilityId, newlyAddedTopicId,
+  onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
+}: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onAdd: (category: CategoryKey) => void;
@@ -634,6 +1075,19 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
+  members: CosTeamMember[];
+  accountabilities: CosPersonAccountability[];
+  personTopics: CosPersonTopic[];
+  onAddAccountability: (memberId: string) => void;
+  onUpdateAccountability: (id: string, text: string) => void;
+  onDeleteAccountability: (id: string) => void;
+  onAddPersonTopic: (memberId: string) => void;
+  onUpdatePersonTopic: (id: string, updates: Partial<CosPersonTopic>) => void;
+  onDeletePersonTopic: (id: string) => void;
+  newlyAddedAccountabilityId: string | null;
+  newlyAddedTopicId: string | null;
+  onNewlyAddedAccountabilityConsumed: () => void;
+  onNewlyAddedTopicConsumed: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -665,6 +1119,7 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
     priorities.filter(p => p.category === cat).sort((a, b) => a.tier_order - b.tier_order);
 
   return (
+    <>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -722,6 +1177,26 @@ function PrioritiesSection({ priorities, onUpdate, onAdd, onDelete, onReorder, o
         ) : null}
       </DragOverlay>
     </DndContext>
+
+    <PersonSectionsRow
+      members={members}
+      accountabilities={accountabilities}
+      topics={personTopics}
+      onAddAccountability={onAddAccountability}
+      onUpdateAccountability={onUpdateAccountability}
+      onDeleteAccountability={onDeleteAccountability}
+      onAddTopic={onAddPersonTopic}
+      onUpdateTopic={onUpdatePersonTopic}
+      onDeleteTopic={onDeletePersonTopic}
+      newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+      newlyAddedTopicId={newlyAddedTopicId}
+      onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+      onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+      onCopy={onCopy}
+      statusOptions={statusOptions}
+      priorities={priorities}
+    />
+    </>
   );
 }
 
@@ -1224,6 +1699,51 @@ interface CleargoPrep {
 
 const CLEARGO_API_URL = import.meta.env.VITE_CLEARGO_API_URL ?? 'https://cleargo.netlify.app';
 const CLEARGO_API_KEY = import.meta.env.VITE_CLEARGO_API_KEY ?? '';
+
+function buildPersonTopicSuggestPrompt(
+  member: CosTeamMember,
+  accts: CosPersonAccountability[],
+  currentPriorities: CosPriority[],
+  existingTopics: CosPersonTopic[],
+): string {
+  const firstName = member.name.split(' ')[0];
+  const lines: string[] = [
+    `Suggest discussion topics for my 1:1 with ${member.name} (${member.role}).`,
+    '',
+  ];
+  if (accts.length > 0) {
+    lines.push(`${firstName}'s accountabilities:`);
+    accts.forEach(a => lines.push(`  • ${a.text}`));
+    lines.push('');
+  }
+  const horizons: [string, CosPriority['category']][] = [
+    ['Now', 'now'], ['This Week', 'this_week'], ['This Month', 'this_month'], ['Strategic', 'strategic'],
+  ];
+  const priorityLines = horizons.flatMap(([label, cat]) => {
+    const items = currentPriorities.filter(p => p.category === cat && p.text);
+    return items.length > 0 ? [`${label}: ${items.map(p => p.text).join(', ')}`] : [];
+  });
+  if (priorityLines.length > 0) {
+    lines.push('My current CoS priorities:');
+    priorityLines.forEach(l => lines.push(`  ${l}`));
+    lines.push('');
+  }
+  if (member.context_notes) {
+    lines.push(`Context about ${firstName}: ${member.context_notes}`);
+    lines.push('');
+  }
+  if (existingTopics.length > 0) {
+    lines.push('Topics already queued:');
+    existingTopics.forEach(t => lines.push(`  • ${t.text}`));
+    lines.push('');
+  }
+  lines.push(
+    `Suggest 3–5 concrete discussion topics I should raise in my next 1:1 with ${firstName}. ` +
+    'Focus on intersections between my priorities and their accountabilities, alignment needed, ' +
+    'or blockers I can help remove. Be specific and actionable.',
+  );
+  return lines.join('\n');
+}
 
 function buildStaticPrepPrompt(member: CosTeamMember): string {
   const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
