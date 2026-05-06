@@ -315,6 +315,28 @@ export default function ChiefOfStaff() {
     setPersonTopics(prev => prev.filter(t => t.id !== id));
   };
 
+  const dropPriorityOnAccountability = async (memberId: string, text: string) => {
+    if (!userId) return;
+    const memberAccts = accountabilities.filter(a => a.member_id === memberId);
+    const maxOrder = memberAccts.length > 0 ? Math.max(...memberAccts.map(a => a.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_accountabilities').insert({
+      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) setAccountabilities(prev => [...prev, data as CosPersonAccountability]);
+  };
+
+  const dropPriorityOnTopic = async (memberId: string, text: string) => {
+    if (!userId) return;
+    const memberTopics = personTopics.filter(t => t.member_id === memberId);
+    const maxOrder = memberTopics.length > 0 ? Math.max(...memberTopics.map(t => t.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_topics').insert({
+      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) setPersonTopics(prev => [...prev, data as CosPersonTopic]);
+  };
+
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
     if (!userId) return;
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -492,6 +514,8 @@ export default function ChiefOfStaff() {
             newlyAddedTopicId={newlyAddedTopicId}
             onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
             onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
+            onDropPriorityOnAccountability={dropPriorityOnAccountability}
+            onDropPriorityOnTopic={dropPriorityOnTopic}
           />
         </TabsContent>
 
@@ -804,6 +828,8 @@ function PersonSectionCard({
   priorities: CosPriority[];
 }) {
   const firstName = member.name.split(' ')[0];
+  const { setNodeRef: setAcctDropRef, isOver: isOverAcct } = useDroppable({ id: `acct-drop-${member.id}` });
+  const { setNodeRef: setTopicDropRef, isOver: isOverTopic } = useDroppable({ id: `topic-drop-${member.id}` });
 
   const handleSuggestTopics = () => {
     const prompt = buildPersonTopicSuggestPrompt(member, accountabilities, priorities, topics);
@@ -811,7 +837,7 @@ function PersonSectionCard({
   };
 
   return (
-    <Card className="flex-1 min-w-[280px] max-w-[420px] border border-border/50">
+    <Card className="w-full border border-border/50">
       <CardContent className="p-4 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
@@ -844,7 +870,13 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div className="space-y-0.5">
+          <div
+            ref={setAcctDropRef}
+            className={cn(
+              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+              isOverAcct && "bg-primary/5 ring-1 ring-primary/30",
+            )}
+          >
             {accountabilities.map(a => (
               <AccountabilityRow
                 key={a.id}
@@ -856,7 +888,9 @@ function PersonSectionCard({
               />
             ))}
             {accountabilities.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 italic">None yet — add what {firstName} owns</p>
+              <p className="text-xs text-muted-foreground/60 italic">
+                {isOverAcct ? 'Drop to add as accountability' : `None yet — add what ${firstName} owns`}
+              </p>
             )}
           </div>
         </div>
@@ -879,7 +913,13 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div className="space-y-0.5">
+          <div
+            ref={setTopicDropRef}
+            className={cn(
+              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+              isOverTopic && "bg-primary/5 ring-1 ring-primary/30",
+            )}
+          >
             {topics.map(t => (
               <PersonTopicCard
                 key={t.id}
@@ -892,7 +932,9 @@ function PersonSectionCard({
               />
             ))}
             {topics.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 italic">None yet — add manually or use "Suggest topics"</p>
+              <p className="text-xs text-muted-foreground/60 italic">
+                {isOverTopic ? 'Drop to add as discussion topic' : 'None yet — add manually or use "Suggest topics"'}
+              </p>
             )}
           </div>
         </div>
@@ -933,9 +975,9 @@ function PersonSectionsRow({
   if (directReports.length === 0) return null;
 
   return (
-    <div className="mt-8 pt-8 border-t border-border/40">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Direct Reports</h3>
-      <div className="flex flex-wrap gap-6">
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
+      <div className="space-y-4">
         {directReports.map(m => (
           <PersonSectionCard
             key={m.id}
@@ -1064,6 +1106,7 @@ function PrioritiesSection({
   onAddPersonTopic, onUpdatePersonTopic, onDeletePersonTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
+  onDropPriorityOnAccountability, onDropPriorityOnTopic,
 }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
@@ -1088,6 +1131,8 @@ function PrioritiesSection({
   newlyAddedTopicId: string | null;
   onNewlyAddedAccountabilityConsumed: () => void;
   onNewlyAddedTopicConsumed: () => void;
+  onDropPriorityOnAccountability: (memberId: string, text: string) => void;
+  onDropPriorityOnTopic: (memberId: string, text: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
@@ -1107,6 +1152,16 @@ function PrioritiesSection({
     if (!activeItem) return;
 
     const overId = over.id as string;
+
+    if (overId.startsWith('acct-drop-')) {
+      onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
+      return;
+    }
+    if (overId.startsWith('topic-drop-')) {
+      onDropPriorityOnTopic(overId.replace('topic-drop-', ''), activeItem.text);
+      return;
+    }
+
     const targetCategory = ALL_CATEGORIES.includes(overId as CategoryKey)
       ? (overId as CategoryKey)
       : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
@@ -1119,14 +1174,13 @@ function PrioritiesSection({
     priorities.filter(p => p.category === cat).sort((a, b) => a.tier_order - b.tier_order);
 
   return (
-    <>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid gap-8 md:grid-cols-[3fr_2fr]">
+      <div className="grid gap-8 md:grid-cols-[3fr_2fr_2fr]">
         {/* Column 1 — time buckets */}
         <div className="space-y-6">
           {COL1_CATEGORIES.map(cat => (
@@ -1165,6 +1219,25 @@ function PrioritiesSection({
             />
           ))}
         </div>
+        {/* Column 3 — direct reports */}
+        <PersonSectionsRow
+          members={members}
+          accountabilities={accountabilities}
+          topics={personTopics}
+          onAddAccountability={onAddAccountability}
+          onUpdateAccountability={onUpdateAccountability}
+          onDeleteAccountability={onDeleteAccountability}
+          onAddTopic={onAddPersonTopic}
+          onUpdateTopic={onUpdatePersonTopic}
+          onDeleteTopic={onDeletePersonTopic}
+          newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+          newlyAddedTopicId={newlyAddedTopicId}
+          onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+          onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+          onCopy={onCopy}
+          statusOptions={statusOptions}
+          priorities={priorities}
+        />
       </div>
 
       <DragOverlay dropAnimation={null}>
@@ -1177,26 +1250,6 @@ function PrioritiesSection({
         ) : null}
       </DragOverlay>
     </DndContext>
-
-    <PersonSectionsRow
-      members={members}
-      accountabilities={accountabilities}
-      topics={personTopics}
-      onAddAccountability={onAddAccountability}
-      onUpdateAccountability={onUpdateAccountability}
-      onDeleteAccountability={onDeleteAccountability}
-      onAddTopic={onAddPersonTopic}
-      onUpdateTopic={onUpdatePersonTopic}
-      onDeleteTopic={onDeletePersonTopic}
-      newlyAddedAccountabilityId={newlyAddedAccountabilityId}
-      newlyAddedTopicId={newlyAddedTopicId}
-      onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
-      onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
-      onCopy={onCopy}
-      statusOptions={statusOptions}
-      priorities={priorities}
-    />
-    </>
   );
 }
 
