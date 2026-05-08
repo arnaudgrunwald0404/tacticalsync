@@ -873,15 +873,12 @@ function PersonSectionCard({
     <Card className="w-full border border-border/50">
       <CardContent className="p-4 space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="font-semibold text-sm">{member.name}</p>
-            <p className="text-xs text-muted-foreground">{member.role}</p>
-          </div>
+        <div>
+          <p className="font-semibold text-sm">{member.name}</p>
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 text-xs flex-shrink-0 gap-1"
+            className="h-6 text-xs -ml-2 gap-1 text-muted-foreground"
             onClick={handleSuggestTopics}
             title="Copy AI prompt to suggest discussion topics"
           >
