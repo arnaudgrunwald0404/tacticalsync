@@ -14,15 +14,14 @@ import ReactFlow, {
   Handle,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ArrowLeft, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target } from "lucide-react";
+import { Plus, MoreVertical, X, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import Logo from "@/components/Logo";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AppNavbar } from "@/components/ui/app-navbar";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,7 +33,6 @@ import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParse
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
@@ -357,7 +355,7 @@ const createDoNode = (
                     )}
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted overflow-hidden rounded-b-lg">
                       <div
-                        className="h-full bg-gradient-to-r from-[#C97D60] to-[#6FA87F] transition-all duration-300"
+                        className="h-full bg-gradient-to-r from-[#4A5D5F] to-[#6FA87F] transition-all duration-300"
                         style={{
                           width: `${percentToGoal}%`,
                           marginLeft: 'auto', // Start from right, fill leftward
@@ -424,8 +422,8 @@ function RallyNode({ data }: { data: NodeData }) {
     <div 
       className={`rounded-xl border-2 shadow-lg p-4 min-w-[220px] flex flex-col relative ${
         finalized
-          ? "border-[#C97D60] bg-gradient-to-br from-[#F5F3F0] to-[#E8B4A0]/20"
-          : "border-[#B89A6B] bg-gradient-to-br from-[#F8F6F2] to-[#E8B4A0]/20"
+          ? "border-[#4A5D5F] bg-gradient-to-br from-[#F5F3F0] to-[#6B9A8F]/20"
+          : "border-[#B89A6B] bg-gradient-to-br from-[#F8F6F2] to-[#6B9A8F]/20"
       }`}
       style={{ 
         backgroundColor: bg, 
@@ -437,25 +435,25 @@ function RallyNode({ data }: { data: NodeData }) {
     >
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-24 h-24 ${
-        finalized ? "bg-[#C97D60]/10" : "bg-[#B89A6B]/10"
+        finalized ? "bg-[#4A5D5F]/10" : "bg-[#B89A6B]/10"
       } rounded-bl-full`} />
       
       {/* Decorative top accent */}
       <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl ${
         finalized 
-          ? "bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60]" 
+          ? "bg-gradient-to-r from-[#4A5D5F] via-[#4A5D5F] to-[#4A5D5F]" 
           : "bg-gradient-to-r from-[#B89A6B] via-[#8B6F47] to-[#B89A6B]"
       }`} />
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
           finalized
-            ? "bg-[#C97D60] text-white"
+            ? "bg-[#4A5D5F] text-white"
             : "bg-[#B89A6B] text-white"
         }`}>Rallying Cry</span>
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
           finalized 
-            ? "bg-[#F5F3F0] text-[#C97D60]" 
+            ? "bg-[#F5F3F0] text-[#4A5D5F]" 
             : "bg-[#F8F6F2] text-[#B89A6B]"
         }`}>
           {finalized ? "locked" : "draft"}
@@ -539,9 +537,11 @@ export default function StrategyCanvasPage() {
   const location = useLocation();
   const isMobile = useIsMobile();
   
-  // Get cycle ID from URL query parameter
+  // Get cycle ID and optional focus params from URL query parameters
   const searchParams = new URLSearchParams(location.search);
   const cycleId = searchParams.get('cycle');
+  const focusDoId = searchParams.get('focus') || searchParams.get('focusDO');
+  const focusSiId = searchParams.get('focusSI');
   
   // If no cycle ID, redirect back to strategies list
   useEffect(() => {
@@ -558,6 +558,7 @@ export default function StrategyCanvasPage() {
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
   const [focusedSI, setFocusedSI] = useState<null | { doId: string; siId: string }>(null);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
+  const focusApplied = useRef(false);
   const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
   const profilesMap = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])), [profiles]);
   const progressFeatureOn = isFeatureEnabled('siProgress');
@@ -669,15 +670,6 @@ export default function StrategyCanvasPage() {
   // One-click import + lock ("DO")
   const oneClickFileInputRef = useRef<HTMLInputElement>(null);
   const [oneClickMode, setOneClickMode] = useState(false);
-
-  // Header state (logo/tabs/avatar)
-  const activeTab = location.pathname.includes('/dashboard/rcdo') || location.pathname.includes('/rcdo/') ? 'rcdo' : 'main';
-  const handleTabChange = (value: string) => {
-    if (value === 'main') navigate('/my-meetings');
-    else if (value === 'rcdo') navigate('/dashboard/rcdo');
-    else if (value === 'checkins') navigate('/workspace');
-    else if (value === 'commitments') navigate('/commitments');
-  };
 
   // Run a one-time de-overlap pass to ensure default layout has no collisions
   const didAutoLayoutRef = useRef(false);
@@ -1093,6 +1085,24 @@ export default function StrategyCanvasPage() {
     window.addEventListener("rcdo:open-si", handler);
     return () => window.removeEventListener("rcdo:open-si", handler);
   }, [nodes]);
+
+  // Auto-focus a DO (and optionally SI) when navigating from a detail page
+  useEffect(() => {
+    if (!focusDoId || focusApplied.current || doLockedStatus.size === 0) return;
+    let targetNodeId: string | null = null;
+    for (const [nodeId, status] of doLockedStatus) {
+      if (status.dbId === focusDoId) { targetNodeId = nodeId; break; }
+    }
+    if (!targetNodeId) return;
+    const targetNode = nodes.find(n => n.id === targetNodeId);
+    if (!targetNode) return;
+    focusApplied.current = true;
+    setSelectedNode(targetNode);
+    if (focusSiId) {
+      const si = targetNode.data.saiItems?.find(s => s.dbId === focusSiId);
+      if (si) setFocusedSI({ doId: targetNodeId, siId: si.id });
+    }
+  }, [doLockedStatus, nodes, focusDoId, focusSiId]);
 
   // Listen to node update events from inline editing
   useEffect(() => {
@@ -1740,53 +1750,33 @@ const duplicateSelectedDo = useCallback(() => {
         navigate={navigate}
         profiles={profiles}
         profilesMap={profilesMap}
-        activeTab={activeTab}
-        handleTabChange={handleTabChange}
       />
     );
   }
 
   return (
     <div className="w-full h-dvh flex flex-col">
-      {/* Page header (logo, tabs, avatar) */}
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-          {/* Left: Back (when not on main) + Logo */}
-          <div className="flex items-center gap-4">
-            {activeTab !== 'main' && (
-              <button
-                onClick={() => navigate('/dashboard/rcdo')}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </button>
-            )}
-            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          </div>
-
-          {/* Center: Tabs */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
-            <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <TabsList className="h-10">
-                <TabsTrigger value="rcdo" className="px-6">RCDO</TabsTrigger>
-                <TabsTrigger value="main" className="px-6">My Meetings</TabsTrigger>
-                <TabsTrigger value="checkins" className="px-6">My Workspace</TabsTrigger>
-                <TabsTrigger value="commitments" className="px-6">Commitments</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* Right: Avatar + name clickable */}
-          <UserProfileHeader />
-        </div>
-      </header>
+      {/* Page header */}
+      <AppNavbar />
 
       {/* Canvas toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
+        <button
+          onClick={() => {
+            if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
+            if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
+            for (const [, status] of doLockedStatus) {
+              if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
+            }
+          }}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ml-4"
+        >
+          <List className="h-3 w-3" />
+          <span>Detail</span>
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" className="flex items-center gap-1 ml-4">
+            <Button size="sm" className="flex items-center gap-1">
               Actions <ChevronDown className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1904,7 +1894,7 @@ const duplicateSelectedDo = useCallback(() => {
         >
           <MiniMap pannable zoomable />
           <Controls />
-          <Background color="#E8B4A0" gap={10} size={1} />
+          <Background color="#6B9A8F" gap={10} size={1} />
         </ReactFlow>
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
@@ -2414,7 +2404,7 @@ const duplicateSelectedDo = useCallback(() => {
             <div className="space-y-4 flex-1 overflow-y-auto">
               {/* Progress List - Prominently displayed when active */}
               {importProgress.length > 0 && (
-                <div className="space-y-3 p-4 bg-[#F5F3F0] rounded-lg border border-[#E8B4A0]/30">
+                <div className="space-y-3 p-4 bg-[#F5F3F0] rounded-lg border border-[#6B9A8F]/30">
                   <div className="flex items-center justify-between">
                     <p className="text-base font-semibold">Import Progress</p>
                     {importProgress.every(p => p.status === 'success' || p.status === 'error') && (
@@ -2430,7 +2420,7 @@ const duplicateSelectedDo = useCallback(() => {
                           <div className="h-5 w-5 rounded-full border-2 border-muted flex-shrink-0" />
                         )}
                         {item.status === 'loading' && (
-                          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-[#C97D60]" />
+                          <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-[#4A5D5F]" />
                         )}
                         {item.status === 'success' && (
                           <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-green-600" />
@@ -2452,7 +2442,7 @@ const duplicateSelectedDo = useCallback(() => {
                 <div className={`flex items-start gap-2 p-3 rounded-md ${
                   importStatus.type === 'success' ? 'bg-green-50 text-green-900 border border-green-200' :
                   importStatus.type === 'error' ? 'bg-red-50 text-red-900 border border-red-200' :
-                  'bg-[#F5F3F0] text-[#2C2C2C] border border-[#E8B4A0]/30'
+                  'bg-[#F5F3F0] text-[#2C2C2C] border border-[#6B9A8F]/30'
                 }`}>
                   {importStatus.type === 'success' && <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />}
                   {importStatus.type === 'error' && <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />}
@@ -2521,10 +2511,10 @@ const duplicateSelectedDo = useCallback(() => {
 
               {/* Hide format instructions when progress is shown */}
               {importProgress.length === 0 && (
-                <div className="space-y-3 p-4 bg-[#F5F3F0] border-2 border-[#C97D60] rounded-lg">
+                <div className="space-y-3 p-4 bg-[#F5F3F0] border-2 border-[#4A5D5F] rounded-lg">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5">
-                      <div className="h-8 w-8 rounded-full bg-[#C97D60] flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-full bg-[#4A5D5F] flex items-center justify-center">
                         <FileText className="h-4 w-4 text-white" />
                       </div>
                     </div>
@@ -2534,7 +2524,7 @@ const duplicateSelectedDo = useCallback(() => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="font-body h-7 px-2 flex items-center gap-1.5 hover:bg-[#C97D60]/10"
+                          className="font-body h-7 px-2 flex items-center gap-1.5 hover:bg-[#4A5D5F]/10"
                           onClick={() => {
                       const instructions = `Please format my RCDO (Rallying Cry, Defining Objectives, and Strategic Initiatives) data according to the following markdown structure:
 
@@ -2641,14 +2631,14 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
                       </div>
                       <div className="space-y-2">
                         <p className="font-body text-xs text-[#4A5D5F]">Copy the instructions above and provide them to your favorite LLM along with your RCDO content.</p>
-                        <div className="font-body text-xs space-y-1.5 pl-3 border-l-2 border-[#C97D60]">
+                        <div className="font-body text-xs space-y-1.5 pl-3 border-l-2 border-[#4A5D5F]">
                           <p className="font-heading font-medium text-[#2C2C2C]">Quick Reference:</p>
                           <ul className="font-body list-disc list-inside space-y-1 ml-2 text-[#4A5D5F]">
-                            <li>Rallying Cry: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">&gt; **Text**</code></li>
-                            <li>Defining Objectives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">## DO #1 — Title</code></li>
-                            <li>Strategic Initiatives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">1. **Initiative**</code></li>
-                            <li>Sections: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">**Definition**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">**Primary Success Metric**</code></li>
-                            <li>Owners (optional): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#C97D60]">(Owner: Name)</code></li>
+                            <li>Rallying Cry: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">&gt; **Text**</code></li>
+                            <li>Defining Objectives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">## DO #1 — Title</code></li>
+                            <li>Strategic Initiatives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">1. **Initiative**</code></li>
+                            <li>Sections: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Definition**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Primary Success Metric**</code></li>
+                            <li>Owners (optional): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">(Owner: Name)</code></li>
                           </ul>
                           <p className="font-body text-xs text-[#4A5D5F] mt-2 italic">
                             Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.
@@ -2725,15 +2715,11 @@ function StrategyCanvasMobileView({
   navigate,
   profiles,
   profilesMap,
-  activeTab,
-  handleTabChange,
 }: {
   cycleId: string | null;
   navigate: (path: string) => void;
   profiles: Tables<'profiles'>[];
   profilesMap: Record<string, Tables<'profiles'>>;
-  activeTab: string;
-  handleTabChange: (value: string) => void;
 }) {
   type RCRow = { id: string; title: string; narrative?: string };
   type DORow = { id: string; title: string; status?: string; owner_user_id?: string; locked_at?: string | null };
@@ -2889,36 +2875,7 @@ function StrategyCanvasMobileView({
   return (
     <div className="w-full h-dvh flex flex-col">
       {/* Page header */}
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/dashboard/rcdo')}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </button>
-            <Logo variant="minimal" size="lg" className="scale-75" />
-          </div>
-
-          {/* Center: Tabs - Hidden on mobile */}
-          {!isMobile && (
-            <div className="absolute left-1/2 -translate-x-1/2">
-              <Tabs value={activeTab} onValueChange={handleTabChange}>
-                <TabsList className="h-10">
-                  <TabsTrigger value="rcdo" className="px-4 text-xs sm:px-6">RCDO</TabsTrigger>
-                  <TabsTrigger value="main" className="px-4 text-xs sm:px-6">My Meetings</TabsTrigger>
-                  <TabsTrigger value="checkins" className="px-4 text-xs sm:px-6">My Workspace</TabsTrigger>
-                  <TabsTrigger value="commitments" className="px-4 text-xs sm:px-6">Commitments</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          )}
-
-          <UserProfileHeader />
-        </div>
-      </header>
+      <AppNavbar />
 
       {/* Mobile List View */}
       <div className={`flex-1 overflow-y-auto bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 ${isMobile ? 'pb-20' : ''}`}>

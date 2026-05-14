@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, BarChart3, Brain } from "lucide-react";
+import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRoles } from "@/hooks/useRoles";
 
@@ -14,8 +14,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   {
     id: "cos",
-    label: "CoS",
-    icon: Brain,
+    label: "Chief of Staff",
+    icon: Briefcase,
     path: "/chief-of-staff",
   },
   {

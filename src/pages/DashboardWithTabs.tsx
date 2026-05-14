@@ -1,8 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import GridBackground from "@/components/ui/grid-background";
-import Logo from "@/components/Logo";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft } from "lucide-react";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useEffect, lazy, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
 const StrategyHome = lazy(() => import("./StrategyHome"));
@@ -12,9 +10,9 @@ const LazyInsightsPage = lazy(() => import("./Insights"));
 const LazyChiefOfStaffPage = lazy(() => import("./ChiefOfStaff"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
+import { AppNavbar } from "@/components/ui/app-navbar";
 
 const DashboardWithTabs = () => {
   const navigate = useNavigate();
@@ -23,7 +21,7 @@ const DashboardWithTabs = () => {
   const { isAdmin, isSuperAdmin } = useRoles();
   const showInsights = isAdmin || isSuperAdmin;
 
-  // Determine active tab from URL
+  // Determine active tab from URL (used for TabsContent visibility + canvas redirect)
   const activeTab = location.pathname.includes('/insights')
     ? 'insights'
     : location.pathname.includes('/chief-of-staff')
@@ -43,22 +41,6 @@ const DashboardWithTabs = () => {
   // Fetch active cycle to auto-route to canvas when RCDO tab is selected
   const { cycle: activeCycle, loading: activeCycleLoading } = useActiveCycle();
 
-  const handleTabChange = (value: string) => {
-    if (value === 'main') {
-      navigate('/my-meetings');
-    } else if (value === 'rcdo') {
-      navigate('/dashboard/rcdo');
-    } else if (value === 'checkins') {
-      navigate('/workspace');
-    } else if (value === 'commitments') {
-      navigate('/commitments');
-    } else if (value === 'insights') {
-      navigate('/insights');
-    } else if (value === 'cos') {
-      navigate('/chief-of-staff');
-    }
-  };
-
   // When on /dashboard/rcdo base path, send user to the active canvas if available
   useEffect(() => {
     if (activeTab !== 'rcdo') return;
@@ -72,50 +54,9 @@ const DashboardWithTabs = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-platinum via-white to-white-gold overscroll-none">
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 relative">
-          {/* Reserve space for absolutely positioned avatar (right-4 = 1rem = 16px, plus ~180px for avatar+name) */}
-          <div className="flex items-center gap-4 pr-[180px] md:pr-[200px]">
-            {/* Left: Back button and Logo - Protected, won't shrink */}
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              {activeTab !== 'main' && !isMobile && (
-                <button
-                  onClick={() => navigate('/my-meetings')}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap flex-shrink-0"
-                >
-                  <ArrowLeft className="h-4 w-4"/>
-                  Back
-                </button>
-              )}
+      <AppNavbar />
 
-              <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100 flex-shrink-0"/>
-            </div>
-
-            {/* Center: Tabs - Hidden on mobile, centered with constraints to prevent overlap */}
-            {!isMobile && (
-              <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
-                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full max-w-fit">
-                  <TabsList className="h-10">
-                    <TabsTrigger value="cos" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">CoS 🧠</TabsTrigger>
-                    <TabsTrigger value="checkins" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Workspace</TabsTrigger>
-                    <TabsTrigger value="main" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">My Meetings</TabsTrigger>
-                    <TabsTrigger value="commitments" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Commitments</TabsTrigger>
-                    <TabsTrigger value="rcdo" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">RCDO</TabsTrigger>
-                    {showInsights && (
-                      <TabsTrigger value="insights" className="px-2 sm:px-4 md:px-6 whitespace-nowrap text-xs sm:text-sm">Insights</TabsTrigger>
-                    )}
-                  </TabsList>
-                </Tabs>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Avatar - UserProfileHeader handles its own absolute positioning */}
-          <UserProfileHeader />
-        </div>
-      </header>
-
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+      <Tabs value={activeTab} className="w-full">
         <TabsContent value="cos" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'cos' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Chief of Staff…</div>}>
