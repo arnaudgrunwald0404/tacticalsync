@@ -9,7 +9,7 @@ import { colors, spacing, typography, borderRadius, shadows } from './tokens';
 
 /**
  * Get a color value by path
- * @example getColor('primary.copper.hex') => '#C97D60'
+ * @example getColor('primary.copper.hex') => '#4A5D5F'
  */
 export function getColor(path: string): string {
   const parts = path.split('.');
@@ -98,7 +98,7 @@ export function getColorVariable(colorName: string): string {
 
 /**
  * Generate Tailwind color class
- * @example getTailwindColor('primary', 'copper') => 'bg-[#C97D60]'
+ * @example getTailwindColor('primary', 'copper') => 'bg-[#4A5D5F]'
  */
 export function getTailwindColor(
   category: 'primary' | 'secondary' | 'semantic',

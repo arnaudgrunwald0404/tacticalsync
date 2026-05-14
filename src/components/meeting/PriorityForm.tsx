@@ -414,7 +414,7 @@ export function PriorityForm({
                 <div className="flex items-center gap-2">
                   {linkedItemType === 'do' ? (
               <>
-                <Target className="h-4 w-4 text-[#C97D60]" />
+                <Target className="h-4 w-4 text-[#4A5D5F]" />
                 <Badge variant="secondary" className="text-xs">DO</Badge>
                       <span className="text-sm truncate">
                         {activeDOs.find(d => d.id === linkedItemId)?.title || 'Linked to DO'}

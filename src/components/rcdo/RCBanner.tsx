@@ -14,7 +14,7 @@ interface RCBannerProps {
 
 const statusColors = {
   draft: 'bg-gray-500',
-  committed: 'bg-[#C97D60]',
+  committed: 'bg-[#4A5D5F]',
   in_progress: 'bg-green-500',
   done: 'bg-purple-500',
 };
@@ -34,7 +34,7 @@ export function RCBanner({ rallyingCry, startDate, endDate }: RCBannerProps) {
   );
 
   return (
-    <Card className="p-6 bg-gradient-to-r from-[#F5F3F0] to-[#F8F6F2] border-[#E8B4A0]/30">
+    <Card className="p-6 bg-gradient-to-r from-[#F5F3F0] to-[#F8F6F2] border-[#6B9A8F]/30">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">

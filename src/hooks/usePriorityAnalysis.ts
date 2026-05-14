@@ -32,7 +32,7 @@ export interface AnalysisSummary {
 }
 
 const CATEGORY_META: Record<PriorityCategory, { label: string; color: string }> = {
-  churn_reduction: { label: 'Churn Reduction', color: '#C97D60' },
+  churn_reduction: { label: 'Churn Reduction', color: '#4A5D5F' },
   net_new_functionality: { label: 'Net New Functionality', color: '#4A5D5F' },
   net_new_accounts: { label: 'Net New Accounts', color: '#7B9E89' },
   uncategorized: { label: 'Uncategorized', color: '#9CA3AF' },

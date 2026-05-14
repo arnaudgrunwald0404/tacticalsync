@@ -72,7 +72,7 @@ export function MetricRow({ metric, onUpdate, isLocked = false }: MetricRowProps
           </span>
           <Badge
             variant="outline"
-            className={metric.type === 'leading' ? 'border-[#C97D60]' : 'border-[#6B9A8F]'}
+            className={metric.type === 'leading' ? 'border-[#4A5D5F]' : 'border-[#6B9A8F]'}
           >
             {metric.type === 'leading' ? 'Leading' : 'Lagging'}
           </Badge>

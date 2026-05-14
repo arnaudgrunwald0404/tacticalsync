@@ -357,7 +357,7 @@ export function AgendaSidebar({
                     <div 
                       key={template.id} 
                       className={`border rounded-xl bg-white shadow-sm transition-all border-gray-200 ${
-                        isExpanded ? 'p-4 hover:shadow-md hover:border-[#C97D60]' : 'hover:border-[#C97D60]'
+                        isExpanded ? 'p-4 hover:shadow-md hover:border-[#4A5D5F]' : 'hover:border-[#4A5D5F]'
                       }`}
                     >
                       {shouldCollapseByDefault && !isExpanded ? (
@@ -373,7 +373,7 @@ export function AgendaSidebar({
                                 : 'bg-gradient-to-br from-purple-50 to-purple-100'
                             }`}>
                               <Sparkles className={`h-4 w-4 ${
-                                isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
+                                isSystemTemplate ? 'text-[#4A5D5F]' : 'text-[#6B9A8F]'
                               }`} />
                             </div>
                             <h3 className="text-sm font-semibold text-gray-900">{template.name}</h3>
@@ -395,7 +395,7 @@ export function AgendaSidebar({
                                     : 'bg-gradient-to-br from-purple-50 to-purple-100'
                                 }`}>
                                   <Sparkles className={`h-5 w-5 ${
-                                    isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
+                                    isSystemTemplate ? 'text-[#4A5D5F]' : 'text-[#6B9A8F]'
                                   }`} />
                                 </div>
                                 <div className="flex-1">
@@ -413,7 +413,7 @@ export function AgendaSidebar({
                                   : 'bg-gradient-to-br from-purple-50 to-purple-100'
                               }`}>
                                 <Sparkles className={`h-5 w-5 ${
-                                  isSystemTemplate ? 'text-[#C97D60]' : 'text-[#6B9A8F]'
+                                  isSystemTemplate ? 'text-[#4A5D5F]' : 'text-[#6B9A8F]'
                                 }`} />
                               </div>
                               <div className="flex-1">

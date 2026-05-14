@@ -120,7 +120,7 @@ export function QuickDOCheckInWidget() {
           {listToRender.map((d) => {
             const latest = latestByDO[d.id];
             return (
-              <Card key={d.id} className="border-[#E8B4A0]/30">
+              <Card key={d.id} className="border-[#6B9A8F]/30">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base font-semibold pr-2 line-clamp-2">

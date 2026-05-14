@@ -154,7 +154,7 @@ export function QuickUnifiedCheckInWidget() {
             const latest = latestById[item.id];
             const pill = item.kind === 'do' ? 'DO' : 'SI';
             return (
-              <Card key={`${item.kind}-${item.id}`} className="border-[#E8B4A0]/30">
+              <Card key={`${item.kind}-${item.id}`} className="border-[#6B9A8F]/30">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base font-semibold pr-2 line-clamp-2">

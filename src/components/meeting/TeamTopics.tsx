@@ -149,7 +149,7 @@ const SortableTopicRow = ({ item, members, memberNames, onToggleComplete, onDele
       style={style}
       className={cn(
         "px-3 py-1 bg-white group",
-        !isLast && "border-b border-[#E8B4A0]/30",
+        !isLast && "border-b border-[#6B9A8F]/30",
         isDragging && "shadow-lg"
       )}
     >
@@ -495,7 +495,7 @@ const TeamTopics = ({ items, meetingId, teamId, teamName, onUpdate }: TeamTopics
       )}
 
       {/* Add New Topic Form */}
-      <div className="bg-[#E8B4A0]/20 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
+      <div className="bg-[#6B9A8F]/20 pt-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
         
         {/* Desktop Layout */}
         <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-4">

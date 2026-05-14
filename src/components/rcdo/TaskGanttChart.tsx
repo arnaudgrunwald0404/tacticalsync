@@ -390,7 +390,7 @@ export function TaskGanttChart({
             <span>Not Assigned</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-4 h-4 rounded bg-[#C97D60]" />
+            <div className="w-4 h-4 rounded bg-[#4A5D5F]" />
             <span>Assigned</span>
           </div>
           <div className="flex items-center gap-1">

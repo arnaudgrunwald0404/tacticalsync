@@ -17,7 +17,7 @@ interface TaskGanttBarProps {
 
 const statusColors = {
   not_assigned: 'bg-gray-400',
-  assigned: 'bg-[#C97D60]',
+  assigned: 'bg-[#4A5D5F]',
   in_progress: 'bg-yellow-500',
   completed: 'bg-green-500',
   task_changed_canceled: 'bg-red-500',
