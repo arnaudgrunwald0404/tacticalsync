@@ -410,6 +410,7 @@ export default function SIDetail() {
   return (
     <DetailPageLayout
       rallyingCryId={siDetails.defining_objective?.rallying_cry_id || ''}
+      cycleId={cycle?.id}
       currentSIId={siId}
       currentDOId={siDetails.defining_objective?.id}
       currentTaskId={taskIdFromUrl || undefined}
@@ -495,7 +496,7 @@ export default function SIDetail() {
                                 case 'not_assigned':
                                   return { text: 'Not Assigned', color: 'text-gray-600 dark:text-gray-400' };
                                 case 'assigned':
-                                  return { text: 'Assigned', color: 'text-[#C97D60]' };
+                                  return { text: 'Assigned', color: 'text-[#4A5D5F]' };
                                 case 'in_progress':
                                   return { text: 'In Progress', color: 'text-yellow-600 dark:text-yellow-400' };
                                 case 'completed':

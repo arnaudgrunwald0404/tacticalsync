@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, MessageSquare } from 'lucide-react';
-import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins } from '@/hooks/useRCDO';
+import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins, useActiveCycle } from '@/hooks/useRCDO';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
@@ -36,6 +36,8 @@ export default function DODetail() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
+
+  const { cycle } = useActiveCycle();
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
@@ -266,6 +268,7 @@ export default function DODetail() {
   return (
     <DetailPageLayout
       rallyingCryId={doDetails.rallying_cry_id}
+      cycleId={cycle?.id}
       currentDOId={doId}
       mobileNavOpen={mobileNavOpen}
       onMobileNavOpenChange={setMobileNavOpen}

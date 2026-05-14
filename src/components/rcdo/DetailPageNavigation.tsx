@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, Zap } from 'lucide-react';
+import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, LayoutGrid } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -17,6 +17,7 @@ interface NavigationItem {
 
 interface DetailPageNavigationProps {
   rallyingCryId: string;
+  cycleId?: string;
   currentDOId?: string;
   currentSIId?: string;
   currentTaskId?: string;
@@ -38,6 +39,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export function DetailPageNavigation({
   rallyingCryId,
+  cycleId,
   currentDOId,
   currentSIId,
   currentTaskId,
@@ -451,13 +453,14 @@ export function DetailPageNavigation({
 
   const sidebarContent = (
     <>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-[#B89A6B] rounded-md flex items-center justify-center shrink-0">
-            <Zap className="h-4 w-4 text-white" />
-          </div>
-          <h3 className="text-sm font-medium text-foreground leading-tight flex items-center">Navigation</h3>
-        </div>
+      <div className="px-4 py-2 border-b border-sidebar-border">
+        <button
+          onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <LayoutGrid className="h-3 w-3" />
+          <span>Canvas</span>
+        </button>
       </div>
       <div className="p-4 pr-6 flex-1 overflow-y-auto">
         {loading ? (
