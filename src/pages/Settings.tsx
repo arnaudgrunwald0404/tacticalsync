@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,7 +95,13 @@ const Settings = () => {
   const [bulkImportFile, setBulkImportFile] = useState<File | null>(null);
   const [bulkImportSkipEmail, setBulkImportSkipEmail] = useState(false);
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
+  const [bulkImportMode, setBulkImportMode] = useState<'users' | 'org-chart' | null>(null);
+  const [bulkImportPreview, setBulkImportPreview] = useState<string[][]>([]);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ts_allowed_domains') || '[]'); } catch { return []; }
+  });
+  const [newDomain, setNewDomain] = useState("");
   const [selectedUser, setSelectedUser] = useState<{
     id: string;
     email: string;
@@ -180,7 +187,7 @@ const Settings = () => {
 
       // Set default section based on permissions
       if (Boolean(dbIsSuperAdmin) || isSuperAdmin) {
-        setActiveSection("user-management");
+        setActiveSection("user-management-users");
       } else {
         setActiveSection("agenda-templates");
       }
@@ -1226,6 +1233,19 @@ const Settings = () => {
     setShowDeleteDialog(true);
   };
 
+  const parseFileToGrid = async (file: File): Promise<string[][]> => {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: "" }) as string[][];
+  };
+
+  const detectImportMode = (headers: string[]): 'users' | 'org-chart' => {
+    const lower = headers.map(h => String(h).toLowerCase().trim());
+    if (lower.some(h => h.includes("department") || h.includes("manager"))) return 'org-chart';
+    return 'users';
+  };
+
   const parseCSV = (csvText: string): Array<{ email: string; firstName: string; lastName: string; status: string }> => {
     const lines = csvText.split('\n').filter(line => line.trim());
     const results: Array<{ email: string; firstName: string; lastName: string; status: string }> = [];
@@ -1256,11 +1276,69 @@ const Settings = () => {
     return results;
   };
 
+  const handleOrgChartImport = async () => {
+    if (!bulkImportFile) return;
+    setBulkImportLoading(true);
+    try {
+      const grid = await parseFileToGrid(bulkImportFile);
+      if (grid.length < 2) throw new Error("File appears to be empty");
+
+      const headers = grid[0].map(h => String(h).toLowerCase().trim());
+      const emailIdx = headers.findIndex(h => h.includes("email"));
+      const firstIdx = headers.findIndex(h => h.includes("first") || h === "firstname");
+      const lastIdx = headers.findIndex(h => h.includes("last") || h === "lastname");
+      const deptIdx = headers.findIndex(h => h.includes("department") || h === "dept");
+      const managerIdx = headers.findIndex(h => h.includes("manager"));
+
+      if (emailIdx === -1) throw new Error("No Email column found in file");
+
+      const rows = grid.slice(1).filter(r => r[emailIdx]?.toString().trim()).map(r => {
+        const entry: Record<string, string> = { email: r[emailIdx].toString().trim() };
+        if (firstIdx !== -1 && r[firstIdx]) entry.first_name = r[firstIdx].toString().trim();
+        if (lastIdx !== -1 && r[lastIdx]) entry.last_name = r[lastIdx].toString().trim();
+        if (deptIdx !== -1) entry.department = r[deptIdx]?.toString().trim() ?? "";
+        if (managerIdx !== -1) entry.manager_email = r[managerIdx]?.toString().trim() ?? "";
+        return entry;
+      });
+
+      const { data, error } = await supabase.functions.invoke("upsert-org-chart", {
+        body: { rows },
+      });
+
+      if (error) throw error;
+
+      const result = data as { updated: number; skipped: number; errors: string[] };
+      toast({
+        title: "Org chart import complete",
+        description: `Updated ${result.updated} profile${result.updated !== 1 ? "s" : ""}${result.skipped > 0 ? `, skipped ${result.skipped}` : ""}.`,
+        variant: result.errors?.length > 0 ? "destructive" : "default",
+      });
+
+      setShowBulkImportDialog(false);
+      setBulkImportFile(null);
+      setBulkImportMode(null);
+      setBulkImportPreview([]);
+      fetchUsersWithDetails();
+    } catch (e) {
+      toast({
+        title: "Org chart import failed",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setBulkImportLoading(false);
+    }
+  };
+
   const handleBulkImport = async () => {
+    if (bulkImportMode === 'org-chart') {
+      return handleOrgChartImport();
+    }
+
     if (!bulkImportFile) {
       toast({
         title: "No file selected",
-        description: "Please select a CSV file",
+        description: "Please select a CSV or XLSX file",
         variant: "destructive",
       });
       return;
@@ -1444,6 +1522,8 @@ const Settings = () => {
       setShowBulkImportDialog(false);
       setBulkImportFile(null);
       setBulkImportSkipEmail(false);
+      setBulkImportMode(null);
+      setBulkImportPreview([]);
       fetchUsersWithDetails();
       fetchAvailableTeams();
     } catch (e) {
@@ -1464,6 +1544,77 @@ const Settings = () => {
       (user.full_name || "").toLowerCase().includes(query)
     );
   });
+
+  // Role labels TBD — leaving open for future definition
+
+  const handleAddDomain = () => {
+    const d = newDomain.trim().toLowerCase().replace(/^@/, '');
+    if (!d || allowedDomains.includes(d)) return;
+    const updated = [...allowedDomains, d];
+    setAllowedDomains(updated);
+    localStorage.setItem('ts_allowed_domains', JSON.stringify(updated));
+    setNewDomain('');
+  };
+
+  const handleRemoveDomain = (domain: string) => {
+    const updated = allowedDomains.filter(d => d !== domain);
+    setAllowedDomains(updated);
+    localStorage.setItem('ts_allowed_domains', JSON.stringify(updated));
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['First Name', 'Last Name', 'Email', 'Last Logged In'];
+    const rows = filteredUsers.map(u => {
+      const firstName = (u.full_name || '').split(' ')[0] || '';
+      const lastName = (u.full_name || '').split(' ').slice(1).join(' ') || '';
+      const lastLogin = u.last_active ? new Date(u.last_active).toLocaleDateString() : u.has_logged_in ? 'Active' : 'Never';
+      return [firstName, lastName, u.email, lastLogin];
+    });
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'users.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const PERMISSIONS_MATRIX = [
+    {
+      category: 'User Management',
+      capabilities: [
+        { label: 'Invite Users', desc: 'Send invitations to join the app' },
+        { label: 'Edit Users', desc: 'Update user profiles and roles' },
+        { label: 'Delete Users', desc: 'Remove users from the system' },
+      ],
+    },
+    {
+      category: 'RCDO',
+      capabilities: [
+        { label: 'Create Cycle', desc: 'Start a new RCDO planning cycle' },
+        { label: 'Delete Cycle', desc: 'Permanently delete a cycle' },
+        { label: 'Lock / Finalize', desc: 'Lock the Rallying Cry and Defining Objectives' },
+        { label: 'Manage DOs', desc: 'Create and edit Defining Objectives' },
+        { label: 'Manage SIs', desc: 'Create and edit Strategic Initiatives' },
+        { label: 'Manage Tasks', desc: 'Create, edit and delete tasks' },
+      ],
+    },
+    {
+      category: 'Meetings',
+      capabilities: [
+        { label: 'Manage Templates', desc: 'Create and edit agenda templates' },
+        { label: 'Manage Meetings', desc: 'Create and manage team meetings' },
+      ],
+    },
+    {
+      category: 'Settings',
+      capabilities: [
+        { label: 'Access Settings', desc: 'View the settings page' },
+        { label: 'Manage Teams', desc: 'Create and configure teams' },
+      ],
+    },
+  ];
 
   const handleEditTemplate = (template: Template) => {
     // Check if user is trying to edit a system template without superadmin privileges
@@ -1848,246 +1999,210 @@ const Settings = () => {
         />
 
         <main className="flex-1 px-8 py-8 max-w-7xl">
-        {activeSection === "user-management" && (dbVerifiedSuperAdmin || isSuperAdmin) ? (
+        {activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin) ? (
           <div className="mb-8">
+            {/* Page header */}
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold mb-2">User Management</h2>
-                <p className="text-muted-foreground">Manage users, invite to teams, edit profiles, and grant admin privileges.</p>
+                <h2 className="text-2xl font-bold mb-1">User Management</h2>
+                <p className="text-muted-foreground text-sm">Manage users, roles, and domains</p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => setShowBulkImportDialog(true)}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Bulk Import
-                </Button>
-                <Button variant="default" onClick={() => setShowInviteDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Invite User
-                </Button>
-              </div>
+              {activeSection === "user-management-users" && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handleExportCSV}>Export CSV</Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowBulkImportDialog(true)}>
+                    <Upload className="h-4 w-4 mr-1.5" />Import Bulk
+                  </Button>
+                  <Button size="sm" onClick={() => setShowInviteDialog(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />Add User
+                  </Button>
+                </div>
+              )}
             </div>
 
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Search className="h-5 w-5" />
-                  Search Users
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name or email..."
-                    value={userSearchQuery}
-                    onChange={(e) => setUserSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
+            {/* ── USERS ── */}
+            {activeSection === "user-management-users" && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm text-muted-foreground">
+                    {usersWithDetails.filter(u => u.has_logged_in).length} active / {usersWithDetails.length} total
+                    {selectedUserIds.size > 0 && (
+                      <span className="ml-3 text-[#4A5D5F] font-medium">
+                        {selectedUserIds.size} selected —{' '}
+                        <button className="underline hover:no-underline" onClick={openBulkReinviteDialog}>reinvite</button>
+                        {' · '}
+                        <button className="underline hover:no-underline text-destructive" onClick={openBulkDeleteDialog}>delete</button>
+                      </span>
+                    )}
+                  </p>
+                  <div className="relative w-72">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name or email…"
+                      value={userSearchQuery}
+                      onChange={e => setUserSearchQuery(e.target.value)}
+                      className="pl-9 h-9"
+                    />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      All Users ({filteredUsers.length})
-                    </CardTitle>
-                    <CardDescription>View and manage all users in the system</CardDescription>
-                  </div>
-                  {selectedUserIds.size > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        variant="default"
-                        onClick={openBulkReinviteDialog}
-                      >
-                        <Mail className="h-4 w-4 mr-2" />
-                        Reinvite {filteredUsers.filter(u => selectedUserIds.has(u.id) && !u.has_logged_in).length} Not Logged In
-                      </Button>
-                      <Button 
-                        variant="outline"
-                        className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={openBulkDeleteDialog}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete {selectedUserIds.size} user{selectedUserIds.size > 1 ? 's' : ''}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loadingUsersWithDetails ? (
-                  <div className="text-sm text-muted-foreground py-8 text-center">Loading users...</div>
-                ) : filteredUsers.length === 0 ? (
-                  <div className="text-sm text-muted-foreground py-8 text-center">
-                    {userSearchQuery ? "No users found matching your search" : "No users found"}
-                  </div>
-                ) : (
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableHead className="w-10 pl-4">
+                          <Checkbox
+                            checked={filteredUsers.length > 0 && selectedUserIds.size === filteredUsers.length}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                        </TableHead>
+                        <TableHead className="w-10"></TableHead>
+                        <TableHead>First Name</TableHead>
+                        <TableHead>Last Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Last Logged In</TableHead>
+                        <TableHead className="w-20 text-right pr-4">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadingUsersWithDetails ? (
                         <TableRow>
-                          <TableHead className="w-[50px]">
-                            <Checkbox
-                              checked={filteredUsers.length > 0 && selectedUserIds.size === filteredUsers.length}
-                              onCheckedChange={toggleSelectAll}
-                              className="rounded-none"
-                            />
-                          </TableHead>
-                          <TableHead className="w-[280px]">User</TableHead>
-                          <TableHead className="w-[200px]">Has logged in / Last login</TableHead>
-                          <TableHead className="w-[120px]">Status</TableHead>
-                          <TableHead>Teams</TableHead>
-                          <TableHead className="w-[60px]"></TableHead>
+                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">Loading users…</TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredUsers.map((user) => (
+                      ) : filteredUsers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                            {userSearchQuery ? "No users match your search" : "No users found"}
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredUsers.map(user => {
+                        const parts = (user.full_name || '').trim().split(/\s+/);
+                        const firstName = parts[0] || '—';
+                        const lastName = parts.slice(1).join(' ') || '—';
+                        const initials = `${firstName[0] || ''}${lastName !== '—' ? lastName[0] : ''}`.toUpperCase() || user.email[0].toUpperCase();
+                        return (
                           <TableRow key={user.id}>
-                            <TableCell>
+                            <TableCell className="pl-4">
                               <Checkbox
                                 checked={selectedUserIds.has(user.id)}
                                 onCheckedChange={() => toggleUserSelection(user.id)}
-                                className="rounded-none"
                               />
                             </TableCell>
                             <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{user.full_name || "No name"}</span>
-                                <span className="text-sm text-muted-foreground">{user.email}</span>
+                              <div className="w-8 h-8 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center text-xs font-semibold text-[#4A5D5F] select-none">
+                                {initials}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                {user.has_logged_in ? (
-                                  <>
-                                    <span className="text-xs text-green-600">Yes</span>
-                                    {user.last_active && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {new Date(user.last_active).toLocaleDateString()} {new Date(user.last_active).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">No</span>
-                                )}
-                              </div>
+                            <TableCell className="font-medium">{firstName}</TableCell>
+                            <TableCell>{lastName}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {user.last_active
+                                ? new Date(user.last_active).toLocaleDateString()
+                                : user.has_logged_in ? 'Active' : 'Never'}
                             </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                <div className="flex gap-1">
-                                  {user.is_super_admin && (
-                                    <span className="font-body text-xs bg-[#6B9A8F]/20 text-[#6B9A8F] px-2 py-0.5 rounded-full">Super Admin</span>
-                                  )}
-                                  {user.is_admin && !user.is_super_admin && (
-                                    <span className="font-body text-xs bg-[#C97D60]/20 text-[#C97D60] px-2 py-0.5 rounded-full">Admin</span>
-                                  )}
-                                  {!user.is_admin && !user.is_super_admin && !user.pendingInvitations?.length && (
-                                    <span className="text-xs text-muted-foreground">Member</span>
-                                  )}
-                                </div>
-                                {user.pendingInvitations && user.pendingInvitations.length > 0 && (
-                                  <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                                    Pending ({user.pendingInvitations.length})
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {user.teams && user.teams.length > 0 ? (
-                                  <>
-                                    {user.teams.map((team) => (
-                                      <div
-                                        key={team.team_id}
-                                        className="flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-xs"
-                                      >
-                                        <span>{team.team_name}</span>
-                                        <span className="text-muted-foreground">({team.role})</span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-3 w-3 p-0 hover:bg-destructive/20"
-                                          onClick={() => openRemoveDialog(user, team.team_id)}
-                                        >
-                                          <X className="h-2.5 w-2.5" />
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </>
-                                ) : null}
-                                {user.pendingInvitations && user.pendingInvitations.length > 0 && (
-                                  <>
-                                    {user.pendingInvitations.map((invitation) => (
-                                      <div
-                                        key={invitation.id}
-                                        className="flex items-center gap-1 bg-amber-100 px-2 py-0.5 rounded text-xs"
-                                      >
-                                        <span>{invitation.team_name}</span>
-                                        <span className="text-muted-foreground">(pending)</span>
-                                      </div>
-                                    ))}
-                                  </>
-                                )}
-                                {(!user.teams || user.teams.length === 0) && 
-                                 (!user.pendingInvitations || user.pendingInvitations.length === 0) && (
-                                  <span className="text-xs text-muted-foreground italic">No teams</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                    <MoreVertical className="h-4 w-4" />
-                                    <span className="sr-only">Open menu</span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {user.pendingInvitations && user.pendingInvitations.length > 0 && (
-                                    <>
-                                      {user.pendingInvitations.map((invitation) => (
-                                        <DropdownMenuItem 
-                                          key={invitation.id}
-                                          onClick={() => handleSendReminder(invitation.id, invitation.team_id, user.email)}
-                                        >
-                                          <Mail className="h-4 w-4 mr-2" />
-                                          Send Reminder ({invitation.team_name})
-                                        </DropdownMenuItem>
-                                      ))}
-                                      <DropdownMenuSeparator />
-                                    </>
-                                  )}
-                                  {user.id.startsWith('pending-') ? null : (
-                                    <>
-                                      <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                                        <Edit2 className="h-4 w-4 mr-2" />
-                                        Edit
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                    </>
-                                  )}
-                                  <DropdownMenuItem 
-                                    onClick={() => openDeleteDialog(user)}
-                                    className="text-destructive focus:text-destructive"
+                            <TableCell className="pr-4">
+                              <div className="flex items-center justify-end gap-0.5">
+                                {user.pendingInvitations?.length ? (
+                                  <button
+                                    title="Send reminder"
+                                    className="p-1.5 rounded text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
+                                    onClick={() => handleSendReminder(user.pendingInvitations![0].id, user.pendingInvitations![0].team_id, user.email)}
                                   >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    <Mail className="h-4 w-4" />
+                                  </button>
+                                ) : <div className="w-7" />}
+                                {!user.id.startsWith('pending-') && (
+                                  <button
+                                    title="Edit user"
+                                    className="p-1.5 rounded text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
+                                    onClick={() => openEditDialog(user)}
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {/* ── DOMAINS ── */}
+            {activeSection === "user-management-domains" && (
+              <div className="max-w-lg">
+                <h3 className="text-lg font-semibold mb-1">Allowlisted Domains</h3>
+                <p className="text-sm text-muted-foreground mb-5">Email domains permitted to access the application</p>
+                <div className="flex gap-2 mb-4">
+                  <Input
+                    placeholder="example.com"
+                    value={newDomain}
+                    onChange={e => setNewDomain(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddDomain()}
+                    className="h-9"
+                  />
+                  <Button size="sm" onClick={handleAddDomain}>Add Domain</Button>
+                </div>
+                {allowedDomains.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {allowedDomains.map(domain => (
+                      <span key={domain} className="inline-flex items-center gap-1.5 bg-muted text-sm px-3 py-1 rounded-full">
+                        {domain}
+                        <button
+                          onClick={() => handleRemoveDomain(domain)}
+                          className="text-muted-foreground hover:text-foreground leading-none"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
                   </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No domains added yet. All email addresses can sign up.</p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            )}
+
+            {/* ── PERMISSIONS ── */}
+            {activeSection === "user-management-permissions" && (
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Permissions</h3>
+                <p className="text-sm text-muted-foreground mb-5">Define which roles can perform each action</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableHead className="w-56 px-4">Capability</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="w-48 text-muted-foreground italic text-xs font-normal">Roles — to be defined</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {PERMISSIONS_MATRIX.map(group => (
+                        <>
+                          <TableRow key={group.category} className="bg-muted/20 hover:bg-muted/20">
+                            <TableCell colSpan={3} className="py-2 px-4">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
+                            </TableCell>
+                          </TableRow>
+                          {group.capabilities.map(cap => (
+                            <TableRow key={cap.label}>
+                              <TableCell className="px-4 font-medium text-sm">{cap.label}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{cap.desc}</TableCell>
+                              <TableCell />
+                            </TableRow>
+                          ))}
+                        </>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">
@@ -2293,103 +2408,136 @@ const Settings = () => {
       </Dialog>
 
       {/* Bulk Import Dialog */}
-      <Dialog open={showBulkImportDialog} onOpenChange={setShowBulkImportDialog}>
+      <Dialog open={showBulkImportDialog} onOpenChange={(open) => {
+        setShowBulkImportDialog(open);
+        if (!open) {
+          setBulkImportFile(null);
+          setBulkImportSkipEmail(false);
+          setBulkImportMode(null);
+          setBulkImportPreview([]);
+        }
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Bulk Import Users</DialogTitle>
+            <DialogTitle>
+              {bulkImportMode === 'org-chart' ? "Org Chart Import" : "Bulk Import Users"}
+            </DialogTitle>
             <DialogDescription>
-              Upload a CSV file to import multiple users at once. Users will be added to the first available team.
+              {bulkImportMode === 'org-chart'
+                ? "Department and manager fields will be updated on existing profiles. New users will be skipped."
+                : "Upload a CSV or XLSX file. If the file has Department or Manager columns it will be treated as an org chart import."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="p-4 bg-muted rounded-lg border">
-              <h4 className="font-semibold text-sm mb-2">Expected CSV Format:</h4>
-              <div className="space-y-1 text-sm">
-                <p className="text-muted-foreground">Your CSV file should have 4 columns in this exact order:</p>
-                <div className="mt-2 space-y-1 font-mono text-xs">
-                  <div className="flex gap-4">
-                    <span className="font-semibold w-20">Column 1:</span>
-                    <span>Email</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <span className="font-semibold w-20">Column 2:</span>
-                    <span>First Name</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <span className="font-semibold w-20">Column 3:</span>
-                    <span>Last Name</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <span className="font-semibold w-20">Column 4:</span>
-                    <span>Status (admin or member)</span>
-                  </div>
+            {!bulkImportFile && (
+              <div className="p-4 bg-muted rounded-lg border text-sm space-y-2">
+                <p className="font-semibold">Supported formats</p>
+                <div className="space-y-1 text-muted-foreground text-xs">
+                  <p><strong>User import:</strong> Email, First Name, Last Name, Status (admin / member)</p>
+                  <p><strong>Org chart import:</strong> Email, First Name, Last Name, Department, Manager Email</p>
+                  <p className="pt-1">Both CSV (.csv) and Excel (.xlsx) files are supported. Column order does not matter as long as headers are present.</p>
                 </div>
-                <div className="mt-3 pt-3 border-t">
-                  <p className="text-xs text-muted-foreground mb-1">Example:</p>
-                  <code className="text-xs bg-background px-2 py-1 rounded block">
-                    john.doe@example.com,John,Doe,admin<br />
-                    jane.smith@example.com,Jane,Smith,member<br />
-                    bob@example.com,Bob,,member
-                  </code>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  <strong>Note:</strong> First Name and Last Name are optional. If omitted, leave the column empty but keep the comma separator.
-                </p>
               </div>
-            </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="csvFile">CSV File</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="csvFile"
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setBulkImportFile(file);
-                    }
-                  }}
-                  disabled={bulkImportLoading}
-                />
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="skipEmail"
-                checked={bulkImportSkipEmail}
-                onCheckedChange={(checked) => setBulkImportSkipEmail(checked === true)}
+              <Label htmlFor="csvFile">File (CSV or XLSX)</Label>
+              <Input
+                id="csvFile"
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setBulkImportFile(file);
+                  try {
+                    const grid = await parseFileToGrid(file);
+                    const mode = detectImportMode(grid[0] ?? []);
+                    setBulkImportMode(mode);
+                    setBulkImportPreview(grid.slice(0, 9));
+                  } catch {
+                    setBulkImportMode('users');
+                    setBulkImportPreview([]);
+                  }
+                }}
                 disabled={bulkImportLoading}
               />
-              <Label htmlFor="skipEmail" className="text-sm font-normal cursor-pointer">
-                Skip sending invitation emails
-              </Label>
             </div>
-            {bulkImportFile && (
-              <div className="p-3 bg-muted rounded-md">
-                <p className="text-sm">
-                  <strong>Selected file:</strong> {bulkImportFile.name}
-                </p>
+
+            {bulkImportMode && (
+              <div className="rounded-md border px-3 py-2 text-sm flex items-center gap-2">
+                <span className={bulkImportMode === 'org-chart' ? "text-blue-600 font-medium" : "text-green-600 font-medium"}>
+                  {bulkImportMode === 'org-chart' ? "Org chart import detected" : "User import detected"}
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  {bulkImportMode === 'org-chart' ? "— will update department & manager on existing profiles" : "— will add/update users and send invites"}
+                </span>
+              </div>
+            )}
+
+            {bulkImportPreview.length > 0 && (
+              <div className="overflow-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted">
+                    <tr>
+                      {bulkImportPreview[0].map((h, i) => (
+                        <th key={i} className="px-3 py-1.5 text-left font-semibold whitespace-nowrap">{h || `Col ${i+1}`}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkImportPreview.slice(1).map((row, ri) => (
+                      <tr key={ri} className="border-t">
+                        {row.map((cell, ci) => (
+                          <td key={ci} className="px-3 py-1 text-muted-foreground whitespace-nowrap max-w-[160px] truncate">{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {bulkImportPreview.length >= 9 && (
+                  <p className="text-xs text-muted-foreground px-3 py-1.5 border-t">Showing first 8 rows…</p>
+                )}
+              </div>
+            )}
+
+            {bulkImportMode === 'users' && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="skipEmail"
+                  checked={bulkImportSkipEmail}
+                  onCheckedChange={(checked) => setBulkImportSkipEmail(checked === true)}
+                  disabled={bulkImportLoading}
+                />
+                <Label htmlFor="skipEmail" className="text-sm font-normal cursor-pointer">
+                  Skip sending invitation emails
+                </Label>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowBulkImportDialog(false);
                 setBulkImportFile(null);
                 setBulkImportSkipEmail(false);
+                setBulkImportMode(null);
+                setBulkImportPreview([]);
               }}
               disabled={bulkImportLoading}
             >
               Cancel
             </Button>
-            <Button 
-              onClick={handleBulkImport} 
-              disabled={!bulkImportFile || bulkImportLoading}
+            <Button
+              onClick={handleBulkImport}
+              disabled={!bulkImportFile || !bulkImportMode || bulkImportLoading}
             >
-              {bulkImportLoading ? "Importing..." : "Import Users"}
+              {bulkImportLoading
+                ? "Importing…"
+                : bulkImportMode === 'org-chart'
+                ? "Import Org Chart"
+                : "Import Users"}
             </Button>
           </DialogFooter>
         </DialogContent>
