@@ -34,7 +34,7 @@ describe('MobileBottomNav', () => {
   describe('rendering', () => {
     it('should render all six nav items', () => {
       renderWithPath('/commitments');
-      expect(screen.getByLabelText('CoS')).toBeInTheDocument();
+      expect(screen.getByLabelText('Chief of Staff')).toBeInTheDocument();
       expect(screen.getByLabelText('Strategy')).toBeInTheDocument();
       expect(screen.getByLabelText('My Meetings')).toBeInTheDocument();
       expect(screen.getByLabelText('My workspace')).toBeInTheDocument();
@@ -93,7 +93,7 @@ describe('MobileBottomNav', () => {
 
     it('should mark CoS as active on /chief-of-staff', () => {
       renderWithPath('/chief-of-staff');
-      const cosBtn = screen.getByLabelText('CoS');
+      const cosBtn = screen.getByLabelText('Chief of Staff');
       expect(cosBtn).toHaveClass('text-primary');
     });
   });
@@ -137,7 +137,7 @@ describe('MobileBottomNav', () => {
     it('should navigate to /chief-of-staff when CoS is clicked', async () => {
       const user = userEvent.setup();
       renderWithPath('/commitments');
-      await user.click(screen.getByLabelText('CoS'));
+      await user.click(screen.getByLabelText('Chief of Staff'));
       expect(mockNavigate).toHaveBeenCalledWith('/chief-of-staff');
     });
   });
