@@ -260,7 +260,7 @@ export default function StrategyHome() {
           </div>
 
           {/* Info Card */}
-          <Card className="mb-6 p-6 bg-[#F5F3F0] border-[#E8B4A0]/30">
+          <Card className="mb-6 p-6 bg-[#F5F3F0] border-[#6B9A8F]/30">
             <h3 className="font-heading font-semibold text-[#2C2C2C] mb-2">
               About Strategy Cycles
             </h3>

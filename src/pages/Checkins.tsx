@@ -171,11 +171,11 @@ export default function CheckinsPage() {
                 </Button>
               </div>
             ))}
-            <div className="flex items-center gap-2">
-              <Input value={val} onChange={(e) => setVal(e.target.value)} placeholder={placeholder} className="h-8" />
-              <Button size="sm" onClick={onAdd}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add
-              </Button>
+            <div className="relative">
+              <Input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onAdd()} placeholder={placeholder} className="h-8 pr-8" />
+              <button onClick={onAdd} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground opacity-40 hover:opacity-100 transition-opacity" tabIndex={-1} type="button">
+                <Plus className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         ) : (
@@ -194,11 +194,11 @@ export default function CheckinsPage() {
                 </Button>
               </div>
             ))}
-            <div className="flex items-center gap-2">
-              <Input value={val} onChange={(e) => setVal(e.target.value)} placeholder={placeholder} className="h-8" />
-              <Button size="sm" onClick={onAdd}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add
-              </Button>
+            <div className="relative">
+              <Input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onAdd()} placeholder={placeholder} className="h-8 pr-8" />
+              <button onClick={onAdd} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground opacity-40 hover:opacity-100 transition-opacity" tabIndex={-1} type="button">
+                <Plus className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         )}

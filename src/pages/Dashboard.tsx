@@ -981,7 +981,7 @@ const DashboardOld = () => {
                       teamMeetings.map((meeting) => (
                         <Card
                           key={meeting.id}
-                          className="hover:shadow-large transition-all cursor-pointer group border border-[#E8B4A0]/30"
+                          className="hover:shadow-large transition-all cursor-pointer group border border-[#6B9A8F]/30"
                           onClick={() => handleMeetingAccess(teamMember.teams.id, meeting.id)}
                         >
                           <CardHeader className="p-2 sm:p-3">
@@ -991,7 +991,7 @@ const DashboardOld = () => {
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="p-2 sm:p-3 pt-0 flex justify-end">
-                            <Button variant="ghost" size="sm" className="font-body group-hover:bg-transparent text-xs sm:text-sm text-[#C97D60] hover:text-[#B86A4F]">
+                            <Button variant="ghost" size="sm" className="font-body group-hover:bg-transparent text-xs sm:text-sm text-[#4A5D5F] hover:text-[#3A4D4F]">
                               Go to meetings →
                             </Button>
                           </CardContent>

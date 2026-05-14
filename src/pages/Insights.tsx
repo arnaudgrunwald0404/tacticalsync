@@ -8,7 +8,7 @@ import { QuarterSelector } from '@/components/commitments/QuarterSelector';
 import { cn } from '@/lib/utils';
 
 const CATEGORY_OPTIONS: { value: PriorityCategory; label: string; color: string }[] = [
-  { value: 'churn_reduction', label: 'Churn Reduction', color: '#C97D60' },
+  { value: 'churn_reduction', label: 'Churn Reduction', color: '#4A5D5F' },
   { value: 'net_new_functionality', label: 'Net New Functionality', color: '#4A5D5F' },
   { value: 'net_new_accounts', label: 'Net New Accounts', color: '#7B9E89' },
   { value: 'uncategorized', label: 'Uncategorized', color: '#9CA3AF' },
@@ -282,7 +282,10 @@ export default function Insights() {
         )}
 
         {priorities.length === 0 && commitments.length === 0 && (
-          <p className="text-sm text-muted-foreground">No priorities or commitments found for this quarter.</p>
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">Nothing to analyze yet</p>
+            <p>Add quarterly priorities and monthly commitments in the <strong>Commitments</strong> tab to see analysis here.</p>
+          </div>
         )}
       </section>
     </div>

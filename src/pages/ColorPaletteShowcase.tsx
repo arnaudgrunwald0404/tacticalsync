@@ -27,11 +27,11 @@ const primaryColors = {
   },
   copper: {
     name: "Copper",
-    hex: "#C97D60",
+    hex: "#4A5D5F",
     rgb: "201, 125, 96",
-    bg: "bg-[#C97D60]",
+    bg: "bg-[#4A5D5F]",
     text: "text-white",
-    border: "border-[#B86A4F]",
+    border: "border-[#3A4D4F]",
   },
   titanium: {
     name: "Titanium",
@@ -46,9 +46,9 @@ const primaryColors = {
 const secondaryColors = {
   roseGold: {
     name: "Rose Gold",
-    hex: "#E8B4A0",
+    hex: "#6B9A8F",
     rgb: "232, 180, 160",
-    bg: "bg-[#E8B4A0]",
+    bg: "bg-[#6B9A8F]",
     text: "text-gray-900",
     border: "border-[#D8A490]",
   },
@@ -212,7 +212,7 @@ const ColorPaletteShowcase = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="p-6 bg-white">
                   <h3 className="font-body text-sm font-semibold mb-3 text-gray-700">Primary (Copper)</h3>
-                  <Button className="w-full bg-[#C97D60] hover:bg-[#B86A4F] text-white">
+                  <Button className="w-full bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white">
                     Primary Action
                   </Button>
                 </Card>
@@ -230,7 +230,7 @@ const ColorPaletteShowcase = () => {
                 </Card>
                 <Card className="p-6 bg-white">
                   <h3 className="font-body text-sm font-semibold mb-3 text-gray-700">Outline</h3>
-                  <Button variant="outline" className="w-full border-2 border-[#C97D60] text-[#C97D60] hover:bg-[#C97D60]/10">
+                  <Button variant="outline" className="w-full border-2 border-[#4A5D5F] text-[#4A5D5F] hover:bg-[#4A5D5F]/10">
                     Outline Button
                   </Button>
                 </Card>
@@ -277,7 +277,7 @@ const ColorPaletteShowcase = () => {
                       </div>
                       <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#F5F3F0]">
                         <div 
-                          className="h-full bg-[#C97D60] transition-all"
+                          className="h-full bg-[#4A5D5F] transition-all"
                           style={{ width: '75%' }}
                         />
                       </div>
@@ -299,7 +299,7 @@ const ColorPaletteShowcase = () => {
                 <Card className="p-6 bg-white">
                   <h3 className="font-body text-sm font-semibold mb-3 text-gray-700">Tags</h3>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline" className="border-[#C97D60] text-[#C97D60]">Priority</Badge>
+                    <Badge variant="outline" className="border-[#4A5D5F] text-[#4A5D5F]">Priority</Badge>
                     <Badge variant="outline" className="border-[#6B9A8F] text-[#6B9A8F]">Strategic</Badge>
                     <Badge variant="outline" className="border-[#5B6E7A] text-[#5B6E7A]">Tactical</Badge>
                   </div>
@@ -312,7 +312,7 @@ const ColorPaletteShowcase = () => {
               <h2 className="font-heading text-2xl font-bold text-[#2C2C2C]">Card Variations</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* DO Tile Style */}
-                <Card className="border-l-4 border-l-[#C97D60] hover:shadow-lg transition-shadow">
+                <Card className="border-l-4 border-l-[#4A5D5F] hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <CardTitle className="font-heading text-lg">Defining Objective</CardTitle>
@@ -391,7 +391,7 @@ const ColorPaletteShowcase = () => {
                     <Input
                       id="name"
                       placeholder="Enter your name"
-                      className="font-body border-2 focus:border-[#C97D60]"
+                      className="font-body border-2 focus:border-[#4A5D5F]"
                     />
                   </div>
                   <div className="space-y-2">
@@ -400,10 +400,10 @@ const ColorPaletteShowcase = () => {
                       id="email"
                       type="email"
                       placeholder="your@email.com"
-                      className="font-body border-2 focus:border-[#C97D60]"
+                      className="font-body border-2 focus:border-[#4A5D5F]"
                     />
                   </div>
-                  <Button className="w-full bg-[#C97D60] hover:bg-[#B86A4F] text-white font-body">
+                  <Button className="w-full bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white font-body">
                     Submit Form
                   </Button>
                 </div>
@@ -444,7 +444,7 @@ const ColorPaletteShowcase = () => {
             <section className="space-y-4">
               <h2 className="font-heading text-2xl font-bold text-[#2C2C2C]">Color Combinations</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="bg-gradient-to-br from-[#C97D60] to-[#B86A4F] text-white border-0">
+                <Card className="bg-gradient-to-br from-[#4A5D5F] to-[#3A4D4F] text-white border-0">
                   <CardHeader>
                     <CardTitle className="font-heading text-xl">Copper Gradient</CardTitle>
                     <CardDescription className="text-white/90 font-body">
@@ -468,7 +468,7 @@ const ColorPaletteShowcase = () => {
                     </CardDescription>
                   </CardHeader>
                 </Card>
-                <Card className="bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] text-[#2C2C2C] border-2 border-[#E8B4A0]">
+                <Card className="bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] text-[#2C2C2C] border-2 border-[#6B9A8F]">
                   <CardHeader>
                     <CardTitle className="font-heading text-xl">Neutral Gradient</CardTitle>
                     <CardDescription className="text-[#4A5D5F] font-body">

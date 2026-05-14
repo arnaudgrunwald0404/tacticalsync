@@ -226,7 +226,7 @@ function SortableTeamItem({
               teamMeetings.map((meeting) => (
                 <Card
                   key={meeting.id}
-                  className="hover:shadow-lg hover:border-[#E8B4A0]/30 bg-[#F5F3F0] hover:bg-[#F8F6F2] transition-all duration-200 cursor-pointer group border border-[#E8B4A0]/20"
+                  className="hover:shadow-lg hover:border-[#6B9A8F]/30 bg-[#F5F3F0] hover:bg-[#F8F6F2] transition-all duration-200 cursor-pointer group border border-[#6B9A8F]/20"
                   onClick={() => onMeetingAccess(teamMember.teams.id, meeting.id)}
                 >
                   <CardHeader className="p-5 sm:p-2">

@@ -261,7 +261,7 @@ const TeamMeetingSetup = () => {
             <Calendar className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-            <span className="font-heading bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60] bg-clip-text text-transparent font-bold text-4xl tracking-tight">Great! </span>
+            <span className="font-heading bg-gradient-to-r from-[#4A5D5F] via-[#4A5D5F] to-[#4A5D5F] bg-clip-text text-transparent font-bold text-4xl tracking-tight">Great! </span>
             {" Now Let's Set Up Your Team Meeting"}
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground px-4">

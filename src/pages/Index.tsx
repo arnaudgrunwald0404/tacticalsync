@@ -54,7 +54,7 @@ const Index = () => {
           
             <Button 
                 size="lg"
-                className="font-body text-lg h-14 w-48 px-8 bg-[#C97D60] hover:bg-[#B86A4F] text-white"
+                className="font-body text-lg h-14 w-48 px-8 bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white"
                 onClick={() => navigate("/auth")}
               >
                 Get Started
@@ -108,7 +108,7 @@ const Index = () => {
             <div className="sm:hidden pt-4">
               <Button 
                 size="lg"
-                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-[#C97D60] hover:bg-[#B86A4F] text-white"
+                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white"
                 onClick={() => navigate("/auth")}
               >
                 Get Started
@@ -119,9 +119,9 @@ const Index = () => {
 
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
-            <div className="p-6 rounded-xl bg-white border border-[#E8B4A0]/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-[#C97D60]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Users className="h-7 w-7 text-[#C97D60]" />
+            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
+              <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Users className="h-7 w-7 text-[#4A5D5F]" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Team Collaboration</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
@@ -129,7 +129,7 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-[#E8B4A0]/30 hover:shadow-lg transition-all">
+            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
               <div className="rounded-full bg-[#6B9A8F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <Calendar className="h-7 w-7 text-[#6B9A8F]" />
               </div>
@@ -139,7 +139,7 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-[#E8B4A0]/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
+            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
               <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
               </div>
@@ -152,7 +152,7 @@ const Index = () => {
         </div>
       </main>
 
-      <footer className="border-t border-[#E8B4A0]/20 mt-8 sm:mt-12 md:mt-20">
+      <footer className="border-t border-[#6B9A8F]/20 mt-8 sm:mt-12 md:mt-20">
         <div className="container mx-auto px-4 py-6 text-center">
           <p className="font-body text-sm sm:text-base text-[#4A5D5F]">&copy; 2025 TacticalSync Inc. Built for uncommon execution.</p>
         </div>

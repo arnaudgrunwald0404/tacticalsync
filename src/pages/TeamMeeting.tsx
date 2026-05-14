@@ -1131,7 +1131,7 @@ const TeamMeetingContent = ({
                       <Select value={meeting.id} onValueChange={handleMeetingChange}>
                         <SelectTrigger className={`w-full sm:w-[240px] md:w-[300px] h-10 sm:h-12 font-semibold text-sm sm:text-base md:text-lg ${
                           isCurrentMeetingPeriod(meeting.start_date) 
-                            ? 'bg-gradient-to-br from-[#C97D60] to-[#B86A4F] border-2 border-[#C97D60] text-white shadow-md' 
+                            ? 'bg-gradient-to-br from-[#4A5D5F] to-[#3A4D4F] border-2 border-[#4A5D5F] text-white shadow-md' 
                             : 'bg-gray-100 border-gray-300 text-gray-600'
                         }`}>
                           <SelectValue>
@@ -1144,7 +1144,7 @@ const TeamMeetingContent = ({
                               key={m.id} 
                               value={m.id}
                               className={isCurrentMeetingPeriod(m.start_date) 
-                                ? 'bg-gradient-to-br from-[#F5F3F0] to-[#E8B4A0]/20 text-[#C97D60] font-semibold border-[#E8B4A0]/30' 
+                                ? 'bg-gradient-to-br from-[#F5F3F0] to-[#6B9A8F]/20 text-[#4A5D5F] font-semibold border-[#6B9A8F]/30' 
                                 : 'bg-gray-50 text-gray-600 border-gray-200'
                               }
                             >

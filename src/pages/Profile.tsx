@@ -429,7 +429,7 @@ const Profile = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="blue" className="flex items-center gap-2">
-                        <span className="font-body inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#C97D60]/20 text-[#C97D60]">
+                        <span className="font-body inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#4A5D5F]/20 text-[#4A5D5F]">
                           Blue
                         </span>
                       </Label>

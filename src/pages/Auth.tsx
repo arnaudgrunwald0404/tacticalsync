@@ -666,7 +666,7 @@ const Auth = () => {
       <div className="w-full max-w-full  space-y-6">
        
 
-        <Card className="border-border/100 shadow-lg shadow-[#C97D60]/10 w-full  sm:max-w-full">
+        <Card className="border-border/100 shadow-lg shadow-[#4A5D5F]/10 w-full  sm:max-w-full">
 
  {/* Logo Section */}
  <div className="text-center space-y-2">
@@ -751,9 +751,9 @@ const Auth = () => {
             {/* Email Verification Banner */}
             {showVerificationBanner ? (
               <div className="py-6 sm:py-8 space-y-6">
-                <div className="bg-[#F5F3F0] border-2 border-[#E8B4A0]/30 rounded-lg p-6 sm:p-6 md:p-8 text-center">
+                <div className="bg-[#F5F3F0] border-2 border-[#6B9A8F]/30 rounded-lg p-6 sm:p-6 md:p-8 text-center">
                   <div className="flex justify-center mb-4">
-                    <Mail className="h-16 w-16 sm:h-16 sm:w-16 text-[#C97D60]" />
+                    <Mail className="h-16 w-16 sm:h-16 sm:w-16 text-[#4A5D5F]" />
                   </div>
                   <h3 className="font-heading text-2xl sm:text-2xl font-bold text-[#2C2C2C] mb-3">
                     Check Your Email
@@ -768,14 +768,14 @@ const Auth = () => {
                     Click the link in the email to verify your account and complete your sign up.
                     The link will expire in 1 hour.
                   </p>
-                  <div className="border-t border-[#E8B4A0]/30 pt-4 mt-4">
-                    <p className="font-body text-sm text-[#C97D60] mb-3">
+                  <div className="border-t border-[#6B9A8F]/30 pt-4 mt-4">
+                    <p className="font-body text-sm text-[#4A5D5F] mb-3">
                       Didn't receive the email?
                     </p>
                     <div className="flex flex-col gap-2">
                       <Button
                         variant="outline"
-                        className="font-body w-full border-[#C97D60] text-[#C97D60] hover:bg-[#C97D60]/10"
+                        className="font-body w-full border-[#4A5D5F] text-[#4A5D5F] hover:bg-[#4A5D5F]/10"
                         onClick={() => {
                           setShowVerificationBanner(false);
                           setIsSignUp(true);
@@ -785,7 +785,7 @@ const Auth = () => {
                       </Button>
                       <Button
                         variant="link"
-                        className="font-body text-[#C97D60]"
+                        className="font-body text-[#4A5D5F]"
                         onClick={() => {
                           setShowVerificationBanner(false);
                           setEmail("");
@@ -812,7 +812,7 @@ const Auth = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="font-body w-full h-12 text-base sm:text-lg font-normal bg-white text-[#2C2C2C] border-2 border-[#C97D60] shadow-sm hover:bg-[#C97D60] hover:text-white hover:border-[#B86A4F] transition-colors"
+                      className="font-body w-full h-12 text-base sm:text-lg font-normal bg-white text-[#2C2C2C] border-2 border-[#4A5D5F] shadow-sm hover:bg-[#4A5D5F] hover:text-white hover:border-[#3A4D4F] transition-colors"
                       onClick={handleGoogleSignIn}
                       disabled={loading}
                     >
@@ -946,7 +946,7 @@ const Auth = () => {
                       {/* Primary Action Button */}
                       <Button
                         type="submit"
-                        className="font-body w-full h-12 sm:h-12 text-base sm:text-base font-medium bg-[#C97D60] hover:bg-[#B86A4F] text-white"
+                        className="font-body w-full h-12 sm:h-12 text-base sm:text-base font-medium bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white"
                         disabled={loading}
                       >
                         {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
@@ -959,7 +959,7 @@ const Auth = () => {
                         <Button
                           type="button"
                           variant="link"
-                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#C97D60]"
+                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#4A5D5F]"
                           onClick={() => setIsForgotPassword(true)}
                           disabled={loading}
                         >
@@ -970,7 +970,7 @@ const Auth = () => {
                         <Button
                           type="button"
                           variant="link"
-                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#C97D60]"
+                          className="font-body w-full text-base text-[#4A5D5F] hover:text-[#4A5D5F]"
                           onClick={() => setIsForgotPassword(false)}
                           disabled={loading}
                         >
