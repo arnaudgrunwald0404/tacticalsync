@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Brain, Loader2, FileText, RefreshCw, RotateCcw,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -15,6 +15,8 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +35,7 @@ interface CosPriority {
   id: string;
   user_id: string;
   text: string;
-  category: 'now' | 'this_week' | 'this_month' | 'next_month' | 'strategic' | 'people';
+  category: string;
   tier_order: number;
   notes: string | null;
   status: string | null;
@@ -95,23 +97,155 @@ interface CosPersonTopic {
   updated_at: string;
 }
 
-const COL1_CATEGORIES = ['now', 'this_week', 'this_month', 'next_month'] as const;
-const COL2_CATEGORIES = ['strategic', 'people'] as const;
-const ALL_CATEGORIES = [...COL1_CATEGORIES, ...COL2_CATEGORIES] as const;
-type CategoryKey = CosPriority['category'];
+type CategoryKey = string;
 
-function getCategoryLabels(): Record<CategoryKey, string> {
-  const now = new Date();
-  const thisMonth = now.toLocaleString('default', { month: 'long' });
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    .toLocaleString('default', { month: 'long' });
+// ── Layout configuration types & defaults ─────────────────────────────────────
+
+// Legacy types — kept only for migrateOldSettings(); not used elsewhere
+interface CosCol1Section { key: string; label: string | null; auto_label: boolean; enabled: boolean; }
+interface CosCol2Section { key: string; label: string; enabled: boolean; }
+interface CosTabLabels   { priorities: string; dci: string; team: string; }
+
+type CosSectionType =
+  | 'now' | 'this_week' | 'next_week'
+  | 'this_month_auto' | 'next_month_auto' | 'next_quarter_auto'
+  | 'direct_reports'
+  | 'custom';
+
+interface CosColumnSection {
+  id: string;
+  type: CosSectionType;
+  label: string | null;
+  enabled: boolean;
+}
+
+interface CosColumn {
+  id: string;
+  headerLabel: string;
+  widthPct: number;
+  sections: CosColumnSection[];
+}
+
+interface CosLayoutConfig {
+  columnCount: 3 | 4;
+  columns: CosColumn[];
+}
+
+const AUTO_SECTION_TYPES: CosSectionType[] = [
+  'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports',
+];
+
+function isAutoType(t: CosSectionType): boolean {
+  return AUTO_SECTION_TYPES.includes(t);
+}
+
+const SECTION_TYPE_LABELS: Record<CosSectionType, string> = {
+  now:              'Now',
+  this_week:        'This Week',
+  next_week:        'Next Week',
+  this_month_auto:  'This Month (auto)',
+  next_month_auto:  'Next Month (auto)',
+  next_quarter_auto:'Next Quarter (auto)',
+  direct_reports:   'Direct Reports',
+  custom:           'Custom',
+};
+
+function resolveNewSectionLabel(section: CosColumnSection): string {
+  if (section.type === 'direct_reports') return section.label ?? 'Direct Reports';
+  if (section.type === 'this_month_auto') {
+    if (section.label) return section.label;
+    return new Date().toLocaleString('default', { month: 'long' });
+  }
+  if (section.type === 'next_month_auto') {
+    if (section.label) return section.label;
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1).toLocaleString('default', { month: 'long' });
+  }
+  if (section.type === 'next_quarter_auto') {
+    if (section.label) return section.label;
+    const currentQ = Math.floor(new Date().getMonth() / 3) + 1;
+    return `Q${(currentQ % 4) + 1}`;
+  }
+  return section.label ?? SECTION_TYPE_LABELS[section.type] ?? section.id;
+}
+
+function sectionToCategoryKey(section: CosColumnSection): string {
+  if (section.type === 'this_month_auto')   return 'this_month';
+  if (section.type === 'next_month_auto')   return 'next_month';
+  if (section.type === 'next_quarter_auto') return 'next_quarter';
+  if (section.type === 'now' || section.type === 'this_week' || section.type === 'next_week') return section.type;
+  return section.id;
+}
+
+const DEFAULT_LAYOUT_CONFIG: CosLayoutConfig = {
+  columnCount: 3,
+  columns: [
+    { id: 'col1', headerLabel: 'Priorities', widthPct: 33, sections: [
+      { id: 'now',          type: 'now',              label: 'Now',       enabled: true  },
+      { id: 'this_week',    type: 'this_week',         label: 'This Week', enabled: true  },
+      { id: 'next_week',    type: 'next_week',         label: 'Next Week', enabled: false },
+      { id: 'this_month',   type: 'this_month_auto',   label: null,        enabled: true  },
+      { id: 'next_month',   type: 'next_month_auto',   label: null,        enabled: true  },
+      { id: 'next_quarter', type: 'next_quarter_auto', label: null,        enabled: false },
+    ]},
+    { id: 'col2', headerLabel: 'Strategic', widthPct: 33, sections: [
+      { id: 'strategic', type: 'custom', label: 'Strategic Opportunities', enabled: true },
+      { id: 'people',    type: 'custom', label: 'People to Meet',          enabled: true },
+    ]},
+    { id: 'col3', headerLabel: 'Direct Reports', widthPct: 34, sections: [
+      { id: 'direct_reports', type: 'direct_reports', label: null, enabled: true },
+    ]},
+  ],
+};
+
+function totalWidthPct(columns: CosColumn[]): number {
+  return columns.reduce((sum, c) => sum + (c.widthPct || 0), 0);
+}
+
+function adjustColumnCount(config: CosLayoutConfig, newCount: 3 | 4): CosLayoutConfig {
+  if (newCount === 4 && config.columnCount === 3) {
+    const cols = [...config.columns.map(c => ({ ...c, widthPct: 25 })),
+      { id: 'col4', headerLabel: 'Column 4', widthPct: 25, sections: [] as CosColumnSection[] }];
+    return { columnCount: 4, columns: cols };
+  }
+  if (newCount === 3 && config.columnCount === 4) {
+    const cols = config.columns.slice(0, 3).map((c, i) => ({ ...c, widthPct: i === 2 ? 34 : 33 }));
+    return { columnCount: 3, columns: cols };
+  }
+  return config;
+}
+
+const OLD_KEY_TO_TYPE: Record<string, CosSectionType> = {
+  now: 'now', this_week: 'this_week', next_week: 'next_week',
+  this_month: 'this_month_auto', next_month: 'next_month_auto', next_quarter: 'next_quarter_auto',
+};
+
+function migrateOldSettings(raw: Record<string, unknown>): CosLayoutConfig {
+  const tabLabels = (raw.tab_labels ?? {}) as Record<string, string>;
+  const col1      = (raw.col1_sections ?? []) as CosCol1Section[];
+  const col2      = (raw.col2_sections ?? []) as CosCol2Section[];
+  const col3Label = (raw.col3_label as string | undefined) ?? 'Direct Reports';
+
+  const col1Sections: CosColumnSection[] = col1.map(s => ({
+    id: s.key,
+    type: s.key.startsWith('custom_') ? 'custom' : (OLD_KEY_TO_TYPE[s.key] ?? 'custom'),
+    label: s.label,
+    enabled: s.enabled,
+  }));
+
+  const col2Sections: CosColumnSection[] = col2.map(s => ({
+    id: s.key, type: 'custom' as CosSectionType, label: s.label, enabled: s.enabled,
+  }));
+
   return {
-    now: 'Now',
-    this_week: 'This Week',
-    this_month: thisMonth,
-    next_month: nextMonth,
-    strategic: 'Strategic Opportunities',
-    people: 'People to Meet',
+    columnCount: 3,
+    columns: [
+      { id: 'col1', headerLabel: tabLabels.priorities ?? 'Priorities', widthPct: 33, sections: col1Sections },
+      { id: 'col2', headerLabel: 'Strategic',                          widthPct: 33, sections: col2Sections },
+      { id: 'col3', headerLabel: col3Label,                            widthPct: 34, sections: [
+        { id: 'direct_reports', type: 'direct_reports', label: null, enabled: true },
+      ]},
+    ],
   };
 }
 
@@ -124,6 +258,7 @@ export default function ChiefOfStaff() {
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
   const [teamMembers, setTeamMembers] = useState<CosTeamMember[]>([]);
   const [statusOptions, setStatusOptions] = useState<string[]>(DEFAULT_STATUS_OPTIONS);
+  const [layoutConfig, setLayoutConfig] = useState<CosLayoutConfig>(DEFAULT_LAYOUT_CONFIG);
   const [accountabilities, setAccountabilities] = useState<CosPersonAccountability[]>([]);
   const [personTopics, setPersonTopics] = useState<CosPersonTopic[]>([]);
   const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
@@ -157,6 +292,12 @@ export default function ChiefOfStaff() {
       if (settingsRes.data?.status_options) {
         setStatusOptions(settingsRes.data.status_options as string[]);
       }
+      const raw = settingsRes.data as Record<string, unknown> | null;
+      if (raw?.layout_config) {
+        setLayoutConfig(raw.layout_config as CosLayoutConfig);
+      } else if (raw) {
+        setLayoutConfig(migrateOldSettings(raw));
+      }
       setAccountabilities((acctRes.data ?? []) as CosPersonAccountability[]);
       setPersonTopics((topicsRes.data ?? []) as CosPersonTopic[]);
       setLoading(false);
@@ -181,6 +322,16 @@ export default function ChiefOfStaff() {
       { onConflict: 'user_id' },
     );
     setStatusOptions(options);
+  };
+
+  const saveLayoutConfig = async (newConfig: CosLayoutConfig) => {
+    if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_settings').upsert(
+      { user_id: userId, layout_config: newConfig, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    setLayoutConfig(newConfig);
   };
 
   const updatePriority = async (id: string, updates: Partial<CosPriority>) => {
@@ -221,8 +372,8 @@ export default function ChiefOfStaff() {
 
   const restoreArchivedPriority = async (id: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from('cos_priorities').update({ archived_at: null }).eq('id', id);
-    setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: null } : p));
+    await (supabase as any).from('cos_priorities').update({ archived_at: null, done_at: null }).eq('id', id);
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: null, done_at: null } : p));
   };
 
   const reorderPriority = async (
@@ -473,6 +624,8 @@ export default function ChiefOfStaff() {
     );
   }
 
+  const prioritiesTabLabel = layoutConfig.columns[0]?.headerLabel || 'Priorities';
+
   const thisWeekPriorities = priorities
     .filter(p => p.category === 'this_week')
     .sort((a, b) => a.tier_order - b.tier_order)
@@ -495,15 +648,14 @@ export default function ChiefOfStaff() {
   return (
     <div className="container mx-auto px-6 py-6 max-w-7xl">
       <div className="flex items-center gap-2 mb-6">
-        <Brain className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-semibold">Chief of Staff</h1>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className={cn('mb-6 w-full grid', showBrief ? 'grid-cols-5' : 'grid-cols-4')}>
           {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
-          <TabsTrigger value="priorities">Priorities</TabsTrigger>
-          <TabsTrigger value="dci">DCI</TabsTrigger>
+          <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
+          <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -545,10 +697,9 @@ export default function ChiefOfStaff() {
             onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
             onDropPriorityOnAccountability={dropPriorityOnAccountability}
             onDropPriorityOnTopic={dropPriorityOnTopic}
-            onMarkDone={markDone}
-            onMarkUndone={markUndone}
             onPermanentDelete={permanentDeletePriority}
             onRestoreArchived={restoreArchivedPriority}
+            layoutConfig={layoutConfig}
           />
         </TabsContent>
 
@@ -561,7 +712,12 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="settings">
-          <SettingsSection statusOptions={statusOptions} onSave={saveStatusOptions} />
+          <SettingsSection
+            statusOptions={statusOptions}
+            onSave={saveStatusOptions}
+            layoutConfig={layoutConfig}
+            onSaveLayout={saveLayoutConfig}
+          />
         </TabsContent>
       </Tabs>
 
@@ -979,7 +1135,7 @@ function PersonSectionsRow({
   onAddTopic, onUpdateTopic, onDeleteTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
-  onCopy, statusOptions, priorities,
+  onCopy, statusOptions, priorities, colLabel,
 }: {
   members: CosTeamMember[];
   accountabilities: CosPersonAccountability[];
@@ -997,6 +1153,7 @@ function PersonSectionsRow({
   onCopy: (text: string, label?: string) => void;
   statusOptions: string[];
   priorities: CosPriority[];
+  colLabel: string;
 }) {
   const directReports = members
     .filter(m => m.relationship_type === 'direct_report' && !m.reports_to_id)
@@ -1006,7 +1163,7 @@ function PersonSectionsRow({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Direct Reports</h3>
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{colLabel}</h3>
       <div className="space-y-4">
         {directReports.map(m => (
           <PersonSectionCard
@@ -1037,14 +1194,24 @@ function PersonSectionsRow({
 // ── Archive section ───────────────────────────────────────────────────────────
 
 function ArchiveSection({
-  items, onRestore, onDelete,
+  items, layoutConfig, onRestore, onDelete,
 }: {
   items: CosPriority[];
+  layoutConfig: CosLayoutConfig;
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const categoryLabels = getCategoryLabels();
+
+  const labelMap: Record<string, string> = {};
+  for (const col of layoutConfig.columns) {
+    for (const s of col.sections) {
+      if (s.type !== 'direct_reports') labelMap[sectionToCategoryKey(s)] = resolveNewSectionLabel(s);
+    }
+  }
+
+  const getItemDate = (item: CosPriority) =>
+    item.archived_at ?? item.done_at ?? item.created_at;
 
   return (
     <div className="mt-8 border-t border-border/40 pt-4">
@@ -1062,10 +1229,15 @@ function ArchiveSection({
           {items.map(item => (
             <div key={item.id} className="group flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/40 transition-colors">
               <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap flex-shrink-0 w-8">
-                {format(new Date(item.archived_at!), 'M/d')}
+                {format(new Date(getItemDate(item)), 'M/d')}
               </span>
+              {item.done_at && !item.archived_at && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 flex-shrink-0">
+                  Done
+                </span>
+              )}
               <Badge variant="outline" className="text-[10px] px-1 py-0 flex-shrink-0 font-normal text-muted-foreground/70 border-border/40">
-                {categoryLabels[item.category]}
+                {labelMap[item.category] ?? item.category}
               </Badge>
               <p className="flex-1 min-w-0 text-sm text-muted-foreground/60 line-through truncate">
                 {item.text}
@@ -1090,71 +1262,6 @@ function ArchiveSection({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function DoneItem({ item, onRestore }: { item: CosPriority; onRestore: (id: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div className="group flex items-start gap-1.5 py-1.5 border-b border-border/20 last:border-0">
-      <span className="text-[10px] text-muted-foreground/50 mt-0.5 whitespace-nowrap flex-shrink-0 w-8">
-        {item.done_at ? format(new Date(item.done_at), 'M/d') : ''}
-      </span>
-      <p className={cn(
-        "flex-1 min-w-0 text-sm text-muted-foreground/60 leading-snug line-through",
-        !expanded && "truncate",
-      )}>
-        {item.text}
-      </p>
-      <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          className="p-0.5 rounded hover:bg-muted"
-          onClick={() => setExpanded(e => !e)}
-          title={expanded ? 'Collapse' : 'Expand'}
-        >
-          <ChevronDown className={cn('h-3 w-3 text-muted-foreground/60 transition-transform', expanded && 'rotate-180')} />
-        </button>
-        <button
-          className="p-0.5 rounded hover:bg-muted"
-          onClick={() => onRestore(item.id)}
-          title="Restore to original bucket"
-        >
-          <RotateCcw className="h-3 w-3 text-muted-foreground/60" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function DoneColumn({ items, onRestore }: { items: CosPriority[]; onRestore: (id: string) => void }) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'done-column' });
-  const sorted = [...items].sort(
-    (a, b) => new Date(b.done_at!).getTime() - new Date(a.done_at!).getTime(),
-  );
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Done</h3>
-        {items.length > 0 && (
-          <Badge variant="secondary" className="text-xs px-1.5 py-0">{items.length}</Badge>
-        )}
-      </div>
-      <div
-        ref={setNodeRef}
-        className={cn(
-          'rounded-lg border border-dashed border-border/40 min-h-[60px] p-2 transition-colors',
-          isOver && 'border-green-500/40 bg-green-50/20 dark:bg-green-950/20',
-        )}
-      >
-        {sorted.length === 0 ? (
-          <p className="text-xs text-muted-foreground/40 italic text-center py-3">
-            Drag items here when done
-          </p>
-        ) : (
-          sorted.map(item => <DoneItem key={item.id} item={item} onRestore={onRestore} />)
-        )}
-      </div>
     </div>
   );
 }
@@ -1262,8 +1369,8 @@ function PrioritiesSection({
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
   onDropPriorityOnAccountability, onDropPriorityOnTopic,
-  onMarkDone, onMarkUndone,
   onPermanentDelete, onRestoreArchived,
+  layoutConfig,
 }: {
   priorities: CosPriority[];
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
@@ -1290,14 +1397,16 @@ function PrioritiesSection({
   onNewlyAddedTopicConsumed: () => void;
   onDropPriorityOnAccountability: (memberId: string, text: string) => void;
   onDropPriorityOnTopic: (memberId: string, text: string) => void;
-  onMarkDone: (id: string) => void;
-  onMarkUndone: (id: string) => void;
   onPermanentDelete: (id: string) => void;
   onRestoreArchived: (id: string) => void;
+  layoutConfig: CosLayoutConfig;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
-  const categoryLabels = getCategoryLabels();
+
+  const allActiveCategories = layoutConfig.columns
+    .flatMap(c => c.sections.filter(s => s.enabled && s.type !== 'direct_reports'))
+    .map(sectionToCategoryKey);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1314,10 +1423,6 @@ function PrioritiesSection({
 
     const overId = over.id as string;
 
-    if (overId === 'done-column') {
-      onMarkDone(activeItem.id);
-      return;
-    }
     if (overId.startsWith('acct-drop-')) {
       onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
       return;
@@ -1327,20 +1432,25 @@ function PrioritiesSection({
       return;
     }
 
-    const targetCategory = ALL_CATEGORIES.includes(overId as CategoryKey)
-      ? (overId as CategoryKey)
+    const isCategoryTarget = allActiveCategories.includes(overId);
+    const targetCategory = isCategoryTarget
+      ? overId
       : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
 
-    const insertBeforeId = ALL_CATEGORIES.includes(overId as CategoryKey) ? null : overId;
+    const insertBeforeId = isCategoryTarget ? null : overId;
     onReorder(activeItem.id, targetCategory, insertBeforeId);
   };
 
   const sortedFor = (cat: CategoryKey) =>
     priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at).sort((a, b) => a.tier_order - b.tier_order);
 
-  const archivedItems = priorities.filter(p => !!p.archived_at).sort(
-    (a, b) => new Date(b.archived_at!).getTime() - new Date(a.archived_at!).getTime(),
-  );
+  const archivedItems = priorities
+    .filter(p => !!p.archived_at || !!p.done_at)
+    .sort((a, b) => {
+      const aTime = new Date(a.archived_at ?? a.done_at ?? a.created_at).getTime();
+      const bTime = new Date(b.archived_at ?? b.done_at ?? b.created_at).getTime();
+      return bTime - aTime;
+    });
 
   return (
     <>
@@ -1350,71 +1460,97 @@ function PrioritiesSection({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid gap-6 md:grid-cols-[3fr_2fr_2fr_1.5fr]">
-        {/* Column 1 — time buckets */}
-        <div className="space-y-6">
-          {COL1_CATEGORIES.map(cat => (
-            <CategoryBucket
-              key={cat}
-              category={cat}
-              label={categoryLabels[cat]}
-              items={sortedFor(cat)}
-              onUpdate={onUpdate}
-              onAdd={onAdd}
-              onDelete={onDelete}
-              onCopy={onCopy}
-              mondayTaggedTexts={mondayTaggedTexts}
-              statusOptions={statusOptions}
-              newlyAddedId={newlyAddedId}
-              onNewlyAddedConsumed={onNewlyAddedConsumed}
-            />
-          ))}
-        </div>
-        {/* Column 2 — strategic buckets */}
-        <div className="space-y-6">
-          {COL2_CATEGORIES.map(cat => (
-            <CategoryBucket
-              key={cat}
-              category={cat}
-              label={categoryLabels[cat]}
-              items={sortedFor(cat)}
-              onUpdate={onUpdate}
-              onAdd={onAdd}
-              onDelete={onDelete}
-              onCopy={onCopy}
-              mondayTaggedTexts={mondayTaggedTexts}
-              statusOptions={statusOptions}
-              newlyAddedId={newlyAddedId}
-              onNewlyAddedConsumed={onNewlyAddedConsumed}
-            />
-          ))}
-        </div>
-        {/* Column 3 — direct reports */}
-        <div>
-        <PersonSectionsRow
-          members={members}
-          accountabilities={accountabilities}
-          topics={personTopics}
-          onAddAccountability={onAddAccountability}
-          onUpdateAccountability={onUpdateAccountability}
-          onDeleteAccountability={onDeleteAccountability}
-          onAddTopic={onAddPersonTopic}
-          onUpdateTopic={onUpdatePersonTopic}
-          onDeleteTopic={onDeletePersonTopic}
-          newlyAddedAccountabilityId={newlyAddedAccountabilityId}
-          newlyAddedTopicId={newlyAddedTopicId}
-          onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
-          onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
-          onCopy={onCopy}
-          statusOptions={statusOptions}
-          priorities={priorities}
-        />
-        </div>
-        {/* Column 4 — done */}
-        <DoneColumn
-          items={priorities.filter(p => !!p.done_at && !p.archived_at)}
-          onRestore={onMarkUndone}
-        />
+      <div
+        className="hidden md:grid gap-6"
+        style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
+      >
+        {layoutConfig.columns.map(col => (
+          <div key={col.id} className="space-y-6">
+            {col.sections.filter(s => s.enabled).map(section =>
+              section.type === 'direct_reports' ? (
+                <PersonSectionsRow
+                  key={section.id}
+                  members={members}
+                  accountabilities={accountabilities}
+                  topics={personTopics}
+                  onAddAccountability={onAddAccountability}
+                  onUpdateAccountability={onUpdateAccountability}
+                  onDeleteAccountability={onDeleteAccountability}
+                  onAddTopic={onAddPersonTopic}
+                  onUpdateTopic={onUpdatePersonTopic}
+                  onDeleteTopic={onDeletePersonTopic}
+                  newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+                  newlyAddedTopicId={newlyAddedTopicId}
+                  onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+                  onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+                  onCopy={onCopy}
+                  statusOptions={statusOptions}
+                  priorities={priorities}
+                  colLabel={col.headerLabel}
+                />
+              ) : (
+                <CategoryBucket
+                  key={section.id}
+                  category={sectionToCategoryKey(section)}
+                  label={resolveNewSectionLabel(section)}
+                  items={sortedFor(sectionToCategoryKey(section))}
+                  onUpdate={onUpdate}
+                  onAdd={onAdd}
+                  onDelete={onDelete}
+                  onCopy={onCopy}
+                  mondayTaggedTexts={mondayTaggedTexts}
+                  statusOptions={statusOptions}
+                  newlyAddedId={newlyAddedId}
+                  onNewlyAddedConsumed={onNewlyAddedConsumed}
+                />
+              )
+            )}
+          </div>
+        ))}
+      </div>
+      {/* Mobile: stacked single column */}
+      <div className="md:hidden space-y-6">
+        {layoutConfig.columns.flatMap(col =>
+          col.sections.filter(s => s.enabled).map(section =>
+            section.type === 'direct_reports' ? (
+              <PersonSectionsRow
+                key={section.id}
+                members={members}
+                accountabilities={accountabilities}
+                topics={personTopics}
+                onAddAccountability={onAddAccountability}
+                onUpdateAccountability={onUpdateAccountability}
+                onDeleteAccountability={onDeleteAccountability}
+                onAddTopic={onAddPersonTopic}
+                onUpdateTopic={onUpdatePersonTopic}
+                onDeleteTopic={onDeletePersonTopic}
+                newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+                newlyAddedTopicId={newlyAddedTopicId}
+                onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+                onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+                onCopy={onCopy}
+                statusOptions={statusOptions}
+                priorities={priorities}
+                colLabel={col.headerLabel}
+              />
+            ) : (
+              <CategoryBucket
+                key={section.id}
+                category={sectionToCategoryKey(section)}
+                label={resolveNewSectionLabel(section)}
+                items={sortedFor(sectionToCategoryKey(section))}
+                onUpdate={onUpdate}
+                onAdd={onAdd}
+                onDelete={onDelete}
+                onCopy={onCopy}
+                mondayTaggedTexts={mondayTaggedTexts}
+                statusOptions={statusOptions}
+                newlyAddedId={newlyAddedId}
+                onNewlyAddedConsumed={onNewlyAddedConsumed}
+              />
+            )
+          )
+        )}
       </div>
 
       <DragOverlay dropAnimation={null}>
@@ -1429,7 +1565,12 @@ function PrioritiesSection({
     </DndContext>
 
     {archivedItems.length > 0 && (
-      <ArchiveSection items={archivedItems} onRestore={onRestoreArchived} onDelete={onPermanentDelete} />
+      <ArchiveSection
+        items={archivedItems}
+        layoutConfig={layoutConfig}
+        onRestore={onRestoreArchived}
+        onDelete={onPermanentDelete}
+      />
     )}
     </>
   );
@@ -1607,7 +1748,7 @@ function PriorityCard({
                 statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
               )}
             >
-              {item.status ?? '·'}
+              {item.status ?? <span className="text-muted-foreground/40 text-[10px] font-normal">status</span>}
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
@@ -2496,23 +2637,46 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-function SettingsSection({ statusOptions, onSave }: {
+function SectionTypeAdder({
+  availableTypes, onAdd,
+}: {
+  availableTypes: CosSectionType[];
+  onAdd: (type: CosSectionType) => void;
+}) {
+  const [value, setValue] = React.useState('');
+  return (
+    <Select value={value} onValueChange={t => { onAdd(t as CosSectionType); setValue(''); }}>
+      <SelectTrigger className="h-8 text-xs mt-2 text-muted-foreground">
+        <SelectValue placeholder="+ Add section" />
+      </SelectTrigger>
+      <SelectContent>
+        {availableTypes.map(t => (
+          <SelectItem key={t} value={t} className="text-xs">{SECTION_TYPE_LABELS[t]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function SettingsSection({
+  statusOptions, onSave,
+  layoutConfig, onSaveLayout,
+}: {
   statusOptions: string[];
   onSave: (options: string[]) => Promise<void>;
+  layoutConfig: CosLayoutConfig;
+  onSaveLayout: (config: CosLayoutConfig) => Promise<void>;
 }) {
+  // ── Status options draft ──────────────────────────────────────────────────
   const [draft, setDraft] = useState<string[]>(statusOptions);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  // Keep draft in sync if parent options change (e.g. on initial load)
   React.useEffect(() => { setDraft(statusOptions); }, [statusOptions]);
 
   const update = (idx: number, val: string) =>
     setDraft(prev => prev.map((s, i) => (i === idx ? val : s)));
-
-  const remove = (idx: number) =>
-    setDraft(prev => prev.filter((_, i) => i !== idx));
-
+  const remove = (idx: number) => setDraft(prev => prev.filter((_, i) => i !== idx));
   const addOption = () => setDraft(prev => [...prev, '']);
 
   const save = async () => {
@@ -2527,45 +2691,245 @@ function SettingsSection({ statusOptions, onSave }: {
     toast({ title: 'Status options saved' });
   };
 
+  // ── Layout config draft ───────────────────────────────────────────────────
+  const [draftLayout, setDraftLayout] = useState<CosLayoutConfig>(layoutConfig);
+  const [savingLayout, setSavingLayout] = useState(false);
+
+  React.useEffect(() => { setDraftLayout(layoutConfig); }, [layoutConfig]);
+
+  const updateColumnHeader = (colId: string, headerLabel: string) =>
+    setDraftLayout(prev => ({ ...prev, columns: prev.columns.map(c => c.id === colId ? { ...c, headerLabel } : c) }));
+
+  const updateColumnWidth = (colId: string, widthPct: number) =>
+    setDraftLayout(prev => ({ ...prev, columns: prev.columns.map(c => c.id === colId ? { ...c, widthPct } : c) }));
+
+  const updateSection = (colId: string, sectionId: string, changes: Partial<CosColumnSection>) =>
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : {
+        ...c, sections: c.sections.map(s => s.id === sectionId ? { ...s, ...changes } : s),
+      }),
+    }));
+
+  const removeSection = (colId: string, sectionId: string) =>
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : {
+        ...c, sections: c.sections.filter(s => s.id !== sectionId),
+      }),
+    }));
+
+  const addSection = (colId: string, type: CosSectionType) => {
+    const newId = type === 'custom' ? `custom_${crypto.randomUUID().slice(0, 8)}` : type;
+    const newSection: CosColumnSection = { id: newId, type, label: type === 'custom' ? 'New Section' : null, enabled: true };
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : { ...c, sections: [...c.sections, newSection] }),
+    }));
+  };
+
+  const changeColumnCount = (newCount: 3 | 4) =>
+    setDraftLayout(prev => adjustColumnCount(prev, newCount));
+
+  const getAvailableTypes = (currentColId: string): CosSectionType[] => {
+    const usedNonCustom = new Set<CosSectionType>();
+    for (const col of draftLayout.columns) {
+      for (const s of col.sections) {
+        if (s.type !== 'custom') usedNonCustom.add(s.type);
+      }
+    }
+    const allTypes: CosSectionType[] = [
+      'now', 'this_week', 'next_week', 'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports', 'custom',
+    ];
+    // For the current column, exclude types already present in it; for others, exclude non-custom types claimed anywhere
+    const currentCol = draftLayout.columns.find(c => c.id === currentColId);
+    const typesInThisCol = new Set(currentCol?.sections.map(s => s.type) ?? []);
+    return allTypes.filter(t => {
+      if (t === 'custom') return true;
+      return !usedNonCustom.has(t) || (!typesInThisCol.has(t) && false);
+    }).filter(t => t === 'custom' || !typesInThisCol.has(t));
+  };
+
+  const saveLayout = async () => {
+    if (totalWidthPct(draftLayout.columns) !== 100) {
+      toast({ title: `Column widths sum to ${totalWidthPct(draftLayout.columns)}% — must equal 100%`, variant: 'destructive' });
+      return;
+    }
+    setSavingLayout(true);
+    await onSaveLayout(draftLayout);
+    setSavingLayout(false);
+    toast({ title: 'Layout settings saved' });
+  };
+
   return (
-    <div className="max-w-sm space-y-6">
-      <div>
+    <div className="space-y-10">
+      <div className="max-w-lg">
         <h2 className="text-lg font-semibold">Settings</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure the status options that cycle on each priority card.
-          Click a status badge once to advance to the next state; the last
-          state cycles back to none.
+          Configure labels, sections, and status options for your Chief of Staff workspace.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Priority statuses (in order)</label>
-        {draft.map((opt, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <Input
-              value={opt}
-              onChange={e => update(idx, e.target.value)}
-              placeholder={`Status ${idx + 1}`}
-              className="h-9 text-sm"
-            />
-            <button
-              onClick={() => remove(idx)}
-              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
-              aria-label="Remove"
-            >
-              <X className="h-4 w-4" />
-            </button>
+      {/* ── Column Labels ────────────────────────────────────────────────────── */}
+      <div className="space-y-5">
+        <div className="max-w-lg">
+          <h3 className="text-sm font-semibold">Column Labels</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Column 1's label also appears as the Priorities tab name. Auto-labeled sections (months, quarter) compute their value from the calendar and cannot be renamed.
+          </p>
+        </div>
+
+        {/* Column count toggle */}
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">Number of columns</p>
+          <div className="flex gap-2">
+            {([3, 4] as const).map(n => (
+              <button
+                key={n}
+                onClick={() => changeColumnCount(n)}
+                className={cn(
+                  'px-4 py-1.5 rounded-md text-sm font-medium border transition-colors',
+                  draftLayout.columnCount === n
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-border hover:bg-muted',
+                )}
+              >
+                {n}
+              </button>
+            ))}
           </div>
-        ))}
-        <Button size="sm" variant="ghost" className="h-8 text-xs mt-1" onClick={addOption}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Add status
+        </div>
+
+        {/* Per-column config blocks — laid out as columns so users can visualise the layout */}
+        <div className={cn('grid gap-3', draftLayout.columnCount === 4 ? 'grid-cols-4' : 'grid-cols-3')}>
+          {draftLayout.columns.map((col, colIndex) => {
+            const availableTypes = getAvailableTypes(col.id);
+            return (
+              <div key={col.id} className="space-y-3 rounded-lg border border-border/60 p-3 flex flex-col">
+                {/* Column number badge */}
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  Column {colIndex + 1}
+                </p>
+
+                {/* Header label */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Label</label>
+                  <Input
+                    value={col.headerLabel}
+                    onChange={e => updateColumnHeader(col.id, e.target.value)}
+                    className="h-8 text-sm"
+                    placeholder={`Column ${colIndex + 1}`}
+                  />
+                </div>
+
+                {/* Width % */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Width %</label>
+                  <Input
+                    type="number"
+                    min={5}
+                    max={90}
+                    value={col.widthPct}
+                    onChange={e => updateColumnWidth(col.id, parseInt(e.target.value) || 0)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+
+                {/* Sections */}
+                <div className="flex-1 space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {col.headerLabel || `Column ${colIndex + 1}`} — sections
+                  </p>
+                  <div className="space-y-1.5">
+                    {col.sections.map(section => {
+                      const auto = isAutoType(section.type);
+                      return (
+                        <div key={section.id} className="flex items-center gap-1.5">
+                          <Switch
+                            checked={section.enabled}
+                            onCheckedChange={checked => updateSection(col.id, section.id, { enabled: checked })}
+                            className="flex-shrink-0 scale-[0.8] origin-left"
+                          />
+                          {auto ? (
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                              <span className="text-xs text-muted-foreground truncate">{resolveNewSectionLabel(section)}</span>
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal flex-shrink-0 leading-tight">auto</Badge>
+                            </div>
+                          ) : (
+                            <Input
+                              value={section.label ?? ''}
+                              onChange={e => updateSection(col.id, section.id, { label: e.target.value || null })}
+                              placeholder={SECTION_TYPE_LABELS[section.type] ?? 'Section name'}
+                              className="h-7 text-xs flex-1 min-w-0"
+                              disabled={!section.enabled}
+                            />
+                          )}
+                          <button
+                            onClick={() => removeSection(col.id, section.id)}
+                            className="p-0.5 text-muted-foreground/40 hover:text-destructive flex-shrink-0"
+                            title="Remove"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {availableTypes.length > 0 && (
+                    <SectionTypeAdder availableTypes={availableTypes} onAdd={type => addSection(col.id, type)} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {totalWidthPct(draftLayout.columns) !== 100 && (
+          <p className="text-xs text-destructive">
+            Column widths sum to {totalWidthPct(draftLayout.columns)}% — must equal 100%.
+          </p>
+        )}
+
+        <Button onClick={saveLayout} disabled={savingLayout} className="h-9">
+          {savingLayout ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+          Save layout settings
         </Button>
       </div>
 
-      <Button onClick={save} disabled={saving} className="h-9">
-        {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-        Save
-      </Button>
+      <div className="border-t border-border/40 pt-8 space-y-3 max-w-lg">
+        {/* ── Status options ──────────────────────────────────────────────────── */}
+        <h3 className="text-sm font-semibold">Priority card statuses</h3>
+        <p className="text-xs text-muted-foreground">
+          These cycle on each priority card when you click the status badge.
+          Defaults: WIP = Work in Progress, WOS = Waiting on Someone.
+        </p>
+        <div className="space-y-2">
+          {draft.map((opt, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <Input
+                value={opt}
+                onChange={e => update(idx, e.target.value)}
+                placeholder={`Status ${idx + 1}`}
+                className="h-9 text-sm max-w-xs"
+              />
+              <button
+                onClick={() => remove(idx)}
+                className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                aria-label="Remove"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+          <Button size="sm" variant="ghost" className="h-8 text-xs mt-1" onClick={addOption}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add status
+          </Button>
+        </div>
+        <Button onClick={save} disabled={saving} variant="outline" className="h-9">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+          Save statuses
+        </Button>
+      </div>
     </div>
   );
 }
