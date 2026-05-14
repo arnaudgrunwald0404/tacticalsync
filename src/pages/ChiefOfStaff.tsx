@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy,
+  verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -2637,6 +2637,148 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
+function SortableSectionRow({
+  section,
+  onUpdate,
+  onRemove,
+}: {
+  section: CosColumnSection;
+  onUpdate: (changes: Partial<CosColumnSection>) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const auto = isAutoType(section.type);
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1.5">
+      <button
+        {...attributes}
+        {...listeners}
+        className="p-0.5 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+        tabIndex={-1}
+        title="Drag to reorder"
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      <Switch
+        checked={section.enabled}
+        onCheckedChange={checked => onUpdate({ enabled: checked })}
+        className="flex-shrink-0 scale-[0.8] origin-left"
+      />
+      {auto ? (
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <span className="text-xs text-muted-foreground truncate">{resolveNewSectionLabel(section)}</span>
+          <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal flex-shrink-0 leading-tight">auto</Badge>
+        </div>
+      ) : (
+        <Input
+          value={section.label ?? ''}
+          onChange={e => onUpdate({ label: e.target.value || null })}
+          placeholder={SECTION_TYPE_LABELS[section.type] ?? 'Section name'}
+          className="h-7 text-xs flex-1 min-w-0"
+          disabled={!section.enabled}
+        />
+      )}
+      <button
+        onClick={onRemove}
+        className="p-0.5 text-muted-foreground/40 hover:text-destructive flex-shrink-0"
+        title="Remove"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+function SortableColumnCard({
+  col,
+  colIndex,
+  availableTypes,
+  onUpdateHeader,
+  onUpdateWidth,
+  onUpdateSection,
+  onRemoveSection,
+  onAddSection,
+}: {
+  col: CosColumn;
+  colIndex: number;
+  availableTypes: CosSectionType[];
+  onUpdateHeader: (label: string) => void;
+  onUpdateWidth: (pct: number) => void;
+  onUpdateSection: (sectionId: string, changes: Partial<CosColumnSection>) => void;
+  onRemoveSection: (sectionId: string) => void;
+  onAddSection: (type: CosSectionType) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={style} className="space-y-3 rounded-lg border border-border/60 p-3 flex flex-col">
+      {/* Column badge + drag handle */}
+      <div className="flex items-center gap-1.5">
+        <button
+          {...attributes}
+          {...listeners}
+          className="text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+          tabIndex={-1}
+          title="Drag to reorder column"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          Column {colIndex + 1}
+        </p>
+      </div>
+
+      {/* Header label */}
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Label</label>
+        <Input
+          value={col.headerLabel}
+          onChange={e => onUpdateHeader(e.target.value)}
+          className="h-8 text-sm"
+          placeholder={`Column ${colIndex + 1}`}
+        />
+      </div>
+
+      {/* Width % */}
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Width %</label>
+        <Input
+          type="number"
+          min={5}
+          max={90}
+          value={col.widthPct}
+          onChange={e => onUpdateWidth(parseInt(e.target.value) || 0)}
+          className="h-8 text-sm"
+        />
+      </div>
+
+      {/* Sections */}
+      <div className="flex-1 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">
+          {col.headerLabel || `Column ${colIndex + 1}`} — sections
+        </p>
+        <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1.5">
+            {col.sections.map(section => (
+              <SortableSectionRow
+                key={section.id}
+                section={section}
+                onUpdate={changes => onUpdateSection(section.id, changes)}
+                onRemove={() => onRemoveSection(section.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        {availableTypes.length > 0 && (
+          <SectionTypeAdder availableTypes={availableTypes} onAdd={onAddSection} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SectionTypeAdder({
   availableTypes, onAdd,
 }: {
@@ -2731,6 +2873,56 @@ function SettingsSection({
   const changeColumnCount = (newCount: 3 | 4) =>
     setDraftLayout(prev => adjustColumnCount(prev, newCount));
 
+  // ── Settings-panel drag-and-drop ─────────────────────────────────────────
+  const settingsSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSettingsDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const activeId = active.id as string;
+    const overId   = over.id   as string;
+
+    // Column reorder
+    if (draftLayout.columns.some(c => c.id === activeId)) {
+      const oldIdx = draftLayout.columns.findIndex(c => c.id === activeId);
+      const newIdx = draftLayout.columns.findIndex(c => c.id === overId);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        setDraftLayout(prev => ({ ...prev, columns: arrayMove(prev.columns, oldIdx, newIdx) }));
+      }
+      return;
+    }
+
+    // Section reorder within or across columns
+    const sourceColIdx = draftLayout.columns.findIndex(c => c.sections.some(s => s.id === activeId));
+    if (sourceColIdx === -1) return;
+    let targetColIdx = draftLayout.columns.findIndex(c => c.sections.some(s => s.id === overId));
+    if (targetColIdx === -1) targetColIdx = draftLayout.columns.findIndex(c => c.id === overId);
+    if (targetColIdx === -1) return;
+
+    setDraftLayout(prev => {
+      const newColumns = prev.columns.map(c => ({ ...c, sections: [...c.sections] }));
+      if (sourceColIdx === targetColIdx) {
+        const col = newColumns[sourceColIdx];
+        const oldIdx = col.sections.findIndex(s => s.id === activeId);
+        const newIdx = col.sections.findIndex(s => s.id === overId);
+        if (oldIdx !== -1 && newIdx !== -1) {
+          newColumns[sourceColIdx] = { ...col, sections: arrayMove(col.sections, oldIdx, newIdx) };
+        }
+      } else {
+        const sourceCol = newColumns[sourceColIdx];
+        const targetCol = newColumns[targetColIdx];
+        const sectionIdx = sourceCol.sections.findIndex(s => s.id === activeId);
+        const [movedSection] = sourceCol.sections.splice(sectionIdx, 1);
+        const overIdx = targetCol.sections.findIndex(s => s.id === overId);
+        if (overIdx !== -1) targetCol.sections.splice(overIdx, 0, movedSection);
+        else targetCol.sections.push(movedSection);
+      }
+      return { ...prev, columns: newColumns };
+    });
+  };
+
   const getAvailableTypes = (currentColId: string): CosSectionType[] => {
     const usedNonCustom = new Set<CosSectionType>();
     for (const col of draftLayout.columns) {
@@ -2800,89 +2992,30 @@ function SettingsSection({
           </div>
         </div>
 
-        {/* Per-column config blocks — laid out as columns so users can visualise the layout */}
-        <div className={cn('grid gap-3', draftLayout.columnCount === 4 ? 'grid-cols-4' : 'grid-cols-3')}>
-          {draftLayout.columns.map((col, colIndex) => {
-            const availableTypes = getAvailableTypes(col.id);
-            return (
-              <div key={col.id} className="space-y-3 rounded-lg border border-border/60 p-3 flex flex-col">
-                {/* Column number badge */}
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                  Column {colIndex + 1}
-                </p>
-
-                {/* Header label */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Label</label>
-                  <Input
-                    value={col.headerLabel}
-                    onChange={e => updateColumnHeader(col.id, e.target.value)}
-                    className="h-8 text-sm"
-                    placeholder={`Column ${colIndex + 1}`}
-                  />
-                </div>
-
-                {/* Width % */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Width %</label>
-                  <Input
-                    type="number"
-                    min={5}
-                    max={90}
-                    value={col.widthPct}
-                    onChange={e => updateColumnWidth(col.id, parseInt(e.target.value) || 0)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-
-                {/* Sections */}
-                <div className="flex-1 space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {col.headerLabel || `Column ${colIndex + 1}`} — sections
-                  </p>
-                  <div className="space-y-1.5">
-                    {col.sections.map(section => {
-                      const auto = isAutoType(section.type);
-                      return (
-                        <div key={section.id} className="flex items-center gap-1.5">
-                          <Switch
-                            checked={section.enabled}
-                            onCheckedChange={checked => updateSection(col.id, section.id, { enabled: checked })}
-                            className="flex-shrink-0 scale-[0.8] origin-left"
-                          />
-                          {auto ? (
-                            <div className="flex items-center gap-1 flex-1 min-w-0">
-                              <span className="text-xs text-muted-foreground truncate">{resolveNewSectionLabel(section)}</span>
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal flex-shrink-0 leading-tight">auto</Badge>
-                            </div>
-                          ) : (
-                            <Input
-                              value={section.label ?? ''}
-                              onChange={e => updateSection(col.id, section.id, { label: e.target.value || null })}
-                              placeholder={SECTION_TYPE_LABELS[section.type] ?? 'Section name'}
-                              className="h-7 text-xs flex-1 min-w-0"
-                              disabled={!section.enabled}
-                            />
-                          )}
-                          <button
-                            onClick={() => removeSection(col.id, section.id)}
-                            className="p-0.5 text-muted-foreground/40 hover:text-destructive flex-shrink-0"
-                            title="Remove"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {availableTypes.length > 0 && (
-                    <SectionTypeAdder availableTypes={availableTypes} onAdd={type => addSection(col.id, type)} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Per-column config blocks — drag columns or sections to reorder */}
+        <DndContext
+          sensors={settingsSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSettingsDragEnd}
+        >
+          <SortableContext items={draftLayout.columns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+            <div className={cn('grid gap-3', draftLayout.columnCount === 4 ? 'grid-cols-4' : 'grid-cols-3')}>
+              {draftLayout.columns.map((col, colIndex) => (
+                <SortableColumnCard
+                  key={col.id}
+                  col={col}
+                  colIndex={colIndex}
+                  availableTypes={getAvailableTypes(col.id)}
+                  onUpdateHeader={label => updateColumnHeader(col.id, label)}
+                  onUpdateWidth={pct => updateColumnWidth(col.id, pct)}
+                  onUpdateSection={(sectionId, changes) => updateSection(col.id, sectionId, changes)}
+                  onRemoveSection={sectionId => removeSection(col.id, sectionId)}
+                  onAddSection={type => addSection(col.id, type)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         {totalWidthPct(draftLayout.columns) !== 100 && (
           <p className="text-xs text-destructive">
