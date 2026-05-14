@@ -33,7 +33,7 @@ describe('Button', () => {
     it('should render default variant', () => {
       render(<Button variant="default">Default</Button>);
       const button = screen.getByRole('button');
-      expect(button).toHaveClass('bg-[#C97D60]');
+      expect(button).toHaveClass('bg-[#4A5D5F]');
     });
 
     it('should render destructive variant', () => {
