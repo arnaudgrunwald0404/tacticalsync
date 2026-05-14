@@ -29,10 +29,7 @@ const Logo = ({
     xl: "text-5xl"
   };
 
-  const logoSrc = theme === "dark" ? "/logo-dark.svg" : 
-    variant === "full" ? "/logo.svg" : 
-    variant === "icon" ? "/logo-icon.svg" : 
-    "/logo-minimal.svg";
+  const logoSrc = "/logo-icon.png";
 
   const altText = "TacticalSync - Team Meeting Management";
 
@@ -53,14 +50,10 @@ const Logo = ({
         alt={altText}
         className={cn(sizeClasses[size], "w-auto")}
       />
-      <span 
-        className={cn(
-          textSizeClasses[size],
-          "font-bold tracking-tight bg-gradient-to-r from-[#C97D60] via-[#4A5D5F] to-[#C97D60] bg-clip-text text-transparent"
-        )}
-        style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
+      <span
+        className={cn(textSizeClasses[size], "tracking-tight text-[#4A5D5F] font-heading")}
       >
-        TacticalSync
+        <span className="font-bold uppercase">Tactical</span><span className="font-normal uppercase">Sync</span>
       </span>
     </div>
   );

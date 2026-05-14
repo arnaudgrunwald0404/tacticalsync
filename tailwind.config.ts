@@ -15,15 +15,27 @@ export default {
     },
     extend: {
       fontFamily: {
-        heading: ['var(--font-heading)', 'sans-serif'],
-        body: ['var(--font-body)', 'sans-serif'],
-        sans: ['var(--font-body)', 'ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+        heading: ["'Atkinson Hyperlegible'", 'var(--font-heading)', 'sans-serif'],
+        body: ["'Public Sans'", 'var(--font-body)', 'sans-serif'],
+        sans: ["'Public Sans'", 'var(--font-body)', 'ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
         mono: ['"Fira Code"', '"Courier New"', 'monospace'],
       },
       gridTemplateColumns: {
         '24': 'repeat(24, minmax(0, 1fr))',
       },
       colors: {
+        // Metallurgical brand color tokens (DESIGN_SYSTEM_2)
+        copper:         '#FF7A52',
+        'copper-hover': '#E66E4A',
+        alloy:          '#FFA680',
+        bronze:         '#6C3A2A',
+        platinum:       '#FAF8F5',
+        'cast-iron':    '#37352A',
+        verdigris:      '#9EB4AB',
+        steel:          '#697771',
+        pewter:         '#A1B4BA',
+        'white-gold':   '#F4EBD7',
+        brass:          '#C3B497',
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

@@ -7,7 +7,7 @@
  * 
  * Usage:
  * - Import tokens directly: import { colors, spacing } from '@/design-system/tokens'
- * - Use in Tailwind: className="bg-[#C97D60]" or use CSS variables
+ * - Use in Tailwind: className="bg-[#4A5D5F]" or use CSS variables
  * - Use in components: style={{ color: colors.primary.copper }}
  */
 
@@ -25,17 +25,17 @@ export const colors = {
       usage: 'Pure base color for backgrounds and negative space',
     },
     platinum: {
-      hex: '#F5F3F0',
-      rgb: '245, 243, 240',
-      hsl: '30, 20%, 95%',
-      usage: 'Subtle neutral for secondary backgrounds',
+      hex: '#FAF8F5',
+      rgb: '250, 248, 245',
+      hsl: '30, 20%, 97%',
+      usage: 'Page background, light surfaces',
     },
     copper: {
-      hex: '#C97D60',
-      rgb: '201, 125, 96',
-      hsl: '15, 48%, 58%',
-      usage: 'Warm accent for highlights and CTAs',
-      hover: '#B86A4F',
+      hex: '#FF7A52',
+      rgb: '255, 122, 82',
+      hsl: '14, 100%, 66%',
+      usage: 'Primary accent — CTAs, highlights, active states',
+      hover: '#E66E4A',
     },
     titanium: {
       hex: '#4A5D5F',
@@ -49,7 +49,7 @@ export const colors = {
   // Secondary Colors
   secondary: {
     roseGold: {
-      hex: '#E8B4A0',
+      hex: '#6B9A8F',
       rgb: '232, 180, 160',
       hsl: '15, 60%, 77%',
       usage: 'Light warm accent',
@@ -92,10 +92,10 @@ export const colors = {
       usage: 'Warm medium accent',
     },
     castIron: {
-      hex: '#2C2C2C',
-      rgb: '44, 44, 44',
-      hsl: '0, 0%, 17%',
-      usage: 'Reserved for text and logo only — not for backgrounds or graphic elements',
+      hex: '#37352A',
+      rgb: '55, 53, 42',
+      hsl: '52, 13%, 19%',
+      usage: 'Primary text, dark foreground',
     },
   },
 
@@ -149,8 +149,8 @@ export const colors = {
 export const typography = {
   // Font Families
   fonts: {
-    heading: "'Inter', ui-sans-serif, system-ui, sans-serif",
-    body: "'Inter', ui-sans-serif, system-ui, sans-serif",
+    heading: "'Atkinson Hyperlegible', sans-serif",
+    body: "'Public Sans', ui-sans-serif, system-ui, sans-serif",
     mono: "'Fira Code', 'Courier New', monospace",
   },
 
