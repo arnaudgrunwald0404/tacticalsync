@@ -717,6 +717,7 @@ export default function ChiefOfStaff() {
             onSave={saveStatusOptions}
             layoutConfig={layoutConfig}
             onSaveLayout={saveLayoutConfig}
+            isActive={activeTab === 'settings'}
           />
         </TabsContent>
       </Tabs>
@@ -2802,12 +2803,13 @@ function SectionTypeAdder({
 
 function SettingsSection({
   statusOptions, onSave,
-  layoutConfig, onSaveLayout,
+  layoutConfig, onSaveLayout, isActive,
 }: {
   statusOptions: string[];
   onSave: (options: string[]) => Promise<void>;
   layoutConfig: CosLayoutConfig;
   onSaveLayout: (config: CosLayoutConfig) => Promise<void>;
+  isActive?: boolean;
 }) {
   // ── Status options draft ──────────────────────────────────────────────────
   const [draft, setDraft] = useState<string[]>(statusOptions);
@@ -2992,9 +2994,12 @@ function SettingsSection({
           </div>
         </div>
 
-        {/* Per-column config blocks — drag columns or sections to reorder */}
+        {/* Per-column config blocks — drag columns or sections to reorder.
+            Sensors are only active when this tab is visible to prevent the
+            settings DndContext's PointerSensor from interfering with the
+            priorities-tab DndContext when both are mounted. */}
         <DndContext
-          sensors={settingsSensors}
+          sensors={isActive ? settingsSensors : []}
           collisionDetection={closestCenter}
           onDragEnd={handleSettingsDragEnd}
         >
