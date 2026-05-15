@@ -514,7 +514,7 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className={cn('mb-6 grid', showBrief ? 'grid-cols-4 w-[440px]' : 'grid-cols-3 w-[360px]')}>
+        <TabsList className={cn('mb-6 grid w-full', showBrief ? 'grid-cols-4 sm:w-[440px]' : 'grid-cols-3 sm:w-[360px]')}>
           {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
           <TabsTrigger value="priorities">My Lists</TabsTrigger>
           <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
