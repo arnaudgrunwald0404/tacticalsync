@@ -34,9 +34,7 @@ const Index = () => {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Handle PKCE callback - code exchange happens automatically with detectSessionInUrl: true
       if (session) {
-        // Clean up URL by removing code parameter after successful auth
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
@@ -44,7 +42,17 @@ const Index = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // If the PKCE exchange doesn't resolve within 8 s (e.g. redirect URL mismatch
+    // causes a silent failure), send the user to /auth to try again.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (hasCode) {
+      timeout = setTimeout(() => navigate("/auth"), 8000);
+    }
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [navigate]);
 
   if (handlingCallback) {

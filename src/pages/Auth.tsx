@@ -97,7 +97,20 @@ const Auth = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Fallback: if PKCE exchange silently fails (e.g. redirect URL mismatch in
+    // Supabase config), clear the spinner and show the login form after 8 s.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (hasCode || hasAccessToken) {
+      timeout = setTimeout(() => {
+        window.history.replaceState({}, '', '/auth');
+        window.location.reload();
+      }, 8000);
+    }
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
