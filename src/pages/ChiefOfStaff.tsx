@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
+  Plus, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
-import {
-  DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent,
-  PointerSensor, KeyboardSensor, useSensor, useSensors,
-  closestCenter, pointerWithin, MeasuringStrategy,
-} from '@dnd-kit/core';
-import {
-  SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { useDroppable } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -239,60 +228,6 @@ export default function ChiefOfStaff() {
     setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: null, done_at: null } : p));
   };
 
-  const reorderPriority = async (
-    id: string,
-    targetCategory: CategoryKey,
-    insertBeforeId: string | null,
-  ) => {
-    const activeItem = priorities.find(p => p.id === id);
-    if (!activeItem) return;
-    const sourceCategory = activeItem.category;
-
-    // Build new target list (excluding the moved item, then insert at position)
-    const targetItems = priorities
-      .filter(p => p.category === targetCategory && p.id !== id)
-      .sort((a, b) => a.tier_order - b.tier_order);
-    const insertIdx = insertBeforeId
-      ? Math.max(0, targetItems.findIndex(p => p.id === insertBeforeId))
-      : targetItems.length;
-    const newTargetItems: CosPriority[] = [
-      ...targetItems.slice(0, insertIdx === -1 ? targetItems.length : insertIdx),
-      { ...activeItem, category: targetCategory },
-      ...targetItems.slice(insertIdx === -1 ? targetItems.length : insertIdx),
-    ];
-
-    // Optimistic update
-    setPriorities(prev => {
-      const sourceItems = sourceCategory !== targetCategory
-        ? prev.filter(p => p.category === sourceCategory && p.id !== id)
-            .sort((a, b) => a.tier_order - b.tier_order)
-            .map((p, i) => ({ ...p, tier_order: i + 1 }))
-        : [];
-      const others = prev.filter(
-        p => p.category !== targetCategory && p.id !== id && p.category !== sourceCategory,
-      );
-      const reindexedTarget = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
-      return sourceCategory !== targetCategory
-        ? [...others, ...sourceItems, ...reindexedTarget]
-        : [...others, ...reindexedTarget];
-    });
-
-    // Persist
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    await Promise.all([
-      ...newTargetItems.map((p, i) =>
-        db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id),
-      ),
-      ...(sourceCategory !== targetCategory
-        ? priorities
-            .filter(p => p.category === sourceCategory && p.id !== id)
-            .sort((a, b) => a.tier_order - b.tier_order)
-            .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
-        : []),
-    ]);
-  };
-
   const markDone = async (id: string) => {
     const now = new Date().toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,28 +291,6 @@ export default function ChiefOfStaff() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from('cos_person_topics').delete().eq('id', id);
     setPersonTopics(prev => prev.filter(t => t.id !== id));
-  };
-
-  const dropPriorityOnAccountability = async (memberId: string, text: string) => {
-    if (!userId) return;
-    const memberAccts = accountabilities.filter(a => a.member_id === memberId);
-    const maxOrder = memberAccts.length > 0 ? Math.max(...memberAccts.map(a => a.sort_order)) : 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from('cos_person_accountabilities').insert({
-      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
-    }).select().single();
-    if (!error && data) setAccountabilities(prev => [...prev, data as CosPersonAccountability]);
-  };
-
-  const dropPriorityOnTopic = async (memberId: string, text: string) => {
-    if (!userId) return;
-    const memberTopics = personTopics.filter(t => t.member_id === memberId);
-    const maxOrder = memberTopics.length > 0 ? Math.max(...memberTopics.map(t => t.sort_order)) : 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from('cos_person_topics').insert({
-      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
-    }).select().single();
-    if (!error && data) setPersonTopics(prev => [...prev, data as CosPersonTopic]);
   };
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
@@ -538,7 +451,6 @@ export default function ChiefOfStaff() {
             onUpdate={updatePriority}
             onAdd={addPriority}
             onDelete={deletePriority}
-            onReorder={reorderPriority}
             onCopy={copyToClipboard}
             mondayTaggedTexts={mondayTaggedTexts}
             statusOptions={statusOptions}
@@ -557,8 +469,6 @@ export default function ChiefOfStaff() {
             newlyAddedTopicId={newlyAddedTopicId}
             onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
             onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
-            onDropPriorityOnAccountability={dropPriorityOnAccountability}
-            onDropPriorityOnTopic={dropPriorityOnTopic}
             onPermanentDelete={permanentDeletePriority}
             onRestoreArchived={restoreArchivedPriority}
             layoutConfig={layoutConfig}
@@ -887,8 +797,6 @@ function PersonSectionCard({
   priorities: CosPriority[];
 }) {
   const firstName = member.name.split(' ')[0];
-  const { setNodeRef: setAcctDropRef, isOver: isOverAcct } = useDroppable({ id: `acct-drop-${member.id}` });
-  const { setNodeRef: setTopicDropRef, isOver: isOverTopic } = useDroppable({ id: `topic-drop-${member.id}` });
 
   const handleSuggestTopics = () => {
     const prompt = buildPersonTopicSuggestPrompt(member, accountabilities, priorities, topics);
@@ -926,13 +834,7 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div
-            ref={setAcctDropRef}
-            className={cn(
-              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
-              isOverAcct && "bg-primary/5 ring-1 ring-primary/30",
-            )}
-          >
+          <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
             {accountabilities.map(a => (
               <AccountabilityRow
                 key={a.id}
@@ -945,7 +847,7 @@ function PersonSectionCard({
             ))}
             {accountabilities.length === 0 && (
               <p className="text-xs text-muted-foreground/60 italic">
-                {isOverAcct ? 'Drop to add as accountability' : `None yet — add what ${firstName} owns`}
+                {`None yet — add what ${firstName} owns`}
               </p>
             )}
           </div>
@@ -969,13 +871,7 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div
-            ref={setTopicDropRef}
-            className={cn(
-              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
-              isOverTopic && "bg-primary/5 ring-1 ring-primary/30",
-            )}
-          >
+          <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
             {topics.map(t => (
               <PersonTopicCard
                 key={t.id}
@@ -989,7 +885,7 @@ function PersonSectionCard({
             ))}
             {topics.length === 0 && (
               <p className="text-xs text-muted-foreground/60 italic">
-                {isOverTopic ? 'Drop to add as discussion topic' : 'None yet — add manually or use "Suggest topics"'}
+                None yet — add manually or use "Suggest topics"
               </p>
             )}
           </div>
@@ -1135,62 +1031,8 @@ function ArchiveSection({
   );
 }
 
-// ── Drag action ring ─────────────────────────────────────────────────────────
-
-function DragActionSegment({
-  id, icon, label, danger,
-}: {
-  id: string;
-  icon: React.ReactNode;
-  label: string;
-  danger?: boolean;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        'flex flex-col items-center justify-center gap-1.5 w-28 h-28 rounded-full transition-all duration-150',
-        'border-2',
-        isOver
-          ? danger
-            ? 'bg-destructive border-destructive text-destructive-foreground scale-110 shadow-lg'
-            : 'bg-amber-500 border-amber-500 text-white scale-110 shadow-lg'
-          : danger
-            ? 'bg-background border-border text-muted-foreground hover:border-destructive hover:text-destructive'
-            : 'bg-background border-border text-muted-foreground hover:border-amber-400 hover:text-amber-500',
-      )}
-    >
-      <div className="h-6 w-6">{icon}</div>
-      <span className="text-[11px] font-semibold tracking-wide uppercase">{label}</span>
-    </div>
-  );
-}
-
-function DragActionRing() {
-  return (
-    <div
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex gap-3 items-end pointer-events-none"
-      style={{ animation: 'drag-ring-in 180ms cubic-bezier(0.34,1.56,0.64,1) both' }}
-    >
-      <style>{`
-        @keyframes drag-ring-in {
-          from { opacity: 0; transform: translateX(-50%) translateY(24px) scale(0.85); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1); }
-        }
-      `}</style>
-      <div className="pointer-events-auto" style={{ transform: 'translateY(16px)' }}>
-        <DragActionSegment id="drop-archive" icon={<RotateCcw className="h-6 w-6" />} label="Archive" />
-      </div>
-      <div className="pointer-events-auto">
-        <DragActionSegment id="drop-trash" icon={<Trash2 className="h-6 w-6" />} label="Delete" danger />
-      </div>
-    </div>
-  );
-}
-
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed, isDropTarget,
+  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
   category: CategoryKey;
   label: string;
@@ -1203,17 +1045,9 @@ function CategoryBucket({
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
-  isDropTarget?: boolean;
 }) {
-  const { setNodeRef } = useDroppable({ id: category });
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        'rounded-lg transition-all duration-150',
-        isDropTarget && 'bg-primary/8 ring-2 ring-primary/30 ring-inset',
-      )}
-    >
+    <div className="rounded-lg">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">{label}</h3>
@@ -1223,79 +1057,33 @@ function CategoryBucket({
           <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
-      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-1.5">
-          {items.map(item => (
-            <SortablePriorityCard
-              key={item.id}
-              item={item}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-              onCopy={onCopy}
-              isTagged={mondayTaggedTexts.includes(item.text)}
-              statusOptions={statusOptions}
-              autoEdit={item.id === newlyAddedId}
-              onAutoEditConsumed={onNewlyAddedConsumed}
-            />
-          ))}
-          {items.length === 0 && (
-            <div className={cn(
-              'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
-              isDropTarget && 'border-primary/50 bg-primary/5 text-primary',
-            )}>
-              Drop here
-            </div>
-          )}
-        </div>
-      </SortableContext>
-    </div>
-  );
-}
-
-function SortablePriorityCard({
-  item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
-}: {
-  item: CosPriority;
-  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
-  onDelete: (id: string) => void;
-  onCopy: (text: string, label?: string) => void;
-  isTagged: boolean;
-  statusOptions: string[];
-  autoEdit?: boolean;
-  onAutoEditConsumed?: () => void;
-}) {
-  const isMobile = useIsMobile();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-    >
-      <PriorityCard
-        item={item}
-        dragListeners={isMobile ? undefined : listeners}
-        dragAttributes={isMobile ? undefined : attributes}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onCopy={onCopy}
-        isTagged={isTagged}
-        statusOptions={statusOptions}
-        autoEdit={autoEdit}
-        onAutoEditConsumed={onAutoEditConsumed}
-      />
+      <div className="space-y-1.5">
+        {items.map(item => (
+          <PriorityCard
+            key={item.id}
+            item={item}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onCopy={onCopy}
+            isTagged={mondayTaggedTexts.includes(item.text)}
+            statusOptions={statusOptions}
+            autoEdit={item.id === newlyAddedId}
+            onAutoEditConsumed={onNewlyAddedConsumed}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 function PrioritiesSection({
-  priorities, onUpdate, onAdd, onDelete, onReorder, onCopy, mondayTaggedTexts, statusOptions,
+  priorities, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions,
   newlyAddedId, onNewlyAddedConsumed,
   members, accountabilities, personTopics,
   onAddAccountability, onUpdateAccountability, onDeleteAccountability,
   onAddPersonTopic, onUpdatePersonTopic, onDeletePersonTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
-  onDropPriorityOnAccountability, onDropPriorityOnTopic,
   onPermanentDelete, onRestoreArchived,
   layoutConfig,
 }: {
@@ -1303,7 +1091,6 @@ function PrioritiesSection({
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
-  onReorder: (id: string, targetCategory: CategoryKey, insertBeforeId: string | null) => void;
   onCopy: (text: string, label?: string) => void;
   mondayTaggedTexts: string[];
   statusOptions: string[];
@@ -1322,77 +1109,10 @@ function PrioritiesSection({
   newlyAddedTopicId: string | null;
   onNewlyAddedAccountabilityConsumed: () => void;
   onNewlyAddedTopicConsumed: () => void;
-  onDropPriorityOnAccountability: (memberId: string, text: string) => void;
-  onDropPriorityOnTopic: (memberId: string, text: string) => void;
   onPermanentDelete: (id: string) => void;
   onRestoreArchived: (id: string) => void;
   layoutConfig: CosLayoutConfig;
 }) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
-  const activeItem = priorities.find(p => p.id === activeId);
-
-  const allActiveCategories = layoutConfig.columns
-    .flatMap(c => c.sections.filter(s => s.enabled && s.type !== 'direct_reports'))
-    .map(sectionToCategoryKey);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const handleDragStart = ({ active }: DragStartEvent) => {
-    setActiveId(active.id as string);
-    setDragOverCategory(null);
-  };
-
-  const handleDragOver = ({ over }: DragOverEvent) => {
-    if (!over) { setDragOverCategory(null); return; }
-    const overId = over.id as string;
-    if (allActiveCategories.includes(overId)) {
-      setDragOverCategory(overId);
-    } else {
-      const item = priorities.find(p => p.id === overId);
-      setDragOverCategory(item?.category ?? null);
-    }
-  };
-
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    setActiveId(null);
-    setDragOverCategory(null);
-    if (!over || active.id === over.id) return;
-    const activeItem = priorities.find(p => p.id === active.id);
-    if (!activeItem) return;
-
-    const overId = over.id as string;
-
-    if (overId === 'drop-archive') {
-      onDelete(activeItem.id); // onDelete soft-archives
-      return;
-    }
-    if (overId === 'drop-trash') {
-      onPermanentDelete(activeItem.id);
-      return;
-    }
-
-    if (overId.startsWith('acct-drop-')) {
-      onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
-      return;
-    }
-    if (overId.startsWith('topic-drop-')) {
-      onDropPriorityOnTopic(overId.replace('topic-drop-', ''), activeItem.text);
-      return;
-    }
-
-    const isCategoryTarget = allActiveCategories.includes(overId);
-    const targetItem = priorities.find(p => p.id === overId);
-    if (!isCategoryTarget && !targetItem) return; // unknown droppable — ignore
-
-    const targetCategory = isCategoryTarget ? overId : targetItem!.category;
-    const insertBeforeId = isCategoryTarget ? null : overId;
-    onReorder(activeItem.id, targetCategory, insertBeforeId);
-  };
-
   const sortedFor = (cat: CategoryKey) =>
     priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at).sort((a, b) => a.tier_order - b.tier_order);
 
@@ -1404,146 +1124,55 @@ function PrioritiesSection({
       return bTime - aTime;
     });
 
+  const renderColumns = (stacked = false) => (
+    <div
+      className={stacked ? 'space-y-6' : 'hidden md:grid gap-6'}
+      style={stacked ? undefined : { gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
+    >
+      {(stacked
+        ? layoutConfig.columns.flatMap(col => col.sections.filter(s => s.enabled).map(s => ({ col, section: s })))
+        : layoutConfig.columns.map(col => ({ col, sections: col.sections.filter(s => s.enabled) }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ).map((entry: any) => {
+        if (!stacked) {
+          const { col, sections } = entry as { col: typeof layoutConfig.columns[0]; sections: typeof layoutConfig.columns[0]['sections'] };
+          return (
+            <div key={col.id} className="space-y-6">
+              <div className="pb-2 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-widest">{col.headerLabel}</h3>
+              </div>
+              {sections.map(section =>
+                section.type === 'direct_reports' ? (
+                  <PersonSectionsRow key={section.id} members={members} accountabilities={accountabilities} topics={personTopics} onAddAccountability={onAddAccountability} onUpdateAccountability={onUpdateAccountability} onDeleteAccountability={onDeleteAccountability} onAddTopic={onAddPersonTopic} onUpdateTopic={onUpdatePersonTopic} onDeleteTopic={onDeletePersonTopic} newlyAddedAccountabilityId={newlyAddedAccountabilityId} newlyAddedTopicId={newlyAddedTopicId} onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed} onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed} onCopy={onCopy} statusOptions={statusOptions} priorities={priorities} colLabel={col.headerLabel} />
+                ) : (
+                  <CategoryBucket key={section.id} category={sectionToCategoryKey(section)} label={resolveNewSectionLabel(section)} items={sortedFor(sectionToCategoryKey(section))} onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} onCopy={onCopy} mondayTaggedTexts={mondayTaggedTexts} statusOptions={statusOptions} newlyAddedId={newlyAddedId} onNewlyAddedConsumed={onNewlyAddedConsumed} />
+                )
+              )}
+            </div>
+          );
+        }
+        const { col, section } = entry as { col: typeof layoutConfig.columns[0]; section: typeof layoutConfig.columns[0]['sections'][0] };
+        return section.type === 'direct_reports' ? (
+          <PersonSectionsRow key={section.id} members={members} accountabilities={accountabilities} topics={personTopics} onAddAccountability={onAddAccountability} onUpdateAccountability={onUpdateAccountability} onDeleteAccountability={onDeleteAccountability} onAddTopic={onAddPersonTopic} onUpdateTopic={onUpdatePersonTopic} onDeleteTopic={onDeletePersonTopic} newlyAddedAccountabilityId={newlyAddedAccountabilityId} newlyAddedTopicId={newlyAddedTopicId} onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed} onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed} onCopy={onCopy} statusOptions={statusOptions} priorities={priorities} colLabel={col.headerLabel} />
+        ) : (
+          <CategoryBucket key={section.id} category={sectionToCategoryKey(section)} label={resolveNewSectionLabel(section)} items={sortedFor(sectionToCategoryKey(section))} onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} onCopy={onCopy} mondayTaggedTexts={mondayTaggedTexts} statusOptions={statusOptions} newlyAddedId={newlyAddedId} onNewlyAddedConsumed={onNewlyAddedConsumed} />
+        );
+      })}
+    </div>
+  );
+
   return (
     <>
-    <DndContext
-      sensors={sensors}
-      collisionDetection={(args) => {
-        const noSelf = args.droppableContainers.filter(c => c.id !== args.active.id);
-        // pointerWithin handles all zones (including acct/topic drop) when pointer is directly over them
-        const pointerHits = pointerWithin({ ...args, droppableContainers: noSelf });
-        if (pointerHits.length > 0) return pointerHits;
-        // closestCenter fallback: exclude person-specific drop zones so cross-column reordering
-        // doesn't accidentally resolve to a nearby acct-drop or topic-drop target
-        const priorityOnly = noSelf.filter(c => {
-          const id = String(c.id);
-          return !id.startsWith('acct-drop-') && !id.startsWith('topic-drop-');
-        });
-        return closestCenter({ ...args, droppableContainers: priorityOnly });
-      }}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-    >
-      <div
-        className="hidden md:grid gap-6"
-        style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
-      >
-        {layoutConfig.columns.map(col => (
-          <div key={col.id} className="space-y-6">
-            <div className="pb-2 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground uppercase tracking-widest">{col.headerLabel}</h3>
-            </div>
-            {col.sections.filter(s => s.enabled).map(section =>
-              section.type === 'direct_reports' ? (
-                <PersonSectionsRow
-                  key={section.id}
-                  members={members}
-                  accountabilities={accountabilities}
-                  topics={personTopics}
-                  onAddAccountability={onAddAccountability}
-                  onUpdateAccountability={onUpdateAccountability}
-                  onDeleteAccountability={onDeleteAccountability}
-                  onAddTopic={onAddPersonTopic}
-                  onUpdateTopic={onUpdatePersonTopic}
-                  onDeleteTopic={onDeletePersonTopic}
-                  newlyAddedAccountabilityId={newlyAddedAccountabilityId}
-                  newlyAddedTopicId={newlyAddedTopicId}
-                  onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
-                  onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
-                  onCopy={onCopy}
-                  statusOptions={statusOptions}
-                  priorities={priorities}
-                  colLabel={col.headerLabel}
-                />
-              ) : (
-                <CategoryBucket
-                  key={section.id}
-                  category={sectionToCategoryKey(section)}
-                  label={resolveNewSectionLabel(section)}
-                  items={sortedFor(sectionToCategoryKey(section))}
-                  onUpdate={onUpdate}
-                  onAdd={onAdd}
-                  onDelete={onDelete}
-                  onCopy={onCopy}
-                  mondayTaggedTexts={mondayTaggedTexts}
-                  statusOptions={statusOptions}
-                  newlyAddedId={newlyAddedId}
-                  onNewlyAddedConsumed={onNewlyAddedConsumed}
-                  isDropTarget={dragOverCategory === sectionToCategoryKey(section)}
-                />
-              )
-            )}
-          </div>
-        ))}
-      </div>
-      {/* Mobile: stacked single column */}
-      <div className="md:hidden space-y-6">
-        {layoutConfig.columns.flatMap(col =>
-          col.sections.filter(s => s.enabled).map(section =>
-            section.type === 'direct_reports' ? (
-              <PersonSectionsRow
-                key={section.id}
-                members={members}
-                accountabilities={accountabilities}
-                topics={personTopics}
-                onAddAccountability={onAddAccountability}
-                onUpdateAccountability={onUpdateAccountability}
-                onDeleteAccountability={onDeleteAccountability}
-                onAddTopic={onAddPersonTopic}
-                onUpdateTopic={onUpdatePersonTopic}
-                onDeleteTopic={onDeletePersonTopic}
-                newlyAddedAccountabilityId={newlyAddedAccountabilityId}
-                newlyAddedTopicId={newlyAddedTopicId}
-                onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
-                onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
-                onCopy={onCopy}
-                statusOptions={statusOptions}
-                priorities={priorities}
-                colLabel={col.headerLabel}
-              />
-            ) : (
-              <CategoryBucket
-                key={section.id}
-                category={sectionToCategoryKey(section)}
-                label={resolveNewSectionLabel(section)}
-                items={sortedFor(sectionToCategoryKey(section))}
-                onUpdate={onUpdate}
-                onAdd={onAdd}
-                onDelete={onDelete}
-                onCopy={onCopy}
-                mondayTaggedTexts={mondayTaggedTexts}
-                statusOptions={statusOptions}
-                newlyAddedId={newlyAddedId}
-                onNewlyAddedConsumed={onNewlyAddedConsumed}
-              />
-            )
-          )
-        )}
-      </div>
-
-      <DragOverlay dropAnimation={null}>
-        {activeItem ? (
-          <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
-            <CardContent className="p-3">
-              <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
-            </CardContent>
-          </Card>
-        ) : null}
-      </DragOverlay>
-
-      {activeId && <DragActionRing />}
-    </DndContext>
-
-    {archivedItems.length > 0 && (
-      <ArchiveSection
-        items={archivedItems}
-        layoutConfig={layoutConfig}
-        onRestore={onRestoreArchived}
-        onDelete={onPermanentDelete}
-      />
-    )}
+      {renderColumns(false)}
+      <div className="md:hidden">{renderColumns(true)}</div>
+      {archivedItems.length > 0 && (
+        <ArchiveSection
+          items={archivedItems}
+          layoutConfig={layoutConfig}
+          onRestore={onRestoreArchived}
+          onDelete={onPermanentDelete}
+        />
+      )}
     </>
   );
 }
@@ -1558,11 +1187,9 @@ const STATUS_BADGE_COLORS = [
 ];
 
 function PriorityCard({
-  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+  item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
-  dragListeners?: React.HTMLAttributes<HTMLElement>;
-  dragAttributes?: React.HTMLAttributes<HTMLElement>;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
@@ -1619,16 +1246,6 @@ function PriorityCard({
     <Card ref={cardRef} className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="px-2 py-1.5">
         <div className="flex items-start gap-1">
-          {/* Thin drag handle */}
-          <button
-            {...dragListeners}
-            {...dragAttributes}
-            className="hidden sm:flex flex-shrink-0 self-stretch items-center w-3 text-muted-foreground/20 hover:text-muted-foreground/60 cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label="Drag to reorder"
-          >
-            <GripVertical className="h-3 w-3" />
-          </button>
-
           {/* Content */}
           <div className="flex-1 min-w-0 py-0.5">
             {editing ? (
