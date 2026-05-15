@@ -116,6 +116,7 @@ interface CosTabLabels   { priorities: string; dci: string; team: string; }
 export default function ChiefOfStaff() {
   const { toast } = useToast();
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
   const [teamMembers, setTeamMembers] = useState<CosTeamMember[]>([]);
@@ -136,6 +137,7 @@ export default function ChiefOfStaff() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
+      setUserEmail(user.email ?? null);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -565,11 +567,27 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="dci">
-          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
+          {userEmail === 'agrunwald@clearcompany.com' ? (
+            <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
+          ) : (
+            <div className="flex items-center justify-center py-24 text-center">
+              <p className="text-muted-foreground text-sm max-w-sm">
+                In the near future, we will help you automate the creation of your Daily Check-In priorities.
+              </p>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="team">
-          <TeamSection members={teamMembers} />
+          {userEmail === 'agrunwald@clearcompany.com' ? (
+            <TeamSection members={teamMembers} />
+          ) : (
+            <div className="flex items-center justify-center py-24 text-center">
+              <p className="text-muted-foreground text-sm max-w-sm">
+                In the near future, we will help you prepare your 1-1s.
+              </p>
+            </div>
+          )}
         </TabsContent>
 
       </Tabs>

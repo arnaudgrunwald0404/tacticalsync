@@ -1284,11 +1284,12 @@ const Settings = () => {
       if (grid.length < 2) throw new Error("File appears to be empty");
 
       const headers = grid[0].map(h => String(h).toLowerCase().trim());
-      const emailIdx = headers.findIndex(h => h.includes("email"));
+      const emailIdx = headers.findIndex(h => h.includes("email") && !h.includes("manager") && !h.includes("reports"));
       const firstIdx = headers.findIndex(h => h.includes("first") || h === "firstname");
       const lastIdx = headers.findIndex(h => h.includes("last") || h === "lastname");
       const deptIdx = headers.findIndex(h => h.includes("department") || h === "dept");
-      const managerIdx = headers.findIndex(h => h.includes("manager"));
+      const managerIdx = headers.findIndex(h => h.includes("manager") || (h.includes("reports") && h.includes("email")));
+      const titleIdx = headers.findIndex(h => h === "title" || h.includes("job title") || h.includes("jobtitle"));
 
       if (emailIdx === -1) throw new Error("No Email column found in file");
 
@@ -1298,6 +1299,7 @@ const Settings = () => {
         if (lastIdx !== -1 && r[lastIdx]) entry.last_name = r[lastIdx].toString().trim();
         if (deptIdx !== -1) entry.department = r[deptIdx]?.toString().trim() ?? "";
         if (managerIdx !== -1) entry.manager_email = r[managerIdx]?.toString().trim() ?? "";
+        if (titleIdx !== -1) entry.title = r[titleIdx]?.toString().trim() ?? "";
         return entry;
       });
 
@@ -1307,11 +1309,17 @@ const Settings = () => {
 
       if (error) throw error;
 
-      const result = data as { updated: number; skipped: number; errors: string[] };
+      const result = data as { updated: number; created: number; skipped: number; errors: string[] };
+      const parts: string[] = [];
+      if (result.updated > 0) parts.push(`updated ${result.updated}`);
+      if (result.created > 0) parts.push(`created ${result.created}`);
+      if (result.skipped > 0) parts.push(`skipped ${result.skipped}`);
+      const hasErrors = result.errors?.length > 0;
       toast({
-        title: "Org chart import complete",
-        description: `Updated ${result.updated} profile${result.updated !== 1 ? "s" : ""}${result.skipped > 0 ? `, skipped ${result.skipped}` : ""}.`,
-        variant: result.errors?.length > 0 ? "destructive" : "default",
+        title: hasErrors ? "Org chart import completed with errors" : "Org chart import complete",
+        description: (parts.join(", ") + " profile" + (result.updated + result.created !== 1 ? "s" : "") + ".") +
+          (hasErrors ? ` Error: ${result.errors[0]}` : ""),
+        variant: hasErrors ? "destructive" : "default",
       });
 
       setShowBulkImportDialog(false);
