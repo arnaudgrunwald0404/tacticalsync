@@ -1215,6 +1215,9 @@ function PrioritiesSection({
 }) {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
+  // dnd-kit doesn't recompute collisions on pointerup — keep the last over id in a ref
+  // so handleDragEnd can use it as a fallback when over is null at release time.
+  const lastOverIdRef = React.useRef<string | null>(null);
 
   const activeItem = priorities.find(p => p.id === activeId);
 
@@ -1235,25 +1238,31 @@ function PrioritiesSection({
   const handleDragStart = ({ active }: DragStartEvent) => {
     setActiveId(active.id);
     setDragOverCategory(null);
+    lastOverIdRef.current = null;
   };
 
   const handleDragOver = ({ over }: DragOverEvent) => {
-    setDragOverCategory(over ? resolveCategoryFromId(over.id as string) : null);
+    const id = over ? (over.id as string) : null;
+    lastOverIdRef.current = id;
+    setDragOverCategory(id ? resolveCategoryFromId(id) : null);
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     setActiveId(null);
     setDragOverCategory(null);
-    if (!over) return;
 
-    const overId = over.id as string;
+    // Use dnd-kit's over if available, otherwise fall back to last tracked over
+    const overId = (over?.id as string | undefined) ?? lastOverIdRef.current;
+    lastOverIdRef.current = null;
+    if (!overId) return;
+
     const dragged = priorities.find(p => p.id === active.id);
     if (!dragged) return;
 
     const isBucket = allCategories.includes(overId);
     const targetItem = !isBucket ? priorities.find(p => p.id === overId) : null;
-    if (!isBucket && !targetItem) return; // dropped on unknown zone
-    if (!isBucket && overId === active.id) return; // dropped on itself
+    if (!isBucket && !targetItem) return;
+    if (!isBucket && overId === (active.id as string)) return;
 
     const targetCategory = isBucket ? overId : targetItem!.category;
     const insertBeforeId = isBucket ? null : overId;
