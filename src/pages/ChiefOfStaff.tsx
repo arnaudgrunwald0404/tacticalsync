@@ -1390,8 +1390,12 @@ function PrioritiesSection({
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => {
-        const hits = pointerWithin(args);
-        return hits.length > 0 ? hits : closestCenter(args);
+        const filtered = {
+          ...args,
+          droppableContainers: args.droppableContainers.filter(c => c.id !== args.active.id),
+        };
+        const hits = pointerWithin(filtered);
+        return hits.length > 0 ? hits : closestCenter(filtered);
       }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
