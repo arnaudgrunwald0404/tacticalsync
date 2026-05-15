@@ -6,12 +6,12 @@ import {
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, KeyboardSensor, useSensor, useSensors,
-  closestCenter, MeasuringStrategy,
+  closestCenter, pointerWithin, MeasuringStrategy,
 } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -1326,7 +1326,10 @@ function PrioritiesSection({
     <>
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={(args) => {
+        const hits = pointerWithin(args);
+        return hits.length > 0 ? hits : closestCenter(args);
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
