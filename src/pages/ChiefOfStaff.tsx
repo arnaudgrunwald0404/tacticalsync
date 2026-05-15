@@ -8,6 +8,7 @@ import {
   PointerSensor, KeyboardSensor, useSensor, useSensors,
   closestCenter, MeasuringStrategy,
 } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
   verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove,
@@ -1408,7 +1409,7 @@ function PrioritiesSection({
         )}
       </div>
 
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
         {activeItem ? (
           <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
             <CardContent className="p-3">
