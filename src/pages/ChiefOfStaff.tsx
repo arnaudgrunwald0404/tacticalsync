@@ -4,7 +4,7 @@ import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent,
+  DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent,
   PointerSensor, KeyboardSensor, useSensor, useSensors,
   closestCenter, pointerWithin, MeasuringStrategy,
 } from '@dnd-kit/core';
@@ -1191,7 +1191,7 @@ function DragActionRing() {
 }
 
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
+  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed, isDropTarget,
 }: {
   category: CategoryKey;
   label: string;
@@ -1204,12 +1204,16 @@ function CategoryBucket({
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
+  isDropTarget?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: category });
+  const { setNodeRef } = useDroppable({ id: category });
   return (
     <div
       ref={setNodeRef}
-      className={cn('rounded-lg transition-colors', isOver && 'bg-primary/5')}
+      className={cn(
+        'rounded-lg transition-all duration-150',
+        isDropTarget && 'bg-primary/8 ring-2 ring-primary/30 ring-inset',
+      )}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -1238,7 +1242,7 @@ function CategoryBucket({
           {items.length === 0 && (
             <div className={cn(
               'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
-              isOver && 'border-primary/40 bg-primary/5',
+              isDropTarget && 'border-primary/50 bg-primary/5 text-primary',
             )}>
               Drop here
             </div>
@@ -1326,6 +1330,7 @@ function PrioritiesSection({
   layoutConfig: CosLayoutConfig;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
 
   const allActiveCategories = layoutConfig.columns
@@ -1337,10 +1342,25 @@ function PrioritiesSection({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const handleDragStart = ({ active }: DragStartEvent) => setActiveId(active.id as string);
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setActiveId(active.id as string);
+    setDragOverCategory(null);
+  };
+
+  const handleDragOver = ({ over }: DragOverEvent) => {
+    if (!over) { setDragOverCategory(null); return; }
+    const overId = over.id as string;
+    if (allActiveCategories.includes(overId)) {
+      setDragOverCategory(overId);
+    } else {
+      const item = priorities.find(p => p.id === overId);
+      setDragOverCategory(item?.category ?? null);
+    }
+  };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     setActiveId(null);
+    setDragOverCategory(null);
     if (!over || active.id === over.id) return;
     const activeItem = priorities.find(p => p.id === active.id);
     if (!activeItem) return;
@@ -1403,6 +1423,7 @@ function PrioritiesSection({
         return closestCenter({ ...args, droppableContainers: priorityOnly });
       }}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
     >
@@ -1451,6 +1472,7 @@ function PrioritiesSection({
                   statusOptions={statusOptions}
                   newlyAddedId={newlyAddedId}
                   onNewlyAddedConsumed={onNewlyAddedConsumed}
+                  isDropTarget={dragOverCategory === sectionToCategoryKey(section)}
                 />
               )
             )}
