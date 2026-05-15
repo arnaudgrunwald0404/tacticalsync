@@ -2418,8 +2418,8 @@ const Settings = () => {
           setBulkImportPreview([]);
         }
       }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>
               {bulkImportMode === 'org-chart' ? "Org Chart Import" : "Bulk Import Users"}
             </DialogTitle>
@@ -2429,7 +2429,7 @@ const Settings = () => {
                 : "Upload a CSV or XLSX file. If the file has Department or Manager columns it will be treated as an org chart import."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
             {!bulkImportFile && (
               <div className="p-4 bg-muted rounded-lg border text-sm space-y-2">
                 <p className="font-semibold">Supported formats</p>
@@ -2477,7 +2477,7 @@ const Settings = () => {
             )}
 
             {bulkImportPreview.length > 0 && (
-              <div className="overflow-auto rounded-md border">
+              <div className="overflow-auto rounded-md border max-h-[240px]">
                 <table className="w-full text-xs">
                   <thead className="bg-muted">
                     <tr>
@@ -2516,7 +2516,7 @@ const Settings = () => {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button
               variant="outline"
               onClick={() => {
