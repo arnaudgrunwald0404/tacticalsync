@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
+import { Target, CheckSquare, RefreshCw, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 import GridBackground from "@/components/ui/grid-background";
@@ -23,7 +23,7 @@ const Index = () => {
     if (!hasCode) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          navigate("/dashboard");
+          navigate("/chief-of-staff");
         }
       });
     }
@@ -35,7 +35,7 @@ const Index = () => {
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate("/dashboard");
+        navigate("/chief-of-staff");
       }
     });
 
@@ -83,26 +83,28 @@ const Index = () => {
           <div className="space-y-4 sm:space-y-8">
             {/* Mobile heading - simple text */}
             <h2 className="sm:hidden font-heading text-3xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-              Great leadership starts with great team meetings.
+              Where Strategy Meets Accountability.
             </h2>
 
             {/* Desktop heading - with animation */}
             <h2 className="hidden sm:block font-heading text-4xl md:text-5xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-               Great Leadership Starts <br></br>with Great {" "}
-              
-                <LayoutTextFlip 
-                  text=""
-                  words={["Weekly", "Monthly", "Quarterly", "Daily"]}
-                  duration={3000}
-                />
-              {" "}
-              Team Meetings
+              Great Teams Don't Just Meet —<br />They{" "}
+              <LayoutTextFlip
+                text=""
+                words={["Own.", "Prepare.", "Follow Up.", "Delegate.", "Never Forget.", "Execute."]}
+                duration={3000}
+              />
             </h2>
 
-            <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
-              Streamline your tactical meetings with collaborative agenda tracking,
-              action items, and team accountability.
-            </p>
+            <div className="space-y-2 !mt-8 sm:!mt-12 md:!mt-16">
+              <p className="hidden sm:block font-body text-sm tracking-widest uppercase text-[#B89A6B] font-semibold">
+                Achieve Uncommon Execution.
+              </p>
+              <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
+                Connect your strategy to daily execution — with built-in check-ins,
+                commitments, and team alignment tools that actually close the loop.
+              </p>
+            </div>
 
             {/* Get Started button - Mobile only, placed after description */}
             <div className="sm:hidden pt-4">
@@ -121,31 +123,31 @@ const Index = () => {
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
               <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Users className="h-7 w-7 text-[#4A5D5F]" />
+                <Target className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Team Collaboration</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Strategy & Objectives</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Invite team members and collaborate in real-time on meeting agendas and topics
+                Set your Rallying Cry and Defining Objectives — the direction your whole team aligns around
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-[#6B9A8F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-7 w-7 text-[#6B9A8F]" />
+              <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Consistent Tracking</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Commitments & Priorities</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Automatically organize meetings by week and track progress over time
+                Track what each person owns, week to week — with clear priorities and accountability
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
               <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
+                <RefreshCw className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Action Items</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Check-ins & Progress</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Assign tasks, set time estimates, and track completion with ease
+                Close the loop with structured check-ins that connect daily work back to your strategy
               </p>
             </div>
           </div>

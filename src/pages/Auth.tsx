@@ -52,7 +52,7 @@ const Auth = () => {
           if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/dashboard");
+            navigate("/chief-of-staff");
           }
         }
       });
@@ -83,7 +83,7 @@ const Auth = () => {
         } else if (inviteCode) {
           navigate(`/join/${inviteCode}`);
         } else {
-          navigate("/dashboard");
+          navigate("/chief-of-staff");
         }
       } else if (event === 'SIGNED_OUT') {
         // User signed out, stay on auth page
@@ -637,7 +637,7 @@ const Auth = () => {
           } else if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/dashboard");
+            navigate("/chief-of-staff");
           }
         } else {
           console.log("[DEBUG] No session found - showing verification banner");
@@ -662,11 +662,11 @@ const Auth = () => {
   };
 
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none px-3 sm:px-4 py-8">
-      <div className="w-full max-w-full  space-y-6">
-       
+    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#EEF0EF] via-[#F5F3F0] to-[#F0EDE8] overscroll-none px-3 sm:px-4 py-8">
+      <div className="w-full max-w-md mx-auto space-y-6">
 
-        <Card className="border-border/100 shadow-lg shadow-[#4A5D5F]/10 w-full  sm:max-w-full">
+
+        <Card className="border-border/100 shadow-lg shadow-[#4A5D5F]/10">
 
  {/* Logo Section */}
  <div className="text-center space-y-2">
