@@ -26,6 +26,12 @@ const Auth = () => {
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
   const [activeTab, setActiveTab] = useState("signin");
+  // True when Google/OAuth redirected back with a PKCE code — hide the login
+  // form while Supabase exchanges the code for a session (~500–1000ms).
+  const [handlingCallback] = useState(
+    () => !!new URLSearchParams(window.location.search).get('code') ||
+          window.location.hash.includes('access_token=')
+  );
 
   useEffect(() => {
     // Check for invite code and OAuth callback in URL
@@ -660,6 +666,17 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  if (handlingCallback) {
+    return (
+      <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#EEF0EF] via-[#F5F3F0] to-[#F0EDE8]">
+        <div className="flex flex-col items-center gap-4">
+          <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
+          <div className="h-5 w-5 rounded-full border-2 border-[#4A5D5F] border-t-transparent animate-spin mt-2" />
+        </div>
+      </GridBackground>
+    );
+  }
 
   return (
     <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#EEF0EF] via-[#F5F3F0] to-[#F0EDE8] overscroll-none px-3 sm:px-4 py-8">

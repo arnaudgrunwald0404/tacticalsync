@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Target, CheckSquare, RefreshCw, ArrowRight } from "lucide-react";
@@ -10,6 +10,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const navigate = useNavigate();
+  // True when OAuth redirected here with a PKCE code — show a spinner instead
+  // of the hero page while Supabase exchanges the code for a session.
+  const [handlingCallback] = useState(
+    () => !!new URLSearchParams(window.location.search).get('code')
+  );
 
   // Check for existing session or OAuth callback
   useEffect(() => {
@@ -41,6 +46,17 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  if (handlingCallback) {
+    return (
+      <GridBackground className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
+        <div className="flex flex-col items-center gap-4">
+          <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
+          <div className="h-5 w-5 rounded-full border-2 border-[#4A5D5F] border-t-transparent animate-spin mt-2" />
+        </div>
+      </GridBackground>
+    );
+  }
 
   return (
     <GridBackground className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
