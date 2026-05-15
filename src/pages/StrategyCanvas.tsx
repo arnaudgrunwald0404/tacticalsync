@@ -1761,7 +1761,7 @@ const duplicateSelectedDo = useCallback(() => {
 
       {/* Canvas toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
-        <button
+        <Button
           onClick={() => {
             if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
             if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
@@ -1769,11 +1769,11 @@ const duplicateSelectedDo = useCallback(() => {
               if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
             }
           }}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ml-4"
+          size="sm"
         >
-          <List className="h-3 w-3" />
-          <span>Detail</span>
-        </button>
+          <List className="h-4 w-4 mr-2" />
+          Go to Details view
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" className="flex items-center gap-1">
