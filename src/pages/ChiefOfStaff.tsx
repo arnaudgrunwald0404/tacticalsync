@@ -11,7 +11,7 @@ import {
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy,
+  verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -248,34 +248,58 @@ export default function ChiefOfStaff() {
     const item = priorities.find(p => p.id === id);
     if (!item) return;
     const srcCat = item.category;
-    const targetItems = priorities
-      .filter(p => p.category === targetCategory && p.id !== id)
+
+    // Active (visible) items in target, sorted by tier_order
+    const activeInTarget = priorities
+      .filter(p => p.category === targetCategory && !p.done_at && !p.archived_at)
       .sort((a, b) => a.tier_order - b.tier_order);
-    const insertIdx = insertBeforeId
-      ? targetItems.findIndex(p => p.id === insertBeforeId)
-      : targetItems.length;
-    const idx = insertIdx === -1 ? targetItems.length : insertIdx;
-    const newTargetItems: CosPriority[] = [
-      ...targetItems.slice(0, idx),
-      { ...item, category: targetCategory },
-      ...targetItems.slice(idx),
-    ];
+
+    let newTargetItems: CosPriority[];
+
+    if (srcCat === targetCategory && insertBeforeId) {
+      // Same-section reorder: use arrayMove so moving downward works correctly
+      const oldIndex = activeInTarget.findIndex(p => p.id === id);
+      const newIndex = activeInTarget.findIndex(p => p.id === insertBeforeId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      newTargetItems = arrayMove(activeInTarget, oldIndex, newIndex);
+    } else {
+      // Cross-section drop or bucket drop: insert before the target item (or append)
+      const withoutDragged = activeInTarget.filter(p => p.id !== id);
+      const insertIdx = insertBeforeId
+        ? withoutDragged.findIndex(p => p.id === insertBeforeId)
+        : withoutDragged.length;
+      const idx = insertIdx === -1 ? withoutDragged.length : insertIdx;
+      newTargetItems = [
+        ...withoutDragged.slice(0, idx),
+        { ...item, category: targetCategory },
+        ...withoutDragged.slice(idx),
+      ];
+    }
+
+    const reindexedTarget = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1, category: targetCategory }));
+
     setPriorities(prev => {
-      const srcItems = srcCat !== targetCategory
-        ? prev.filter(p => p.category === srcCat && p.id !== id)
-            .sort((a, b) => a.tier_order - b.tier_order)
-            .map((p, i) => ({ ...p, tier_order: i + 1 }))
-        : [];
-      const others = prev.filter(p => p.category !== targetCategory && p.id !== id && p.category !== srcCat);
-      const reindexed = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
-      return srcCat !== targetCategory ? [...others, ...srcItems, ...reindexed] : [...others, ...reindexed];
+      let next = prev.map(p => reindexedTarget.find(r => r.id === p.id) ?? p);
+      if (srcCat !== targetCategory) {
+        const srcActive = next
+          .filter(p => p.category === srcCat && !p.done_at && !p.archived_at && p.id !== id)
+          .sort((a, b) => a.tier_order - b.tier_order)
+          .map((p, i) => ({ ...p, tier_order: i + 1 }));
+        next = next.map(p => srcActive.find(r => r.id === p.id) ?? p);
+        // remove dragged item from source category (now belongs to target)
+        next = next.map(p => p.id === id ? { ...p, category: targetCategory } : p);
+      }
+      return next;
     });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await Promise.all([
-      ...newTargetItems.map((p, i) => db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id)),
+      ...reindexedTarget.map(p => db.from('cos_priorities').update({ category: targetCategory, tier_order: p.tier_order }).eq('id', p.id)),
       ...(srcCat !== targetCategory
-        ? priorities.filter(p => p.category === srcCat && p.id !== id).sort((a, b) => a.tier_order - b.tier_order)
+        ? priorities
+            .filter(p => p.category === srcCat && !p.done_at && !p.archived_at && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
             .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
         : []),
     ]);
