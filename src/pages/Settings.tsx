@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -2174,8 +2174,8 @@ const Settings = () => {
                     </TableHeader>
                     <TableBody>
                       {PERMISSIONS_MATRIX.map(group => (
-                        <>
-                          <TableRow key={group.category} className="bg-muted/20 hover:bg-muted/20">
+                        <React.Fragment key={group.category}>
+                          <TableRow className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={3} className="py-2 px-4">
                               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
                             </TableCell>
@@ -2187,7 +2187,7 @@ const Settings = () => {
                               <TableCell />
                             </TableRow>
                           ))}
-                        </>
+                        </React.Fragment>
                       ))}
                     </TableBody>
                   </Table>
