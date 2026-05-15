@@ -41,8 +41,10 @@ const DashboardWithTabs = () => {
   // Fetch active cycle to auto-route to canvas when RCDO tab is selected
   const { cycle: activeCycle, loading: activeCycleLoading } = useActiveCycle();
 
-  // When on /dashboard/rcdo base path, send user to the active canvas if available
+  // When on /dashboard/rcdo base path, send desktop users to the active canvas.
+  // On mobile, keep them on the detail view (StrategyHome) — canvas is desktop-only.
   useEffect(() => {
+    if (isMobile) return;
     if (activeTab !== 'rcdo') return;
     const path = location.pathname.replace(/\/$/, '');
     if (path === '/dashboard/rcdo' && !activeCycleLoading) {
@@ -50,7 +52,7 @@ const DashboardWithTabs = () => {
         navigate(`/rcdo/canvas?cycle=${activeCycle.id}`, { replace: true });
       }
     }
-  }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
+  }, [isMobile, activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-platinum via-white to-white-gold overscroll-none">
