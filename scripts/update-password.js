@@ -4,13 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 // You need to set SUPABASE_SERVICE_ROLE_KEY environment variable
 // or pass it as an argument
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://pxirfndomjlqpkwfpqxq.supabase.co';
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.argv[2];
 
-if (!serviceRoleKey) {
-  console.error('Error: SUPABASE_SERVICE_ROLE_KEY environment variable or argument is required');
-  console.error('Usage: SUPABASE_SERVICE_ROLE_KEY=your-key node update-password.js');
-  console.error('   or: node update-password.js your-service-role-key');
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error('Error: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required');
+  console.error('Usage: VITE_SUPABASE_URL=https://... SUPABASE_SERVICE_ROLE_KEY=your-key node update-password.js');
   process.exit(1);
 }
 

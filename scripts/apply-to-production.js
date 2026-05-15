@@ -13,11 +13,11 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const supabaseUrl = 'https://pxirfndomjlqpkwfpqxq.supabase.co';
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!serviceRoleKey) {
-  console.error('❌ Error: SUPABASE_SERVICE_ROLE_KEY environment variable is required');
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error('❌ Error: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required');
   process.exit(1);
 }
 
