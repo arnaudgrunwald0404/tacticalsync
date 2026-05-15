@@ -1136,6 +1136,60 @@ function ArchiveSection({
   );
 }
 
+// ── Drag action ring ─────────────────────────────────────────────────────────
+
+function DragActionSegment({
+  id, icon, label, danger,
+}: {
+  id: string;
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex flex-col items-center justify-center gap-1.5 w-28 h-28 rounded-full transition-all duration-150',
+        'border-2',
+        isOver
+          ? danger
+            ? 'bg-destructive border-destructive text-destructive-foreground scale-110 shadow-lg'
+            : 'bg-amber-500 border-amber-500 text-white scale-110 shadow-lg'
+          : danger
+            ? 'bg-background border-border text-muted-foreground hover:border-destructive hover:text-destructive'
+            : 'bg-background border-border text-muted-foreground hover:border-amber-400 hover:text-amber-500',
+      )}
+    >
+      <div className="h-6 w-6">{icon}</div>
+      <span className="text-[11px] font-semibold tracking-wide uppercase">{label}</span>
+    </div>
+  );
+}
+
+function DragActionRing() {
+  return (
+    <div
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex gap-3 items-end pointer-events-none"
+      style={{ animation: 'drag-ring-in 180ms cubic-bezier(0.34,1.56,0.64,1) both' }}
+    >
+      <style>{`
+        @keyframes drag-ring-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(24px) scale(0.85); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1); }
+        }
+      `}</style>
+      <div className="pointer-events-auto" style={{ transform: 'translateY(16px)' }}>
+        <DragActionSegment id="drop-archive" icon={<RotateCcw className="h-6 w-6" />} label="Archive" />
+      </div>
+      <div className="pointer-events-auto">
+        <DragActionSegment id="drop-trash" icon={<Trash2 className="h-6 w-6" />} label="Delete" danger />
+      </div>
+    </div>
+  );
+}
+
 function CategoryBucket({
   category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
@@ -1293,6 +1347,15 @@ function PrioritiesSection({
 
     const overId = over.id as string;
 
+    if (overId === 'drop-archive') {
+      onDelete(activeItem.id); // onDelete soft-archives
+      return;
+    }
+    if (overId === 'drop-trash') {
+      onPermanentDelete(activeItem.id);
+      return;
+    }
+
     if (overId.startsWith('acct-drop-')) {
       onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
       return;
@@ -1439,6 +1502,8 @@ function PrioritiesSection({
           </Card>
         ) : null}
       </DragOverlay>
+
+      {activeId && <DragActionRing />}
     </DndContext>
 
     {archivedItems.length > 0 && (
