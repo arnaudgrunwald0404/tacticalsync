@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
+import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import Logo from "@/components/Logo";
 import { useRoles } from "@/hooks/useRoles";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
@@ -2203,6 +2204,16 @@ const Settings = () => {
                 </div>
               </div>
             )}
+          </div>
+        ) : activeSection === "configure-my-lists" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Configure My Lists</h2>
+              <p className="text-muted-foreground text-sm">
+                Customize column labels, sections, and priority card statuses for your My Lists workspace.
+              </p>
+            </div>
+            <CosSettingsPanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">
