@@ -1366,10 +1366,10 @@ function PrioritiesSection({
     }
 
     const isCategoryTarget = allActiveCategories.includes(overId);
-    const targetCategory = isCategoryTarget
-      ? overId
-      : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
+    const targetItem = priorities.find(p => p.id === overId);
+    if (!isCategoryTarget && !targetItem) return; // unknown droppable — ignore
 
+    const targetCategory = isCategoryTarget ? overId : targetItem!.category;
     const insertBeforeId = isCategoryTarget ? null : overId;
     onReorder(activeItem.id, targetCategory, insertBeforeId);
   };
@@ -1390,12 +1390,17 @@ function PrioritiesSection({
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => {
-        const filtered = {
-          ...args,
-          droppableContainers: args.droppableContainers.filter(c => c.id !== args.active.id),
-        };
-        const hits = pointerWithin(filtered);
-        return hits.length > 0 ? hits : closestCenter(filtered);
+        const noSelf = args.droppableContainers.filter(c => c.id !== args.active.id);
+        // pointerWithin handles all zones (including acct/topic drop) when pointer is directly over them
+        const pointerHits = pointerWithin({ ...args, droppableContainers: noSelf });
+        if (pointerHits.length > 0) return pointerHits;
+        // closestCenter fallback: exclude person-specific drop zones so cross-column reordering
+        // doesn't accidentally resolve to a nearby acct-drop or topic-drop target
+        const priorityOnly = noSelf.filter(c => {
+          const id = String(c.id);
+          return !id.startsWith('acct-drop-') && !id.startsWith('topic-drop-');
+        });
+        return closestCenter({ ...args, droppableContainers: priorityOnly });
       }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
