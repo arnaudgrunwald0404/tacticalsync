@@ -306,7 +306,7 @@ export function DetailPageNavigation({
     // Just navigate - the useEffect will handle active state updates based on URL params
     switch (item.type) {
       case 'rce':
-        navigate('/rcdo/canvas');
+        navigate(cycleId ? `/rcdo/all-hands?cycle=${cycleId}` : '/rcdo/all-hands');
         break;
       case 'do':
         navigate(`/rcdo/detail/do/${item.id}`);
@@ -318,7 +318,7 @@ export function DetailPageNavigation({
         navigate(`/rcdo/detail/si/${currentSIId || ''}?task=${item.id}`);
         break;
     }
-  }, [navigate, currentSIId]);
+  }, [navigate, currentSIId, cycleId]);
 
   const getIcon = (type: NavigationItem['type']) => {
     switch (type) {

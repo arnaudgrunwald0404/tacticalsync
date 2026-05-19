@@ -195,13 +195,14 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
 
-      // Wait for currentUserId to be set
+      // Wait for the auth call AND for the subsequent setState that wires the
+      // current user into the lock check — checking the disabled prop directly
+      // races with React's commit phase in CI.
       await waitFor(() => {
         expect(supabase.auth.getUser).toHaveBeenCalled();
+        const select = screen.getByRole('combobox', { name: /status/i });
+        expect(select).not.toBeDisabled();
       });
-
-      const select = screen.getByRole('combobox', { name: /status/i });
-      expect(select).not.toBeDisabled();
     });
 
     it('should be disabled when SI is locked and user is not owner/admin', () => {
