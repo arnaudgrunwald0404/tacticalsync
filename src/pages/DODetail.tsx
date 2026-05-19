@@ -36,6 +36,7 @@ export default function DODetail() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
+  const [siDateError, setSiDateError] = useState<string | null>(null);
 
   const { cycle } = useActiveCycle();
 
@@ -72,6 +73,28 @@ export default function DODetail() {
 
   const handleInitiativeSuccess = () => {
     refetchInitiatives();
+  };
+
+  const handleSIDateChange = async (field: 'start_date' | 'end_date', value: string) => {
+    if (!selectedInitiative) return;
+    const currentStart = selectedInitiative.start_date || '';
+    const currentEnd = selectedInitiative.end_date || '';
+    const nextStart = field === 'start_date' ? value : currentStart;
+    const nextEnd = field === 'end_date' ? value : currentEnd;
+
+    if (nextStart && nextEnd && nextEnd < nextStart) {
+      setSiDateError('End date must be on or after start date.');
+      return;
+    }
+    setSiDateError(null);
+
+    const { error } = await supabase
+      .from('rc_strategic_initiatives')
+      .update({ [field]: value || null })
+      .eq('id', selectedInitiative.id);
+    if (!error) {
+      refetchInitiatives();
+    }
   };
 
   const handleCheckInSuccess = () => {
@@ -748,22 +771,58 @@ export default function DODetail() {
                   </div>
                 )}
 
-                {/* Dates */}
-                {(selectedInitiative.start_date || selectedInitiative.end_date) && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 block">
-                      Timeline
-                    </label>
+                {/* Timeline */}
+                <div>
+                  <label className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 block">
+                    Timeline
+                  </label>
+                  {selectedInitiative.locked_at ? (
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="h-4 w-4 text-gray-500" />
                       <span>
-                        {selectedInitiative.start_date && new Date(selectedInitiative.start_date).toLocaleDateString()}
-                        {selectedInitiative.start_date && selectedInitiative.end_date && ' - '}
-                        {selectedInitiative.end_date && new Date(selectedInitiative.end_date).toLocaleDateString()}
+                        {selectedInitiative.start_date
+                          ? new Date(selectedInitiative.start_date).toLocaleDateString()
+                          : '—'}
+                        {' - '}
+                        {selectedInitiative.end_date
+                          ? new Date(selectedInitiative.end_date).toLocaleDateString()
+                          : '—'}
                       </span>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label htmlFor="drawer-si-start" className="text-xs text-gray-500">
+                            Start Date
+                          </label>
+                          <input
+                            id="drawer-si-start"
+                            type="date"
+                            value={selectedInitiative.start_date || ''}
+                            onChange={(e) => handleSIDateChange('start_date', e.target.value)}
+                            className="w-full h-10 px-3 py-2 border rounded-md text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label htmlFor="drawer-si-end" className="text-xs text-gray-500">
+                            End Date
+                          </label>
+                          <input
+                            id="drawer-si-end"
+                            type="date"
+                            value={selectedInitiative.end_date || ''}
+                            onChange={(e) => handleSIDateChange('end_date', e.target.value)}
+                            className="w-full h-10 px-3 py-2 border rounded-md text-sm"
+                          />
+                        </div>
+                      </div>
+                      {siDateError && (
+                        <p className="mt-2 text-sm text-red-600">{siDateError}</p>
+                      )}
+                    </>
+                  )}
+                </div>
 
                 {/* Primary Success Metric */}
                 {selectedInitiative.primary_success_metric && (

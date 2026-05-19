@@ -240,7 +240,7 @@ export function DetailPageHeader({
         </div>
       )}
 
-      {/* SI-specific: Tabs for Tasks and Check-ins */}
+      {/* SI-specific: Tabs for Tasks, Check-ins, and Details */}
       {type === 'si' && activeTab && onTabChange && (
         <div className="mt-4 pt-4 border-t">
           <Tabs value={activeTab} onValueChange={onTabChange}>
@@ -250,6 +250,9 @@ export function DetailPageHeader({
               </TabsTrigger>
               <TabsTrigger value="checkins" className="flex-1 sm:flex-initial">
                 Check-ins ({checkinsCount})
+              </TabsTrigger>
+              <TabsTrigger value="details" className="flex-1 sm:flex-initial">
+                Details
               </TabsTrigger>
             </TabsList>
           </Tabs>

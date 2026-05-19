@@ -127,6 +127,15 @@ export function InitiativeDialog({
       return;
     }
 
+    if (formData.start_date && formData.end_date && formData.end_date < formData.start_date) {
+      toast({
+        title: 'Validation Error',
+        description: 'End date must be on or after start date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const createData: CreateInitiativeForm = {
