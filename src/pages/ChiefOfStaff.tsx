@@ -3,18 +3,7 @@ import { format } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
-import {
-  DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent,
-  PointerSensor, KeyboardSensor, useSensor, useSensors,
-  pointerWithin, MeasuringStrategy, UniqueIdentifier,
-} from '@dnd-kit/core';
-import { snapCenterToCursor } from '@dnd-kit/modifiers';
-import {
-  SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy, arrayMove,
-} from '@dnd-kit/sortable';
-import { useDroppable } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -239,6 +228,13 @@ export default function ChiefOfStaff() {
     await (supabase as any).from('cos_priorities').update({ archived_at: null, done_at: null }).eq('id', id);
     setPriorities(prev => prev.map(p => p.id === id ? { ...p, archived_at: null, done_at: null } : p));
   };
+
+  function arrayMove<T>(arr: T[], from: number, to: number): T[] {
+    const result = Array.from(arr);
+    const [removed] = result.splice(from, 1);
+    result.splice(to, 0, removed);
+    return result;
+  }
 
   const reorderPriority = async (
     id: string,
@@ -1111,7 +1107,7 @@ function ArchiveSection({
 
 function CategoryBucket({
   category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions,
-  newlyAddedId, onNewlyAddedConsumed, isDropTarget,
+  newlyAddedId, onNewlyAddedConsumed,
 }: {
   category: CategoryKey;
   label: string;
@@ -1124,17 +1120,9 @@ function CategoryBucket({
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
-  isDropTarget?: boolean;
 }) {
-  const { setNodeRef } = useDroppable({ id: category });
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        'rounded-lg transition-all duration-150 p-1 -m-1',
-        isDropTarget && 'ring-2 ring-primary/40 ring-inset bg-primary/5',
-      )}
-    >
+    <div>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">{label}</h3>
@@ -1144,57 +1132,47 @@ function CategoryBucket({
           <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
-      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-1.5 min-h-[2rem]">
-          {items.map(item => (
-            <SortableItem
-              key={item.id}
-              item={item}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-              onCopy={onCopy}
-              isTagged={mondayTaggedTexts.includes(item.text)}
-              statusOptions={statusOptions}
-              autoEdit={item.id === newlyAddedId}
-              onAutoEditConsumed={onNewlyAddedConsumed}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </div>
-  );
-}
-
-function SortableItem({
-  item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
-}: {
-  item: CosPriority;
-  onUpdate: (id: string, updates: Partial<CosPriority>) => void;
-  onDelete: (id: string) => void;
-  onCopy: (text: string, label?: string) => void;
-  isTagged: boolean;
-  statusOptions: string[];
-  autoEdit?: boolean;
-  onAutoEditConsumed?: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
-    >
-      <PriorityCard
-        item={item}
-        dragHandleListeners={listeners}
-        dragHandleAttributes={attributes}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onCopy={onCopy}
-        isTagged={isTagged}
-        statusOptions={statusOptions}
-        autoEdit={autoEdit}
-        onAutoEditConsumed={onAutoEditConsumed}
-      />
+      <Droppable droppableId={category}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={cn(
+              'space-y-1.5 min-h-[2rem] rounded-lg transition-all duration-150 p-1 -m-1',
+              snapshot.isDraggingOver && 'ring-2 ring-primary/40 ring-inset bg-primary/5',
+            )}
+          >
+            {items.map((item, index) => (
+              <Draggable key={item.id} draggableId={item.id} index={index}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    style={{
+                      ...provided.draggableProps.style,
+                      opacity: snapshot.isDragging ? 0.5 : 1,
+                    }}
+                    className={cn(snapshot.isDragging && 'shadow-lg rotate-1 z-50')}
+                  >
+                    <PriorityCard
+                      item={item}
+                      dragHandleProps={provided.dragHandleProps}
+                      onUpdate={onUpdate}
+                      onDelete={onDelete}
+                      onCopy={onCopy}
+                      isTagged={mondayTaggedTexts.includes(item.text)}
+                      statusOptions={statusOptions}
+                      autoEdit={item.id === newlyAddedId}
+                      onAutoEditConsumed={onNewlyAddedConsumed}
+                    />
+                  </div>
+                )}
+              </Draggable>
+            ))}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
     </div>
   );
 }
@@ -1237,65 +1215,22 @@ function PrioritiesSection({
   onRestoreArchived: (id: string) => void;
   layoutConfig: CosLayoutConfig;
 }) {
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
-  // dnd-kit doesn't recompute collisions on pointerup — keep the last over id in a ref
-  // so handleDragEnd can use it as a fallback when over is null at release time.
-  const lastOverIdRef = React.useRef<string | null>(null);
-
-  const activeItem = priorities.find(p => p.id === activeId);
-
-  const allCategories = layoutConfig.columns
-    .flatMap(c => c.sections.filter(s => s.enabled && s.type !== 'direct_reports'))
-    .map(sectionToCategoryKey);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const resolveCategoryFromId = (id: string): string | null => {
-    if (allCategories.includes(id)) return id;
-    return priorities.find(p => p.id === id)?.category ?? null;
-  };
-
-  const handleDragStart = ({ active }: DragStartEvent) => {
-    setActiveId(active.id);
-    setDragOverCategory(null);
-    lastOverIdRef.current = null;
-  };
-
-  const handleDragOver = ({ over }: DragOverEvent) => {
-    const id = over ? (over.id as string) : null;
-    lastOverIdRef.current = id;
-    setDragOverCategory(id ? resolveCategoryFromId(id) : null);
-  };
-
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    setActiveId(null);
-    setDragOverCategory(null);
-
-    // Use dnd-kit's over if available, otherwise fall back to last tracked over
-    const overId = (over?.id as string | undefined) ?? lastOverIdRef.current;
-    lastOverIdRef.current = null;
-    if (!overId) return;
-
-    const dragged = priorities.find(p => p.id === active.id);
-    if (!dragged) return;
-
-    const isBucket = allCategories.includes(overId);
-    const targetItem = !isBucket ? priorities.find(p => p.id === overId) : null;
-    if (!isBucket && !targetItem) return;
-    if (!isBucket && overId === (active.id as string)) return;
-
-    const targetCategory = isBucket ? overId : targetItem!.category;
-    const insertBeforeId = isBucket ? null : overId;
-    onReorder(dragged.id, targetCategory, insertBeforeId);
-  };
-
   const sortedFor = (cat: CategoryKey) =>
     priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at)
       .sort((a, b) => a.tier_order - b.tier_order);
+
+  const handleDragEnd = (result: DropResult) => {
+    const { source, destination, draggableId } = result;
+    if (!destination) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    const targetCategory = destination.droppableId as CategoryKey;
+    const targetItems = sortedFor(targetCategory);
+    const insertBeforeId = targetItems[destination.index]?.id ?? null;
+    if (insertBeforeId === draggableId) return;
+
+    onReorder(draggableId, targetCategory, insertBeforeId);
+  };
 
   const archivedItems = priorities
     .filter(p => !!p.archived_at || !!p.done_at)
@@ -1320,24 +1255,13 @@ function PrioritiesSection({
           onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} onCopy={onCopy}
           mondayTaggedTexts={mondayTaggedTexts} statusOptions={statusOptions}
           newlyAddedId={newlyAddedId} onNewlyAddedConsumed={onNewlyAddedConsumed}
-          isDropTarget={dragOverCategory === sectionToCategoryKey(section)}
         />
       )
     );
 
   return (
     <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={(args) => pointerWithin({
-          ...args,
-          droppableContainers: args.droppableContainers.filter(c => c.id !== args.active.id),
-        })}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-      >
+      <DragDropContext onDragEnd={handleDragEnd}>
         {/* Desktop grid */}
         <div className="hidden md:grid gap-6"
           style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
@@ -1356,17 +1280,7 @@ function PrioritiesSection({
         <div className="md:hidden space-y-6">
           {layoutConfig.columns.flatMap(col => renderBuckets(col.sections, col.headerLabel))}
         </div>
-
-        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
-          {activeItem && (
-            <Card className="border border-primary/40 shadow-xl opacity-95 rotate-1 cursor-grabbing">
-              <CardContent className="px-3 py-2">
-                <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
-              </CardContent>
-            </Card>
-          )}
-        </DragOverlay>
-      </DndContext>
+      </DragDropContext>
 
       {archivedItems.length > 0 && (
         <ArchiveSection items={archivedItems} layoutConfig={layoutConfig}
@@ -1386,11 +1300,10 @@ const STATUS_BADGE_COLORS = [
 ];
 
 function PriorityCard({
-  item, dragHandleListeners, dragHandleAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+  item, dragHandleProps, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
-  dragHandleListeners?: React.HTMLAttributes<HTMLElement>;
-  dragHandleAttributes?: React.HTMLAttributes<HTMLElement>;
+  dragHandleProps?: React.HTMLAttributes<HTMLElement> | null;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
@@ -1448,8 +1361,7 @@ function PriorityCard({
       <CardContent className="px-2 py-1.5">
         <div className="flex items-start gap-1">
           <button
-            {...dragHandleListeners}
-            {...dragHandleAttributes}
+            {...dragHandleProps}
             className="hidden sm:flex flex-shrink-0 self-stretch items-center w-4 text-muted-foreground/20 hover:text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
