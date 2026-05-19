@@ -18,7 +18,9 @@ export function AppNavbar() {
 
   // Derive active tab from current URL
   const activeTab =
-    location.pathname.includes("/insights")
+    location.pathname.includes("/settings")
+      ? "settings"
+      : location.pathname.includes("/insights")
       ? "insights"
       : location.pathname.includes("/chief-of-staff")
       ? "cos"
@@ -39,6 +41,7 @@ export function AppNavbar() {
     else if (value === "commitments") navigate("/commitments");
     else if (value === "insights") navigate("/insights");
     else if (value === "cos") navigate("/chief-of-staff");
+    else if (value === "settings") navigate("/settings");
   };
 
   return (
@@ -60,6 +63,7 @@ export function AppNavbar() {
                   { value: "commitments", label: "Commitments" },
                   { value: "main",        label: "Meetings" },
                   ...(showInsights ? [{ value: "insights", label: "Insights" }] : []),
+                  ...((isAdmin || isSuperAdmin) ? [{ value: "settings", label: "Settings" }] : []),
                 ].map(({ value, label, title }) => (
                   <button
                     key={value}

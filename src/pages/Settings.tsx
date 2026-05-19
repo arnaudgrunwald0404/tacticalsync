@@ -13,15 +13,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
-import Logo from "@/components/Logo";
+import { AppNavbar } from "@/components/ui/app-navbar";
 import { useRoles } from "@/hooks/useRoles";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 interface TemplateItem {
   id: string;
@@ -1980,16 +1979,7 @@ const Settings = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <header className="border-b bg-white sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4 relative pr-20">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <Logo variant="minimal" size="lg" />
-          <UserProfileHeader />
-        </div>
-      </header>
+      <AppNavbar />
       
       <div className="flex flex-col lg:flex-row">
         <SettingsNavbar
