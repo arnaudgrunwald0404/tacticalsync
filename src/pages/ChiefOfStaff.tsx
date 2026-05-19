@@ -4,7 +4,7 @@ import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent,
+  DndContext, DragEndEvent,
   PointerSensor, KeyboardSensor, useSensor, useSensors,
   closestCenter,
 } from '@dnd-kit/core';
@@ -12,8 +12,8 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
   verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
-import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -506,7 +506,7 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className={cn('mb-6 w-full grid', showBrief ? 'grid-cols-4' : 'grid-cols-3')}>
+        <TabsList className={cn('mb-6 grid max-w-sm', showBrief ? 'grid-cols-4' : 'grid-cols-3')}>
           {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
           <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
           <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
@@ -843,7 +843,7 @@ function PersonSectionCard({
   onDeleteAccountability, onAddTopic, onUpdateTopic, onDeleteTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
-  onCopy, statusOptions, priorities,
+  onCopy, statusOptions, priorities, disableDnd,
 }: {
   member: CosTeamMember;
   accountabilities: CosPersonAccountability[];
@@ -861,10 +861,9 @@ function PersonSectionCard({
   onCopy: (text: string, label?: string) => void;
   statusOptions: string[];
   priorities: CosPriority[];
+  disableDnd?: boolean;
 }) {
   const firstName = member.name.split(' ')[0];
-  const { setNodeRef: setAcctDropRef, isOver: isOverAcct } = useDroppable({ id: `acct-drop-${member.id}` });
-  const { setNodeRef: setTopicDropRef, isOver: isOverTopic } = useDroppable({ id: `topic-drop-${member.id}` });
 
   const handleSuggestTopics = () => {
     const prompt = buildPersonTopicSuggestPrompt(member, accountabilities, priorities, topics);
@@ -902,29 +901,53 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div
-            ref={setAcctDropRef}
-            className={cn(
-              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
-              isOverAcct && "bg-primary/5 ring-1 ring-primary/30",
-            )}
-          >
-            {accountabilities.map(a => (
-              <AccountabilityRow
-                key={a.id}
-                item={a}
-                autoFocus={a.id === newlyAddedAccountabilityId}
-                onAutoFocusConsumed={onNewlyAddedAccountabilityConsumed}
-                onUpdate={onUpdateAccountability}
-                onDelete={onDeleteAccountability}
-              />
-            ))}
-            {accountabilities.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 italic">
-                {isOverAcct ? 'Drop to add as accountability' : `None yet — add what ${firstName} owns`}
-              </p>
-            )}
-          </div>
+          {disableDnd ? (
+            <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
+              {accountabilities.map(a => (
+                <AccountabilityRow
+                  key={a.id}
+                  item={a}
+                  autoFocus={a.id === newlyAddedAccountabilityId}
+                  onAutoFocusConsumed={onNewlyAddedAccountabilityConsumed}
+                  onUpdate={onUpdateAccountability}
+                  onDelete={onDeleteAccountability}
+                />
+              ))}
+              {accountabilities.length === 0 && (
+                <p className="text-xs text-muted-foreground/60 italic">{`None yet — add what ${firstName} owns`}</p>
+              )}
+            </div>
+          ) : (
+            <Droppable droppableId={`acct-drop-${member.id}`}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={cn(
+                    "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+                    snapshot.isDraggingOver && "bg-primary/5 ring-1 ring-primary/30",
+                  )}
+                >
+                  {accountabilities.map(a => (
+                    <AccountabilityRow
+                      key={a.id}
+                      item={a}
+                      autoFocus={a.id === newlyAddedAccountabilityId}
+                      onAutoFocusConsumed={onNewlyAddedAccountabilityConsumed}
+                      onUpdate={onUpdateAccountability}
+                      onDelete={onDeleteAccountability}
+                    />
+                  ))}
+                  {provided.placeholder}
+                  {accountabilities.length === 0 && (
+                    <p className="text-xs text-muted-foreground/60 italic">
+                      {snapshot.isDraggingOver ? 'Drop to add as accountability' : `None yet — add what ${firstName} owns`}
+                    </p>
+                  )}
+                </div>
+              )}
+            </Droppable>
+          )}
         </div>
 
         {/* Discussion topics */}
@@ -945,30 +968,55 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div
-            ref={setTopicDropRef}
-            className={cn(
-              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
-              isOverTopic && "bg-primary/5 ring-1 ring-primary/30",
-            )}
-          >
-            {topics.map(t => (
-              <PersonTopicCard
-                key={t.id}
-                topic={t}
-                autoFocus={t.id === newlyAddedTopicId}
-                onAutoFocusConsumed={onNewlyAddedTopicConsumed}
-                onUpdate={onUpdateTopic}
-                onDelete={onDeleteTopic}
-                statusOptions={statusOptions}
-              />
-            ))}
-            {topics.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 italic">
-                {isOverTopic ? 'Drop to add as discussion topic' : 'None yet — add manually or use "Suggest topics"'}
-              </p>
-            )}
-          </div>
+          {disableDnd ? (
+            <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
+              {topics.map(t => (
+                <PersonTopicCard
+                  key={t.id}
+                  topic={t}
+                  autoFocus={t.id === newlyAddedTopicId}
+                  onAutoFocusConsumed={onNewlyAddedTopicConsumed}
+                  onUpdate={onUpdateTopic}
+                  onDelete={onDeleteTopic}
+                  statusOptions={statusOptions}
+                />
+              ))}
+              {topics.length === 0 && (
+                <p className="text-xs text-muted-foreground/60 italic">None yet — add manually or use "Suggest topics"</p>
+              )}
+            </div>
+          ) : (
+            <Droppable droppableId={`topic-drop-${member.id}`}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={cn(
+                    "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+                    snapshot.isDraggingOver && "bg-primary/5 ring-1 ring-primary/30",
+                  )}
+                >
+                  {topics.map(t => (
+                    <PersonTopicCard
+                      key={t.id}
+                      topic={t}
+                      autoFocus={t.id === newlyAddedTopicId}
+                      onAutoFocusConsumed={onNewlyAddedTopicConsumed}
+                      onUpdate={onUpdateTopic}
+                      onDelete={onDeleteTopic}
+                      statusOptions={statusOptions}
+                    />
+                  ))}
+                  {provided.placeholder}
+                  {topics.length === 0 && (
+                    <p className="text-xs text-muted-foreground/60 italic">
+                      {snapshot.isDraggingOver ? 'Drop to add as discussion topic' : 'None yet — add manually or use "Suggest topics"'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </Droppable>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -981,7 +1029,7 @@ function PersonSectionsRow({
   onAddTopic, onUpdateTopic, onDeleteTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
-  onCopy, statusOptions, priorities, colLabel,
+  onCopy, statusOptions, priorities, colLabel, disableDnd,
 }: {
   members: CosTeamMember[];
   accountabilities: CosPersonAccountability[];
@@ -1000,6 +1048,7 @@ function PersonSectionsRow({
   statusOptions: string[];
   priorities: CosPriority[];
   colLabel: string;
+  disableDnd?: boolean;
 }) {
   const directReports = members
     .filter(m => m.relationship_type === 'direct_report' && !m.reports_to_id)
@@ -1029,6 +1078,7 @@ function PersonSectionsRow({
             onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
             onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
             onCopy={onCopy}
+            disableDnd={disableDnd}
           />
         ))}
       </div>
@@ -1112,7 +1162,7 @@ function ArchiveSection({
 }
 
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
+  category, label, items, onUpdate, onAdd, onDelete, onPermanentDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed, disableDnd,
 }: {
   category: CategoryKey;
   label: string;
@@ -1120,62 +1170,96 @@ function CategoryBucket({
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onAdd: (category: CategoryKey) => void;
   onDelete: (id: string) => void;
+  onPermanentDelete?: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
   mondayTaggedTexts: string[];
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
+  disableDnd?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: category });
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn('rounded-lg transition-colors', isOver && 'bg-primary/5')}
-    >
+  const renderItems = (isDraggingOver: boolean) => (
+    <>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">{label}</h3>
-          <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+          <Badge variant="secondary" className="text-xs bg-transparent text-orange-500 border-0 font-extrabold">{items.length}</Badge>
         </div>
         <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => onAdd(category)}>
           <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
-      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-1.5">
-          {items.map(item => (
-            <SortablePriorityCard
+      <div className="space-y-1.5">
+        {items.map((item, index) =>
+          disableDnd ? (
+            <PriorityCard
               key={item.id}
               item={item}
               onUpdate={onUpdate}
               onDelete={onDelete}
+              onPermanentDelete={onPermanentDelete}
               onCopy={onCopy}
               isTagged={mondayTaggedTexts.includes(item.text)}
               statusOptions={statusOptions}
               autoEdit={item.id === newlyAddedId}
               onAutoEditConsumed={onNewlyAddedConsumed}
             />
-          ))}
-          {items.length === 0 && (
-            <div className={cn(
-              'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
-              isOver && 'border-primary/40 bg-primary/5',
-            )}>
-              Drop here
-            </div>
-          )}
+          ) : (
+            <DraggablePriorityCard
+              key={item.id}
+              item={item}
+              index={index}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onPermanentDelete={onPermanentDelete}
+              onCopy={onCopy}
+              isTagged={mondayTaggedTexts.includes(item.text)}
+              statusOptions={statusOptions}
+              autoEdit={item.id === newlyAddedId}
+              onAutoEditConsumed={onNewlyAddedConsumed}
+            />
+          )
+        )}
+        {items.length === 0 && (
+          <div className={cn(
+            'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
+            isDraggingOver && 'border-primary/40 bg-primary/5',
+          )}>
+            Drop here
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if (disableDnd) {
+    return <div className="rounded-lg">{renderItems(false)}</div>;
+  }
+
+  return (
+    <Droppable droppableId={category}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          className={cn('rounded-lg transition-colors', snapshot.isDraggingOver && 'bg-primary/5')}
+        >
+          {renderItems(snapshot.isDraggingOver)}
+          {provided.placeholder}
         </div>
-      </SortableContext>
-    </div>
+      )}
+    </Droppable>
   );
 }
 
-function SortablePriorityCard({
-  item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+function DraggablePriorityCard({
+  item, index, onUpdate, onDelete, onPermanentDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
+  index: number;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
+  onPermanentDelete?: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
   isTagged: boolean;
   statusOptions: string[];
@@ -1183,25 +1267,30 @@ function SortablePriorityCard({
   onAutoEditConsumed?: () => void;
 }) {
   const isMobile = useIsMobile();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-    >
-      <PriorityCard
-        item={item}
-        dragListeners={isMobile ? undefined : listeners}
-        dragAttributes={isMobile ? undefined : attributes}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onCopy={onCopy}
-        isTagged={isTagged}
-        statusOptions={statusOptions}
-        autoEdit={autoEdit}
-        onAutoEditConsumed={onAutoEditConsumed}
-      />
-    </div>
+    <Draggable draggableId={item.id} index={index} isDragDisabled={isMobile}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          style={{ ...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.4 : 1 }}
+        >
+          <PriorityCard
+            item={item}
+            dragListeners={isMobile ? undefined : provided.dragHandleProps}
+            dragAttributes={isMobile ? undefined : {}}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onPermanentDelete={onPermanentDelete}
+            onCopy={onCopy}
+            isTagged={isTagged}
+            statusOptions={statusOptions}
+            autoEdit={autoEdit}
+            onAutoEditConsumed={onAutoEditConsumed}
+          />
+        </div>
+      )}
+    </Draggable>
   );
 }
 
@@ -1247,42 +1336,52 @@ function PrioritiesSection({
   layoutConfig: CosLayoutConfig;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const activeItem = priorities.find(p => p.id === activeId);
 
   const allActiveCategories = layoutConfig.columns
     .flatMap(c => c.sections.filter(s => s.enabled && s.type !== 'direct_reports'))
     .map(sectionToCategoryKey);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const handleDragStart = (start: { draggableId: string }) => setActiveId(start.draggableId);
 
-  const handleDragStart = ({ active }: DragStartEvent) => setActiveId(active.id as string);
-
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+  const handleDragEnd = (result: DropResult) => {
     setActiveId(null);
-    if (!over || active.id === over.id) return;
-    const activeItem = priorities.find(p => p.id === active.id);
+    if (!result.destination) return;
+
+    const { draggableId, source, destination } = result;
+    const activeItem = priorities.find(p => p.id === draggableId);
     if (!activeItem) return;
 
-    const overId = over.id as string;
-
-    if (overId.startsWith('acct-drop-')) {
-      onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
+    // Drop onto person sections
+    if (destination.droppableId.startsWith('acct-drop-')) {
+      onDropPriorityOnAccountability(destination.droppableId.replace('acct-drop-', ''), activeItem.text);
       return;
     }
-    if (overId.startsWith('topic-drop-')) {
-      onDropPriorityOnTopic(overId.replace('topic-drop-', ''), activeItem.text);
+    if (destination.droppableId.startsWith('topic-drop-')) {
+      onDropPriorityOnTopic(destination.droppableId.replace('topic-drop-', ''), activeItem.text);
       return;
     }
 
-    const isCategoryTarget = allActiveCategories.includes(overId);
-    const targetCategory = isCategoryTarget
-      ? overId
-      : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
+    // Same position — no-op
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
-    const insertBeforeId = isCategoryTarget ? null : overId;
+    // Reorder within or across category buckets
+    const targetCategory = destination.droppableId;
+    const targetItems = priorities
+      .filter(p => p.category === targetCategory && !p.done_at && !p.archived_at)
+      .sort((a, b) => a.tier_order - b.tier_order);
+
+    // If moving within the same list and going downward, the item at destination.index
+    // is the one AFTER the drop position (since the dragged item is removed first).
+    // If cross-list, destination.index is the position in the target list.
+    let insertBeforeId: string | null = null;
+    if (source.droppableId === destination.droppableId) {
+      // Same list: after removing the dragged item, find the item at destination.index
+      const withoutDragged = targetItems.filter(p => p.id !== draggableId);
+      insertBeforeId = withoutDragged[destination.index]?.id ?? null;
+    } else {
+      insertBeforeId = targetItems[destination.index]?.id ?? null;
+    }
+
     onReorder(activeItem.id, targetCategory, insertBeforeId);
   };
 
@@ -1299,12 +1398,7 @@ function PrioritiesSection({
 
   return (
     <>
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div
         className="hidden md:grid gap-6"
         style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
@@ -1343,6 +1437,7 @@ function PrioritiesSection({
                   onUpdate={onUpdate}
                   onAdd={onAdd}
                   onDelete={onDelete}
+                  onPermanentDelete={onPermanentDelete}
                   onCopy={onCopy}
                   mondayTaggedTexts={mondayTaggedTexts}
                   statusOptions={statusOptions}
@@ -1354,7 +1449,7 @@ function PrioritiesSection({
           </div>
         ))}
       </div>
-      {/* Mobile: stacked single column */}
+      {/* Mobile: stacked single column — DnD disabled */}
       <div className="md:hidden space-y-6">
         {layoutConfig.columns.flatMap(col =>
           col.sections.filter(s => s.enabled).map(section =>
@@ -1378,6 +1473,7 @@ function PrioritiesSection({
                 statusOptions={statusOptions}
                 priorities={priorities}
                 colLabel={col.headerLabel}
+                disableDnd
               />
             ) : (
               <CategoryBucket
@@ -1393,22 +1489,13 @@ function PrioritiesSection({
                 statusOptions={statusOptions}
                 newlyAddedId={newlyAddedId}
                 onNewlyAddedConsumed={onNewlyAddedConsumed}
+                disableDnd
               />
             )
           )
         )}
       </div>
-
-      <DragOverlay dropAnimation={null}>
-        {activeItem ? (
-          <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
-            <CardContent className="p-3">
-              <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
-            </CardContent>
-          </Card>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    </DragDropContext>
 
     {archivedItems.length > 0 && (
       <ArchiveSection
@@ -1432,13 +1519,14 @@ const STATUS_BADGE_COLORS = [
 ];
 
 function PriorityCard({
-  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onPermanentDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
-  dragListeners?: React.HTMLAttributes<HTMLElement>;
-  dragAttributes?: React.HTMLAttributes<HTMLElement>;
+  dragListeners?: Record<string, unknown> | null;
+  dragAttributes?: Record<string, unknown> | null;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
+  onPermanentDelete?: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
   isTagged?: boolean;
   statusOptions: string[];
@@ -1492,12 +1580,12 @@ function PriorityCard({
   return (
     <Card ref={cardRef} className="group border border-border/50 hover:border-border transition-colors">
       <CardContent className="p-3">
-        <div className="flex items-start gap-1.5">
+        <div className="flex items-center gap-1.5">
           {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
           <button
             {...dragListeners}
             {...dragAttributes}
-            className="hidden sm:block flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hidden sm:block flex-shrink-0 py-1 pr-0.5 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
             <GripVertical className="h-4 w-4" />
@@ -1580,35 +1668,38 @@ function PriorityCard({
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
+                <div className="pt-2 border-t border-border/40 flex gap-2">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={() => onDelete(item.id)}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    Archive
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-destructive" onClick={() => onPermanentDelete?.(item.id)}>
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    Delete
+                  </Button>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Right controls */}
-          <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Right controls — status stacked above chevron */}
+          <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
             <button
               onClick={cycleStatus}
               title={item.status ? `Status: ${item.status} — click to advance` : 'Click to set status'}
               className={cn(
-                'w-12 text-xs font-medium px-2 py-0.5 rounded border transition-colors truncate text-center',
+                'text-[10px] font-medium px-1.5 py-px rounded border transition-colors truncate text-center leading-tight',
                 statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
               )}
             >
-              {item.status ?? <span className="text-muted-foreground/40 text-[10px] font-normal">status</span>}
+              {item.status ?? <span className="text-muted-foreground/30">···</span>}
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
-              className="p-2 text-muted-foreground hover:text-foreground"
+              className="p-1 text-muted-foreground hover:text-foreground"
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
-              <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
-            </button>
-            <button
-              onClick={() => onDelete(item.id)}
-              className="hidden sm:inline-flex p-2 text-muted-foreground hover:text-destructive"
-              aria-label="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} />
             </button>
           </div>
         </div>

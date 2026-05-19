@@ -8,6 +8,7 @@ export type CosSectionType =
   | 'now' | 'this_week' | 'next_week'
   | 'this_month_auto' | 'next_month_auto' | 'next_quarter_auto'
   | 'direct_reports'
+  | 'person'
   | 'custom';
 
 export interface CosColumnSection {
@@ -15,6 +16,7 @@ export interface CosColumnSection {
   type: CosSectionType;
   label: string | null;
   enabled: boolean;
+  memberId?: string;
 }
 
 export interface CosColumn {
@@ -32,7 +34,7 @@ export interface CosLayoutConfig {
 export const DEFAULT_STATUS_OPTIONS = ['WIP', 'WOS', 'Done'];
 
 const AUTO_SECTION_TYPES: CosSectionType[] = [
-  'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports',
+  'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports', 'person',
 ];
 
 export function isAutoType(t: CosSectionType): boolean {

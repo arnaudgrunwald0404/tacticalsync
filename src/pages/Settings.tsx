@@ -2167,34 +2167,34 @@ const Settings = () => {
                               </div>
                             </TableCell>
                             <TableCell className="py-3 text-[13px] text-muted-foreground truncate max-w-[220px]">{user.email}</TableCell>
-                            <TableCell>
+                            <TableCell className="py-3">
                               <Popover>
                                 <PopoverTrigger asChild>
-                                  <button className="flex flex-wrap gap-1 items-center min-h-[28px] cursor-pointer hover:opacity-80">
+                                  <button className="flex flex-wrap gap-1 items-center min-h-[24px] cursor-pointer group/roles">
                                     {(user.role_tags ?? []).length > 0
                                       ? (user.role_tags ?? []).map(tag => (
-                                          <span key={tag} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag as RoleTag] ?? 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                                          <span key={tag} className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag as RoleTag] ?? 'bg-gray-100 text-gray-700'}`}>
                                             {ROLE_TAG_LABELS[tag as RoleTag] ?? tag}
                                           </span>
                                         ))
-                                      : <span className="text-xs text-muted-foreground italic">No role</span>
+                                      : <span className="text-[11px] text-muted-foreground/40 group-hover/roles:text-muted-foreground transition-colors">+ Add role</span>
                                     }
                                   </button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-40 p-2" align="start">
-                                  <div className="space-y-1">
+                                <PopoverContent className="w-44 p-1.5" align="start">
+                                  <div className="space-y-0.5">
                                     {ALL_ROLE_TAGS.map(tag => {
                                       const active = (user.role_tags ?? []).includes(tag);
                                       return (
                                         <button
                                           key={tag}
-                                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-muted transition-colors ${active ? 'font-medium' : ''}`}
+                                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${active ? 'bg-muted/60' : 'hover:bg-muted/40'}`}
                                           onClick={() => toggleRoleTag(user.id, tag)}
                                         >
-                                          <span className={`w-4 h-4 rounded border flex items-center justify-center ${active ? 'bg-[#4A5D5F] border-[#4A5D5F]' : 'border-gray-300'}`}>
-                                            {active && <Check className="h-3 w-3 text-white" />}
+                                          <span className={`w-3.5 h-3.5 rounded border-[1.5px] flex items-center justify-center transition-colors ${active ? 'bg-[#4A5D5F] border-[#4A5D5F]' : 'border-gray-300'}`}>
+                                            {active && <Check className="h-2.5 w-2.5 text-white" />}
                                           </span>
-                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag]}`}>
+                                          <span className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag]}`}>
                                             {ROLE_TAG_LABELS[tag]}
                                           </span>
                                         </button>
@@ -2204,29 +2204,29 @@ const Settings = () => {
                                 </PopoverContent>
                               </Popover>
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="py-3 text-[13px] text-muted-foreground tabular-nums">
                               {user.last_active
                                 ? new Date(user.last_active).toLocaleDateString()
-                                : user.has_logged_in ? 'Active' : 'Never'}
+                                : user.has_logged_in ? 'Active' : <span className="text-muted-foreground/35">Never</span>}
                             </TableCell>
-                            <TableCell className="pr-4">
-                              <div className="flex items-center justify-end gap-0.5">
+                            <TableCell className="pr-4 py-3">
+                              <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {user.pendingInvitations?.length ? (
                                   <button
                                     title="Send reminder"
-                                    className="p-1.5 rounded text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
                                     onClick={() => handleSendReminder(user.pendingInvitations![0].id, user.pendingInvitations![0].team_id, user.email)}
                                   >
-                                    <Mail className="h-4 w-4" />
+                                    <Mail className="h-3.5 w-3.5" />
                                   </button>
                                 ) : <div className="w-7" />}
                                 {!user.id.startsWith('pending-') && (
                                   <button
                                     title="Edit user"
-                                    className="p-1.5 rounded text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-[#4A5D5F] hover:bg-muted transition-colors"
                                     onClick={() => openEditDialog(user)}
                                   >
-                                    <Edit2 className="h-4 w-4" />
+                                    <Edit2 className="h-3.5 w-3.5" />
                                   </button>
                                 )}
                               </div>

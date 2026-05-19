@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+export type RoleTag = 'admin' | 'elt' | 'xlt' | 'user';
+export const ALL_ROLE_TAGS: RoleTag[] = ['admin', 'elt', 'xlt', 'user'];
+
 interface RolesState {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isRCDOAdmin: boolean;
+  roleTags: RoleTag[];
   loading: boolean;
   error?: string;
 }
 
 export function useRoles(): RolesState {
-  const [state, setState] = useState<RolesState>({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: true });
+  const [state, setState] = useState<RolesState>({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, roleTags: [], loading: true });
 
   useEffect(() => {
     let isMounted = true;
@@ -20,13 +24,13 @@ export function useRoles(): RolesState {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         if (!user) {
-          if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: false, error: "Not authenticated" });
+          if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, roleTags: [], loading: false, error: "Not authenticated" });
           return;
         }
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("is_admin,is_super_admin,is_rcdo_admin")
+          .select("is_admin,is_super_admin,is_rcdo_admin,role_tags")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -37,7 +41,7 @@ export function useRoles(): RolesState {
         const emailIsSuperAdmin = emailLower === "agrunwald@clearcompany.com"
           || emailLower.endsWith("@gearcompany.com");
 
-        const row = data as { is_super_admin?: boolean; is_admin?: boolean; is_rcdo_admin?: boolean } | null;
+        const row = data as { is_super_admin?: boolean; is_admin?: boolean; is_rcdo_admin?: boolean; role_tags?: string[] } | null;
         const effectiveIsSuperAdmin = Boolean(row?.is_super_admin) || emailIsSuperAdmin;
         const effectiveIsAdmin = Boolean(row?.is_admin) || effectiveIsSuperAdmin;
         const effectiveIsRCDOAdmin = Boolean(row?.is_rcdo_admin) || effectiveIsSuperAdmin;
@@ -51,16 +55,20 @@ export function useRoles(): RolesState {
           }
         }
 
+        const rawTags = (row?.role_tags ?? []) as string[];
+        const roleTags = rawTags.filter((t): t is RoleTag => ALL_ROLE_TAGS.includes(t as RoleTag));
+
         if (isMounted) {
           setState({
             isAdmin: effectiveIsAdmin,
             isSuperAdmin: effectiveIsSuperAdmin,
             isRCDOAdmin: effectiveIsRCDOAdmin,
+            roleTags,
             loading: false,
           });
         }
       } catch (e: unknown) {
-        if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, loading: false, error: (e as Error).message });
+        if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, roleTags: [], loading: false, error: (e as Error).message });
       }
     };
 
