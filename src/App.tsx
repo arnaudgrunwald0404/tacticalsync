@@ -35,6 +35,7 @@ const SIDetail = lazy(() => import("./pages/SIDetail"));
 const TasksFeed = lazy(() => import("./pages/TasksFeed"));
 const CyclePlanner = lazy(() => import("./pages/CyclePlanner"));
 const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
+const RCDOAllHands = lazy(() => import("./pages/RCDOAllHands"));
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,11 @@ const App = () => (
           <Route path="/rcdo/canvas" element={
             <Suspense fallback={<PageSkeleton />}>
               <StrategyCanvas />
+            </Suspense>
+          } />
+          <Route path="/rcdo/all-hands" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <RCDOAllHands />
             </Suspense>
           } />
           <Route path="/dashboard/rcdo/canvas" element={
