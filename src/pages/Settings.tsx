@@ -1575,10 +1575,10 @@ const Settings = () => {
   };
 
   const ROLE_TAG_COLORS: Record<RoleTag, string> = {
-    admin: 'bg-red-100 text-red-800 border-red-200',
-    elt:   'bg-purple-100 text-purple-800 border-purple-200',
-    xlt:   'bg-blue-100 text-blue-800 border-blue-200',
-    user:  'bg-gray-100 text-gray-700 border-gray-200',
+    admin: 'bg-red-50 text-red-700',
+    elt:   'bg-purple-50 text-purple-700',
+    xlt:   'bg-blue-50 text-blue-700',
+    user:  'bg-gray-100 text-gray-600',
   };
 
   const ROLE_TAG_LABELS: Record<RoleTag, string> = {
@@ -2279,16 +2279,16 @@ const Settings = () => {
             {activeSection === "user-management-permissions" && (
               <div>
                 <h3 className="text-lg font-semibold mb-1">Permissions</h3>
-                <p className="text-sm text-muted-foreground mb-5">Define which roles can perform each action</p>
-                <div className="border rounded-lg overflow-x-auto">
+                <p className="text-sm text-muted-foreground mb-6">Define which roles can perform each action</p>
+                <div className="rounded-lg border border-border/50 overflow-hidden shadow-sm">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 hover:bg-muted/40">
-                        <TableHead className="w-48 px-4">Capability</TableHead>
-                        <TableHead>Description</TableHead>
+                      <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border/50">
+                        <TableHead className="w-44 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Capability</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Description</TableHead>
                         {ALL_ROLE_TAGS.map(tag => (
-                          <TableHead key={tag} className="w-20 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag]}`}>
+                          <TableHead key={tag} className="w-[72px] text-center py-3">
+                            <span className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag]}`}>
                               {ROLE_TAG_LABELS[tag]}
                             </span>
                           </TableHead>
@@ -2298,18 +2298,24 @@ const Settings = () => {
                     <TableBody>
                       {PERMISSIONS_MATRIX.map(group => (
                         <>
-                          <TableRow key={group.category} className="bg-muted/20 hover:bg-muted/20">
+                          <TableRow key={group.category} className="bg-muted/10 hover:bg-muted/10 border-b border-border/25">
                             <TableCell colSpan={2 + ALL_ROLE_TAGS.length} className="py-2 px-4">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
+                              <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">{group.category}</span>
                             </TableCell>
                           </TableRow>
                           {group.capabilities.map(cap => (
-                            <TableRow key={cap.label}>
-                              <TableCell className="px-4 font-medium text-sm">{cap.label}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{cap.desc}</TableCell>
+                            <TableRow key={cap.label} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
+                              <TableCell className="px-4 py-2.5 font-medium text-[13px]">{cap.label}</TableCell>
+                              <TableCell className="py-2.5 text-[13px] text-muted-foreground">{cap.desc}</TableCell>
                               {ALL_ROLE_TAGS.map(tag => (
-                                <TableCell key={tag} className="text-center">
-                                  {cap.roles.includes(tag) && <Check className="h-4 w-4 text-[#4A5D5F] mx-auto" />}
+                                <TableCell key={tag} className="text-center py-2.5">
+                                  {cap.roles.includes(tag) ? (
+                                    <div className="w-5 h-5 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center mx-auto">
+                                      <Check className="h-3 w-3 text-[#4A5D5F]" />
+                                    </div>
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-gray-100 mx-auto" />
+                                  )}
                                 </TableCell>
                               ))}
                             </TableRow>
