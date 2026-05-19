@@ -1989,25 +1989,25 @@ const Settings = () => {
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <AppNavbar />
       
-      <div className="flex">
-        <SettingsNavbar 
-          activeSection={activeSection} 
+      <div className="flex flex-col lg:flex-row">
+        <SettingsNavbar
+          activeSection={activeSection}
           onSectionChange={setActiveSection}
           userEmail={userEmail}
           showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
         />
 
-        <main className="flex-1 px-8 py-8 max-w-7xl">
+        <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
         {activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin) ? (
           <div className="mb-8">
             {/* Page header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold mb-1">User Management</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold mb-1">User Management</h2>
                 <p className="text-muted-foreground text-sm">Manage users, roles, and domains</p>
               </div>
               {activeSection === "user-management-users" && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={handleExportCSV}>Export CSV</Button>
                   <Button variant="outline" size="sm" onClick={() => setShowBulkImportDialog(true)}>
                     <Upload className="h-4 w-4 mr-1.5" />Import Bulk
@@ -2045,7 +2045,7 @@ const Settings = () => {
                   </div>
                 </div>
 
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -2171,7 +2171,7 @@ const Settings = () => {
               <div>
                 <h3 className="text-lg font-semibold mb-1">Permissions</h3>
                 <p className="text-sm text-muted-foreground mb-5">Define which roles can perform each action</p>
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">

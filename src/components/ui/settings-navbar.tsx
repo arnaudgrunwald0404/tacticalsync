@@ -28,15 +28,15 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
   let lastGroup: string | null | undefined = undefined;
 
   return (
-    <nav className="w-64 border-r border-cc bg-platinum min-h-[calc(100vh-73px)]">
-      <div className="p-4 space-y-0.5">
+    <nav className="w-full lg:w-64 lg:border-r border-b lg:border-b-0 border-cc bg-platinum lg:min-h-[calc(100vh-73px)]">
+      <div className="p-3 lg:p-4 flex lg:block gap-1 lg:gap-0 space-y-0 lg:space-y-0.5 overflow-x-auto lg:overflow-x-visible">
         {visibleItems.map(item => {
           const showGroupLabel = item.group !== null && item.group !== lastGroup;
           lastGroup = item.group;
           return (
             <React.Fragment key={item.id}>
               {showGroupLabel && (
-                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                <p className="hidden lg:block px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
                   {item.group}
                 </p>
               )}
@@ -45,8 +45,8 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
                 size="sm"
                 onClick={() => onSectionChange(item.id)}
                 className={cn(
-                  "font-body w-full justify-start",
-                  item.group === "User Management" && "pl-5 text-sm",
+                  "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
+                  item.group === "User Management" && "lg:pl-5 lg:text-sm",
                   activeSection === item.id
                     ? "bg-copper text-white hover:bg-copper-hover font-medium"
                     : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
@@ -64,7 +64,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
             size="sm"
             onClick={() => onSectionChange("testing-mode")}
             className={cn(
-              "font-body w-full justify-start",
+              "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
               activeSection === "testing-mode"
                 ? "bg-copper text-white hover:bg-copper-hover font-medium"
                 : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"

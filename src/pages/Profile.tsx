@@ -261,13 +261,13 @@ const Profile = () => {
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-14 sm:pr-20">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4 flex-shrink-0">
               <ArrowLeft className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Back</span>
             </Button>
-            <Logo variant="minimal" size="lg" />
+            <Logo variant="minimal" size="lg" className="min-w-0" />
           </div>
           <UserProfileHeader />
         </div>
