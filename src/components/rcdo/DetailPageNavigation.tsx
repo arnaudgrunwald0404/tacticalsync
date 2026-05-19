@@ -457,8 +457,7 @@ export function DetailPageNavigation({
       <div className="px-4 py-3 border-b border-sidebar-border space-y-2">
         <Button
           onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
-          size="sm"
-          className="w-full"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <LayoutGrid className="h-4 w-4 mr-2" />
           Go to Canvas view

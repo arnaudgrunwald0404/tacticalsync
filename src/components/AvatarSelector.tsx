@@ -78,9 +78,13 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="upload" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="upload">Upload a picture</TabsTrigger>
-            <TabsTrigger value="avatar">Choose avatar</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 h-auto">
+            <TabsTrigger value="upload" className="text-xs sm:text-sm px-2 py-1.5 whitespace-normal leading-tight">
+              Upload a picture
+            </TabsTrigger>
+            <TabsTrigger value="avatar" className="text-xs sm:text-sm px-2 py-1.5 whitespace-normal leading-tight">
+              Choose avatar
+            </TabsTrigger>
           </TabsList>
 
           {/* Upload Picture Tab */}

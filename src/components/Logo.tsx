@@ -17,16 +17,16 @@ const Logo = ({
 }: LogoProps) => {
   const sizeClasses = {
     sm: "h-6",
-    md: "h-8", 
-    lg: "h-10",
-    xl: "h-12"
+    md: "h-8",
+    lg: "h-8 sm:h-10",
+    xl: "h-10 sm:h-12"
   };
 
   const textSizeClasses = {
-    sm: "text-xl",
-    md: "text-2xl",
-    lg: "text-3xl",
-    xl: "text-5xl"
+    sm: "text-lg sm:text-xl",
+    md: "text-xl sm:text-2xl",
+    lg: "text-2xl sm:text-3xl",
+    xl: "text-3xl sm:text-5xl"
   };
 
   const logoSrc = "/logo-icon.png";
@@ -44,7 +44,7 @@ const Logo = ({
   }
 
   return (
-    <div className={cn("flex items-center gap-3", className)}>
+    <div className={cn("flex items-center gap-2 sm:gap-3", className)}>
       <img 
         src={logoSrc}
         alt={altText}
