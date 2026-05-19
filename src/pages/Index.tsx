@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Target, CheckSquare, RefreshCw, ArrowRight } from "lucide-react";
+import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 import GridBackground from "@/components/ui/grid-background";
@@ -10,11 +10,6 @@ import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const navigate = useNavigate();
-  // True when OAuth redirected here with a PKCE code — show a spinner instead
-  // of the hero page while Supabase exchanges the code for a session.
-  const [handlingCallback] = useState(
-    () => !!new URLSearchParams(window.location.search).get('code')
-  );
 
   // Check for existing session or OAuth callback
   useEffect(() => {
@@ -28,43 +23,24 @@ const Index = () => {
     if (!hasCode) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          navigate("/chief-of-staff");
+          navigate("/dashboard");
         }
       });
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Handle PKCE callback - code exchange happens automatically with detectSessionInUrl: true
       if (session) {
+        // Clean up URL by removing code parameter after successful auth
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate("/chief-of-staff");
+        navigate("/dashboard");
       }
     });
 
-    // If the PKCE exchange doesn't resolve within 8 s (e.g. redirect URL mismatch
-    // causes a silent failure), send the user to /auth to try again.
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    if (hasCode) {
-      timeout = setTimeout(() => navigate("/auth"), 8000);
-    }
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => subscription.unsubscribe();
   }, [navigate]);
-
-  if (handlingCallback) {
-    return (
-      <GridBackground className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
-        <div className="flex flex-col items-center gap-4">
-          <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
-          <div className="h-5 w-5 rounded-full border-2 border-[#4A5D5F] border-t-transparent animate-spin mt-2" />
-        </div>
-      </GridBackground>
-    );
-  }
 
   return (
     <GridBackground className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
@@ -107,28 +83,26 @@ const Index = () => {
           <div className="space-y-4 sm:space-y-8">
             {/* Mobile heading - simple text */}
             <h2 className="sm:hidden font-heading text-3xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-              Where Strategy Meets Accountability.
+              Great leadership starts with great team meetings.
             </h2>
 
             {/* Desktop heading - with animation */}
             <h2 className="hidden sm:block font-heading text-4xl md:text-5xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-              Great Teams Don't Just Meet —<br />They{" "}
-              <LayoutTextFlip
-                text=""
-                words={["Own.", "Prepare.", "Follow Up.", "Delegate.", "Never Forget.", "Execute."]}
-                duration={3000}
-              />
+               Great Leadership Starts <br></br>with Great {" "}
+              
+                <LayoutTextFlip 
+                  text=""
+                  words={["Weekly", "Monthly", "Quarterly", "Daily"]}
+                  duration={3000}
+                />
+              {" "}
+              Team Meetings
             </h2>
 
-            <div className="space-y-2 !mt-8 sm:!mt-12 md:!mt-16">
-              <p className="hidden sm:block font-body text-sm tracking-widest uppercase text-[#B89A6B] font-semibold">
-                Achieve Uncommon Execution.
-              </p>
-              <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
-                Connect your strategy to daily execution — with built-in check-ins,
-                commitments, and team alignment tools that actually close the loop.
-              </p>
-            </div>
+            <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
+              Streamline your tactical meetings with collaborative agenda tracking,
+              action items, and team accountability.
+            </p>
 
             {/* Get Started button - Mobile only, placed after description */}
             <div className="sm:hidden pt-4">
@@ -147,31 +121,31 @@ const Index = () => {
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
               <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Target className="h-7 w-7 text-[#4A5D5F]" />
+                <Users className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Strategy & Objectives</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Team Collaboration</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Set your Rallying Cry and Defining Objectives — the direction your whole team aligns around
+                Invite team members and collaborate in real-time on meeting agendas and topics
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
+              <div className="rounded-full bg-[#6B9A8F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-7 w-7 text-[#6B9A8F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Commitments & Priorities</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Consistent Tracking</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Track what each person owns, week to week — with clear priorities and accountability
+                Automatically organize meetings by week and track progress over time
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
               <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <RefreshCw className="h-7 w-7 text-[#4A5D5F]" />
+                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Check-ins & Progress</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Action Items</h3>
               <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Close the loop with structured check-ins that connect daily work back to your strategy
+                Assign tasks, set time estimates, and track completion with ease
               </p>
             </div>
           </div>

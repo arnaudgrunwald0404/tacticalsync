@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 interface SettingsNavbarProps {
   activeSection: string;
@@ -9,23 +10,15 @@ interface SettingsNavbarProps {
   showAdminManagement?: boolean;
 }
 
-const NAV_ITEMS = [
-  { id: "user-management-users",       label: "Users",             group: "User Management" },
-  { id: "user-management-domains",     label: "Domains",           group: "User Management" },
-  { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
-  { id: "agenda-templates",            label: "Agenda Templates",  group: null },
-  { id: "configure-my-lists",          label: "Configure My Lists", group: null },
+const USER_MGMT_SUB_ITEMS = [
+  { id: "user-management-users", label: "Users" },
+  { id: "user-management-domains", label: "Domains" },
+  { id: "user-management-permissions", label: "Permissions" },
 ];
 
 const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
-
-  const visibleItems = NAV_ITEMS.filter(item => {
-    if (item.group === "User Management" && !showAdminManagement) return false;
-    return true;
-  });
-
-  let lastGroup: string | null | undefined = undefined;
+  const isUserMgmtActive = activeSection.startsWith("user-management");
 
   return (
     <nav className="w-full lg:w-64 lg:border-r border-b lg:border-b-0 border-cc bg-platinum lg:min-h-[calc(100vh-73px)]">
@@ -67,12 +60,13 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
               "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
               activeSection === "testing-mode"
                 ? "bg-copper text-white hover:bg-copper-hover font-medium"
-                : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
+                : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
             )}
           >
             🧪 Testing Mode
           </Button>
         )}
+
       </div>
     </nav>
   );

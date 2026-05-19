@@ -4,14 +4,13 @@ import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import {
-  DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent,
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, KeyboardSensor, useSensor, useSensors,
-  pointerWithin, MeasuringStrategy, UniqueIdentifier,
+  closestCenter,
 } from '@dnd-kit/core';
-import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy,
+  verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -29,12 +28,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import {
-  CosSectionType, CosColumnSection, CosColumn, CosLayoutConfig,
-  DEFAULT_STATUS_OPTIONS, DEFAULT_LAYOUT_CONFIG,
-  SECTION_TYPE_LABELS, isAutoType, resolveNewSectionLabel,
-  sectionToCategoryKey, totalWidthPct, adjustColumnCount, migrateOldSettings,
-} from '@/types/cos';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,17 +99,161 @@ interface CosPersonTopic {
 
 type CategoryKey = string;
 
-// Legacy types — only used internally for migration
+// ── Layout configuration types & defaults ─────────────────────────────────────
+
+// Legacy types — kept only for migrateOldSettings(); not used elsewhere
 interface CosCol1Section { key: string; label: string | null; auto_label: boolean; enabled: boolean; }
 interface CosCol2Section { key: string; label: string; enabled: boolean; }
 interface CosTabLabels   { priorities: string; dci: string; team: string; }
+
+type CosSectionType =
+  | 'now' | 'this_week' | 'next_week'
+  | 'this_month_auto' | 'next_month_auto' | 'next_quarter_auto'
+  | 'direct_reports'
+  | 'custom';
+
+interface CosColumnSection {
+  id: string;
+  type: CosSectionType;
+  label: string | null;
+  enabled: boolean;
+}
+
+interface CosColumn {
+  id: string;
+  headerLabel: string;
+  widthPct: number;
+  sections: CosColumnSection[];
+}
+
+interface CosLayoutConfig {
+  columnCount: 3 | 4;
+  columns: CosColumn[];
+}
+
+const AUTO_SECTION_TYPES: CosSectionType[] = [
+  'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports',
+];
+
+function isAutoType(t: CosSectionType): boolean {
+  return AUTO_SECTION_TYPES.includes(t);
+}
+
+const SECTION_TYPE_LABELS: Record<CosSectionType, string> = {
+  now:              'Now',
+  this_week:        'This Week',
+  next_week:        'Next Week',
+  this_month_auto:  'This Month (auto)',
+  next_month_auto:  'Next Month (auto)',
+  next_quarter_auto:'Next Quarter (auto)',
+  direct_reports:   'Direct Reports',
+  custom:           'Custom',
+};
+
+function resolveNewSectionLabel(section: CosColumnSection): string {
+  if (section.type === 'direct_reports') return section.label ?? 'Direct Reports';
+  if (section.type === 'this_month_auto') {
+    if (section.label) return section.label;
+    return new Date().toLocaleString('default', { month: 'long' });
+  }
+  if (section.type === 'next_month_auto') {
+    if (section.label) return section.label;
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1).toLocaleString('default', { month: 'long' });
+  }
+  if (section.type === 'next_quarter_auto') {
+    if (section.label) return section.label;
+    const currentQ = Math.floor(new Date().getMonth() / 3) + 1;
+    return `Q${(currentQ % 4) + 1}`;
+  }
+  return section.label ?? SECTION_TYPE_LABELS[section.type] ?? section.id;
+}
+
+function sectionToCategoryKey(section: CosColumnSection): string {
+  if (section.type === 'this_month_auto')   return 'this_month';
+  if (section.type === 'next_month_auto')   return 'next_month';
+  if (section.type === 'next_quarter_auto') return 'next_quarter';
+  if (section.type === 'now' || section.type === 'this_week' || section.type === 'next_week') return section.type;
+  return section.id;
+}
+
+const DEFAULT_LAYOUT_CONFIG: CosLayoutConfig = {
+  columnCount: 3,
+  columns: [
+    { id: 'col1', headerLabel: 'Priorities', widthPct: 33, sections: [
+      { id: 'now',          type: 'now',              label: 'Now',       enabled: true  },
+      { id: 'this_week',    type: 'this_week',         label: 'This Week', enabled: true  },
+      { id: 'next_week',    type: 'next_week',         label: 'Next Week', enabled: false },
+      { id: 'this_month',   type: 'this_month_auto',   label: null,        enabled: true  },
+      { id: 'next_month',   type: 'next_month_auto',   label: null,        enabled: true  },
+      { id: 'next_quarter', type: 'next_quarter_auto', label: null,        enabled: false },
+    ]},
+    { id: 'col2', headerLabel: 'Strategic', widthPct: 33, sections: [
+      { id: 'strategic', type: 'custom', label: 'Strategic Opportunities', enabled: true },
+      { id: 'people',    type: 'custom', label: 'People to Meet',          enabled: true },
+    ]},
+    { id: 'col3', headerLabel: 'Direct Reports', widthPct: 34, sections: [
+      { id: 'direct_reports', type: 'direct_reports', label: null, enabled: true },
+    ]},
+  ],
+};
+
+function totalWidthPct(columns: CosColumn[]): number {
+  return columns.reduce((sum, c) => sum + (c.widthPct || 0), 0);
+}
+
+function adjustColumnCount(config: CosLayoutConfig, newCount: 3 | 4): CosLayoutConfig {
+  if (newCount === 4 && config.columnCount === 3) {
+    const cols = [...config.columns.map(c => ({ ...c, widthPct: 25 })),
+      { id: 'col4', headerLabel: 'Column 4', widthPct: 25, sections: [] as CosColumnSection[] }];
+    return { columnCount: 4, columns: cols };
+  }
+  if (newCount === 3 && config.columnCount === 4) {
+    const cols = config.columns.slice(0, 3).map((c, i) => ({ ...c, widthPct: i === 2 ? 34 : 33 }));
+    return { columnCount: 3, columns: cols };
+  }
+  return config;
+}
+
+const OLD_KEY_TO_TYPE: Record<string, CosSectionType> = {
+  now: 'now', this_week: 'this_week', next_week: 'next_week',
+  this_month: 'this_month_auto', next_month: 'next_month_auto', next_quarter: 'next_quarter_auto',
+};
+
+function migrateOldSettings(raw: Record<string, unknown>): CosLayoutConfig {
+  const tabLabels = (raw.tab_labels ?? {}) as Record<string, string>;
+  const col1      = (raw.col1_sections ?? []) as CosCol1Section[];
+  const col2      = (raw.col2_sections ?? []) as CosCol2Section[];
+  const col3Label = (raw.col3_label as string | undefined) ?? 'Direct Reports';
+
+  const col1Sections: CosColumnSection[] = col1.map(s => ({
+    id: s.key,
+    type: s.key.startsWith('custom_') ? 'custom' : (OLD_KEY_TO_TYPE[s.key] ?? 'custom'),
+    label: s.label,
+    enabled: s.enabled,
+  }));
+
+  const col2Sections: CosColumnSection[] = col2.map(s => ({
+    id: s.key, type: 'custom' as CosSectionType, label: s.label, enabled: s.enabled,
+  }));
+
+  return {
+    columnCount: 3,
+    columns: [
+      { id: 'col1', headerLabel: tabLabels.priorities ?? 'Priorities', widthPct: 33, sections: col1Sections },
+      { id: 'col2', headerLabel: 'Strategic',                          widthPct: 33, sections: col2Sections },
+      { id: 'col3', headerLabel: col3Label,                            widthPct: 34, sections: [
+        { id: 'direct_reports', type: 'direct_reports', label: null, enabled: true },
+      ]},
+    ],
+  };
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
   const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
   const [teamMembers, setTeamMembers] = useState<CosTeamMember[]>([]);
@@ -137,7 +274,6 @@ export default function ChiefOfStaff() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
-      setUserEmail(user.email ?? null);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -245,37 +381,50 @@ export default function ChiefOfStaff() {
     targetCategory: CategoryKey,
     insertBeforeId: string | null,
   ) => {
-    const item = priorities.find(p => p.id === id);
-    if (!item) return;
-    const srcCat = item.category;
+    const activeItem = priorities.find(p => p.id === id);
+    if (!activeItem) return;
+    const sourceCategory = activeItem.category;
+
+    // Build new target list (excluding the moved item, then insert at position)
     const targetItems = priorities
       .filter(p => p.category === targetCategory && p.id !== id)
       .sort((a, b) => a.tier_order - b.tier_order);
     const insertIdx = insertBeforeId
-      ? targetItems.findIndex(p => p.id === insertBeforeId)
+      ? Math.max(0, targetItems.findIndex(p => p.id === insertBeforeId))
       : targetItems.length;
-    const idx = insertIdx === -1 ? targetItems.length : insertIdx;
     const newTargetItems: CosPriority[] = [
-      ...targetItems.slice(0, idx),
-      { ...item, category: targetCategory },
-      ...targetItems.slice(idx),
+      ...targetItems.slice(0, insertIdx === -1 ? targetItems.length : insertIdx),
+      { ...activeItem, category: targetCategory },
+      ...targetItems.slice(insertIdx === -1 ? targetItems.length : insertIdx),
     ];
+
+    // Optimistic update
     setPriorities(prev => {
-      const srcItems = srcCat !== targetCategory
-        ? prev.filter(p => p.category === srcCat && p.id !== id)
+      const sourceItems = sourceCategory !== targetCategory
+        ? prev.filter(p => p.category === sourceCategory && p.id !== id)
             .sort((a, b) => a.tier_order - b.tier_order)
             .map((p, i) => ({ ...p, tier_order: i + 1 }))
         : [];
-      const others = prev.filter(p => p.category !== targetCategory && p.id !== id && p.category !== srcCat);
-      const reindexed = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
-      return srcCat !== targetCategory ? [...others, ...srcItems, ...reindexed] : [...others, ...reindexed];
+      const others = prev.filter(
+        p => p.category !== targetCategory && p.id !== id && p.category !== sourceCategory,
+      );
+      const reindexedTarget = newTargetItems.map((p, i) => ({ ...p, tier_order: i + 1 }));
+      return sourceCategory !== targetCategory
+        ? [...others, ...sourceItems, ...reindexedTarget]
+        : [...others, ...reindexedTarget];
     });
+
+    // Persist
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await Promise.all([
-      ...newTargetItems.map((p, i) => db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id)),
-      ...(srcCat !== targetCategory
-        ? priorities.filter(p => p.category === srcCat && p.id !== id).sort((a, b) => a.tier_order - b.tier_order)
+      ...newTargetItems.map((p, i) =>
+        db.from('cos_priorities').update({ category: targetCategory, tier_order: i + 1 }).eq('id', p.id),
+      ),
+      ...(sourceCategory !== targetCategory
+        ? priorities
+            .filter(p => p.category === sourceCategory && p.id !== id)
+            .sort((a, b) => a.tier_order - b.tier_order)
             .map((p, i) => db.from('cos_priorities').update({ tier_order: i + 1 }).eq('id', p.id))
         : []),
     ]);
@@ -344,6 +493,28 @@ export default function ChiefOfStaff() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from('cos_person_topics').delete().eq('id', id);
     setPersonTopics(prev => prev.filter(t => t.id !== id));
+  };
+
+  const dropPriorityOnAccountability = async (memberId: string, text: string) => {
+    if (!userId) return;
+    const memberAccts = accountabilities.filter(a => a.member_id === memberId);
+    const maxOrder = memberAccts.length > 0 ? Math.max(...memberAccts.map(a => a.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_accountabilities').insert({
+      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) setAccountabilities(prev => [...prev, data as CosPersonAccountability]);
+  };
+
+  const dropPriorityOnTopic = async (memberId: string, text: string) => {
+    if (!userId) return;
+    const memberTopics = personTopics.filter(t => t.member_id === memberId);
+    const maxOrder = memberTopics.length > 0 ? Math.max(...memberTopics.map(t => t.sort_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_person_topics').insert({
+      user_id: userId, member_id: memberId, text, sort_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) setPersonTopics(prev => [...prev, data as CosPersonTopic]);
   };
 
   const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
@@ -481,11 +652,12 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className={cn('mb-6 grid w-full', showBrief ? 'grid-cols-4 sm:w-[440px]' : 'grid-cols-3 sm:w-[360px]')}>
+        <TabsList className={cn('mb-6 w-full grid', showBrief ? 'grid-cols-5' : 'grid-cols-4')}>
           {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
-          <TabsTrigger value="priorities">My Lists</TabsTrigger>
+          <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
           <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         {showBrief && (
@@ -523,6 +695,8 @@ export default function ChiefOfStaff() {
             newlyAddedTopicId={newlyAddedTopicId}
             onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
             onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
+            onDropPriorityOnAccountability={dropPriorityOnAccountability}
+            onDropPriorityOnTopic={dropPriorityOnTopic}
             onPermanentDelete={permanentDeletePriority}
             onRestoreArchived={restoreArchivedPriority}
             layoutConfig={layoutConfig}
@@ -530,29 +704,22 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="dci">
-          {userEmail === 'agrunwald@clearcompany.com' ? (
-            <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
-          ) : (
-            <div className="flex items-center justify-center py-24 text-center">
-              <p className="text-muted-foreground text-sm max-w-sm">
-                In the near future, we will help you automate the creation of your Daily Check-In priorities.
-              </p>
-            </div>
-          )}
+          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
         </TabsContent>
 
         <TabsContent value="team">
-          {userEmail === 'agrunwald@clearcompany.com' ? (
-            <TeamSection members={teamMembers} />
-          ) : (
-            <div className="flex items-center justify-center py-24 text-center">
-              <p className="text-muted-foreground text-sm max-w-sm">
-                In the near future, we will help you prepare your 1-1s.
-              </p>
-            </div>
-          )}
+          <TeamSection members={teamMembers} />
         </TabsContent>
 
+        <TabsContent value="settings">
+          <SettingsSection
+            statusOptions={statusOptions}
+            onSave={saveStatusOptions}
+            layoutConfig={layoutConfig}
+            onSaveLayout={saveLayoutConfig}
+            isActive={activeTab === 'settings'}
+          />
+        </TabsContent>
       </Tabs>
 
       <Sheet open={rerunOpen} onOpenChange={setRerunOpen}>
@@ -851,6 +1018,8 @@ function PersonSectionCard({
   priorities: CosPriority[];
 }) {
   const firstName = member.name.split(' ')[0];
+  const { setNodeRef: setAcctDropRef, isOver: isOverAcct } = useDroppable({ id: `acct-drop-${member.id}` });
+  const { setNodeRef: setTopicDropRef, isOver: isOverTopic } = useDroppable({ id: `topic-drop-${member.id}` });
 
   const handleSuggestTopics = () => {
     const prompt = buildPersonTopicSuggestPrompt(member, accountabilities, priorities, topics);
@@ -888,7 +1057,13 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
+          <div
+            ref={setAcctDropRef}
+            className={cn(
+              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+              isOverAcct && "bg-primary/5 ring-1 ring-primary/30",
+            )}
+          >
             {accountabilities.map(a => (
               <AccountabilityRow
                 key={a.id}
@@ -901,7 +1076,7 @@ function PersonSectionCard({
             ))}
             {accountabilities.length === 0 && (
               <p className="text-xs text-muted-foreground/60 italic">
-                {`None yet — add what ${firstName} owns`}
+                {isOverAcct ? 'Drop to add as accountability' : `None yet — add what ${firstName} owns`}
               </p>
             )}
           </div>
@@ -913,7 +1088,7 @@ function PersonSectionCard({
             <div className="flex items-center gap-1.5">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Discussion Topics</h4>
               {topics.length > 0 && (
-                <span className="text-xs font-bold text-copper">{topics.length}</span>
+                <Badge variant="secondary" className="text-xs px-1.5 py-0">{topics.length}</Badge>
               )}
             </div>
             <Button
@@ -925,7 +1100,13 @@ function PersonSectionCard({
               <Plus className="h-3 w-3 mr-0.5" />Add
             </Button>
           </div>
-          <div className="space-y-0.5 rounded-md p-1 min-h-[32px]">
+          <div
+            ref={setTopicDropRef}
+            className={cn(
+              "space-y-0.5 rounded-md p-1 min-h-[32px] transition-colors",
+              isOverTopic && "bg-primary/5 ring-1 ring-primary/30",
+            )}
+          >
             {topics.map(t => (
               <PersonTopicCard
                 key={t.id}
@@ -939,7 +1120,7 @@ function PersonSectionCard({
             ))}
             {topics.length === 0 && (
               <p className="text-xs text-muted-foreground/60 italic">
-                None yet — add manually or use "Suggest topics"
+                {isOverTopic ? 'Drop to add as discussion topic' : 'None yet — add manually or use "Suggest topics"'}
               </p>
             )}
           </div>
@@ -983,6 +1164,7 @@ function PersonSectionsRow({
 
   return (
     <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{colLabel}</h3>
       <div className="space-y-4">
         {directReports.map(m => (
           <PersonSectionCard
@@ -1040,7 +1222,7 @@ function ArchiveSection({
       >
         <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
         Archive
-        <span className="text-xs font-bold text-copper">{items.length}</span>
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 normal-case tracking-normal">{items.length}</Badge>
       </button>
 
       {open && (
@@ -1086,8 +1268,7 @@ function ArchiveSection({
 }
 
 function CategoryBucket({
-  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions,
-  newlyAddedId, onNewlyAddedConsumed, isDropTarget,
+  category, label, items, onUpdate, onAdd, onDelete, onCopy, mondayTaggedTexts, statusOptions, newlyAddedId, onNewlyAddedConsumed,
 }: {
   category: CategoryKey;
   label: string;
@@ -1100,30 +1281,26 @@ function CategoryBucket({
   statusOptions: string[];
   newlyAddedId: string | null;
   onNewlyAddedConsumed: () => void;
-  isDropTarget?: boolean;
 }) {
-  const { setNodeRef } = useDroppable({ id: category });
+  const { setNodeRef, isOver } = useDroppable({ id: category });
   return (
     <div
       ref={setNodeRef}
-      className={cn(
-        'rounded-lg transition-all duration-150 p-1 -m-1',
-        isDropTarget && 'ring-2 ring-primary/40 ring-inset bg-primary/5',
-      )}
+      className={cn('rounded-lg transition-colors', isOver && 'bg-primary/5')}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">{label}</h3>
-          <span className="text-xs font-bold text-copper">{items.length}</span>
+          <Badge variant="secondary" className="text-xs">{items.length}</Badge>
         </div>
         <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => onAdd(category)}>
           <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
       <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-1.5 min-h-[2rem]">
+        <div className="space-y-1.5">
           {items.map(item => (
-            <SortableItem
+            <SortablePriorityCard
               key={item.id}
               item={item}
               onUpdate={onUpdate}
@@ -1135,13 +1312,21 @@ function CategoryBucket({
               onAutoEditConsumed={onNewlyAddedConsumed}
             />
           ))}
+          {items.length === 0 && (
+            <div className={cn(
+              'rounded-md border-2 border-dashed border-border/40 py-4 text-center text-xs text-muted-foreground',
+              isOver && 'border-primary/40 bg-primary/5',
+            )}>
+              Drop here
+            </div>
+          )}
         </div>
       </SortableContext>
     </div>
   );
 }
 
-function SortableItem({
+function SortablePriorityCard({
   item, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
@@ -1153,16 +1338,17 @@ function SortableItem({
   autoEdit?: boolean;
   onAutoEditConsumed?: () => void;
 }) {
+  const isMobile = useIsMobile();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
       <PriorityCard
         item={item}
-        dragHandleListeners={listeners}
-        dragHandleAttributes={attributes}
+        dragListeners={isMobile ? undefined : listeners}
+        dragAttributes={isMobile ? undefined : attributes}
         onUpdate={onUpdate}
         onDelete={onDelete}
         onCopy={onCopy}
@@ -1183,6 +1369,7 @@ function PrioritiesSection({
   onAddPersonTopic, onUpdatePersonTopic, onDeletePersonTopic,
   newlyAddedAccountabilityId, newlyAddedTopicId,
   onNewlyAddedAccountabilityConsumed, onNewlyAddedTopicConsumed,
+  onDropPriorityOnAccountability, onDropPriorityOnTopic,
   onPermanentDelete, onRestoreArchived,
   layoutConfig,
 }: {
@@ -1209,136 +1396,183 @@ function PrioritiesSection({
   newlyAddedTopicId: string | null;
   onNewlyAddedAccountabilityConsumed: () => void;
   onNewlyAddedTopicConsumed: () => void;
+  onDropPriorityOnAccountability: (memberId: string, text: string) => void;
+  onDropPriorityOnTopic: (memberId: string, text: string) => void;
   onPermanentDelete: (id: string) => void;
   onRestoreArchived: (id: string) => void;
   layoutConfig: CosLayoutConfig;
 }) {
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
-
+  const [activeId, setActiveId] = useState<string | null>(null);
   const activeItem = priorities.find(p => p.id === activeId);
 
-  const allCategories = layoutConfig.columns
+  const allActiveCategories = layoutConfig.columns
     .flatMap(c => c.sections.filter(s => s.enabled && s.type !== 'direct_reports'))
     .map(sectionToCategoryKey);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const resolveCategoryFromId = (id: string): string | null => {
-    if (allCategories.includes(id)) return id;
-    return priorities.find(p => p.id === id)?.category ?? null;
-  };
-
-  const handleDragStart = ({ active }: DragStartEvent) => {
-    setActiveId(active.id);
-    setDragOverCategory(null);
-  };
-
-  const handleDragOver = ({ over }: DragOverEvent) => {
-    setDragOverCategory(over ? resolveCategoryFromId(over.id as string) : null);
-  };
+  const handleDragStart = ({ active }: DragStartEvent) => setActiveId(active.id as string);
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     setActiveId(null);
-    setDragOverCategory(null);
-    if (!over) return;
+    if (!over || active.id === over.id) return;
+    const activeItem = priorities.find(p => p.id === active.id);
+    if (!activeItem) return;
 
     const overId = over.id as string;
-    const dragged = priorities.find(p => p.id === active.id);
-    if (!dragged) return;
 
-    const isBucket = allCategories.includes(overId);
-    const targetItem = !isBucket ? priorities.find(p => p.id === overId) : null;
-    if (!isBucket && !targetItem) return; // dropped on unknown zone
-    if (!isBucket && overId === active.id) return; // dropped on itself
+    if (overId.startsWith('acct-drop-')) {
+      onDropPriorityOnAccountability(overId.replace('acct-drop-', ''), activeItem.text);
+      return;
+    }
+    if (overId.startsWith('topic-drop-')) {
+      onDropPriorityOnTopic(overId.replace('topic-drop-', ''), activeItem.text);
+      return;
+    }
 
-    const targetCategory = isBucket ? overId : targetItem!.category;
-    const insertBeforeId = isBucket ? null : overId;
-    onReorder(dragged.id, targetCategory, insertBeforeId);
+    const isCategoryTarget = allActiveCategories.includes(overId);
+    const targetCategory = isCategoryTarget
+      ? overId
+      : (priorities.find(p => p.id === overId)?.category ?? activeItem.category);
+
+    const insertBeforeId = isCategoryTarget ? null : overId;
+    onReorder(activeItem.id, targetCategory, insertBeforeId);
   };
 
   const sortedFor = (cat: CategoryKey) =>
-    priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at)
-      .sort((a, b) => a.tier_order - b.tier_order);
+    priorities.filter(p => p.category === cat && !p.done_at && !p.archived_at).sort((a, b) => a.tier_order - b.tier_order);
 
   const archivedItems = priorities
     .filter(p => !!p.archived_at || !!p.done_at)
-    .sort((a, b) => new Date(b.archived_at ?? b.done_at ?? b.created_at).getTime()
-                  - new Date(a.archived_at ?? a.done_at ?? a.created_at).getTime());
-
-  const renderBuckets = (sections: typeof layoutConfig.columns[0]['sections'], colLabel: string) =>
-    sections.filter(s => s.enabled).map(section =>
-      section.type === 'direct_reports' ? (
-        <PersonSectionsRow key={section.id} members={members} accountabilities={accountabilities}
-          topics={personTopics} onAddAccountability={onAddAccountability}
-          onUpdateAccountability={onUpdateAccountability} onDeleteAccountability={onDeleteAccountability}
-          onAddTopic={onAddPersonTopic} onUpdateTopic={onUpdatePersonTopic} onDeleteTopic={onDeletePersonTopic}
-          newlyAddedAccountabilityId={newlyAddedAccountabilityId} newlyAddedTopicId={newlyAddedTopicId}
-          onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
-          onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
-          onCopy={onCopy} statusOptions={statusOptions} priorities={priorities} colLabel={colLabel} />
-      ) : (
-        <CategoryBucket key={section.id}
-          category={sectionToCategoryKey(section)} label={resolveNewSectionLabel(section)}
-          items={sortedFor(sectionToCategoryKey(section))}
-          onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} onCopy={onCopy}
-          mondayTaggedTexts={mondayTaggedTexts} statusOptions={statusOptions}
-          newlyAddedId={newlyAddedId} onNewlyAddedConsumed={onNewlyAddedConsumed}
-          isDropTarget={dragOverCategory === sectionToCategoryKey(section)}
-        />
-      )
-    );
+    .sort((a, b) => {
+      const aTime = new Date(a.archived_at ?? a.done_at ?? a.created_at).getTime();
+      const bTime = new Date(b.archived_at ?? b.done_at ?? b.created_at).getTime();
+      return bTime - aTime;
+    });
 
   return (
     <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={(args) => pointerWithin({
-          ...args,
-          droppableContainers: args.droppableContainers.filter(c => c.id !== args.active.id),
-        })}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div
+        className="hidden md:grid gap-6"
+        style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
       >
-        {/* Desktop grid */}
-        <div className="hidden md:grid gap-6"
-          style={{ gridTemplateColumns: layoutConfig.columns.map(c => `${c.widthPct}fr`).join(' ') }}
-        >
-          {layoutConfig.columns.map(col => (
-            <div key={col.id} className="space-y-6">
-              <div className="pb-2 border-b border-border">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-widest">{col.headerLabel}</h3>
-              </div>
-              {renderBuckets(col.sections, col.headerLabel)}
-            </div>
-          ))}
-        </div>
+        {layoutConfig.columns.map(col => (
+          <div key={col.id} className="space-y-6">
+            {col.sections.filter(s => s.enabled).map(section =>
+              section.type === 'direct_reports' ? (
+                <PersonSectionsRow
+                  key={section.id}
+                  members={members}
+                  accountabilities={accountabilities}
+                  topics={personTopics}
+                  onAddAccountability={onAddAccountability}
+                  onUpdateAccountability={onUpdateAccountability}
+                  onDeleteAccountability={onDeleteAccountability}
+                  onAddTopic={onAddPersonTopic}
+                  onUpdateTopic={onUpdatePersonTopic}
+                  onDeleteTopic={onDeletePersonTopic}
+                  newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+                  newlyAddedTopicId={newlyAddedTopicId}
+                  onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+                  onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+                  onCopy={onCopy}
+                  statusOptions={statusOptions}
+                  priorities={priorities}
+                  colLabel={col.headerLabel}
+                />
+              ) : (
+                <CategoryBucket
+                  key={section.id}
+                  category={sectionToCategoryKey(section)}
+                  label={resolveNewSectionLabel(section)}
+                  items={sortedFor(sectionToCategoryKey(section))}
+                  onUpdate={onUpdate}
+                  onAdd={onAdd}
+                  onDelete={onDelete}
+                  onCopy={onCopy}
+                  mondayTaggedTexts={mondayTaggedTexts}
+                  statusOptions={statusOptions}
+                  newlyAddedId={newlyAddedId}
+                  onNewlyAddedConsumed={onNewlyAddedConsumed}
+                />
+              )
+            )}
+          </div>
+        ))}
+      </div>
+      {/* Mobile: stacked single column */}
+      <div className="md:hidden space-y-6">
+        {layoutConfig.columns.flatMap(col =>
+          col.sections.filter(s => s.enabled).map(section =>
+            section.type === 'direct_reports' ? (
+              <PersonSectionsRow
+                key={section.id}
+                members={members}
+                accountabilities={accountabilities}
+                topics={personTopics}
+                onAddAccountability={onAddAccountability}
+                onUpdateAccountability={onUpdateAccountability}
+                onDeleteAccountability={onDeleteAccountability}
+                onAddTopic={onAddPersonTopic}
+                onUpdateTopic={onUpdatePersonTopic}
+                onDeleteTopic={onDeletePersonTopic}
+                newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+                newlyAddedTopicId={newlyAddedTopicId}
+                onNewlyAddedAccountabilityConsumed={onNewlyAddedAccountabilityConsumed}
+                onNewlyAddedTopicConsumed={onNewlyAddedTopicConsumed}
+                onCopy={onCopy}
+                statusOptions={statusOptions}
+                priorities={priorities}
+                colLabel={col.headerLabel}
+              />
+            ) : (
+              <CategoryBucket
+                key={section.id}
+                category={sectionToCategoryKey(section)}
+                label={resolveNewSectionLabel(section)}
+                items={sortedFor(sectionToCategoryKey(section))}
+                onUpdate={onUpdate}
+                onAdd={onAdd}
+                onDelete={onDelete}
+                onCopy={onCopy}
+                mondayTaggedTexts={mondayTaggedTexts}
+                statusOptions={statusOptions}
+                newlyAddedId={newlyAddedId}
+                onNewlyAddedConsumed={onNewlyAddedConsumed}
+              />
+            )
+          )
+        )}
+      </div>
 
-        {/* Mobile stacked */}
-        <div className="md:hidden space-y-6">
-          {layoutConfig.columns.flatMap(col => renderBuckets(col.sections, col.headerLabel))}
-        </div>
+      <DragOverlay dropAnimation={null}>
+        {activeItem ? (
+          <Card className="border border-primary/30 shadow-lg opacity-95 cursor-grabbing">
+            <CardContent className="p-3">
+              <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
+            </CardContent>
+          </Card>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
 
-        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
-          {activeItem && (
-            <Card className="border border-primary/40 shadow-xl opacity-95 rotate-1 cursor-grabbing">
-              <CardContent className="px-3 py-2">
-                <p className="text-sm font-medium leading-snug">{activeItem.text}</p>
-              </CardContent>
-            </Card>
-          )}
-        </DragOverlay>
-      </DndContext>
-
-      {archivedItems.length > 0 && (
-        <ArchiveSection items={archivedItems} layoutConfig={layoutConfig}
-          onRestore={onRestoreArchived} onDelete={onPermanentDelete} />
-      )}
+    {archivedItems.length > 0 && (
+      <ArchiveSection
+        items={archivedItems}
+        layoutConfig={layoutConfig}
+        onRestore={onRestoreArchived}
+        onDelete={onPermanentDelete}
+      />
+    )}
     </>
   );
 }
@@ -1353,11 +1587,11 @@ const STATUS_BADGE_COLORS = [
 ];
 
 function PriorityCard({
-  item, dragHandleListeners, dragHandleAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+  item, dragListeners, dragAttributes, onUpdate, onDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
 }: {
   item: CosPriority;
-  dragHandleListeners?: React.HTMLAttributes<HTMLElement>;
-  dragHandleAttributes?: React.HTMLAttributes<HTMLElement>;
+  dragListeners?: React.HTMLAttributes<HTMLElement>;
+  dragAttributes?: React.HTMLAttributes<HTMLElement>;
   onUpdate: (id: string, updates: Partial<CosPriority>) => void;
   onDelete: (id: string) => void;
   onCopy: (text: string, label?: string) => void;
@@ -1412,32 +1646,36 @@ function PriorityCard({
 
   return (
     <Card ref={cardRef} className="group border border-border/50 hover:border-border transition-colors">
-      <CardContent className="px-2 py-1.5">
-        <div className="flex items-start gap-1">
+      <CardContent className="p-3">
+        <div className="flex items-start gap-1.5">
+          {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
           <button
-            {...dragHandleListeners}
-            {...dragHandleAttributes}
-            className="hidden sm:flex flex-shrink-0 self-stretch items-center w-4 text-muted-foreground/20 hover:text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            {...dragListeners}
+            {...dragAttributes}
+            className="hidden sm:block flex-shrink-0 mt-0.5 p-1 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Drag to reorder"
           >
-            <GripVertical className="h-3.5 w-3.5" />
+            <GripVertical className="h-4 w-4" />
           </button>
+
           {/* Content */}
-          <div className="flex-1 min-w-0 py-0.5">
+          <div className="flex-1 min-w-0">
             {editing ? (
-              <Input
-                value={editText}
-                onChange={e => setEditText(e.target.value)}
-                onBlur={saveText}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { e.currentTarget.blur(); }
-                  if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
-                }}
-                className="h-8 text-sm"
-                autoFocus
-              />
+              <div className="flex items-center">
+                <Input
+                  value={editText}
+                  onChange={e => setEditText(e.target.value)}
+                  onBlur={saveText}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.currentTarget.blur(); }
+                    if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
+                  }}
+                  className="h-10 text-sm"
+                  autoFocus
+                />
+              </div>
             ) : (
-              <div className="flex items-start gap-1.5 flex-wrap">
+              <div className="flex items-start gap-2 flex-wrap">
                 {isTagged && (
                   <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
                     W
@@ -1453,7 +1691,7 @@ function PriorityCard({
             )}
 
             {expanded && (
-              <div className="mt-2 space-y-2">
+              <div className="mt-3 space-y-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</label>
                   <Textarea
@@ -1466,10 +1704,10 @@ function PriorityCard({
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" className="h-8 text-xs" onClick={() => onCopy(buildPrompt('recommend'))}>
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('recommend'))}>
                     💡 Recommend next step
                   </Button>
-                  <Button variant="outline" className="h-8 text-xs" onClick={() => onCopy(buildPrompt('draft'))}>
+                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('draft'))}>
                     ✍️ Draft message
                   </Button>
                 </div>
@@ -1478,7 +1716,7 @@ function PriorityCard({
                     placeholder="Ask agent..."
                     value={agentQuery}
                     onChange={e => setAgentQuery(e.target.value)}
-                    className="h-8 text-sm"
+                    className="h-10 text-sm"
                     onKeyDown={e => {
                       if (e.key === 'Enter' && agentQuery.trim()) {
                         onCopy(buildPrompt('custom', agentQuery.trim()));
@@ -1488,45 +1726,44 @@ function PriorityCard({
                   />
                   <Button
                     variant="ghost"
-                    className="h-8 px-2 flex-shrink-0"
+                    className="h-10 px-3 flex-shrink-0"
                     disabled={!agentQuery.trim()}
                     onClick={() => {
                       if (agentQuery.trim()) { onCopy(buildPrompt('custom', agentQuery.trim())); setAgentQuery(''); }
                     }}
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    <Send className="h-4 w-4" />
                   </Button>
-                </div>
-                <div className="flex justify-end pt-1 border-t border-border/30">
-                  <button
-                    onClick={() => onDelete(item.id)}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <Trash2 className="h-3 w-3" /> Delete
-                  </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right controls — status stacked above chevron */}
-          <div className="flex flex-col items-end gap-0.5 flex-shrink-0 pt-0.5">
+          {/* Right controls */}
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={cycleStatus}
               title={item.status ? `Status: ${item.status} — click to advance` : 'Click to set status'}
               className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors truncate max-w-[56px] text-center leading-tight',
-                statusColor ?? 'bg-muted/40 text-muted-foreground/50 border-border/30 hover:bg-muted',
+                'w-12 text-xs font-medium px-2 py-0.5 rounded border transition-colors truncate text-center',
+                statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
               )}
             >
-              {item.status ?? '—'}
+              {item.status ?? <span className="text-muted-foreground/40 text-[10px] font-normal">status</span>}
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
-              className="p-0.5 text-muted-foreground hover:text-foreground"
+              className="p-2 text-muted-foreground hover:text-foreground"
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
-              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} />
+              <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+            </button>
+            <button
+              onClick={() => onDelete(item.id)}
+              className="hidden sm:inline-flex p-2 text-muted-foreground hover:text-destructive"
+              aria-label="Delete"
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -2399,3 +2636,438 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   );
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+function SortableSectionRow({
+  section,
+  onUpdate,
+  onRemove,
+}: {
+  section: CosColumnSection;
+  onUpdate: (changes: Partial<CosColumnSection>) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const auto = isAutoType(section.type);
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1.5">
+      <button
+        {...attributes}
+        {...listeners}
+        className="p-0.5 text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+        tabIndex={-1}
+        title="Drag to reorder"
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      <Switch
+        checked={section.enabled}
+        onCheckedChange={checked => onUpdate({ enabled: checked })}
+        className="flex-shrink-0 scale-[0.8] origin-left"
+      />
+      {auto ? (
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <span className="text-xs text-muted-foreground truncate">{resolveNewSectionLabel(section)}</span>
+          <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal flex-shrink-0 leading-tight">auto</Badge>
+        </div>
+      ) : (
+        <Input
+          value={section.label ?? ''}
+          onChange={e => onUpdate({ label: e.target.value || null })}
+          placeholder={SECTION_TYPE_LABELS[section.type] ?? 'Section name'}
+          className="h-7 text-xs flex-1 min-w-0"
+          disabled={!section.enabled}
+        />
+      )}
+      <button
+        onClick={onRemove}
+        className="p-0.5 text-muted-foreground/40 hover:text-destructive flex-shrink-0"
+        title="Remove"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+function SortableColumnCard({
+  col,
+  colIndex,
+  availableTypes,
+  onUpdateHeader,
+  onUpdateWidth,
+  onUpdateSection,
+  onRemoveSection,
+  onAddSection,
+}: {
+  col: CosColumn;
+  colIndex: number;
+  availableTypes: CosSectionType[];
+  onUpdateHeader: (label: string) => void;
+  onUpdateWidth: (pct: number) => void;
+  onUpdateSection: (sectionId: string, changes: Partial<CosColumnSection>) => void;
+  onRemoveSection: (sectionId: string) => void;
+  onAddSection: (type: CosSectionType) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={style} className="space-y-3 rounded-lg border border-border/60 p-3 flex flex-col">
+      {/* Column badge + drag handle */}
+      <div className="flex items-center gap-1.5">
+        <button
+          {...attributes}
+          {...listeners}
+          className="text-muted-foreground/30 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+          tabIndex={-1}
+          title="Drag to reorder column"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          Column {colIndex + 1}
+        </p>
+      </div>
+
+      {/* Header label */}
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Label</label>
+        <Input
+          value={col.headerLabel}
+          onChange={e => onUpdateHeader(e.target.value)}
+          className="h-8 text-sm"
+          placeholder={`Column ${colIndex + 1}`}
+        />
+      </div>
+
+      {/* Width % */}
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Width %</label>
+        <Input
+          type="number"
+          min={5}
+          max={90}
+          value={col.widthPct}
+          onChange={e => onUpdateWidth(parseInt(e.target.value) || 0)}
+          className="h-8 text-sm"
+        />
+      </div>
+
+      {/* Sections */}
+      <div className="flex-1 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">
+          {col.headerLabel || `Column ${colIndex + 1}`} — sections
+        </p>
+        <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1.5">
+            {col.sections.map(section => (
+              <SortableSectionRow
+                key={section.id}
+                section={section}
+                onUpdate={changes => onUpdateSection(section.id, changes)}
+                onRemove={() => onRemoveSection(section.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        {availableTypes.length > 0 && (
+          <SectionTypeAdder availableTypes={availableTypes} onAdd={onAddSection} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionTypeAdder({
+  availableTypes, onAdd,
+}: {
+  availableTypes: CosSectionType[];
+  onAdd: (type: CosSectionType) => void;
+}) {
+  const [value, setValue] = React.useState('');
+  return (
+    <Select value={value} onValueChange={t => { onAdd(t as CosSectionType); setValue(''); }}>
+      <SelectTrigger className="h-8 text-xs mt-2 text-muted-foreground">
+        <SelectValue placeholder="+ Add section" />
+      </SelectTrigger>
+      <SelectContent>
+        {availableTypes.map(t => (
+          <SelectItem key={t} value={t} className="text-xs">{SECTION_TYPE_LABELS[t]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function SettingsSection({
+  statusOptions, onSave,
+  layoutConfig, onSaveLayout, isActive,
+}: {
+  statusOptions: string[];
+  onSave: (options: string[]) => Promise<void>;
+  layoutConfig: CosLayoutConfig;
+  onSaveLayout: (config: CosLayoutConfig) => Promise<void>;
+  isActive?: boolean;
+}) {
+  // ── Status options draft ──────────────────────────────────────────────────
+  const [draft, setDraft] = useState<string[]>(statusOptions);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  React.useEffect(() => { setDraft(statusOptions); }, [statusOptions]);
+
+  const update = (idx: number, val: string) =>
+    setDraft(prev => prev.map((s, i) => (i === idx ? val : s)));
+  const remove = (idx: number) => setDraft(prev => prev.filter((_, i) => i !== idx));
+  const addOption = () => setDraft(prev => [...prev, '']);
+
+  const save = async () => {
+    const cleaned = draft.map(s => s.trim()).filter(Boolean);
+    if (cleaned.length === 0) {
+      toast({ title: 'Add at least one status option', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    await onSave(cleaned);
+    setSaving(false);
+    toast({ title: 'Status options saved' });
+  };
+
+  // ── Layout config draft ───────────────────────────────────────────────────
+  const [draftLayout, setDraftLayout] = useState<CosLayoutConfig>(layoutConfig);
+  const [savingLayout, setSavingLayout] = useState(false);
+
+  React.useEffect(() => { setDraftLayout(layoutConfig); }, [layoutConfig]);
+
+  const updateColumnHeader = (colId: string, headerLabel: string) =>
+    setDraftLayout(prev => ({ ...prev, columns: prev.columns.map(c => c.id === colId ? { ...c, headerLabel } : c) }));
+
+  const updateColumnWidth = (colId: string, widthPct: number) =>
+    setDraftLayout(prev => ({ ...prev, columns: prev.columns.map(c => c.id === colId ? { ...c, widthPct } : c) }));
+
+  const updateSection = (colId: string, sectionId: string, changes: Partial<CosColumnSection>) =>
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : {
+        ...c, sections: c.sections.map(s => s.id === sectionId ? { ...s, ...changes } : s),
+      }),
+    }));
+
+  const removeSection = (colId: string, sectionId: string) =>
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : {
+        ...c, sections: c.sections.filter(s => s.id !== sectionId),
+      }),
+    }));
+
+  const addSection = (colId: string, type: CosSectionType) => {
+    const newId = type === 'custom' ? `custom_${crypto.randomUUID().slice(0, 8)}` : type;
+    const newSection: CosColumnSection = { id: newId, type, label: type === 'custom' ? 'New Section' : null, enabled: true };
+    setDraftLayout(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => c.id !== colId ? c : { ...c, sections: [...c.sections, newSection] }),
+    }));
+  };
+
+  const changeColumnCount = (newCount: 3 | 4) =>
+    setDraftLayout(prev => adjustColumnCount(prev, newCount));
+
+  // ── Settings-panel drag-and-drop ─────────────────────────────────────────
+  const settingsSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSettingsDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const activeId = active.id as string;
+    const overId   = over.id   as string;
+
+    // Column reorder
+    if (draftLayout.columns.some(c => c.id === activeId)) {
+      const oldIdx = draftLayout.columns.findIndex(c => c.id === activeId);
+      const newIdx = draftLayout.columns.findIndex(c => c.id === overId);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        setDraftLayout(prev => ({ ...prev, columns: arrayMove(prev.columns, oldIdx, newIdx) }));
+      }
+      return;
+    }
+
+    // Section reorder within or across columns
+    const sourceColIdx = draftLayout.columns.findIndex(c => c.sections.some(s => s.id === activeId));
+    if (sourceColIdx === -1) return;
+    let targetColIdx = draftLayout.columns.findIndex(c => c.sections.some(s => s.id === overId));
+    if (targetColIdx === -1) targetColIdx = draftLayout.columns.findIndex(c => c.id === overId);
+    if (targetColIdx === -1) return;
+
+    setDraftLayout(prev => {
+      const newColumns = prev.columns.map(c => ({ ...c, sections: [...c.sections] }));
+      if (sourceColIdx === targetColIdx) {
+        const col = newColumns[sourceColIdx];
+        const oldIdx = col.sections.findIndex(s => s.id === activeId);
+        const newIdx = col.sections.findIndex(s => s.id === overId);
+        if (oldIdx !== -1 && newIdx !== -1) {
+          newColumns[sourceColIdx] = { ...col, sections: arrayMove(col.sections, oldIdx, newIdx) };
+        }
+      } else {
+        const sourceCol = newColumns[sourceColIdx];
+        const targetCol = newColumns[targetColIdx];
+        const sectionIdx = sourceCol.sections.findIndex(s => s.id === activeId);
+        const [movedSection] = sourceCol.sections.splice(sectionIdx, 1);
+        const overIdx = targetCol.sections.findIndex(s => s.id === overId);
+        if (overIdx !== -1) targetCol.sections.splice(overIdx, 0, movedSection);
+        else targetCol.sections.push(movedSection);
+      }
+      return { ...prev, columns: newColumns };
+    });
+  };
+
+  const getAvailableTypes = (currentColId: string): CosSectionType[] => {
+    const usedNonCustom = new Set<CosSectionType>();
+    for (const col of draftLayout.columns) {
+      for (const s of col.sections) {
+        if (s.type !== 'custom') usedNonCustom.add(s.type);
+      }
+    }
+    const allTypes: CosSectionType[] = [
+      'now', 'this_week', 'next_week', 'this_month_auto', 'next_month_auto', 'next_quarter_auto', 'direct_reports', 'custom',
+    ];
+    // For the current column, exclude types already present in it; for others, exclude non-custom types claimed anywhere
+    const currentCol = draftLayout.columns.find(c => c.id === currentColId);
+    const typesInThisCol = new Set(currentCol?.sections.map(s => s.type) ?? []);
+    return allTypes.filter(t => {
+      if (t === 'custom') return true;
+      return !usedNonCustom.has(t) || (!typesInThisCol.has(t) && false);
+    }).filter(t => t === 'custom' || !typesInThisCol.has(t));
+  };
+
+  const saveLayout = async () => {
+    if (totalWidthPct(draftLayout.columns) !== 100) {
+      toast({ title: `Column widths sum to ${totalWidthPct(draftLayout.columns)}% — must equal 100%`, variant: 'destructive' });
+      return;
+    }
+    setSavingLayout(true);
+    await onSaveLayout(draftLayout);
+    setSavingLayout(false);
+    toast({ title: 'Layout settings saved' });
+  };
+
+  return (
+    <div className="space-y-10">
+      <div className="max-w-lg">
+        <h2 className="text-lg font-semibold">Settings</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure labels, sections, and status options for your Chief of Staff workspace.
+        </p>
+      </div>
+
+      {/* ── Column Labels ────────────────────────────────────────────────────── */}
+      <div className="space-y-5">
+        <div className="max-w-lg">
+          <h3 className="text-sm font-semibold">Column Labels</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Column 1's label also appears as the Priorities tab name. Auto-labeled sections (months, quarter) compute their value from the calendar and cannot be renamed.
+          </p>
+        </div>
+
+        {/* Column count toggle */}
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">Number of columns</p>
+          <div className="flex gap-2">
+            {([3, 4] as const).map(n => (
+              <button
+                key={n}
+                onClick={() => changeColumnCount(n)}
+                className={cn(
+                  'px-4 py-1.5 rounded-md text-sm font-medium border transition-colors',
+                  draftLayout.columnCount === n
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-border hover:bg-muted',
+                )}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Per-column config blocks — drag columns or sections to reorder.
+            Sensors are only active when this tab is visible to prevent the
+            settings DndContext's PointerSensor from interfering with the
+            priorities-tab DndContext when both are mounted. */}
+        <DndContext
+          sensors={isActive ? settingsSensors : []}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSettingsDragEnd}
+        >
+          <SortableContext items={draftLayout.columns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
+            <div className={cn('grid gap-3', draftLayout.columnCount === 4 ? 'grid-cols-4' : 'grid-cols-3')}>
+              {draftLayout.columns.map((col, colIndex) => (
+                <SortableColumnCard
+                  key={col.id}
+                  col={col}
+                  colIndex={colIndex}
+                  availableTypes={getAvailableTypes(col.id)}
+                  onUpdateHeader={label => updateColumnHeader(col.id, label)}
+                  onUpdateWidth={pct => updateColumnWidth(col.id, pct)}
+                  onUpdateSection={(sectionId, changes) => updateSection(col.id, sectionId, changes)}
+                  onRemoveSection={sectionId => removeSection(col.id, sectionId)}
+                  onAddSection={type => addSection(col.id, type)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+
+        {totalWidthPct(draftLayout.columns) !== 100 && (
+          <p className="text-xs text-destructive">
+            Column widths sum to {totalWidthPct(draftLayout.columns)}% — must equal 100%.
+          </p>
+        )}
+
+        <Button onClick={saveLayout} disabled={savingLayout} className="h-9">
+          {savingLayout ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+          Save layout settings
+        </Button>
+      </div>
+
+      <div className="border-t border-border/40 pt-8 space-y-3 max-w-lg">
+        {/* ── Status options ──────────────────────────────────────────────────── */}
+        <h3 className="text-sm font-semibold">Priority card statuses</h3>
+        <p className="text-xs text-muted-foreground">
+          These cycle on each priority card when you click the status badge.
+          Defaults: WIP = Work in Progress, WOS = Waiting on Someone.
+        </p>
+        <div className="space-y-2">
+          {draft.map((opt, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <Input
+                value={opt}
+                onChange={e => update(idx, e.target.value)}
+                placeholder={`Status ${idx + 1}`}
+                className="h-9 text-sm max-w-xs"
+              />
+              <button
+                onClick={() => remove(idx)}
+                className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                aria-label="Remove"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+          <Button size="sm" variant="ghost" className="h-8 text-xs mt-1" onClick={addOption}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add status
+          </Button>
+        </div>
+        <Button onClick={save} disabled={saving} variant="outline" className="h-9">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+          Save statuses
+        </Button>
+      </div>
+    </div>
+  );
+}
