@@ -21,61 +21,35 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
   const isUserMgmtActive = activeSection.startsWith("user-management");
 
   return (
-    <nav className="w-64 border-r border-cc bg-platinum min-h-[calc(100vh-73px)]">
-      <div className="p-4 space-y-1">
-
-        {showAdminManagement && (
-          <div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onSectionChange("user-management-users")}
-              className={cn(
-                "font-body w-full justify-between",
-                isUserMgmtActive
-                  ? "bg-copper/10 text-copper font-medium"
-                  : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
+    <nav className="w-full lg:w-64 lg:border-r border-b lg:border-b-0 border-cc bg-platinum lg:min-h-[calc(100vh-73px)]">
+      <div className="p-3 lg:p-4 flex lg:block gap-1 lg:gap-0 space-y-0 lg:space-y-0.5 overflow-x-auto lg:overflow-x-visible">
+        {visibleItems.map(item => {
+          const showGroupLabel = item.group !== null && item.group !== lastGroup;
+          lastGroup = item.group;
+          return (
+            <React.Fragment key={item.id}>
+              {showGroupLabel && (
+                <p className="hidden lg:block px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                  {item.group}
+                </p>
               )}
-            >
-              <span>User Management</span>
-              {isUserMgmtActive ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            </Button>
-            {isUserMgmtActive && (
-              <div className="ml-3 mt-0.5 space-y-0.5 border-l border-cc pl-3">
-                {USER_MGMT_SUB_ITEMS.map((item) => (
-                  <Button
-                    key={item.id}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onSectionChange(item.id)}
-                    className={cn(
-                      "font-body w-full justify-start text-sm",
-                      activeSection === item.id
-                        ? "bg-copper text-white hover:bg-copper-hover font-medium"
-                        : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
-                    )}
-                  >
-                    {item.label}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onSectionChange("agenda-templates")}
-          className={cn(
-            "font-body w-full justify-start",
-            activeSection === "agenda-templates"
-              ? "bg-copper text-white hover:bg-copper-hover font-medium"
-              : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
-          )}
-        >
-          Agenda Templates
-        </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSectionChange(item.id)}
+                className={cn(
+                  "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
+                  item.group === "User Management" && "lg:pl-5 lg:text-sm",
+                  activeSection === item.id
+                    ? "bg-copper text-white hover:bg-copper-hover font-medium"
+                    : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
+                )}
+              >
+                {item.label}
+              </Button>
+            </React.Fragment>
+          );
+        })}
 
         {isTestUser && (
           <Button
@@ -83,7 +57,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
             size="sm"
             onClick={() => onSectionChange("testing-mode")}
             className={cn(
-              "font-body w-full justify-start",
+              "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
               activeSection === "testing-mode"
                 ? "bg-copper text-white hover:bg-copper-hover font-medium"
                 : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
