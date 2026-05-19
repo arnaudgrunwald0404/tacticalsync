@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 interface SettingsNavbarProps {
   activeSection: string;
@@ -9,54 +10,72 @@ interface SettingsNavbarProps {
   showAdminManagement?: boolean;
 }
 
-const NAV_ITEMS = [
-  { id: "user-management-users",       label: "Users",             group: "User Management" },
-  { id: "user-management-domains",     label: "Domains",           group: "User Management" },
-  { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
-  { id: "agenda-templates",            label: "Agenda Templates",  group: null },
-  { id: "configure-my-lists",          label: "Configure My Lists", group: null },
+const USER_MGMT_SUB_ITEMS = [
+  { id: "user-management-users", label: "Users" },
+  { id: "user-management-domains", label: "Domains" },
+  { id: "user-management-permissions", label: "Permissions" },
 ];
 
 const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
-
-  const visibleItems = NAV_ITEMS.filter(item => {
-    if (item.group === "User Management" && !showAdminManagement) return false;
-    return true;
-  });
-
-  let lastGroup: string | null | undefined = undefined;
+  const isUserMgmtActive = activeSection.startsWith("user-management");
 
   return (
     <nav className="w-64 border-r border-cc bg-platinum min-h-[calc(100vh-73px)]">
-      <div className="p-4 space-y-0.5">
-        {visibleItems.map(item => {
-          const showGroupLabel = item.group !== null && item.group !== lastGroup;
-          lastGroup = item.group;
-          return (
-            <React.Fragment key={item.id}>
-              {showGroupLabel && (
-                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-                  {item.group}
-                </p>
+      <div className="p-4 space-y-1">
+
+        {showAdminManagement && (
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onSectionChange("user-management-users")}
+              className={cn(
+                "font-body w-full justify-between",
+                isUserMgmtActive
+                  ? "bg-copper/10 text-copper font-medium"
+                  : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSectionChange(item.id)}
-                className={cn(
-                  "font-body w-full justify-start",
-                  item.group === "User Management" && "pl-5 text-sm",
-                  activeSection === item.id
-                    ? "bg-copper text-white hover:bg-copper-hover font-medium"
-                    : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
-                )}
-              >
-                {item.label}
-              </Button>
-            </React.Fragment>
-          );
-        })}
+            >
+              <span>User Management</span>
+              {isUserMgmtActive ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </Button>
+            {isUserMgmtActive && (
+              <div className="ml-3 mt-0.5 space-y-0.5 border-l border-cc pl-3">
+                {USER_MGMT_SUB_ITEMS.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onSectionChange(item.id)}
+                    className={cn(
+                      "font-body w-full justify-start text-sm",
+                      activeSection === item.id
+                        ? "bg-copper text-white hover:bg-copper-hover font-medium"
+                        : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
+                    )}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onSectionChange("agenda-templates")}
+          className={cn(
+            "font-body w-full justify-start",
+            activeSection === "agenda-templates"
+              ? "bg-copper text-white hover:bg-copper-hover font-medium"
+              : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
+          )}
+        >
+          Agenda Templates
+        </Button>
 
         {isTestUser && (
           <Button
@@ -67,12 +86,13 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
               "font-body w-full justify-start",
               activeSection === "testing-mode"
                 ? "bg-copper text-white hover:bg-copper-hover font-medium"
-                : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
+                : "text-[#4A5D5F] hover:bg-platinum hover:text-cast-iron"
             )}
           >
             🧪 Testing Mode
           </Button>
         )}
+
       </div>
     </nav>
   );

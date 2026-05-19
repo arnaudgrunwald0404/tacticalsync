@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, LayoutGrid } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -454,15 +453,14 @@ export function DetailPageNavigation({
 
   const sidebarContent = (
     <>
-      <div className="px-4 py-3 border-b border-sidebar-border">
-        <Button
+      <div className="px-4 py-2 border-b border-sidebar-border">
+        <button
           onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
-          size="sm"
-          className="w-full"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <LayoutGrid className="h-4 w-4 mr-2" />
-          Go to Canvas view
-        </Button>
+          <LayoutGrid className="h-3 w-3" />
+          <span>Canvas</span>
+        </button>
       </div>
       <div className="p-4 pr-6 flex-1 overflow-y-auto">
         {loading ? (
