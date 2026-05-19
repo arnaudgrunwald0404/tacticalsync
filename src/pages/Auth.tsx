@@ -26,12 +26,6 @@ const Auth = () => {
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
   const [activeTab, setActiveTab] = useState("signin");
-  // True when Google/OAuth redirected back with a PKCE code — hide the login
-  // form while Supabase exchanges the code for a session (~500–1000ms).
-  const [handlingCallback] = useState(
-    () => !!new URLSearchParams(window.location.search).get('code') ||
-          window.location.hash.includes('access_token=')
-  );
 
   useEffect(() => {
     // Check for invite code and OAuth callback in URL
@@ -58,7 +52,7 @@ const Auth = () => {
           if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/chief-of-staff");
+            navigate("/dashboard");
           }
         }
       });
@@ -89,7 +83,7 @@ const Auth = () => {
         } else if (inviteCode) {
           navigate(`/join/${inviteCode}`);
         } else {
-          navigate("/chief-of-staff");
+          navigate("/dashboard");
         }
       } else if (event === 'SIGNED_OUT') {
         // User signed out, stay on auth page
@@ -97,20 +91,7 @@ const Auth = () => {
       }
     });
 
-    // Fallback: if PKCE exchange silently fails (e.g. redirect URL mismatch in
-    // Supabase config), clear the spinner and show the login form after 8 s.
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    if (hasCode || hasAccessToken) {
-      timeout = setTimeout(() => {
-        window.history.replaceState({}, '', '/auth');
-        window.location.reload();
-      }, 8000);
-    }
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
@@ -656,7 +637,7 @@ const Auth = () => {
           } else if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/chief-of-staff");
+            navigate("/dashboard");
           }
         } else {
           console.log("[DEBUG] No session found - showing verification banner");
@@ -680,23 +661,12 @@ const Auth = () => {
     }
   };
 
-  if (handlingCallback) {
-    return (
-      <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#EEF0EF] via-[#F5F3F0] to-[#F0EDE8]">
-        <div className="flex flex-col items-center gap-4">
-          <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
-          <div className="h-5 w-5 rounded-full border-2 border-[#4A5D5F] border-t-transparent animate-spin mt-2" />
-        </div>
-      </GridBackground>
-    );
-  }
-
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#EEF0EF] via-[#F5F3F0] to-[#F0EDE8] overscroll-none px-3 sm:px-4 py-8">
-      <div className="w-full max-w-md mx-auto space-y-6">
+    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none px-3 sm:px-4 py-8">
+      <div className="w-full max-w-full  space-y-6">
+       
 
-
-        <Card className="border-border/100 shadow-lg shadow-[#4A5D5F]/10">
+        <Card className="border-border/100 shadow-lg shadow-[#4A5D5F]/10 w-full  sm:max-w-full">
 
  {/* Logo Section */}
  <div className="text-center space-y-2">

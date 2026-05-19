@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,14 +13,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
-import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
-import { AppNavbar } from "@/components/ui/app-navbar";
+import Logo from "@/components/Logo";
 import { useRoles } from "@/hooks/useRoles";
+import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 interface TemplateItem {
   id: string;
@@ -1979,7 +1979,16 @@ const Settings = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <AppNavbar />
+      <header className="border-b bg-white sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4 flex items-center gap-4 relative pr-20">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <Logo variant="minimal" size="lg" />
+          <UserProfileHeader />
+        </div>
+      </header>
       
       <div className="flex flex-col lg:flex-row">
         <SettingsNavbar
@@ -2174,8 +2183,8 @@ const Settings = () => {
                     </TableHeader>
                     <TableBody>
                       {PERMISSIONS_MATRIX.map(group => (
-                        <React.Fragment key={group.category}>
-                          <TableRow className="bg-muted/20 hover:bg-muted/20">
+                        <>
+                          <TableRow key={group.category} className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={3} className="py-2 px-4">
                               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
                             </TableCell>
@@ -2187,23 +2196,13 @@ const Settings = () => {
                               <TableCell />
                             </TableRow>
                           ))}
-                        </React.Fragment>
+                        </>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
               </div>
             )}
-          </div>
-        ) : activeSection === "configure-my-lists" ? (
-          <div className="mb-8">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Configure My Lists</h2>
-              <p className="text-muted-foreground text-sm">
-                Customize column labels, sections, and priority card statuses for your My Lists workspace.
-              </p>
-            </div>
-            <CosSettingsPanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">
@@ -2418,8 +2417,8 @@ const Settings = () => {
           setBulkImportPreview([]);
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
             <DialogTitle>
               {bulkImportMode === 'org-chart' ? "Org Chart Import" : "Bulk Import Users"}
             </DialogTitle>
@@ -2429,7 +2428,7 @@ const Settings = () => {
                 : "Upload a CSV or XLSX file. If the file has Department or Manager columns it will be treated as an org chart import."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
+          <div className="space-y-4 py-4">
             {!bulkImportFile && (
               <div className="p-4 bg-muted rounded-lg border text-sm space-y-2">
                 <p className="font-semibold">Supported formats</p>
@@ -2477,7 +2476,7 @@ const Settings = () => {
             )}
 
             {bulkImportPreview.length > 0 && (
-              <div className="overflow-auto rounded-md border max-h-[240px]">
+              <div className="overflow-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead className="bg-muted">
                     <tr>
@@ -2516,7 +2515,7 @@ const Settings = () => {
               </div>
             )}
           </div>
-          <DialogFooter className="flex-shrink-0">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {

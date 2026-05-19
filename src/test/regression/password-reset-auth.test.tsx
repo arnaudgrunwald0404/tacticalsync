@@ -2,8 +2,8 @@
  * Regression tests: Password reset auth flow
  *
  * Verifies that PASSWORD_RECOVERY events are handled correctly in Auth.tsx:
- * - PASSWORD_RECOVERY → navigate to /reset-password (NOT /chief-of-staff)
- * - SIGNED_IN → navigate to /chief-of-staff as normal
+ * - PASSWORD_RECOVERY → navigate to /reset-password (NOT /dashboard)
+ * - SIGNED_IN → navigate to /dashboard as normal
  *
  * Regression for: clicking password reset email link auto-logged the user in
  * instead of showing the "set new password" form.
@@ -77,7 +77,7 @@ function renderAuthPage() {
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/reset-password" element={<div>Reset Password Page</div>} />
-          <Route path="/chief-of-staff" element={<div>Chief of Staff Page</div>} />
+          <Route path="/dashboard" element={<div>Dashboard Page</div>} />
           <Route path="/join/:code" element={<div>Join Page</div>} />
         </Routes>
       </MemoryRouter>
@@ -105,7 +105,7 @@ describe('Regression: PASSWORD_RECOVERY should not auto-login', () => {
     });
   });
 
-  it('navigates to /chief-of-staff on SIGNED_IN event (normal login)', async () => {
+  it('navigates to /dashboard on SIGNED_IN event (normal login)', async () => {
     renderAuthPage();
 
     await waitFor(() => {
@@ -115,11 +115,11 @@ describe('Regression: PASSWORD_RECOVERY should not auto-login', () => {
     capturedAuthCallback!('SIGNED_IN', { user: { id: 'u1' } });
 
     await waitFor(() => {
-      expect(currentPath).toBe('/chief-of-staff');
+      expect(currentPath).toBe('/dashboard');
     });
   });
 
-  it('does NOT navigate to /chief-of-staff on PASSWORD_RECOVERY event', async () => {
+  it('does NOT navigate to /dashboard on PASSWORD_RECOVERY event', async () => {
     renderAuthPage();
 
     await waitFor(() => {
@@ -129,7 +129,7 @@ describe('Regression: PASSWORD_RECOVERY should not auto-login', () => {
     capturedAuthCallback!('PASSWORD_RECOVERY', { user: { id: 'u1' } });
 
     await waitFor(() => {
-      expect(currentPath).not.toBe('/chief-of-staff');
+      expect(currentPath).not.toBe('/dashboard');
     });
   });
 });

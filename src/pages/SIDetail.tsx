@@ -114,6 +114,7 @@ export default function SIDetail() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   // Fetch SI details
   const [siDetails, setSiDetails] = useState<Record<string, unknown> | null>(null);
@@ -327,6 +328,24 @@ export default function SIDetail() {
     return canDeleteTask(task.owner_user_id, siDetails?.owner_user_id as string | undefined);
   };
 
+  const refetchSI = async () => {
+    if (!siId) return;
+    const { data } = await supabase
+      .from('rc_strategic_initiatives')
+      .select(`
+        *,
+        owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
+        defining_objective:rc_defining_objectives!defining_objective_id(
+          id,
+          title,
+          rallying_cry_id
+        )
+      `)
+      .eq('id', siId)
+      .single();
+    if (data) setSiDetails(data);
+  };
+
   const handleUnlock = async () => {
     if (!siDetails) return;
     try {
@@ -340,23 +359,31 @@ export default function SIDetail() {
         .update(updates)
         .eq('id', siDetails.id);
       if (error) throw error;
-      // Refetch SI details
-      const { data } = await supabase
-        .from('rc_strategic_initiatives')
-        .select(`
-          *,
-          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name),
-          defining_objective:rc_defining_objectives!defining_objective_id(
-            id,
-            title,
-            rallying_cry_id
-          )
-        `)
-        .eq('id', siId)
-        .single();
-      if (data) setSiDetails(data);
+      await refetchSI();
     } catch (e) {
       console.warn('Failed to unlock SI', e);
+    }
+  };
+
+  const handleDateChange = async (field: 'start_date' | 'end_date', value: string) => {
+    if (!siDetails) return;
+    const currentStart = (siDetails.start_date as string | null) || '';
+    const currentEnd = (siDetails.end_date as string | null) || '';
+    const nextStart = field === 'start_date' ? value : currentStart;
+    const nextEnd = field === 'end_date' ? value : currentEnd;
+
+    if (nextStart && nextEnd && nextEnd < nextStart) {
+      setDateError('End date must be on or after start date.');
+      return;
+    }
+    setDateError(null);
+
+    const { error } = await supabase
+      .from('rc_strategic_initiatives')
+      .update({ [field]: value || null })
+      .eq('id', siDetails.id);
+    if (!error) {
+      await refetchSI();
     }
   };
 
@@ -615,6 +642,124 @@ export default function SIDetail() {
                     </div>
                   </div>
                 )}
+              </Card>
+            </TabsContent>
+
+            {/* Details Tab */}
+            <TabsContent value="details">
+              <Card className="p-6">
+                <div className="space-y-6">
+                  {/* Title */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Name
+                    </h3>
+                    {isLocked ? (
+                      <p className="text-lg text-gray-900 dark:text-gray-100">
+                        {siDetails.title as string}
+                      </p>
+                    ) : (
+                      <input
+                        type="text"
+                        value={(siDetails.title as string) || ''}
+                        onChange={async (e) => {
+                          const { error } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .update({ title: e.target.value })
+                            .eq('id', siDetails.id);
+                          if (!error) {
+                            await refetchSI();
+                          }
+                        }}
+                        className="w-full px-3 py-2 border rounded-md text-lg"
+                        disabled={!canEdit}
+                      />
+                    )}
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Description
+                    </h3>
+                    {isLocked ? (
+                      <p className="text-gray-700 dark:text-gray-300">
+                        {(siDetails.description as string | null) || 'No description provided.'}
+                      </p>
+                    ) : (
+                      <textarea
+                        value={(siDetails.description as string | null) || ''}
+                        onChange={async (e) => {
+                          const next = e.target.value;
+                          const { error } = await supabase
+                            .from('rc_strategic_initiatives')
+                            .update({ description: next || null })
+                            .eq('id', siDetails.id);
+                          if (!error) {
+                            await refetchSI();
+                          }
+                        }}
+                        className="w-full px-3 py-2 border rounded-md min-h-[100px]"
+                        disabled={!canEdit}
+                        placeholder="Describe what this initiative entails..."
+                      />
+                    )}
+                  </div>
+
+                  {/* Timeline */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                      Timeline
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label htmlFor="si-start-date" className="text-xs text-gray-500">
+                          Start Date
+                        </label>
+                        {isLocked ? (
+                          <p className="text-sm text-gray-900 dark:text-gray-100">
+                            {siDetails.start_date
+                              ? new Date(siDetails.start_date as string).toLocaleDateString()
+                              : '—'}
+                          </p>
+                        ) : (
+                          <input
+                            id="si-start-date"
+                            type="date"
+                            value={(siDetails.start_date as string | null) || ''}
+                            onChange={(e) => handleDateChange('start_date', e.target.value)}
+                            className="w-full h-11 px-3 py-2 border rounded-md text-base"
+                            disabled={!canEdit}
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="si-end-date" className="text-xs text-gray-500">
+                          End Date
+                        </label>
+                        {isLocked ? (
+                          <p className="text-sm text-gray-900 dark:text-gray-100">
+                            {siDetails.end_date
+                              ? new Date(siDetails.end_date as string).toLocaleDateString()
+                              : '—'}
+                          </p>
+                        ) : (
+                          <input
+                            id="si-end-date"
+                            type="date"
+                            value={(siDetails.end_date as string | null) || ''}
+                            onChange={(e) => handleDateChange('end_date', e.target.value)}
+                            className="w-full h-11 px-3 py-2 border rounded-md text-base"
+                            disabled={!canEdit}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {dateError && (
+                      <p className="mt-2 text-sm text-red-600">{dateError}</p>
+                    )}
+                  </div>
+                </div>
               </Card>
             </TabsContent>
           </Tabs>
