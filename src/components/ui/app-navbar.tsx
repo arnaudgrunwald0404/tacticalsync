@@ -45,9 +45,9 @@ export function AppNavbar() {
     <header className="sticky top-0 z-50 border-b bg-white">
       <div className="container mx-auto px-4 py-3 sm:py-4 relative">
         {/* Reserve right-side space for the absolutely-positioned avatar */}
-        <div className="flex items-center gap-4 pr-[180px] md:pr-[200px]">
+        <div className="flex items-center gap-4 pr-14 md:pr-[200px]">
           {/* Logo — fixed, never shrinks */}
-          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100 flex-shrink-0" />
+          <Logo variant="minimal" size="lg" className="flex-shrink-0" />
 
           {/* Nav items — centered, hidden on mobile */}
           {!isMobile && (
