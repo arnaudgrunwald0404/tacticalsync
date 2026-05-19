@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,14 +14,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2, CheckCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import { AppNavbar } from "@/components/ui/app-navbar";
-import { useRoles } from "@/hooks/useRoles";
+import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
+import { useCycles } from "@/hooks/useRCDO";
+import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { suggestCycleDates } from "@/lib/rcdoValidation";
 
 interface TemplateItem {
   id: string;
@@ -71,6 +75,7 @@ const Settings = () => {
     is_admin?: boolean;
     is_super_admin?: boolean;
     is_rcdo_admin?: boolean;
+    role_tags?: string[];
     has_logged_in?: boolean;
     last_active?: string | null;
     teams?: Array<{ team_id: string; team_name: string; role: string }>;
@@ -122,6 +127,12 @@ const Settings = () => {
   const [editingUserTeams, setEditingUserTeams] = useState<Set<string>>(new Set());
   const [removingFromTeamId, setRemovingFromTeamId] = useState("");
   
+  // Strategy cycles
+  const { cycles, loading: cyclesLoading, createCycle, refetch: refetchCycles } = useCycles();
+  const { canCreateCycle } = useRCDOPermissions();
+  const [isCreatingCycle, setIsCreatingCycle] = useState(false);
+  const [activatingCycleId, setActivatingCycleId] = useState<string | null>(null);
+
   // Testing mode state
   const [userEmail, setUserEmail] = useState("");
   const [testingMode, setTestingMode] = useState<"admin" | "member">("admin");
@@ -329,14 +340,14 @@ const Settings = () => {
       // We'll use a database function to get login info since we can't directly query auth.users
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, is_admin, is_super_admin, is_rcdo_admin, created_at, updated_at")
+        .select("id, email, full_name, is_admin, is_super_admin, is_rcdo_admin, role_tags, created_at, updated_at")
         .order("email", { ascending: true });
       
       if (profilesError) throw profilesError;
       if (!profiles) return;
 
       // For each user, fetch their team memberships and login info
-      type ProfileRow = { id: string; email?: string | null; full_name?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; created_at?: string | null; updated_at?: string | null };
+      type ProfileRow = { id: string; email?: string | null; full_name?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; role_tags?: string[] | null; created_at?: string | null; updated_at?: string | null };
       const usersWithTeams = await Promise.all(
         profiles.map(async (profile: ProfileRow) => {
           const { data: memberships } = await supabase
@@ -386,6 +397,7 @@ const Settings = () => {
             full_name: profile.full_name || undefined,
             is_admin: Boolean(profile.is_admin),
             is_super_admin: Boolean(profile.is_super_admin),
+            role_tags: (profile.role_tags ?? []) as string[],
             has_logged_in: hasLoggedIn,
             last_active: lastActive,
             teams,
@@ -1562,6 +1574,35 @@ const Settings = () => {
     localStorage.setItem('ts_allowed_domains', JSON.stringify(updated));
   };
 
+  const ROLE_TAG_COLORS: Record<RoleTag, string> = {
+    admin: 'bg-red-100 text-red-800 border-red-200',
+    elt:   'bg-purple-100 text-purple-800 border-purple-200',
+    xlt:   'bg-blue-100 text-blue-800 border-blue-200',
+    user:  'bg-gray-100 text-gray-700 border-gray-200',
+  };
+
+  const ROLE_TAG_LABELS: Record<RoleTag, string> = {
+    admin: 'Admin', elt: 'ELT', xlt: 'XLT', user: 'User',
+  };
+
+  const toggleRoleTag = async (userId: string, tag: RoleTag) => {
+    const user = usersWithDetails.find(u => u.id === userId);
+    if (!user) return;
+    const current = user.role_tags ?? [];
+    const next = current.includes(tag)
+      ? current.filter(t => t !== tag)
+      : [...current, tag];
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role_tags: next } as Record<string, unknown>)
+      .eq("id", userId);
+    if (error) {
+      toast({ title: "Failed to update role", description: error.message, variant: "destructive" });
+      return;
+    }
+    setUsersWithDetails(prev => prev.map(u => u.id === userId ? { ...u, role_tags: next } : u));
+  };
+
   const handleExportCSV = () => {
     const headers = ['First Name', 'Last Name', 'Email', 'Last Logged In'];
     const rows = filteredUsers.map(u => {
@@ -1580,38 +1621,38 @@ const Settings = () => {
     URL.revokeObjectURL(url);
   };
 
-  const PERMISSIONS_MATRIX = [
+  const PERMISSIONS_MATRIX: Array<{ category: string; capabilities: Array<{ label: string; desc: string; roles: RoleTag[] }> }> = [
     {
       category: 'User Management',
       capabilities: [
-        { label: 'Invite Users', desc: 'Send invitations to join the app' },
-        { label: 'Edit Users', desc: 'Update user profiles and roles' },
-        { label: 'Delete Users', desc: 'Remove users from the system' },
+        { label: 'Invite Users', desc: 'Send invitations to join the app', roles: ['admin'] },
+        { label: 'Edit Users', desc: 'Update user profiles and roles', roles: ['admin'] },
+        { label: 'Delete Users', desc: 'Remove users from the system', roles: ['admin'] },
       ],
     },
     {
       category: 'RCDO',
       capabilities: [
-        { label: 'Create Cycle', desc: 'Start a new RCDO planning cycle' },
-        { label: 'Delete Cycle', desc: 'Permanently delete a cycle' },
-        { label: 'Lock / Finalize', desc: 'Lock the Rallying Cry and Defining Objectives' },
-        { label: 'Manage DOs', desc: 'Create and edit Defining Objectives' },
-        { label: 'Manage SIs', desc: 'Create and edit Strategic Initiatives' },
-        { label: 'Manage Tasks', desc: 'Create, edit and delete tasks' },
+        { label: 'Create Cycle', desc: 'Start a new RCDO planning cycle', roles: ['admin', 'elt'] },
+        { label: 'Delete Cycle', desc: 'Permanently delete a cycle', roles: ['admin'] },
+        { label: 'Lock / Finalize', desc: 'Lock the Rallying Cry and Defining Objectives', roles: ['admin', 'elt'] },
+        { label: 'Manage DOs', desc: 'Create and edit Defining Objectives', roles: ['admin', 'elt'] },
+        { label: 'Manage SIs', desc: 'Create and edit Strategic Initiatives', roles: ['admin', 'elt', 'xlt'] },
+        { label: 'Manage Tasks', desc: 'Create, edit and delete tasks', roles: ['admin', 'elt', 'xlt', 'user'] },
       ],
     },
     {
       category: 'Meetings',
       capabilities: [
-        { label: 'Manage Templates', desc: 'Create and edit agenda templates' },
-        { label: 'Manage Meetings', desc: 'Create and manage team meetings' },
+        { label: 'Manage Templates', desc: 'Create and edit agenda templates', roles: ['admin', 'elt'] },
+        { label: 'Manage Meetings', desc: 'Create and manage team meetings', roles: ['admin', 'elt', 'xlt'] },
       ],
     },
     {
       category: 'Settings',
       capabilities: [
-        { label: 'Access Settings', desc: 'View the settings page' },
-        { label: 'Manage Teams', desc: 'Create and configure teams' },
+        { label: 'Access Settings', desc: 'View the settings page', roles: ['admin'] },
+        { label: 'Manage Teams', desc: 'Create and configure teams', roles: ['admin'] },
       ],
     },
   ];
@@ -1967,6 +2008,44 @@ const Settings = () => {
     }
   };
 
+  const handleCreateCycle = async () => {
+    setIsCreatingCycle(true);
+    try {
+      const dates = suggestCycleDates();
+      await createCycle({ start_date: dates.start_date, end_date: dates.end_date });
+      toast({ title: "Cycle created" });
+    } finally {
+      setIsCreatingCycle(false);
+    }
+  };
+
+  const handleActivateCycle = async (cycleId: string) => {
+    setActivatingCycleId(cycleId);
+    try {
+      const { error: deactivateError } = await supabase
+        .from("rc_cycles")
+        .update({ status: "archived" })
+        .eq("status", "active");
+      if (deactivateError) throw deactivateError;
+
+      const { error: activateError } = await supabase
+        .from("rc_cycles")
+        .update({ status: "active" })
+        .eq("id", cycleId);
+      if (activateError) throw activateError;
+
+      toast({ title: "Cycle activated" });
+      await refetchCycles();
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to activate cycle", variant: "destructive" });
+    } finally {
+      setActivatingCycleId(null);
+    }
+  };
+
+  const statusColors: Record<string, string> = { draft: "bg-gray-500", active: "bg-green-500", review: "bg-[#4A5D5F]", archived: "bg-purple-500" };
+  const statusLabels: Record<string, string> = { draft: "Draft", active: "Active", review: "Review", archived: "Archived" };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -2037,56 +2116,94 @@ const Settings = () => {
                   </div>
                 </div>
 
-                <div className="border rounded-lg overflow-x-auto">
+                <div className="rounded-lg border border-border/50 overflow-hidden shadow-sm">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40 hover:bg-muted/40">
-                        <TableHead className="w-10 pl-4">
+                      <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border/50">
+                        <TableHead className="w-10 pl-4 py-3">
                           <Checkbox
                             checked={filteredUsers.length > 0 && selectedUserIds.size === filteredUsers.length}
                             onCheckedChange={toggleSelectAll}
                           />
                         </TableHead>
-                        <TableHead className="w-10"></TableHead>
-                        <TableHead>First Name</TableHead>
-                        <TableHead>Last Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Last Logged In</TableHead>
-                        <TableHead className="w-20 text-right pr-4">Actions</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Name</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Email</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Roles</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Last Active</TableHead>
+                        <TableHead className="w-16 py-3"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loadingUsersWithDetails ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">Loading users…</TableCell>
+                          <TableCell colSpan={6} className="text-center py-14 text-muted-foreground text-sm">Loading users…</TableCell>
                         </TableRow>
                       ) : filteredUsers.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                          <TableCell colSpan={6} className="text-center py-14 text-muted-foreground text-sm">
                             {userSearchQuery ? "No users match your search" : "No users found"}
                           </TableCell>
                         </TableRow>
                       ) : filteredUsers.map(user => {
+                        const displayName = user.full_name?.trim() || user.email.split('@')[0];
                         const parts = (user.full_name || '').trim().split(/\s+/);
-                        const firstName = parts[0] || '—';
-                        const lastName = parts.slice(1).join(' ') || '—';
-                        const initials = `${firstName[0] || ''}${lastName !== '—' ? lastName[0] : ''}`.toUpperCase() || user.email[0].toUpperCase();
+                        const firstName = parts[0] || '';
+                        const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                        const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || user.email[0].toUpperCase();
                         return (
-                          <TableRow key={user.id}>
-                            <TableCell className="pl-4">
+                          <TableRow key={user.id} className="group border-b border-border/25 last:border-b-0 hover:bg-muted/15 transition-colors">
+                            <TableCell className="pl-4 py-3">
                               <Checkbox
                                 checked={selectedUserIds.has(user.id)}
                                 onCheckedChange={() => toggleUserSelection(user.id)}
                               />
                             </TableCell>
-                            <TableCell>
-                              <div className="w-8 h-8 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center text-xs font-semibold text-[#4A5D5F] select-none">
-                                {initials}
+                            <TableCell className="py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4A5D5F]/20 to-[#4A5D5F]/8 flex items-center justify-center text-[10px] font-bold text-[#4A5D5F] select-none flex-shrink-0">
+                                  {initials}
+                                </div>
+                                <span className="font-medium text-[13px] truncate max-w-[180px]">{displayName}</span>
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium">{firstName}</TableCell>
-                            <TableCell>{lastName}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                            <TableCell className="py-3 text-[13px] text-muted-foreground truncate max-w-[220px]">{user.email}</TableCell>
+                            <TableCell>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="flex flex-wrap gap-1 items-center min-h-[28px] cursor-pointer hover:opacity-80">
+                                    {(user.role_tags ?? []).length > 0
+                                      ? (user.role_tags ?? []).map(tag => (
+                                          <span key={tag} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag as RoleTag] ?? 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                                            {ROLE_TAG_LABELS[tag as RoleTag] ?? tag}
+                                          </span>
+                                        ))
+                                      : <span className="text-xs text-muted-foreground italic">No role</span>
+                                    }
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-40 p-2" align="start">
+                                  <div className="space-y-1">
+                                    {ALL_ROLE_TAGS.map(tag => {
+                                      const active = (user.role_tags ?? []).includes(tag);
+                                      return (
+                                        <button
+                                          key={tag}
+                                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-muted transition-colors ${active ? 'font-medium' : ''}`}
+                                          onClick={() => toggleRoleTag(user.id, tag)}
+                                        >
+                                          <span className={`w-4 h-4 rounded border flex items-center justify-center ${active ? 'bg-[#4A5D5F] border-[#4A5D5F]' : 'border-gray-300'}`}>
+                                            {active && <Check className="h-3 w-3 text-white" />}
+                                          </span>
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag]}`}>
+                                            {ROLE_TAG_LABELS[tag]}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {user.last_active
                                 ? new Date(user.last_active).toLocaleDateString()
@@ -2167,16 +2284,22 @@ const Settings = () => {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
-                        <TableHead className="w-56 px-4">Capability</TableHead>
+                        <TableHead className="w-48 px-4">Capability</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead className="w-48 text-muted-foreground italic text-xs font-normal">Roles — to be defined</TableHead>
+                        {ALL_ROLE_TAGS.map(tag => (
+                          <TableHead key={tag} className="w-20 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${ROLE_TAG_COLORS[tag]}`}>
+                              {ROLE_TAG_LABELS[tag]}
+                            </span>
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {PERMISSIONS_MATRIX.map(group => (
                         <>
                           <TableRow key={group.category} className="bg-muted/20 hover:bg-muted/20">
-                            <TableCell colSpan={3} className="py-2 px-4">
+                            <TableCell colSpan={2 + ALL_ROLE_TAGS.length} className="py-2 px-4">
                               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
                             </TableCell>
                           </TableRow>
@@ -2184,7 +2307,11 @@ const Settings = () => {
                             <TableRow key={cap.label}>
                               <TableCell className="px-4 font-medium text-sm">{cap.label}</TableCell>
                               <TableCell className="text-sm text-muted-foreground">{cap.desc}</TableCell>
-                              <TableCell />
+                              {ALL_ROLE_TAGS.map(tag => (
+                                <TableCell key={tag} className="text-center">
+                                  {cap.roles.includes(tag) && <Check className="h-4 w-4 text-[#4A5D5F] mx-auto" />}
+                                </TableCell>
+                              ))}
                             </TableRow>
                           ))}
                         </>
@@ -2194,6 +2321,105 @@ const Settings = () => {
                 </div>
               </div>
             )}
+          </div>
+        ) : activeSection === "strategy-cycles" ? (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">Strategy Cycles</h2>
+                <p className="text-muted-foreground text-sm">Create and manage 6-month strategic planning cycles</p>
+              </div>
+              {canCreateCycle && (
+                <Button onClick={handleCreateCycle} disabled={isCreatingCycle}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Cycle
+                </Button>
+              )}
+            </div>
+
+            {cyclesLoading ? (
+              <Card className="p-12 text-center">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+              </Card>
+            ) : cycles.length === 0 ? (
+              <Card className="p-12 text-center">
+                <h3 className="text-xl font-bold mb-2">No Strategy Cycles Yet</h3>
+                <p className="text-muted-foreground mb-6">
+                  Create a 6-month strategic cycle to define your team's rallying cry and defining objectives.
+                </p>
+                {canCreateCycle && (
+                  <Button size="lg" onClick={handleCreateCycle} disabled={isCreatingCycle}>
+                    <Plus className="h-5 w-5 mr-2" />
+                    Create First Cycle
+                  </Button>
+                )}
+              </Card>
+            ) : (
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cycles.map((cycle) => (
+                      <TableRow key={cycle.id}>
+                        <TableCell className="font-medium">
+                          {format(new Date(cycle.start_date), "MMM yyyy")} –{" "}
+                          {format(new Date(cycle.end_date), "MMM yyyy")}
+                        </TableCell>
+                        <TableCell>{format(new Date(cycle.start_date), "MMM d, yyyy")}</TableCell>
+                        <TableCell>{format(new Date(cycle.end_date), "MMM d, yyyy")}</TableCell>
+                        <TableCell>
+                          <Badge className={statusColors[cycle.status] ?? "bg-gray-500"}>
+                            {statusLabels[cycle.status] ?? cycle.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{format(new Date(cycle.created_at), "MMM d, yyyy")}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {cycle.status === "active" ? (
+                              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/rcdo")}>
+                                View Strategy
+                              </Button>
+                            ) : cycle.status === "draft" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleActivateCycle(cycle.id)}
+                                disabled={activatingCycleId === cycle.id || !canCreateCycle}
+                              >
+                                {activatingCycleId === cycle.id ? "Activating..." : (
+                                  <><CheckCircle className="h-3 w-3 mr-1" />Activate</>
+                                )}
+                              </Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" disabled>Archived</Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+
+            <Card className="mt-6 p-6 bg-[#F5F3F0] border-[#6B9A8F]/30">
+              <h3 className="font-semibold mb-2">About Strategy Cycles</h3>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• Cycles are exactly 6 months long (Jan–Jun or Jul–Dec)</li>
+                <li>• Only one active cycle per team at a time</li>
+                <li>• Each cycle has one Rallying Cry with 4–6 Defining Objectives</li>
+                <li>• Metrics and initiatives track progress throughout the cycle</li>
+              </ul>
+            </Card>
           </div>
         ) : activeSection === "configure-my-lists" ? (
           <div className="mb-8">

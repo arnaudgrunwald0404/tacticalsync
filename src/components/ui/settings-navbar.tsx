@@ -13,8 +13,9 @@ const NAV_ITEMS = [
   { id: "user-management-users",       label: "Users",             group: "User Management" },
   { id: "user-management-domains",     label: "Domains",           group: "User Management" },
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
+  { id: "strategy-cycles",              label: "Strategy Cycles",   group: "RCDO" },
+  { id: "configure-my-lists",          label: "Configure My Lists", group: "Chief of Staff" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
-  { id: "configure-my-lists",          label: "Configure My Lists", group: null },
 ];
 
 const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
@@ -46,7 +47,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
                 onClick={() => onSectionChange(item.id)}
                 className={cn(
                   "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
-                  item.group === "User Management" && "lg:pl-5 lg:text-sm",
+                  item.group && "lg:pl-5 lg:text-sm",
                   activeSection === item.id
                     ? "bg-copper text-white hover:bg-copper-hover font-medium"
                     : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"

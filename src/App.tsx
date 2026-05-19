@@ -33,7 +33,6 @@ const StrategyHome = lazy(() => import("./pages/StrategyHome"));
 const DODetail = lazy(() => import("./pages/DODetail"));
 const SIDetail = lazy(() => import("./pages/SIDetail"));
 const TasksFeed = lazy(() => import("./pages/TasksFeed"));
-const CyclePlanner = lazy(() => import("./pages/CyclePlanner"));
 const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
 const RCDOAllHands = lazy(() => import("./pages/RCDOAllHands"));
 
@@ -111,12 +110,7 @@ const App = () => (
               <TasksFeed />
             </Suspense>
           } />
-          <Route path="/dashboard/rcdo/cycles" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <CyclePlanner />
-            </Suspense>
-          } />
-          <Route path="/rcdo/canvas" element={
+<Route path="/rcdo/canvas" element={
             <Suspense fallback={<PageSkeleton />}>
               <StrategyCanvas />
             </Suspense>
