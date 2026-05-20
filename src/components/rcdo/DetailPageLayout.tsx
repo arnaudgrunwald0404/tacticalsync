@@ -5,6 +5,7 @@ import { LayoutGrid, Menu } from 'lucide-react';
 import GridBackground from '@/components/ui/grid-background';
 import { AppNavbar } from '@/components/ui/app-navbar';
 import { DetailPageNavigation } from './DetailPageNavigation';
+import { CycleSelector } from './CycleSelector';
 
 interface DetailPageLayoutProps {
   rallyingCryId: string;
@@ -48,7 +49,7 @@ export function DetailPageLayout({
           </Button>
         </div>
       )}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
         <Button
           onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
           className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
@@ -56,6 +57,7 @@ export function DetailPageLayout({
           <LayoutGrid className="h-4 w-4 mr-2" />
           Go to Canvas View
         </Button>
+        <CycleSelector currentCycleId={cycleId} />
       </div>
       <div className="flex-1 flex overflow-hidden">
         {/* Navigation Sidebar - Hidden on mobile, shown via Sheet */}

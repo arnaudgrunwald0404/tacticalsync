@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { AppNavbar } from "@/components/ui/app-navbar";
+import { CycleSelector } from "@/components/rcdo/CycleSelector";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
@@ -1760,89 +1761,92 @@ const duplicateSelectedDo = useCallback(() => {
       <AppNavbar />
 
       {/* Canvas toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
-        <Button
-          onClick={() => {
-            if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
-            if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
-            for (const [, status] of doLockedStatus) {
-              if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
-            }
-          }}
-          className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
-        >
-          <List className="h-4 w-4 mr-2" />
-          Go to Detail View
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" className="flex items-center gap-1">
-              Actions <ChevronDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => navigate('/dashboard/rcdo')}>
-              <Layers className="h-4 w-4 mr-2" />
-              View all strategies
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={addDo}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add DO
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={openImportFromFile}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import from File
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={lockEverything}>
-              <Lock className="h-4 w-4 mr-2" />
-              Lock everything
-            </DropdownMenuItem>
-        {progressFeatureOn && (
-              <DropdownMenuItem onClick={() => setShowProgress(true)}>
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Turn Progress on
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        
-        {/* View As... dropdown */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">View As:</span>
-          <Select value={viewAsUserId || "all"} onValueChange={(value) => setViewAsUserId(value === "all" ? null : value)}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All users" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All users</SelectItem>
-              {profiles.map((p) => {
-                const displayName = p.full_name || '';
-                const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                return (
-                  <SelectItem key={p.id} value={p.id}>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                        {isUnknown ? (
-                          <span className="font-semibold">?</span>
-                        ) : (
-                          <FancyAvatar 
-                            name={p.avatar_name || displayName} 
-                            displayName={displayName}
-                            avatarUrl={p.avatar_url}
-                            size="sm" 
-                          />
-                        )}
-                      </span>
-                      <span>{isUnknown ? 'Unknown' : displayName}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <Button
+            onClick={() => {
+              if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
+              if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
+              for (const [, status] of doLockedStatus) {
+                if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
+              }
+            }}
+            className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
+          >
+            <List className="h-4 w-4 mr-2" />
+            Go to Detail View
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="flex items-center gap-1">
+                Actions <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => navigate('/dashboard/rcdo')}>
+                <Layers className="h-4 w-4 mr-2" />
+                View all strategies
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={addDo}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add DO
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={openImportFromFile}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import from File
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={lockEverything}>
+                <Lock className="h-4 w-4 mr-2" />
+                Lock everything
+              </DropdownMenuItem>
+              {progressFeatureOn && (
+                <DropdownMenuItem onClick={() => setShowProgress(true)}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Turn Progress on
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* View As... dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">View As:</span>
+            <Select value={viewAsUserId || "all"} onValueChange={(value) => setViewAsUserId(value === "all" ? null : value)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All users" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                {profiles.map((p) => {
+                  const displayName = p.full_name || '';
+                  const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
+                  return (
+                    <SelectItem key={p.id} value={p.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
+                          {isUnknown ? (
+                            <span className="font-semibold">?</span>
+                          ) : (
+                            <FancyAvatar
+                              name={p.avatar_name || displayName}
+                              displayName={displayName}
+                              avatarUrl={p.avatar_url}
+                              size="sm"
+                            />
+                          )}
+                        </span>
+                        <span>{isUnknown ? 'Unknown' : displayName}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+        <CycleSelector currentCycleId={cycleId || undefined} />
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,_1fr)_360px]">
