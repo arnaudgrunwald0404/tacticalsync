@@ -35,6 +35,7 @@ interface DORow {
   id: string;
   title: string;
   display_order: number;
+  owner_user_id: string;
   owner: OwnerProfile | null;
 }
 
@@ -43,7 +44,6 @@ interface SIRow {
   title: string;
   display_order: number;
   defining_objective_id: string;
-  defining_objective: DORow | null;
 }
 
 interface CheckinRow {
@@ -92,33 +92,35 @@ export function useCycleAllSIs(rallyingCryId: string | undefined) {
       setLoading(true);
       setError(null);
 
+      // Fetch DOs with their owners directly (avoids nested embed ambiguity
+      // where both rc_strategic_initiatives and rc_defining_objectives have
+      // owner_user_id → profiles FKs, causing PostgREST to resolve from the
+      // wrong table).
       const { data: doData, error: doErr } = await supabase
         .from('rc_defining_objectives')
-        .select('id')
+        .select(`
+          id,
+          title,
+          display_order,
+          owner_user_id,
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_name, avatar_url)
+        `)
         .eq('rallying_cry_id', rallyingCryId);
       if (doErr) throw doErr;
 
-      const doIds = (doData ?? []).map((d) => d.id);
-      if (doIds.length === 0) {
+      const dos = (doData ?? []) as unknown as DORow[];
+      if (dos.length === 0) {
         setRows([]);
         setLoading(false);
         return;
       }
 
+      const doMap = new Map(dos.map((d) => [d.id, d]));
+      const doIds = dos.map((d) => d.id);
+
       const { data: siData, error: siErr } = await supabase
         .from('rc_strategic_initiatives')
-        .select(`
-          id,
-          title,
-          display_order,
-          defining_objective_id,
-          defining_objective:rc_defining_objectives!defining_objective_id(
-            id,
-            title,
-            display_order,
-            owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_name, avatar_url)
-          )
-        `)
+        .select('id, title, display_order, defining_objective_id')
         .in('defining_objective_id', doIds)
         .order('display_order', { ascending: true });
       if (siErr) throw siErr;
@@ -161,13 +163,14 @@ export function useCycleAllSIs(rallyingCryId: string | undefined) {
       const built: AllHandsSIRow[] = sis.map((si) => {
         const latest = latestBySI.get(si.id);
         const prior = priorBySI.get(si.id);
-        const owner = si.defining_objective?.owner ?? null;
+        const doRow = doMap.get(si.defining_objective_id);
+        const owner = doRow?.owner ?? null;
         return {
           siId: si.id,
           siTitle: si.title,
           doId: si.defining_objective_id,
-          doTitle: si.defining_objective?.title ?? '',
-          doDisplayOrder: si.defining_objective?.display_order ?? 0,
+          doTitle: doRow?.title ?? '',
+          doDisplayOrder: doRow?.display_order ?? 0,
           siDisplayOrder: si.display_order ?? 0,
           doOwnerId: owner?.id ?? null,
           doOwnerName: fullName(owner),
