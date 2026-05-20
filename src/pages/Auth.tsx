@@ -52,7 +52,7 @@ const Auth = () => {
           if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/dashboard");
+            navigate("/chief-of-staff");
           }
         }
       });
@@ -83,7 +83,7 @@ const Auth = () => {
         } else if (inviteCode) {
           navigate(`/join/${inviteCode}`);
         } else {
-          navigate("/dashboard");
+          navigate("/chief-of-staff");
         }
       } else if (event === 'SIGNED_OUT') {
         // User signed out, stay on auth page
@@ -637,7 +637,7 @@ const Auth = () => {
           } else if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
-            navigate("/dashboard");
+            navigate("/chief-of-staff");
           }
         } else {
           console.log("[DEBUG] No session found - showing verification banner");
