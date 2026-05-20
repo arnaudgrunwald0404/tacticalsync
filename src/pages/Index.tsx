@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, CheckSquare, ArrowRight } from "lucide-react";
+import { Target, Calendar, CheckSquare, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 import GridBackground from "@/components/ui/grid-background";
@@ -23,7 +23,7 @@ const Index = () => {
     if (!hasCode) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          navigate("/dashboard");
+          navigate("/workspace");
         }
       });
     }
@@ -35,7 +35,7 @@ const Index = () => {
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate("/dashboard");
+        navigate("/workspace");
       }
     });
 
@@ -43,7 +43,7 @@ const Index = () => {
   }, [navigate]);
 
   return (
-    <GridBackground className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
+    <GridBackground className="min-h-screen bg-background">
       {/* Header - Hidden on mobile */}
       <header className="hidden sm:block border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -51,20 +51,19 @@ const Index = () => {
             <Logo variant="minimal" size="lg" className="scale-100" />
           </div>
           <div className="flex gap-2">
-          
-            <Button 
-                size="lg"
-                className="font-body text-lg h-14 w-48 px-8 bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white"
-                onClick={() => navigate("/auth")}
-              >
-                Get Started
-                <ArrowRight className="ml-2 h-5 w-5" />
+            <Button
+              size="lg"
+              className="font-body text-lg h-14 w-48 px-8 bg-copper hover:bg-copper-hover text-white"
+              onClick={() => navigate("/auth")}
+            >
+              Get Started
+              <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
 
             <Button
               size="lg"
               variant="outline"
-              className="font-body text-lg h-14 w-48 px-8 border-2 border-[#4A5D5F] text-[#4A5D5F] hover:bg-[#4A5D5F]/10"
+              className="font-body text-lg h-14 w-48 px-8 border-2 border-titanium text-titanium hover:bg-titanium/10"
               onClick={() => navigate("/auth")}
             >
               Sign In
@@ -82,33 +81,31 @@ const Index = () => {
 
           <div className="space-y-4 sm:space-y-8">
             {/* Mobile heading - simple text */}
-            <h2 className="sm:hidden font-heading text-3xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-              Great leadership starts with great team meetings.
+            <h2 className="sm:hidden font-heading text-3xl font-bold tracking-tight leading-tight text-cast-iron">
+              Uncommon execution starts with uncommon alignment.
             </h2>
 
             {/* Desktop heading - with animation */}
-            <h2 className="hidden sm:block font-heading text-4xl md:text-5xl font-bold tracking-tight leading-tight text-[#2C2C2C]">
-               Great Leadership Starts <br></br>with Great {" "}
-              
-                <LayoutTextFlip 
-                  text=""
-                  words={["Weekly", "Monthly", "Quarterly", "Daily"]}
-                  duration={3000}
-                />
-              {" "}
-              Team Meetings
+            <h2 className="hidden sm:block font-heading text-4xl md:text-5xl font-bold tracking-tight leading-tight text-cast-iron">
+              Uncommon Execution Starts <br />with{" "}
+              <LayoutTextFlip
+                text=""
+                words={["Weekly", "Monthly", "Quarterly", "Daily"]}
+                duration={3000}
+              />
+              {" "}Alignment
             </h2>
 
-            <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
-              Streamline your tactical meetings with collaborative agenda tracking,
-              action items, and team accountability.
+            <p className="font-body text-base sm:text-lg md:text-xl text-titanium max-w-2xl mx-auto px-4">
+              Connect strategy to execution with collaborative meetings,
+              defining objectives, and team accountability.
             </p>
 
             {/* Get Started button - Mobile only, placed after description */}
             <div className="sm:hidden pt-4">
-              <Button 
+              <Button
                 size="lg"
-                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-[#4A5D5F] hover:bg-[#3A4D4F] text-white"
+                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-copper hover:bg-copper-hover text-white"
                 onClick={() => navigate("/auth")}
               >
                 Get Started
@@ -117,44 +114,43 @@ const Index = () => {
             </div>
           </div>
 
-
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
-            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Users className="h-7 w-7 text-[#4A5D5F]" />
+            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
+              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Target className="h-7 w-7 text-copper" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Team Collaboration</h3>
-              <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Invite team members and collaborate in real-time on meeting agendas and topics
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Strategic Alignment</h3>
+              <p className="font-body text-sm sm:text-base text-titanium">
+                Cascade rallying cries into defining objectives and track progress across your team
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-[#6B9A8F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-7 w-7 text-[#6B9A8F]" />
+            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
+              <div className="rounded-full bg-verdigris/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-7 w-7 text-verdigris" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Consistent Tracking</h3>
-              <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Automatically organize meetings by week and track progress over time
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Consistent Cadence</h3>
+              <p className="font-body text-sm sm:text-base text-titanium">
+                Run structured meetings weekly and track accountability over time
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-[#6B9A8F]/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
-              <div className="rounded-full bg-[#4A5D5F]/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
+            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
+              <div className="rounded-full bg-titanium/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <CheckSquare className="h-7 w-7 text-titanium" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-[#2C2C2C]">Action Items</h3>
-              <p className="font-body text-sm sm:text-base text-[#4A5D5F]">
-                Assign tasks, set time estimates, and track completion with ease
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Uncommon Execution</h3>
+              <p className="font-body text-sm sm:text-base text-titanium">
+                Turn strategy into action items, assign owners, and drive completion
               </p>
             </div>
           </div>
         </div>
       </main>
 
-      <footer className="border-t border-[#6B9A8F]/20 mt-8 sm:mt-12 md:mt-20">
+      <footer className="border-t border-rose-gold/20 mt-8 sm:mt-12 md:mt-20">
         <div className="container mx-auto px-4 py-6 text-center">
-          <p className="font-body text-sm sm:text-base text-[#4A5D5F]">&copy; 2025 TacticalSync Inc. Built for uncommon execution.</p>
+          <p className="font-body text-sm sm:text-base text-titanium">&copy; 2025 TacticalSync Inc. Built for uncommon execution.</p>
         </div>
       </footer>
     </GridBackground>
