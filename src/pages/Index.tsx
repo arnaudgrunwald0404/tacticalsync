@@ -126,8 +126,8 @@ const Index = () => {
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-verdigris/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-7 w-7 text-verdigris" />
+              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-7 w-7 text-copper" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Consistent Cadence</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
@@ -136,8 +136,8 @@ const Index = () => {
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
-              <div className="rounded-full bg-titanium/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-titanium" />
+              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <CheckSquare className="h-7 w-7 text-copper" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Uncommon Execution</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
