@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { CheckinCard } from '@/components/rcdo/CheckinCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { DetailPageLayout } from '@/components/rcdo/DetailPageLayout';
@@ -42,6 +43,28 @@ export default function DODetail() {
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
+
+  // Preserve nav context across DO navigations to avoid sidebar remount
+  const lastRallyingCryId = useRef('');
+  if (doDetails?.rallying_cry_id) {
+    lastRallyingCryId.current = doDetails.rallying_cry_id as string;
+  }
+
+  // Compute numbering (e.g. "2.0") for this DO within the rallying cry
+  const [doNumbering, setDoNumbering] = useState('');
+  useEffect(() => {
+    const compute = async () => {
+      if (!doDetails?.rallying_cry_id) { setDoNumbering(''); return; }
+      const { data: dos } = await supabase
+        .from('rc_defining_objectives')
+        .select('id')
+        .eq('rallying_cry_id', doDetails.rallying_cry_id)
+        .order('display_order', { ascending: true });
+      const idx = (dos || []).findIndex(d => d.id === doId);
+      setDoNumbering(`${idx >= 0 ? idx + 1 : 1}.0`);
+    };
+    compute();
+  }, [doDetails?.rallying_cry_id, doId]);
 
   // Fetch metrics
   const {
@@ -189,11 +212,10 @@ export default function DODetail() {
   if (loading || !doDetails) {
     return (
       <DetailPageLayout
-        rallyingCryId={doDetails?.rallying_cry_id || ''}
+        rallyingCryId={lastRallyingCryId.current}
         currentDOId={doId}
         mobileNavOpen={mobileNavOpen}
         onMobileNavOpenChange={setMobileNavOpen}
-        loading={true}
       >
         <Skeleton className="h-12 w-full mb-8" />
         <Skeleton className="h-96 w-full" />
@@ -295,10 +317,9 @@ export default function DODetail() {
       currentDOId={doId}
       mobileNavOpen={mobileNavOpen}
       onMobileNavOpenChange={setMobileNavOpen}
-      loading={loading}
     >
       <DetailPageHeader
-        title={doDetails.title}
+        title={doNumbering ? `${doNumbering} ${doDetails.title}` : doDetails.title}
         description={doDetails.hypothesis}
         owner={doDetails.owner}
         isLocked={isLocked}
@@ -385,8 +406,8 @@ export default function DODetail() {
                                 initiative.owner?.last_name,
                                 initiative.owner?.full_name
                               );
-                              const completionDate = initiative.end_date 
-                                ? new Date(initiative.end_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                              const completionDate = initiative.end_date
+                                ? parseLocalDate(initiative.end_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
                                 : 'N/A';
                               
                               // Calculate completion rate (placeholder - could be from tasks or check-ins)
@@ -781,11 +802,11 @@ export default function DODetail() {
                       <Calendar className="h-4 w-4 text-gray-500" />
                       <span>
                         {selectedInitiative.start_date
-                          ? new Date(selectedInitiative.start_date).toLocaleDateString()
+                          ? parseLocalDate(selectedInitiative.start_date).toLocaleDateString()
                           : '—'}
                         {' - '}
                         {selectedInitiative.end_date
-                          ? new Date(selectedInitiative.end_date).toLocaleDateString()
+                          ? parseLocalDate(selectedInitiative.end_date).toLocaleDateString()
                           : '—'}
                       </span>
                     </div>

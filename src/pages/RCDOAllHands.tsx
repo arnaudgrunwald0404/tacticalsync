@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -145,8 +146,8 @@ export default function RCDOAllHands() {
           </h1>
           {cycleMeta && (
             <p className="text-sm text-muted-foreground mt-1">
-              {format(new Date(cycleMeta.start_date), 'MMM d, yyyy')} –{' '}
-              {format(new Date(cycleMeta.end_date), 'MMM d, yyyy')}
+              {format(parseLocalDate(cycleMeta.start_date), 'MMM d, yyyy')} –{' '}
+              {format(parseLocalDate(cycleMeta.end_date), 'MMM d, yyyy')}
             </p>
           )}
         </header>

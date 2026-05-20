@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, ChevronRight } from 'lucide-react';
 import { useCheckins } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
 import type { TaskWithRelations } from '@/types/rcdo';
@@ -17,89 +17,12 @@ import { TaskGanttChart } from '@/components/rcdo/TaskGanttChart';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageLayout } from '@/components/rcdo/DetailPageLayout';
 import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
 
-// Dummy tasks for demonstration when no real tasks exist
-const getDummyTasks = (siId: string | undefined) => [
-  {
-    id: 'dummy-1',
-    title: 'Review current account coverage metrics',
-    completion_criteria: 'Complete analysis of all enterprise accounts',
-    status: 'in_progress',
-    owner: { full_name: 'Sarah Johnson', avatar_name: 'SJ' },
-    owner_user_id: 'dummy-owner-1',
-    strategic_initiative_id: siId || '',
-    start_date: new Date().toISOString().split('T')[0],
-    target_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    created_by: 'dummy-owner-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    display_order: 0,
-  },
-  {
-    id: 'dummy-2',
-    title: 'Identify gaps in account management',
-    completion_criteria: 'Document all accounts missing proper coverage',
-    status: 'assigned',
-    owner: { full_name: 'Mike Chen', avatar_name: 'MC' },
-    owner_user_id: 'dummy-owner-2',
-    strategic_initiative_id: siId || '',
-    start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    target_delivery_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    created_by: 'dummy-owner-2',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    display_order: 1,
-  },
-  {
-    id: 'dummy-3',
-    title: 'Develop account management playbook',
-    completion_criteria: 'Create comprehensive guide for account managers',
-    status: 'not_assigned',
-    owner: { full_name: 'Alex Rivera', avatar_name: 'AR' },
-    owner_user_id: 'dummy-owner-3',
-    strategic_initiative_id: siId || '',
-    start_date: null,
-    target_delivery_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    created_by: 'dummy-owner-3',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    display_order: 2,
-  },
-  {
-    id: 'dummy-4',
-    title: 'Train team on new processes',
-    completion_criteria: 'Conduct training sessions for all account managers',
-    status: 'assigned',
-    owner: { full_name: 'Emma Wilson', avatar_name: 'EW' },
-    owner_user_id: 'dummy-owner-4',
-    strategic_initiative_id: siId || '',
-    start_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    target_delivery_date: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    created_by: 'dummy-owner-4',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    display_order: 3,
-  },
-  {
-    id: 'dummy-5',
-    title: 'Measure and report on coverage improvements',
-    completion_criteria: 'Track metrics and create quarterly report',
-    status: 'not_assigned',
-    owner: { full_name: 'David Kim', avatar_name: 'DK' },
-    owner_user_id: 'dummy-owner-5',
-    strategic_initiative_id: siId || '',
-    start_date: null,
-    target_delivery_date: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    created_by: 'dummy-owner-5',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    display_order: 4,
-  },
-] as unknown as TaskWithRelations[];
 
 export default function SIDetail() {
   const { siId } = useParams<{ siId: string }>();
@@ -115,10 +38,21 @@ export default function SIDetail() {
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ taskId: string; field: 'start_date' | 'target_delivery_date' } | null>(null);
+  const [statusMenuTaskId, setStatusMenuTaskId] = useState<string | null>(null);
 
   // Fetch SI details
   const [siDetails, setSiDetails] = useState<Record<string, unknown> | null>(null);
   const [siLoading, setSiLoading] = useState(true);
+
+  // Preserve nav context across SI navigations to avoid sidebar remount
+  const lastNavContext = useRef<{ rallyingCryId: string; doId: string }>({ rallyingCryId: '', doId: '' });
+  if (siDetails?.defining_objective) {
+    const rc = (siDetails.defining_objective as Record<string, unknown>).rallying_cry_id as string;
+    const doId = (siDetails.defining_objective as Record<string, unknown>).id as string;
+    if (rc) lastNavContext.current.rallyingCryId = rc;
+    if (doId) lastNavContext.current.doId = doId;
+  }
 
   // Fetch tasks
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasksBySI(siId);
@@ -144,6 +78,31 @@ export default function SIDetail() {
       setSelectedTask(taskDetails);
     }
   }, [taskDetails]);
+
+  // Compute numbering (e.g. "2.3") for this SI within the rallying cry
+  const [siNumbering, setSiNumbering] = useState('');
+  useEffect(() => {
+    const compute = async () => {
+      if (!siDetails?.defining_objective) { setSiNumbering(''); return; }
+      const doObj = siDetails.defining_objective as { id: string; rallying_cry_id: string };
+      const { data: dos } = await supabase
+        .from('rc_defining_objectives')
+        .select('id')
+        .eq('rallying_cry_id', doObj.rallying_cry_id)
+        .order('display_order', { ascending: true });
+      const doIdx = (dos || []).findIndex(d => d.id === doObj.id);
+      const doNum = doIdx >= 0 ? doIdx + 1 : 1;
+      const { data: sis } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id')
+        .eq('defining_objective_id', doObj.id)
+        .order('display_order', { ascending: true });
+      const siIdx = (sis || []).findIndex(s => s.id === siId);
+      const siNum = siIdx >= 0 ? siIdx + 1 : 1;
+      setSiNumbering(`${doNum}.${siNum}`);
+    };
+    compute();
+  }, [siDetails?.defining_objective, siId]);
 
   // Fetch check-ins
   const { checkins, loading: checkinsLoading, refetch: refetchCheckins } = useCheckins('initiative', siId);
@@ -281,6 +240,16 @@ export default function SIDetail() {
     }
   };
 
+  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    try {
+      const { updateTask } = await import('@/hooks/useTasks');
+      await updateTask(taskId, { [field]: value });
+      refetchTasks();
+    } catch (err) {
+      console.error('Error updating task:', err);
+    }
+  };
+
   const handleCompleteTask = async (taskId: string) => {
     try {
       const { updateTask } = await import('@/hooks/useTasks');
@@ -297,12 +266,11 @@ export default function SIDetail() {
   if (loading || !siDetails) {
     return (
       <DetailPageLayout
-        rallyingCryId={siDetails?.defining_objective?.rallying_cry_id || ''}
+        rallyingCryId={lastNavContext.current.rallyingCryId}
         currentSIId={siId}
-        currentDOId={siDetails?.defining_objective?.id}
+        currentDOId={lastNavContext.current.doId}
         mobileNavOpen={mobileNavOpen}
         onMobileNavOpenChange={setMobileNavOpen}
-        loading={true}
       >
         <Skeleton className="h-12 w-full mb-8" />
         <Skeleton className="h-96 w-full" />
@@ -427,12 +395,12 @@ export default function SIDetail() {
   ) : undefined;
 
   // Get cycle dates for Gantt chart
-  const cycleStartDate = cycle 
-    ? new Date(cycle.start_date) 
-    : (siDetails.start_date ? new Date(siDetails.start_date) : new Date(new Date().getFullYear(), 0, 1));
-  const cycleEndDate = cycle 
-    ? new Date(cycle.end_date) 
-    : (siDetails.end_date ? new Date(siDetails.end_date) : new Date(new Date().getFullYear(), 11, 31));
+  const cycleStartDate = cycle
+    ? parseLocalDate(cycle.start_date)
+    : (siDetails.start_date ? parseLocalDate(siDetails.start_date) : new Date(new Date().getFullYear(), 0, 1));
+  const cycleEndDate = cycle
+    ? parseLocalDate(cycle.end_date)
+    : (siDetails.end_date ? parseLocalDate(siDetails.end_date) : new Date(new Date().getFullYear(), 11, 31));
 
   return (
     <DetailPageLayout
@@ -443,10 +411,9 @@ export default function SIDetail() {
       currentTaskId={taskIdFromUrl || undefined}
       mobileNavOpen={mobileNavOpen}
       onMobileNavOpenChange={setMobileNavOpen}
-      loading={loading}
     >
       <DetailPageHeader
-        title={siDetails.title}
+        title={siNumbering ? `${siNumbering} ${siDetails.title}` : siDetails.title}
         description={siDetails.description}
         owner={siDetails.owner}
         isLocked={isLocked}
@@ -483,7 +450,7 @@ export default function SIDetail() {
                   </div>
                 ) : viewMode === 'table' ? (
                   <div className="overflow-x-auto">
-                    {(tasks.length === 0 ? getDummyTasks(siId) : tasks).length === 0 ? (
+                    {tasks.length === 0 ? (
                       <p className="text-gray-600 dark:text-gray-400">
                         No tasks yet.
                       </p>
@@ -498,6 +465,9 @@ export default function SIDetail() {
                               Owner
                             </th>
                             <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                              Start Date
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
                               Target Delivery Date
                             </th>
                             <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
@@ -506,52 +476,42 @@ export default function SIDetail() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(tasks.length === 0 ? getDummyTasks(siId) : tasks).map((task) => {
-                            const isDummy = tasks.length === 0;
+                          {tasks.map((task) => {
                             const taskOwnerName = getFullNameForAvatar(
                               task.owner?.first_name,
                               task.owner?.last_name,
                               task.owner?.full_name
                             );
-                            const deliveryDate = task.target_delivery_date 
-                              ? new Date(task.target_delivery_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-                              : 'N/A';
-                            
-                            // Map status to display
-                            const getStatusDisplay = (status: string) => {
-                              switch (status) {
-                                case 'not_assigned':
-                                  return { text: 'Not Assigned', color: 'text-gray-600 dark:text-gray-400' };
-                                case 'assigned':
-                                  return { text: 'Assigned', color: 'text-[#4A5D5F]' };
-                                case 'in_progress':
-                                  return { text: 'In Progress', color: 'text-yellow-600 dark:text-yellow-400' };
-                                case 'completed':
-                                  return { text: 'Completed', color: 'text-green-600 dark:text-green-400' };
-                                case 'task_changed_canceled':
-                                  return { text: 'Changed/Canceled', color: 'text-red-600 dark:text-red-400' };
-                                case 'delayed':
-                                  return { text: 'Delayed', color: 'text-orange-600 dark:text-orange-400' };
-                                default:
-                                  return { text: 'Unknown', color: 'text-gray-600 dark:text-gray-400' };
-                              }
-                            };
-                            const statusDisplay = getStatusDisplay(task.status);
+                            const startDate = task.start_date
+                              ? parseLocalDate(task.start_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                              : '—';
+                            const deliveryDate = task.target_delivery_date
+                              ? parseLocalDate(task.target_delivery_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                              : '—';
+
+                            const statusOptions: { value: string; label: string; color: string }[] = [
+                              { value: 'not_assigned', label: 'Not Assigned', color: 'text-gray-600 dark:text-gray-400' },
+                              { value: 'assigned', label: 'Assigned', color: 'text-[#4A5D5F]' },
+                              { value: 'in_progress', label: 'In Progress', color: 'text-yellow-600 dark:text-yellow-400' },
+                              { value: 'completed', label: 'Completed', color: 'text-green-600 dark:text-green-400' },
+                              { value: 'delayed', label: 'Delayed', color: 'text-orange-600 dark:text-orange-400' },
+                              { value: 'task_changed_canceled', label: 'Changed/Canceled', color: 'text-red-600 dark:text-red-400' },
+                            ];
+                            const currentStatus = statusOptions.find(s => s.value === task.status) || statusOptions[0];
 
                             return (
-                              <tr 
+                              <tr
                                 key={task.id}
-                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
-                                onClick={() => {
-                                  if (isDummy) {
-                                    setShowTaskDialog(true);
-                                  } else {
-                                    handleEditTask(task.id);
-                                  }
-                                }}
+                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                               >
-                                <td className="py-3 px-4 text-sm text-gray-900 dark:text-gray-100">
-                                  <div className="font-medium">{task.title}</div>
+                                <td
+                                  className="py-3 px-4 text-sm text-gray-900 dark:text-gray-100 cursor-pointer group/desc"
+                                  onClick={() => handleEditTask(task.id)}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-medium">{task.title}</span>
+                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/desc:opacity-100 transition-opacity flex-shrink-0" />
+                                  </div>
                                   {task.completion_criteria && (
                                     <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                       {task.completion_criteria.replace(/<[^>]*>/g, '').trim()}
@@ -570,14 +530,96 @@ export default function SIDetail() {
                                       <span className="text-gray-700 dark:text-gray-300">{taskOwnerName}</span>
                                     </div>
                                   ) : (
-                                    <span className="text-gray-600 dark:text-gray-400">N/A</span>
+                                    <span className="text-gray-600 dark:text-gray-400">—</span>
                                   )}
                                 </td>
+                                {/* Start Date - double-click to edit */}
                                 <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                  {deliveryDate}
+                                  {editingCell?.taskId === task.id && editingCell.field === 'start_date' ? (
+                                    <input
+                                      type="date"
+                                      defaultValue={task.start_date || ''}
+                                      autoFocus
+                                      className="border rounded px-2 py-1 text-sm w-[140px] bg-white dark:bg-gray-800"
+                                      onBlur={(e) => {
+                                        setEditingCell(null);
+                                        if (e.target.value !== (task.start_date || '')) {
+                                          handleInlineUpdate(task.id, 'start_date', e.target.value);
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                        if (e.key === 'Escape') setEditingCell(null);
+                                      }}
+                                    />
+                                  ) : (
+                                    <span
+                                      className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1"
+                                      onDoubleClick={() => setEditingCell({ taskId: task.id, field: 'start_date' })}
+                                    >
+                                      {startDate}
+                                    </span>
+                                  )}
                                 </td>
-                                <td className="py-3 px-4 text-sm">
-                                  <span className={statusDisplay.color}>{statusDisplay.text}</span>
+                                {/* Target Delivery Date - double-click to edit */}
+                                <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
+                                  {editingCell?.taskId === task.id && editingCell.field === 'target_delivery_date' ? (
+                                    <input
+                                      type="date"
+                                      defaultValue={task.target_delivery_date || ''}
+                                      autoFocus
+                                      className="border rounded px-2 py-1 text-sm w-[140px] bg-white dark:bg-gray-800"
+                                      onBlur={(e) => {
+                                        setEditingCell(null);
+                                        if (e.target.value !== (task.target_delivery_date || '')) {
+                                          handleInlineUpdate(task.id, 'target_delivery_date', e.target.value);
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                        if (e.key === 'Escape') setEditingCell(null);
+                                      }}
+                                    />
+                                  ) : (
+                                    <span
+                                      className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1"
+                                      onDoubleClick={() => setEditingCell({ taskId: task.id, field: 'target_delivery_date' })}
+                                    >
+                                      {deliveryDate}
+                                    </span>
+                                  )}
+                                </td>
+                                {/* Status - click to cycle */}
+                                <td className="py-3 px-4 text-sm relative">
+                                  <div className="relative">
+                                    <span
+                                      className={`${currentStatus.color} cursor-pointer hover:underline`}
+                                      onClick={() => setStatusMenuTaskId(statusMenuTaskId === task.id ? null : task.id)}
+                                    >
+                                      {currentStatus.label}
+                                    </span>
+                                    {statusMenuTaskId === task.id && (
+                                      <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setStatusMenuTaskId(null)} />
+                                        <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border rounded-md shadow-lg py-1 min-w-[160px]">
+                                          {statusOptions.map((opt) => (
+                                            <button
+                                              key={opt.value}
+                                              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${opt.color} ${opt.value === task.status ? 'font-semibold bg-gray-50 dark:bg-gray-700/50' : ''}`}
+                                              onClick={() => {
+                                                setStatusMenuTaskId(null);
+                                                if (opt.value !== task.status) {
+                                                  handleInlineUpdate(task.id, 'status', opt.value);
+                                                }
+                                              }}
+                                            >
+                                              {opt.label}
+                                            </button>
+                                            ))}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
                                 </td>
                               </tr>
                             );
@@ -589,29 +631,16 @@ export default function SIDetail() {
                 ) : (
                   <div className="overflow-x-auto">
                     <TaskGanttChart
-                      tasks={tasks.length === 0 ? getDummyTasks(siId) : tasks}
+                      tasks={tasks}
                       cycleStartDate={cycleStartDate}
                       cycleEndDate={cycleEndDate}
-                      // Timeline will auto-adjust to fit tasks
-                      onTaskClick={(task) => {
-                        if (tasks.length === 0) {
-                          setShowTaskDialog(true);
-                        } else {
-                          handleTaskClickFromGantt(task);
-                        }
-                      }}
-                      onTaskEdit={(task) => {
-                        if (tasks.length === 0) {
-                          setShowTaskDialog(true);
-                        } else {
-                          handleEditTask(task.id);
-                        }
-                      }}
-                      onTaskDelete={tasks.length === 0 ? undefined : (task) => handleDeleteTask(task.id)}
-                      onTaskComplete={tasks.length === 0 ? undefined : (task) => handleCompleteTask(task.id)}
-                      onTaskDateUpdate={tasks.length === 0 ? undefined : handleTaskDateUpdate}
-                      canEditTask={(task) => tasks.length === 0 ? true : canEditTaskForItem(task)}
-                      canDeleteTask={(task) => tasks.length === 0 ? false : canDeleteTaskForItem(task)}
+                      onTaskClick={(task) => handleTaskClickFromGantt(task)}
+                      onTaskEdit={(task) => handleEditTask(task.id)}
+                      onTaskDelete={(task) => handleDeleteTask(task.id)}
+                      onTaskComplete={(task) => handleCompleteTask(task.id)}
+                      onTaskDateUpdate={handleTaskDateUpdate}
+                      canEditTask={(task) => canEditTaskForItem(task)}
+                      canDeleteTask={(task) => canDeleteTaskForItem(task)}
                     />
                   </div>
                 )}

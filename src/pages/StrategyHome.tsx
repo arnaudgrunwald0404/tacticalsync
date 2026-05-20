@@ -9,6 +9,7 @@ import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { suggestCycleDates } from '@/lib/rcdoValidation';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -302,8 +303,8 @@ export default function StrategyHome() {
                         <div className="flex items-center gap-2 text-sm">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span className="font-medium">
-                            {format(new Date(cycle.start_date), 'MMM dd, yyyy')} -{' '}
-                            {format(new Date(cycle.end_date), 'MMM dd, yyyy')}
+                            {format(parseLocalDate(cycle.start_date), 'MMM dd, yyyy')} -{' '}
+                            {format(parseLocalDate(cycle.end_date), 'MMM dd, yyyy')}
                           </span>
                         </div>
                       </td>

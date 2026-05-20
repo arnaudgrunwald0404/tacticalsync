@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { parseLocalDate } from "@/lib/dateUtils";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -2377,11 +2378,11 @@ const Settings = () => {
                     {cycles.map((cycle) => (
                       <TableRow key={cycle.id}>
                         <TableCell className="font-medium">
-                          {format(new Date(cycle.start_date), "MMM yyyy")} –{" "}
-                          {format(new Date(cycle.end_date), "MMM yyyy")}
+                          {format(parseLocalDate(cycle.start_date), "MMM yyyy")} –{" "}
+                          {format(parseLocalDate(cycle.end_date), "MMM yyyy")}
                         </TableCell>
-                        <TableCell>{format(new Date(cycle.start_date), "MMM d, yyyy")}</TableCell>
-                        <TableCell>{format(new Date(cycle.end_date), "MMM d, yyyy")}</TableCell>
+                        <TableCell>{format(parseLocalDate(cycle.start_date), "MMM d, yyyy")}</TableCell>
+                        <TableCell>{format(parseLocalDate(cycle.end_date), "MMM d, yyyy")}</TableCell>
                         <TableCell>
                           <Badge className={statusColors[cycle.status] ?? "bg-gray-500"}>
                             {statusLabels[cycle.status] ?? cycle.status}

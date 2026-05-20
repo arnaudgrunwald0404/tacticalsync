@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, Edit, Trash2, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { cn } from '@/lib/utils';
@@ -144,11 +145,11 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
       <div className="flex items-center gap-2 text-sm md:text-xs text-muted-foreground md:min-w-[200px]">
         <Calendar className="h-4 w-4 md:h-3 md:w-3" />
         <span>
-          {task.start_date && format(new Date(task.start_date), 'MMM d')}
+          {task.start_date && format(parseLocalDate(task.start_date), 'MMM d')}
           {task.start_date && task.target_delivery_date && ' - '}
-          {task.actual_delivery_date 
-            ? format(new Date(task.actual_delivery_date), 'MMM d, yyyy') + ' (actual)'
-            : task.target_delivery_date && format(new Date(task.target_delivery_date), 'MMM d, yyyy')
+          {task.actual_delivery_date
+            ? format(parseLocalDate(task.actual_delivery_date), 'MMM d, yyyy') + ' (actual)'
+            : task.target_delivery_date && format(parseLocalDate(task.target_delivery_date), 'MMM d, yyyy')
           }
         </span>
       </div>

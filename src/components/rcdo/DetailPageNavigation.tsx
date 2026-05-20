@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, LayoutGrid, BarChart3 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ChevronRight, ChevronDown, Target, Layers, FileText, CheckSquare, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -144,10 +143,13 @@ export function DetailPageNavigation({
           .order('display_order', { ascending: true });
 
         // Build exhaustive navigation tree - show ALL DOs and ALL SIs
-        const doItems = (dos || []).map(doItem => {
+        const doItems = (dos || []).map((doItem, doIdx) => {
+          const doNum = doIdx + 1;
+          let siCounter = 0;
           const siItems = (sis || [])
             .filter(si => si.defining_objective_id === doItem.id)
             .map(si => {
+              siCounter++;
               const taskItems = (tasks || [])
                 .filter(task => task.strategic_initiative_id === si.id)
                 .map(task => ({
@@ -159,7 +161,7 @@ export function DetailPageNavigation({
 
               return {
                 id: si.id,
-                title: si.title,
+                title: `${doNum}.${siCounter} ${si.title}`,
                 type: 'si' as const,
                 isActive: si.id === currentSIId,
                 isExpanded: si.id === currentSIId || taskItems.some(t => t.isActive),
@@ -169,7 +171,7 @@ export function DetailPageNavigation({
 
           return {
             id: doItem.id,
-            title: doItem.title,
+            title: `${doNum}.0 ${doItem.title}`,
             type: 'do' as const,
             isActive: doItem.id === currentDOId,
             isExpanded: doItem.id === currentDOId || siItems.some(si => si.id === currentSIId),
@@ -392,7 +394,7 @@ export function DetailPageNavigation({
           className={cn(
             'flex items-start gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors',
             'hover:bg-accent min-h-[44px]',
-            item.isActive && 'bg-accent font-semibold',
+            item.isActive && 'bg-slate-700 hover:bg-slate-600 text-white rounded-lg',
             (isRC || isDO) && 'font-bold',
             level > 0 && 'ml-4'
           )}
@@ -431,12 +433,13 @@ export function DetailPageNavigation({
               )}
             </button>
           )}
-          {!showChevron && <div className="h-4 w-4 flex-shrink-0" />}
+          {!showChevron && !isRC && <div className="h-4 w-4 flex-shrink-0" />}
+          {isRC && <BarChart3 className={cn("h-5 w-5 flex-shrink-0 mt-0.5", item.isActive ? "text-white" : "text-slate-600")} />}
           <div className="flex-1 min-w-0">
-            <span 
+            <span
               className={cn(
                 'break-words',
-                isRC || isDO ? 'text-base font-bold' : 'text-sm'
+                item.isActive ? 'text-white font-semibold' : isRC ? 'text-base font-bold' : isDO ? 'text-base font-bold' : 'text-sm'
               )}
             >
               {item.title}
@@ -454,24 +457,6 @@ export function DetailPageNavigation({
 
   const sidebarContent = (
     <>
-      <div className="px-4 py-3 border-b border-sidebar-border space-y-2">
-        <Button
-          onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <LayoutGrid className="h-4 w-4 mr-2" />
-          Go to Canvas view
-        </Button>
-        <Button
-          onClick={() => navigate('/rcdo/all-hands')}
-          size="sm"
-          variant="outline"
-          className="w-full"
-        >
-          <BarChart3 className="h-4 w-4 mr-2" />
-          All-Hands view
-        </Button>
-      </div>
       <div className="p-4 pr-6 flex-1 overflow-y-auto">
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading navigation...</div>

@@ -3,6 +3,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { format, startOfWeek, differenceInWeeks, addWeeks, startOfDay } from 'date-fns';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { cn } from '@/lib/utils';
+import { parseLocalDate } from '@/lib/dateUtils';
 
 interface TaskGanttBarProps {
   task: TaskWithRelations;
@@ -54,7 +55,7 @@ export function TaskGanttBar({
   
   // Calculate duration in weeks
   const taskWeekEnd = startOfWeek(endDate, { weekStartsOn: 1 });
-  const weeksDuration = Math.max(1, differenceInWeeks(taskWeekEnd, taskWeekStart, { roundingMethod: 'ceil' }) + 1);
+  const weeksDuration = Math.max(1, differenceInWeeks(taskWeekEnd, taskWeekStart, { roundingMethod: 'ceil' }));
   
   const baseLeft = Math.max(0, weeksFromCycleStart * weekWidth);
   const baseWidth = Math.max(weeksDuration * weekWidth, 20); // Minimum width of 20px
@@ -149,10 +150,10 @@ export function TaskGanttBar({
       <div className="text-xs">
         <div>Status: {task.status.replace('_', ' ')}</div>
         {task.start_date && (
-          <div>Start: {format(new Date(task.start_date), 'MMM d, yyyy')}</div>
+          <div>Start: {format(parseLocalDate(task.start_date), 'MMM d, yyyy')}</div>
         )}
         {task.target_delivery_date && (
-          <div>Target: {format(new Date(task.target_delivery_date), 'MMM d, yyyy')}</div>
+          <div>Target: {format(parseLocalDate(task.target_delivery_date), 'MMM d, yyyy')}</div>
         )}
         {task.actual_delivery_date && (
           <div>Actual: {format(new Date(task.actual_delivery_date), 'MMM d, yyyy')}</div>

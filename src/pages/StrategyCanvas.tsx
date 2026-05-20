@@ -1761,7 +1761,7 @@ const duplicateSelectedDo = useCallback(() => {
 
       {/* Canvas toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
-        <button
+        <Button
           onClick={() => {
             if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
             if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
@@ -1769,11 +1769,11 @@ const duplicateSelectedDo = useCallback(() => {
               if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
             }
           }}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors ml-4"
+          className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
         >
-          <List className="h-3 w-3" />
-          <span>Detail</span>
-        </button>
+          <List className="h-4 w-4 mr-2" />
+          Go to Detail View
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" className="flex items-center gap-1">
@@ -2544,10 +2544,28 @@ const duplicateSelectedDo = useCallback(() => {
    - Follow with **Definition** section containing description
    - Add **Primary Success Metric** section with bullet point(s)
    - Include ### Strategic Initiatives subsection
-   - List initiatives as numbered items: 1. **Initiative Title**
-     - Optional: Add owner: 1. **Initiative Title (Owner: John Smith)**
-     - Sub-bullets for initiative details (use * or -)
    - End each DO with horizontal rule: ---
+
+4. **Strategic Initiatives** (two supported formats):
+
+   **Simple format** — numbered list with bullets:
+   1. **Initiative Title (Owner: Name)**
+      * Bullet point detail
+      * Another detail
+
+   **Detailed format** — #### header with metadata and task table:
+   #### SI 1 — Initiative Title (Owner: Name)
+   **Success Metric:** description of the metric
+   **Benchmark:** baseline or comparison value
+   **Stakeholders:** Name1, Name2
+   **Estimated Completion:** YYYY-MM-DD
+   **Status:** On Track
+   **Progress:** 50%
+
+   **Tasks**
+   | # | Task | Completion Criteria | Owner | Start Date | Adj. Start | Target Date | Adj. Target | Actual Date | Notes | Status |
+   |---|------|---------------------|-------|------------|------------|-------------|-------------|-------------|-------|--------|
+   | 1.1 | Task name | Done criteria | Owner Name | 2026-01-15 | | 2026-03-01 | | | | In Progress |
 
 ## COMPLETE EXAMPLE
 
@@ -2571,15 +2589,28 @@ Building and strengthening foundations to provide clarity and resources to enabl
 
 ### Strategic Initiatives
 
-1. **Process Standardization & Optimization (Owner: John Smith)**
+#### SI 1 — Process Standardization & Optimization (Owner: John Smith)
 
-   * Create and roll out templated SOPs for critical roles and processes
-   * Identify and address 3–5 of the most critical process gaps
+**Success Metric:** 100% of critical roles have documented SOPs
+**Benchmark:** Currently 30% coverage
+**Stakeholders:** Jane Doe, Mike Johnson
+**Estimated Completion:** 2026-06-30
+**Status:** In Progress
+**Progress:** 25%
 
-2. **Drive Resource Efficiency**
+* Create and roll out templated SOPs for critical roles and processes
+* Identify and address 3–5 of the most critical process gaps
 
-   * Successfully execute the H1 rightshoring/techshoring plan
-   * Ensure the right talent is in the right roles
+**Tasks**
+| # | Task | Completion Criteria | Owner | Start Date | Target Date | Actual Date | Notes | Status |
+|---|------|---------------------|-------|------------|-------------|-------------|-------|--------|
+| 1.1 | Audit existing SOPs | Audit report delivered | John Smith | 2026-01-15 | 2026-02-15 | 2026-02-10 | Completed early | Completed |
+| 1.2 | Create SOP templates | Templates approved | John Smith | 2026-02-15 | 2026-04-01 | | | In Progress |
+
+#### SI 2 — Drive Resource Efficiency
+
+* Successfully execute the H1 rightshoring/techshoring plan
+* Ensure the right talent is in the right roles
 
 ---
 
@@ -2616,7 +2647,26 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
 - Separate each DO with horizontal rule (---)
 - Owner attribution is optional and uses format: (Owner: Name)
 - Owner names match against user email, first name, last name, or full name
-- If owner not specified or not found, the importing user is assigned`;
+- If owner not specified or not found, the importing user is assigned
+- You can mix simple (numbered list) and detailed (#### SI header) formats within the same document
+
+## DATE FORMATTING RULES
+
+- All dates must use YYYY-MM-DD format (e.g. 2026-01-15)
+- Cycle start dates must fall on the 1st of the month (e.g. 2026-01-01, 2026-07-01)
+- SI-level dates use: **Estimated Completion:** YYYY-MM-DD
+- Task dates are specified in the table columns: Start Date, Target Date, Actual Date
+- Adjusted dates (Adj. Start, Adj. Target) are optional override columns
+
+## TASK STATUS VALUES
+
+Valid status values for the Status column:
+- Not Assigned
+- Assigned
+- In Progress
+- Completed
+- Delayed
+- Task Changed/Canceled`;
                       
                       navigator.clipboard.writeText(instructions);
                       toast({
@@ -2636,9 +2686,13 @@ We aim to predict, prevent, and intervene on customer risk to improve customer r
                           <ul className="font-body list-disc list-inside space-y-1 ml-2 text-[#4A5D5F]">
                             <li>Rallying Cry: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">&gt; **Text**</code></li>
                             <li>Defining Objectives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">## DO #1 — Title</code></li>
-                            <li>Strategic Initiatives: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">1. **Initiative**</code></li>
                             <li>Sections: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Definition**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Primary Success Metric**</code></li>
+                            <li>SIs (simple): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">1. **Initiative**</code></li>
+                            <li>SIs (detailed): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">#### SI 1 — Title</code> with metadata &amp; task table</li>
+                            <li>SI metadata: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Success Metric:**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Estimated Completion:**</code>, <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Status:**</code></li>
+                            <li>Tasks: pipe-delimited table under <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">**Tasks**</code> header</li>
                             <li>Owners (optional): <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">(Owner: Name)</code></li>
+                            <li>Dates: <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-[#4A5D5F]">YYYY-MM-DD</code> (cycle starts must be 1st of month)</li>
                           </ul>
                           <p className="font-body text-xs text-[#4A5D5F] mt-2 italic">
                             Owner names match against user email, first name, last name, or full name. If not specified or not found, the importing user is used.

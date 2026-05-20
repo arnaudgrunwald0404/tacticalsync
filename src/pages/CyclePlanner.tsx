@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import { ArrowLeft, Plus, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { useCycles } from '@/hooks/useRCDO';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import { suggestCycleDates } from '@/lib/rcdoValidation';
@@ -181,14 +182,14 @@ export default function CyclePlanner() {
                   {cycles.map((cycle) => (
                     <TableRow key={cycle.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
                       <TableCell className="font-medium">
-                        {format(new Date(cycle.start_date), 'MMM yyyy')} -{' '}
-                        {format(new Date(cycle.end_date), 'MMM yyyy')}
+                        {format(parseLocalDate(cycle.start_date), 'MMM yyyy')} -{' '}
+                        {format(parseLocalDate(cycle.end_date), 'MMM yyyy')}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(cycle.start_date), 'MMM d, yyyy')}
+                        {format(parseLocalDate(cycle.start_date), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(cycle.end_date), 'MMM d, yyyy')}
+                        {format(parseLocalDate(cycle.end_date), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell>
                         <Badge className={statusColors[cycle.status]}>

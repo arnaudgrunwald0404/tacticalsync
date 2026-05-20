@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, User, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -121,9 +122,9 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
             <Calendar className="h-4 w-4" />
             <span>
-              {initiative.start_date && format(new Date(initiative.start_date), 'MMM d')}
+              {initiative.start_date && format(parseLocalDate(initiative.start_date), 'MMM d')}
               {initiative.start_date && initiative.end_date && ' - '}
-              {initiative.end_date && format(new Date(initiative.end_date), 'MMM d, yyyy')}
+              {initiative.end_date && format(parseLocalDate(initiative.end_date), 'MMM d, yyyy')}
             </span>
           </div>
         )}

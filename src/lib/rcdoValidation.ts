@@ -46,10 +46,14 @@ export async function validateCycleActivation(
     errors.push('Only one active cycle allowed per team at a time');
   }
 
+  // Cycle must start on the first day of a month
+  if (startDate.getDate() !== 1) {
+    errors.push('Cycle must start on the first day of the month');
+  }
+
   // Warning if cycle doesn't start on Jan 1 or Jul 1
   const month = startDate.getMonth();
-  const day = startDate.getDate();
-  if (!((month === 0 && day === 1) || (month === 6 && day === 1))) {
+  if (startDate.getDate() === 1 && month !== 0 && month !== 6) {
     warnings.push('Recommended cycle start dates are January 1 or July 1');
   }
 

@@ -56,6 +56,9 @@ Database migrations are in `supabase/migrations/` (80+ files, timestamp-named). 
 ### Design System
 Design tokens and layout patterns are documented in `src/design-system/`. The `LAYOUT_PATTERNS.md` and `DESIGN_SYSTEM.md` files define component patterns used across detail pages. Shared detail page structure uses `DetailPageHeader` + `DetailPageNavigation` components.
 
+### Date Handling
+**Always use `parseLocalDate()` from `@/lib/dateUtils` when displaying date-only strings (YYYY-MM-DD) from the database.** Never use `new Date("2025-07-01")` directly — it parses as UTC midnight, which shifts to the previous day in western timezones. `parseLocalDate` appends `T00:00:00` to force local-time parsing.
+
 ### Session & Auth
 `useSessionManager.ts` handles 30-minute idle timeout and token refresh. Auth uses Supabase OAuth with PKCE flow.
 

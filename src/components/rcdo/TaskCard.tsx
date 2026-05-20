@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Calendar, User, MessageSquare, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import type { TaskWithRelations } from '@/types/rcdo';
@@ -126,11 +127,11 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
             <Calendar className="h-4 w-4" />
             <span>
-              {task.start_date && format(new Date(task.start_date), 'MMM d')}
+              {task.start_date && format(parseLocalDate(task.start_date), 'MMM d')}
               {task.start_date && task.target_delivery_date && ' - '}
-              {task.actual_delivery_date 
-                ? format(new Date(task.actual_delivery_date), 'MMM d, yyyy') + ' (actual)'
-                : task.target_delivery_date && format(new Date(task.target_delivery_date), 'MMM d, yyyy')
+              {task.actual_delivery_date
+                ? format(parseLocalDate(task.actual_delivery_date), 'MMM d, yyyy') + ' (actual)'
+                : task.target_delivery_date && format(parseLocalDate(task.target_delivery_date), 'MMM d, yyyy')
               }
             </span>
           </div>

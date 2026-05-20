@@ -1,13 +1,61 @@
 /**
  * Markdown RCDO Parser
- * Parses a markdown file containing Rallying Cry, Defining Objectives, and Strategic Initiatives
+ * Parses a markdown file containing Rallying Cry, Defining Objectives,
+ * Strategic Initiatives, and Tasks.
+ *
+ * Markdown format mirrors the Excel DO tabs:
+ *
+ * > **Rallying Cry text**
+ *
+ * ## DO #1 — Title (Owner: Name)
+ * **Definition**
+ * text
+ * **Primary Success Metric**
+ * * metric text
+ *
+ * ### Strategic Initiatives
+ *
+ * #### SI 1 — Title (Owner: Name)
+ * **Success Metric:** metric text (multi-line allowed)
+ * **Benchmark:** benchmark text
+ * **Stakeholders:** Name1, Name2
+ * **Estimated Completion:** 2026-06-30
+ * **Status:** On Track
+ * **Progress:** 50%
+ *
+ * **Tasks**
+ * | # | Task | Completion Criteria | Owner | Start Date | Adj. Start | Target Date | Adj. Target | Actual Date | Notes | Status |
+ * |---|------|---------------------|-------|------------|------------|-------------|-------------|-------------|-------|--------|
+ * | 1.1 | Do the thing | Thing is done | Derek | 2025-12-29 | | 2026-01-16 | | 2026-01-16 | some note | Completed |
  */
 
+export interface ParsedTask {
+  number: string;
+  title: string;
+  completionCriteria?: string;
+  ownerName?: string;
+  startDate?: string;
+  adjustedStartDate?: string;
+  targetDeliveryDate?: string;
+  adjustedDeliveryDate?: string;
+  actualDeliveryDate?: string;
+  notes?: string;
+  status?: string;
+}
+
 export interface ParsedSI {
+  number: number;
   title: string;
   description: string;
   bullets: string[];
   ownerName?: string;
+  successMetric?: string;
+  benchmark?: string;
+  stakeholders?: string;
+  estimatedCompletion?: string;
+  status?: string;
+  progressPct?: number;
+  tasks: ParsedTask[];
 }
 
 export interface ParsedDO {
@@ -24,198 +72,352 @@ export interface ParsedRCDO {
   definingObjectives: ParsedDO[];
 }
 
+function cleanCell(val: string): string {
+  return val.replace(/^\s+|\s+$/g, '').replace(/^—$/, '');
+}
+
+function parseTableRow(line: string): string[] {
+  return line.split('|').slice(1, -1).map(c => cleanCell(c));
+}
+
+function isTableSeparator(line: string): boolean {
+  return /^\|[\s\-:|]+\|$/.test(line.trim());
+}
+
 /**
  * Parses markdown content into structured RCDO data
  */
 export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
   const lines = markdown.split('\n');
-  
+
   let rallyingCry = '';
   const definingObjectives: ParsedDO[] = [];
-  
+
   let currentDO: ParsedDO | null = null;
   let currentSI: ParsedSI | null = null;
-  let currentSection: 'none' | 'rc' | 'do-definition' | 'do-metric' | 'si-list' | 'si-bullets' = 'none';
-  
+  let currentSection:
+    | 'none'
+    | 'rc'
+    | 'do-definition'
+    | 'do-metric'
+    | 'si-list'
+    | 'si-meta'
+    | 'si-success-metric'
+    | 'si-bullets'
+    | 'si-tasks' = 'none';
+  let taskHeaderCols: string[] | null = null;
+
+  const saveSI = () => {
+    if (currentDO && currentSI) {
+      currentDO.strategicInitiatives.push(currentSI);
+    }
+    currentSI = null;
+    taskHeaderCols = null;
+  };
+
+  const saveDO = () => {
+    saveSI();
+    if (currentDO) {
+      definingObjectives.push(currentDO);
+    }
+    currentDO = null;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    
-    // Skip empty lines
+
     if (!line) continue;
-    
-    // Extract Rallying Cry
-    if (line.match(/^>\s*\*\*(.+)\*\*\s*$/)) {
-      const match = line.match(/^>\s*\*\*(.+)\*\*\s*$/);
-      if (match) {
-        rallyingCry = match[1].trim();
-        currentSection = 'rc';
-      }
+
+    // --- Rallying Cry ---
+    const rcMatch = line.match(/^>\s*\*\*(.+)\*\*\s*$/);
+    if (rcMatch) {
+      rallyingCry = rcMatch[1].trim();
+      currentSection = 'rc';
       continue;
     }
-    
-    // Extract DO headers - match patterns like "## DO #1 — Title" or "## DO #1 — Title (Owner: Name)"
-    // Handles em dash (—), en dash (–), and hyphen (-)
+
+    // --- DO header ---
     const doHeaderMatch = line.match(/^##\s+DO\s+#?(\d+)\s*[—–\-:]\s*(.+)$/i);
     if (doHeaderMatch) {
-      // Save previous DO if exists
-      if (currentDO && currentSI) {
-        currentDO.strategicInitiatives.push(currentSI);
-        currentSI = null;
-      }
-      if (currentDO) {
-        definingObjectives.push(currentDO);
-      }
-      
-      // Extract owner from title if present: "Title (Owner: John Doe)"
+      saveDO();
+
       let titleText = doHeaderMatch[2].trim();
-      let ownerName: string | undefined = undefined;
-      
+      let ownerName: string | undefined;
+
       const ownerMatch = titleText.match(/^(.+?)\s*\(Owner:\s*([^)]+)\)\s*$/i);
       if (ownerMatch) {
         titleText = ownerMatch[1].trim();
         ownerName = ownerMatch[2].trim();
       }
-      
+
       currentDO = {
         number: parseInt(doHeaderMatch[1]),
         title: titleText,
         definition: '',
         primarySuccessMetric: '',
         strategicInitiatives: [],
-        ownerName
+        ownerName,
       };
       currentSection = 'none';
       continue;
     }
-    
-    // Extract Definition
+
+    // --- DO sections ---
     if (line === '**Definition**' && currentDO) {
       currentSection = 'do-definition';
       continue;
     }
-    
-    // Extract Primary Success Metric
+
     if (line === '**Primary Success Metric**' && currentDO) {
       currentSection = 'do-metric';
       continue;
     }
-    
-    // Strategic Initiatives section header
+
     if (line === '### Strategic Initiatives' && currentDO) {
       currentSection = 'si-list';
       continue;
     }
-    
+
     // Read definition text
     if (currentSection === 'do-definition' && currentDO && !line.startsWith('**')) {
-      if (currentDO.definition) {
-        currentDO.definition += ' ' + line;
-      } else {
-        currentDO.definition = line;
-      }
+      currentDO.definition = currentDO.definition
+        ? currentDO.definition + ' ' + line
+        : line;
       continue;
     }
-    
-    // Read metric text (after bullet points)
+
+    // Read metric text
     if (currentSection === 'do-metric' && currentDO && line.startsWith('*')) {
       const metricText = line.replace(/^\*\s*/, '').trim();
-      if (currentDO.primarySuccessMetric) {
-        currentDO.primarySuccessMetric += ' ' + metricText;
-      } else {
-        currentDO.primarySuccessMetric = metricText;
-      }
+      currentDO.primarySuccessMetric = currentDO.primarySuccessMetric
+        ? currentDO.primarySuccessMetric + ' ' + metricText
+        : metricText;
       continue;
     }
-    
-    // Strategic Initiative numbered items (check in both si-list and si-bullets sections)
-    if ((currentSection === 'si-list' || currentSection === 'si-bullets') && currentDO) {
-      const siMatch = line.match(/^\d+\.\s+\*\*(.+)\*\*$/);
-      if (siMatch) {
-        // Save previous SI if exists
-        if (currentSI) {
-          currentDO.strategicInitiatives.push(currentSI);
-        }
-        
-        // Extract owner from SI title if present: "Title (Owner: Jane Doe)"
-        let siTitle = siMatch[1].trim();
-        let ownerName: string | undefined = undefined;
-        
-        const ownerMatch = siTitle.match(/^(.+?)\s*\(Owner:\s*([^)]+)\)\s*$/i);
-        if (ownerMatch) {
-          siTitle = ownerMatch[1].trim();
-          ownerName = ownerMatch[2].trim();
-        }
-        
-        currentSI = {
-          title: siTitle,
-          description: '',
-          bullets: [],
-          ownerName
-        };
-        currentSection = 'si-bullets';
+
+    // --- SI header (#### SI N — Title) ---
+    const siHeaderMatch = line.match(
+      /^(?:####\s+SI\s+(\d+)\s*[—–\-:]\s*(.+)|\d+\.\s+\*\*(.+)\*\*\s*)$/i
+    );
+    if (siHeaderMatch && currentDO) {
+      saveSI();
+
+      let siNum: number;
+      let siTitle: string;
+      if (siHeaderMatch[1] && siHeaderMatch[2]) {
+        siNum = parseInt(siHeaderMatch[1]);
+        siTitle = siHeaderMatch[2].trim();
+      } else {
+        siNum = currentDO.strategicInitiatives.length + 1;
+        siTitle = (siHeaderMatch[3] || '').trim();
+      }
+
+      let ownerName: string | undefined;
+      const ownerMatch = siTitle.match(/^(.+?)\s*\(Owner:\s*([^)]+)\)\s*$/i);
+      if (ownerMatch) {
+        siTitle = ownerMatch[1].trim();
+        ownerName = ownerMatch[2].trim();
+      }
+
+      currentSI = {
+        number: siNum,
+        title: siTitle,
+        description: '',
+        bullets: [],
+        ownerName,
+        tasks: [],
+      };
+      currentSection = 'si-meta';
+      continue;
+    }
+
+    // --- SI metadata fields ---
+    if (currentSection === 'si-meta' && currentSI) {
+      const metaMatch = line.match(
+        /^\*\*(?:Success Metric|Success Metric\/Criteria)\s*:\*\*\s*(.*)$/i
+      );
+      if (metaMatch) {
+        currentSI.successMetric = metaMatch[1].trim();
+        currentSection = 'si-success-metric';
         continue;
       }
-    }
-    
-    // SI bullet points (only process if not a new numbered item)
-    if (currentSection === 'si-bullets' && currentSI) {
-      // Check if it's a bullet point
-      if (line.startsWith('*') && !line.match(/^\d+\.\s+\*\*(.+)\*\*$/)) {
-        const bulletText = line.replace(/^\*\s*/, '').trim();
+
+      const benchmarkMatch = line.match(/^\*\*Benchmark\s*:\*\*\s*(.*)$/i);
+      if (benchmarkMatch) {
+        currentSI.benchmark = benchmarkMatch[1].trim();
+        continue;
+      }
+
+      const stakeholdersMatch = line.match(/^\*\*Stakeholders\s*:\*\*\s*(.*)$/i);
+      if (stakeholdersMatch) {
+        currentSI.stakeholders = stakeholdersMatch[1].trim();
+        continue;
+      }
+
+      const completionMatch = line.match(
+        /^\*\*Estimated Completion\s*:\*\*\s*(.*)$/i
+      );
+      if (completionMatch) {
+        currentSI.estimatedCompletion = completionMatch[1].trim();
+        continue;
+      }
+
+      const statusMatch = line.match(/^\*\*Status\s*:\*\*\s*(.*)$/i);
+      if (statusMatch) {
+        currentSI.status = statusMatch[1].trim();
+        continue;
+      }
+
+      const progressMatch = line.match(/^\*\*Progress\s*:\*\*\s*(\d+)%?\s*$/i);
+      if (progressMatch) {
+        currentSI.progressPct = parseInt(progressMatch[1]);
+        continue;
+      }
+
+      if (line === '**Tasks**') {
+        currentSection = 'si-tasks';
+        continue;
+      }
+
+      // Bullet points under SI
+      if (line.startsWith('*') || line.startsWith('-')) {
+        const bulletText = line.replace(/^[\*\-]\s*/, '').trim();
         currentSI.bullets.push(bulletText);
         continue;
       }
     }
+
+    // Multi-line success metric continuation
+    if (currentSection === 'si-success-metric' && currentSI) {
+      if (line.startsWith('**')) {
+        // Switch back to meta and re-process this line
+        currentSection = 'si-meta';
+        i--;
+        continue;
+      }
+      currentSI.successMetric = (currentSI.successMetric || '') + '\n' + line;
+      continue;
+    }
+
+    // --- SI tasks table ---
+    if (currentSection === 'si-tasks' && currentSI) {
+      // Table header row
+      if (line.startsWith('|') && !taskHeaderCols) {
+        taskHeaderCols = parseTableRow(line).map(h => h.toLowerCase());
+        continue;
+      }
+
+      // Separator row
+      if (isTableSeparator(line)) continue;
+
+      // Data row
+      if (line.startsWith('|') && taskHeaderCols) {
+        const cells = parseTableRow(line);
+        const get = (key: string) => {
+          const idx = taskHeaderCols!.findIndex(h => h.includes(key));
+          return idx >= 0 && idx < cells.length ? cells[idx] : undefined;
+        };
+
+        const task: ParsedTask = {
+          number: get('#') || get('number') || '',
+          title: get('task') || '',
+          completionCriteria: get('completion') || get('criteria') || undefined,
+          ownerName: get('owner') || undefined,
+          startDate: get('start date') || get('start') || undefined,
+          adjustedStartDate: get('adj. start') || get('adjusted start') || undefined,
+          targetDeliveryDate:
+            get('target date') || get('target delivery') || get('target') || undefined,
+          adjustedDeliveryDate:
+            get('adj. target') || get('adjusted delivery') || get('adj. delivery') || undefined,
+          actualDeliveryDate:
+            get('actual date') || get('actual delivery') || get('actual') || undefined,
+          notes: get('notes') || get('note') || undefined,
+          status: get('status') || undefined,
+        };
+
+        if (task.title) {
+          currentSI.tasks.push(task);
+        }
+        continue;
+      }
+
+      // Non-table line while in tasks → end of tasks section, go back to si-meta
+      if (!line.startsWith('|')) {
+        currentSection = 'si-meta';
+        i--;
+        continue;
+      }
+    }
+
+    // Legacy: numbered SI items in si-list or si-bullets context (backward compat)
+    if (
+      (currentSection === 'si-list' || currentSection === 'si-bullets') &&
+      currentDO
+    ) {
+      if (line.startsWith('*') || line.startsWith('-')) {
+        if (currentSI) {
+          const bulletText = line.replace(/^[\*\-]\s*/, '').trim();
+          currentSI.bullets.push(bulletText);
+        }
+        continue;
+      }
+    }
   }
-  
-  // Save last SI and DO
-  if (currentDO && currentSI) {
-    currentDO.strategicInitiatives.push(currentSI);
-  }
-  if (currentDO) {
-    definingObjectives.push(currentDO);
-  }
-  
-  // Debug logging
-  console.log('📋 Parsed RCDO:', {
+
+  // Save trailing SI and DO
+  saveDO();
+
+  const totalTasks = definingObjectives.reduce(
+    (sum, d) =>
+      sum + d.strategicInitiatives.reduce((s, si) => s + si.tasks.length, 0),
+    0
+  );
+
+  console.log('Parsed RCDO:', {
     rallyingCry: rallyingCry?.substring(0, 50) + '...',
     doCount: definingObjectives.length,
+    totalTasks,
     dos: definingObjectives.map(d => ({
       number: d.number,
       title: d.title,
       owner: d.ownerName || '(none)',
       siCount: d.strategicInitiatives.length,
-      hasDefinition: !!d.definition,
-      hasMetric: !!d.primarySuccessMetric,
-      sisWithOwners: d.strategicInitiatives.filter(si => si.ownerName).length
-    }))
+      sis: d.strategicInitiatives.map(si => ({
+        title: si.title,
+        owner: si.ownerName || '(none)',
+        taskCount: si.tasks.length,
+        hasMetric: !!si.successMetric,
+        hasBenchmark: !!si.benchmark,
+      })),
+    })),
   });
-  
-  return {
-    rallyingCry,
-    definingObjectives
-  };
+
+  return { rallyingCry, definingObjectives };
 }
 
 /**
  * Validates parsed RCDO data (lenient - warnings only, not blocking)
  */
-export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: string[]; warnings: string[] } {
+export function validateParsedRCDO(
+  data: ParsedRCDO
+): { valid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  
+
   if (!data.rallyingCry) {
     errors.push('No Rallying Cry found in the markdown file');
   }
-  
+
   if (data.definingObjectives.length === 0) {
     errors.push('No Defining Objectives found in the markdown file');
   }
-  
+
   if (data.definingObjectives.length > 6) {
-    warnings.push(`Found ${data.definingObjectives.length} Defining Objectives. Maximum recommended is 6.`);
+    warnings.push(
+      `Found ${data.definingObjectives.length} Defining Objectives. Maximum recommended is 6.`
+    );
   }
-  
+
   data.definingObjectives.forEach((do_, idx) => {
     if (!do_.title) {
       errors.push(`DO #${idx + 1} is missing a title`);
@@ -224,17 +426,20 @@ export function validateParsedRCDO(data: ParsedRCDO): { valid: boolean; errors: 
       warnings.push(`DO #${idx + 1} "${do_.title}" is missing a definition`);
     }
     if (!do_.primarySuccessMetric) {
-      warnings.push(`DO #${idx + 1} "${do_.title}" is missing a primary success metric`);
+      warnings.push(
+        `DO #${idx + 1} "${do_.title}" is missing a primary success metric`
+      );
     }
     if (do_.strategicInitiatives.length === 0) {
       warnings.push(`DO #${idx + 1} "${do_.title}" has no Strategic Initiatives`);
     }
-  });
-  
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings
-  };
-}
 
+    do_.strategicInitiatives.forEach((si, siIdx) => {
+      if (!si.title) {
+        warnings.push(`DO #${idx + 1} SI #${siIdx + 1} is missing a title`);
+      }
+    });
+  });
+
+  return { valid: errors.length === 0, errors, warnings };
+}

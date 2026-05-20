@@ -110,6 +110,11 @@ export function useCycles() {
 
   const createCycle = async (form: CreateCycleForm) => {
     try {
+      const startDate = new Date(form.start_date + 'T00:00:00');
+      if (startDate.getDate() !== 1) {
+        throw new Error('Cycle must start on the first day of the month');
+      }
+
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {

@@ -155,6 +155,14 @@ export const getMeetingPeriodLabel = (startDate: Date, frequency: string): strin
 };
 
 /**
+ * Parse a YYYY-MM-DD string as local midnight (not UTC).
+ * Prevents the off-by-one-day bug from `new Date("2025-07-01")` in western timezones.
+ */
+export const parseLocalDate = (dateStr: string): Date => {
+  return new Date(dateStr + 'T00:00:00');
+};
+
+/**
  * Get ISO date string for database storage
  */
 export const getISODateString = (date: Date): string => {

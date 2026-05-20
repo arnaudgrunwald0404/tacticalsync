@@ -4,6 +4,7 @@ import { X, MoreVertical, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import FancyAvatar from '@/components/ui/fancy-avatar';
@@ -258,6 +259,52 @@ export function SIPanelContent({
           </div>
         </div>
         
+        {/* 2b. Start Date & Target Delivery Date */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="si-start-date" className="text-sm font-medium">Start Date</Label>
+            <Input
+              id="si-start-date"
+              type="date"
+              value={(siWithProgress?.start_date as string) || ''}
+              disabled={isLocked}
+              className="h-9 text-sm"
+              onChange={async (e) => {
+                if (isLocked || !si.dbId) return;
+                const value = e.target.value;
+                const currentEnd = (siWithProgress?.end_date as string) || '';
+                if (value && currentEnd && currentEnd < value) return;
+                const { error } = await supabase
+                  .from('rc_strategic_initiatives')
+                  .update({ start_date: value || null })
+                  .eq('id', si.dbId);
+                if (!error) await refetchSI();
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="si-target-date" className="text-sm font-medium">Target Delivery Date</Label>
+            <Input
+              id="si-target-date"
+              type="date"
+              value={(siWithProgress?.end_date as string) || ''}
+              disabled={isLocked}
+              className="h-9 text-sm"
+              onChange={async (e) => {
+                if (isLocked || !si.dbId) return;
+                const value = e.target.value;
+                const currentStart = (siWithProgress?.start_date as string) || '';
+                if (value && currentStart && value < currentStart) return;
+                const { error } = await supabase
+                  .from('rc_strategic_initiatives')
+                  .update({ end_date: value || null })
+                  .eq('id', si.dbId);
+                if (!error) await refetchSI();
+              }}
+            />
+          </div>
+        </div>
+
         {/* 3. Primary Success Metric */}
         <div>
           <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
