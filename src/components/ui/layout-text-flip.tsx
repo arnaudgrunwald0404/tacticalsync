@@ -36,7 +36,7 @@ const LayoutTextFlip: React.FC<LayoutTextFlipProps> = ({
               duration: 0.5,
               ease: "easeInOut",
             }}
-            className="absolute inset-0 bg-gradient-to-r from-blue-600 via-pink-500 to-blue-600 bg-clip-text text-transparent font-light"
+            className="absolute inset-0 bg-[image:var(--logo-gradient)] bg-clip-text text-transparent font-bold"
           >
             {words[currentWordIndex]}
           </motion.span>
