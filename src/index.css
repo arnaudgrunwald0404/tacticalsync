@@ -74,7 +74,7 @@
     --color-error: 0 28% 51%; /* Terracotta Red #A85D5D */
     --color-info: 205 15% 42%; /* Steel #5B6E7A */
     
-    --background: var(--color-platinum);
+    --background: var(--color-white);
     --foreground: var(--color-cast-iron);
 
     --card: var(--color-white);

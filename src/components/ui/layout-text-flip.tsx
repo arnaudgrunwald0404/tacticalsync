@@ -29,9 +29,9 @@ const LayoutTextFlip: React.FC<LayoutTextFlipProps> = ({
         <AnimatePresence mode="wait">
           <motion.span
             key={currentWordIndex}
-            initial={{ y: "60%", opacity: 0 }}
-            animate={{ y: "25%", opacity: 1 }}
-            exit={{ y: "-25%", opacity: 0 }}
+            initial={{ y: "65%", opacity: 0 }}
+            animate={{ y: "30%", opacity: 1 }}
+            exit={{ y: "-20%", opacity: 0 }}
             transition={{
               duration: 0.5,
               ease: "easeInOut",
