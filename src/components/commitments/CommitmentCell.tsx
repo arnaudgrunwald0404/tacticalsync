@@ -4,6 +4,13 @@ import { cn } from '@/lib/utils';
 import { StatusBadge, nextStatus } from './StatusBadge';
 import type { MonthlyCommitment, CommitmentStatus } from '@/types/commitments';
 
+const borderByStatus: Record<CommitmentStatus, string> = {
+  draft:       'border-gray-300/50',
+  in_progress: 'border-yellow-400/60',
+  done:        'border-green-500/60',
+  not_done:    'border-red-500/60',
+};
+
 interface CommitmentCellProps {
   commitment?: MonthlyCommitment;
   quarterId: string;
@@ -63,6 +70,7 @@ export function CommitmentCell({
     <div
       className={cn(
         'group relative flex min-h-[3rem] flex-col gap-1 rounded-md border bg-card p-2 text-xs',
+        commitment && borderByStatus[commitment.status],
         editing && 'ring-1 ring-ring',
       )}
     >
@@ -81,7 +89,7 @@ export function CommitmentCell({
       ) : (
         <p
           className={cn(
-            'flex-1 cursor-text leading-relaxed text-foreground/90',
+            'flex-1 cursor-text whitespace-pre-line leading-relaxed text-foreground/90',
             readOnly && 'cursor-default',
           )}
           onClick={() => !readOnly && setEditing(true)}

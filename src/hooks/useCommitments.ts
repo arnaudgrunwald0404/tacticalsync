@@ -32,7 +32,13 @@ export function useActiveQuarter(teamId: string | null) {
       if (error) throw error;
       const rows = (data ?? []) as CommitmentQuarter[];
       setQuarters(rows);
-      setQuarter(rows.find(q => q.status === 'active') ?? rows[0] ?? null);
+      const today = new Date().toISOString().slice(0, 10);
+      setQuarter(
+        rows.find(q => q.status === 'active')
+        ?? rows.find(q => q.start_date <= today && today <= q.end_date)
+        ?? rows[0]
+        ?? null,
+      );
     } catch (err) {
       toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {
@@ -141,6 +147,15 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
     setCommitments(prev => prev.map(c => c.id === id ? { ...c, status } : c));
   }, [toast]);
 
+  const updatePriorityStatus = useCallback(async (id: string, status: PersonalPriority['status']) => {
+    const { error } = await supabase
+      .from('personal_priorities')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+  }, [toast]);
+
   return {
     priorities,
     commitments,
@@ -151,6 +166,7 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
     upsertCommitment,
     deleteCommitment,
     updateCommitmentStatus,
+    updatePriorityStatus,
   };
 }
 

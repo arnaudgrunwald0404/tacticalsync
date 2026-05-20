@@ -1,7 +1,15 @@
 import { useRef, useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { PersonalPriority } from '@/types/commitments';
+import { StatusBadge, nextStatus } from './StatusBadge';
+import type { PersonalPriority, CommitmentStatus } from '@/types/commitments';
+
+const borderByStatus: Record<CommitmentStatus, string> = {
+  draft:       'border-gray-300/50',
+  in_progress: 'border-yellow-400/60',
+  done:        'border-green-500/60',
+  not_done:    'border-red-500/60',
+};
 
 interface PrioritySlotProps {
   priority?: PersonalPriority;
@@ -9,9 +17,10 @@ interface PrioritySlotProps {
   readOnly?: boolean;
   onSave: (title: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  onStatusChange?: (status: CommitmentStatus) => Promise<void>;
 }
 
-export function PrioritySlot({ priority, order, readOnly = false, onSave, onDelete }: PrioritySlotProps) {
+export function PrioritySlot({ priority, order, readOnly = false, onSave, onDelete, onStatusChange }: PrioritySlotProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(priority?.title ?? '');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,6 +67,7 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
     <div
       className={cn(
         'group relative flex min-h-[4rem] gap-2 rounded-md border bg-card p-3',
+        priority && borderByStatus[priority.status],
         editing && 'ring-1 ring-ring',
       )}
     >
@@ -65,7 +75,7 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
         {order}
       </span>
 
-      <div className="flex-1">
+      <div className="flex-1 flex flex-col gap-1">
         {editing ? (
           <textarea
             ref={textareaRef}
@@ -81,13 +91,19 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
         ) : (
           <p
             className={cn(
-              'text-sm leading-relaxed text-foreground/90',
+              'flex-1 whitespace-pre-line text-sm leading-relaxed text-foreground/90',
               !readOnly && 'cursor-text',
             )}
             onClick={() => !readOnly && setEditing(true)}
           >
             {priority?.title}
           </p>
+        )}
+        {priority && (
+          <StatusBadge
+            status={priority.status}
+            onClick={!readOnly && onStatusChange ? () => onStatusChange(nextStatus(priority.status)) : undefined}
+          />
         )}
       </div>
 

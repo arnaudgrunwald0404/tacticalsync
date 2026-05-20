@@ -2,10 +2,10 @@ import { cn } from '@/lib/utils';
 import type { CommitmentStatus } from '@/types/commitments';
 
 const config: Record<CommitmentStatus, { dot: string; label: string }> = {
-  pending:     { dot: 'bg-gray-300',   label: 'Pending' },
+  draft:       { dot: 'bg-gray-300',   label: 'Draft' },
   in_progress: { dot: 'bg-yellow-400', label: 'In Progress' },
   done:        { dot: 'bg-green-500',  label: 'Done' },
-  at_risk:     { dot: 'bg-red-500',    label: 'At Risk' },
+  not_done:    { dot: 'bg-red-500',    label: 'Not Done' },
 };
 
 interface StatusBadgeProps {
@@ -33,7 +33,7 @@ export function StatusBadge({ status, onClick, className }: StatusBadgeProps) {
   );
 }
 
-const cycle: CommitmentStatus[] = ['pending', 'in_progress', 'done', 'at_risk'];
+const cycle: CommitmentStatus[] = ['draft', 'in_progress', 'done', 'not_done'];
 
 export function nextStatus(current: CommitmentStatus): CommitmentStatus {
   return cycle[(cycle.indexOf(current) + 1) % cycle.length];

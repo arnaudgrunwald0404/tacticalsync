@@ -21,6 +21,7 @@ interface MyCommitmentsPanelProps {
   onUpsertCommitment: (form: UpsertCommitmentForm) => Promise<MonthlyCommitment | null>;
   onDeleteCommitment: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
+  onPriorityStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
 }
 
 export function MyCommitmentsPanel({
@@ -33,6 +34,7 @@ export function MyCommitmentsPanel({
   onUpsertCommitment,
   onDeleteCommitment,
   onStatusChange,
+  onPriorityStatusChange,
 }: MyCommitmentsPanelProps) {
   const months = getQuarterMonths(quarter);
   const monthLabels = [months.month1, months.month2, months.month3];
@@ -80,6 +82,7 @@ export function MyCommitmentsPanel({
               priority={priorityAt(order)}
               onSave={title => handleSavePriority(order, title)}
               onDelete={() => { const p = priorityAt(order); if (p) onDeletePriority(p.id); return Promise.resolve(); }}
+              onStatusChange={status => { const p = priorityAt(order); return p ? onPriorityStatusChange(p.id, status) : Promise.resolve(); }}
             />
           ))}
         </div>

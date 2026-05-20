@@ -9,7 +9,6 @@ import type {
   TeamReportingLine,
 } from '@/types/commitments';
 
-// Mock FancyAvatar to avoid complex avatar rendering
 vi.mock('@/components/ui/fancy-avatar', () => ({
   default: ({ displayName }: { displayName: string }) => <span data-testid="avatar">{displayName}</span>,
 }));
@@ -40,6 +39,7 @@ const makePriority = (overrides: Partial<PersonalPriority> = {}): PersonalPriori
   user_id: 'u-1',
   title: 'Priority title',
   description: null,
+  status: 'draft',
   display_order: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -53,7 +53,7 @@ const makeCommitment = (overrides: Partial<MonthlyCommitment> = {}): MonthlyComm
   month_number: 1,
   title: 'Commitment title',
   description: null,
-  status: 'pending',
+  status: 'draft',
   display_order: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -77,37 +77,8 @@ describe('TeamRollupView', () => {
     });
   });
 
-  describe('column headers', () => {
-    it('should render the three month column headers from the quarter start date', () => {
-      render(
-        <TeamRollupView
-          quarter={quarter}
-          members={[makeMember('u-1', 'Alice Smith')]}
-          priorities={[]}
-          commitments={[]}
-        />
-      );
-      expect(screen.getByText('January')).toBeInTheDocument();
-      expect(screen.getByText('February')).toBeInTheDocument();
-      expect(screen.getByText('March')).toBeInTheDocument();
-    });
-
-    it('should render "Person" and "Q Priorities" in the header', () => {
-      render(
-        <TeamRollupView
-          quarter={quarter}
-          members={[makeMember('u-1', 'Alice Smith')]}
-          priorities={[]}
-          commitments={[]}
-        />
-      );
-      expect(screen.getByText('Person')).toBeInTheDocument();
-      expect(screen.getAllByText('Q Priorities').length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('member rows', () => {
-    it('should render a row for each member', () => {
+  describe('member cards', () => {
+    it('should render a card for each member', () => {
       const members = [
         makeMember('u-1', 'Alice Smith'),
         makeMember('u-2', 'Bob Jones'),
@@ -120,7 +91,6 @@ describe('TeamRollupView', () => {
           commitments={[]}
         />
       );
-      // Each name appears in the row (as text in the name span and possibly avatar mock)
       expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0);
       expect(screen.getAllByText('Bob Jones').length).toBeGreaterThan(0);
     });
@@ -137,7 +107,7 @@ describe('TeamRollupView', () => {
       expect(screen.getByText('No commitments yet')).toBeInTheDocument();
     });
 
-    it('should show priority pill preview for members with priorities', () => {
+    it('should show priorities as full cards (always visible, not collapsed)', () => {
       const priorities = [makePriority({ user_id: 'u-1', title: 'Grow revenue' })];
       render(
         <TeamRollupView
@@ -148,23 +118,26 @@ describe('TeamRollupView', () => {
         />
       );
       expect(screen.getByText('Grow revenue')).toBeInTheDocument();
+      expect(screen.getByText('Q Priorities')).toBeInTheDocument();
     });
 
-    it('should expand member row on click and show detailed view', async () => {
+    it('should show monthly commitments collapsed by default and expand on click', async () => {
       const user = userEvent.setup();
-      const priorities = [makePriority({ user_id: 'u-1', title: 'Ship MVP', display_order: 1 })];
+      const commitments = [
+        makeCommitment({ user_id: 'u-1', title: 'Launch feature', month_number: 1 }),
+      ];
       render(
         <TeamRollupView
           quarter={quarter}
           members={[makeMember('u-1', 'Alice Smith')]}
-          priorities={priorities}
-          commitments={[]}
+          priorities={[]}
+          commitments={commitments}
         />
       );
-      // Click the expand button (the row button)
-      await user.click(screen.getByRole('button', { name: /Alice Smith/i }));
-      // After expanding, Q Priorities section shows the priorities in detail
-      expect(screen.getAllByText('Ship MVP').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Launch feature')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Monthly Commitments/i }));
+      expect(screen.getByText('Launch feature')).toBeInTheDocument();
+      expect(screen.getByText('January')).toBeInTheDocument();
     });
   });
 
@@ -200,7 +173,7 @@ describe('TeamRollupView', () => {
     it('should render status dot for each commitment', () => {
       const commitments = [
         makeCommitment({ user_id: 'u-1', status: 'done' }),
-        makeCommitment({ user_id: 'u-1', status: 'at_risk' }),
+        makeCommitment({ user_id: 'u-1', status: 'not_done' }),
       ];
       const { container } = render(
         <TeamRollupView

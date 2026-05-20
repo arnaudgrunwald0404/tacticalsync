@@ -11,7 +11,7 @@ const makeCommitment = (overrides: Partial<MonthlyCommitment> = {}): MonthlyComm
   month_number: 1,
   title: 'Ship the feature',
   description: null,
-  status: 'pending',
+  status: 'draft',
   display_order: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -79,18 +79,18 @@ describe('CommitmentCell', () => {
 
     it('should call onStatusChange with next status when StatusBadge is clicked', async () => {
       const user = userEvent.setup();
-      render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'pending' })} />);
+      render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'draft' })} />);
       // StatusBadge button has title = label
-      await user.click(screen.getByTitle('Pending'));
+      await user.click(screen.getByTitle('Draft'));
       expect(defaultProps.onStatusChange).toHaveBeenCalledWith('in_progress');
     });
 
     it('should not call onStatusChange in readOnly mode', async () => {
       const user = userEvent.setup();
-      render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'pending' })} readOnly />);
+      render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'draft' })} readOnly />);
       // In readOnly, onClick is undefined so it doesn't cycle
       // The badge button is still rendered but has no onClick
-      const badge = screen.getByTitle('Pending');
+      const badge = screen.getByTitle('Draft');
       await user.click(badge);
       expect(defaultProps.onStatusChange).not.toHaveBeenCalled();
     });

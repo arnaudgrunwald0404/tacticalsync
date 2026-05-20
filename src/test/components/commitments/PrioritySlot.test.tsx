@@ -10,6 +10,7 @@ const makePriority = (overrides: Partial<PersonalPriority> = {}): PersonalPriori
   user_id: 'u-1',
   title: 'Improve onboarding',
   description: null,
+  status: 'draft',
   display_order: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',

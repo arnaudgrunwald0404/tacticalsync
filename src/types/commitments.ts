@@ -1,5 +1,5 @@
 export type QuarterStatus = 'draft' | 'active' | 'archived';
-export type CommitmentStatus = 'pending' | 'in_progress' | 'done' | 'at_risk';
+export type CommitmentStatus = 'draft' | 'in_progress' | 'done' | 'not_done';
 
 export interface CommitmentQuarter {
   id: string;
@@ -27,6 +27,7 @@ export interface PersonalPriority {
   user_id: string;
   title: string;
   description: string | null;
+  status: CommitmentStatus;
   display_order: number; // 1-3
   created_at: string;
   updated_at: string;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,19 +61,30 @@ export default function Commitments() {
   }, []);
 
   const { quarter, quarters, loading: quarterLoading, setQuarter, createQuarter } = useActiveQuarter(teamId);
-  const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus } = useMyCommitments(quarter?.id ?? null, userId);
+  const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus } = useMyCommitments(quarter?.id ?? null, userId);
   const { lines: reportingLines, loading: linesLoading, getDirectReportIds, getAllReportIds } = useReportingLines(teamId);
 
   const directReportIds = useMemo(() => userId ? getDirectReportIds(userId) : [], [userId, getDirectReportIds]);
   const allReportIds = useMemo(() => userId ? getAllReportIds(userId) : [], [userId, getAllReportIds]);
 
-  // Team tab: direct reports + self
-  const teamUserIds = useMemo(() => [...directReportIds, ...(userId ? [userId] : [])], [directReportIds, userId]);
-  const { priorities: teamPriorities, commitments: teamCommitments, loading: teamLoading } = useTeamCommitments(quarter?.id ?? null, teamUserIds);
+  // Team tab: self + direct reports (current user first for context)
+  const teamUserIds = useMemo(() => [...(userId ? [userId] : []), ...directReportIds], [directReportIds, userId]);
+  const { priorities: teamPriorities, commitments: teamCommitments, loading: teamLoading, refetch: refetchTeam } = useTeamCommitments(quarter?.id ?? null, teamUserIds);
 
-  // Org tab: all reports recursively
-  const orgUserIds = useMemo(() => [...allReportIds, ...(userId ? [userId] : [])], [allReportIds, userId]);
-  const { priorities: orgPriorities, commitments: orgCommitments, loading: orgLoading } = useTeamCommitments(quarter?.id ?? null, orgUserIds);
+  // Org tab: self + all reports recursively (current user first for context)
+  const orgUserIds = useMemo(() => [...(userId ? [userId] : []), ...allReportIds], [allReportIds, userId]);
+  const { priorities: orgPriorities, commitments: orgCommitments, loading: orgLoading, refetch: refetchOrg } = useTeamCommitments(quarter?.id ?? null, orgUserIds);
+
+  const refetchAll = useCallback(() => Promise.all([refetchTeam(), refetchOrg()]), [refetchTeam, refetchOrg]);
+
+  const teamEditCallbacks = useMemo(() => ({
+    onUpsertPriority: async (...args: Parameters<typeof upsertPriority>) => { const r = await upsertPriority(...args); await refetchAll(); return r; },
+    onDeletePriority: async (...args: Parameters<typeof deletePriority>) => { await deletePriority(...args); await refetchAll(); },
+    onUpsertCommitment: async (...args: Parameters<typeof upsertCommitment>) => { const r = await upsertCommitment(...args); await refetchAll(); return r; },
+    onDeleteCommitment: async (...args: Parameters<typeof deleteCommitment>) => { await deleteCommitment(...args); await refetchAll(); },
+    onCommitmentStatusChange: async (...args: Parameters<typeof updateCommitmentStatus>) => { await updateCommitmentStatus(...args); await refetchAll(); },
+    onPriorityStatusChange: async (...args: Parameters<typeof updatePriorityStatus>) => { await updatePriorityStatus(...args); await refetchAll(); },
+  }), [upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus, refetchAll]);
 
   const profileById = useMemo(() => {
     const map: Record<string, Profile> = {};
@@ -185,6 +196,7 @@ export default function Commitments() {
               onUpsertCommitment={upsertCommitment}
               onDeleteCommitment={deleteCommitment}
               onStatusChange={updateCommitmentStatus}
+              onPriorityStatusChange={updatePriorityStatus}
             />
           ) : null}
         </TabsContent>
@@ -199,6 +211,9 @@ export default function Commitments() {
                 members={membersFor(teamUserIds)}
                 priorities={teamPriorities}
                 commitments={teamCommitments}
+                editableUserId={userId ?? undefined}
+                editAll={isAdmin}
+                editCallbacks={teamEditCallbacks}
               />
             )}
           </TabsContent>
@@ -252,6 +267,9 @@ export default function Commitments() {
                 commitments={orgCommitments.filter(c => scopedOrgUserIds.includes(c.user_id))}
                 currentUserId={scopedRootId}
                 reportingLines={reportingLines}
+                editableUserId={userId ?? undefined}
+                editAll={isAdmin}
+                editCallbacks={teamEditCallbacks}
               />
             )}
           </TabsContent>

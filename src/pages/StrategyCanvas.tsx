@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { AppNavbar } from "@/components/ui/app-navbar";
@@ -1755,6 +1756,11 @@ const duplicateSelectedDo = useCallback(() => {
     );
   }
 
+  const rallyNode = nodes.find((n) => n.type === 'rally');
+  const isStrategyFinalized = !!rallyNode?.data?.rallyFinalized;
+  const hasNavigableDO = focusSiId || focusDoId || [...doLockedStatus.values()].some((s) => s.dbId);
+  const canGoToDetail = isStrategyFinalized && hasNavigableDO;
+
   return (
     <div className="w-full h-dvh flex flex-col">
       {/* Page header */}
@@ -1763,19 +1769,33 @@ const duplicateSelectedDo = useCallback(() => {
       {/* Canvas toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => {
-              if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
-              if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
-              for (const [, status] of doLockedStatus) {
-                if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
-              }
-            }}
-            className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
-          >
-            <List className="h-4 w-4 mr-2" />
-            Go to Detail View
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={canGoToDetail ? undefined : 0}>
+                  <Button
+                    disabled={!canGoToDetail}
+                    onClick={() => {
+                      if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
+                      if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
+                      for (const [, status] of doLockedStatus) {
+                        if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
+                      }
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
+                  >
+                    <List className="h-4 w-4 mr-2" />
+                    Go to Detail View
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!canGoToDetail && (
+                <TooltipContent side="bottom">
+                  <p>Lock your strategy to enable the detail view</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" className="flex items-center gap-1">

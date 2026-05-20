@@ -168,21 +168,21 @@ describe('getQuarterMonths', () => {
 });
 
 describe('nextStatus (full cycle)', () => {
-  const allStatuses: CommitmentStatus[] = ['pending', 'in_progress', 'done', 'at_risk'];
+  const allStatuses: CommitmentStatus[] = ['draft', 'in_progress', 'done', 'not_done'];
 
   it('should cycle through all four statuses and return to start', () => {
-    let status: CommitmentStatus = 'pending';
+    let status: CommitmentStatus = 'draft';
     const visited: CommitmentStatus[] = [status];
     for (let i = 0; i < 4; i++) {
       status = nextStatus(status);
       visited.push(status);
     }
-    // After 4 cycles we are back at pending
-    expect(visited[4]).toBe('pending');
+    // After 4 cycles we are back at draft
+    expect(visited[4]).toBe('draft');
   });
 
   it('should cover all four statuses in one cycle', () => {
-    let status: CommitmentStatus = 'pending';
+    let status: CommitmentStatus = 'draft';
     const seen = new Set<CommitmentStatus>();
     for (let i = 0; i < 4; i++) {
       status = nextStatus(status);
