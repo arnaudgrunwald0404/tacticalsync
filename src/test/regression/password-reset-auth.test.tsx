@@ -115,7 +115,7 @@ describe('Regression: PASSWORD_RECOVERY should not auto-login', () => {
     capturedAuthCallback!('SIGNED_IN', { user: { id: 'u1' } });
 
     await waitFor(() => {
-      expect(currentPath).toBe('/dashboard');
+      expect(currentPath).toBe('/chief-of-staff');
     });
   });
 
