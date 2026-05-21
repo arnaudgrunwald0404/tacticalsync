@@ -34,9 +34,10 @@ interface CheckinFeedSidebarProps {
     doIds: string[];
     siIds: string[];
   };
+  cycleId?: string | null;
 }
 
-export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFeedSidebarProps = {}) {
+export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds, cycleId }: CheckinFeedSidebarProps = {}) {
   const [loading, setLoading] = useState(true);
   const [updates, setUpdates] = useState<GlobalCheckin[]>([]);
   const [parentTitles, setParentTitles] = useState<Record<string, { title: string; type: string }>>({});
@@ -45,9 +46,23 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
     (async () => {
       try {
         setLoading(true);
-        
+
+        let cycleStart: string | null = null;
+        let cycleEnd: string | null = null;
+        if (cycleId) {
+          const { data: cycle } = await supabase
+            .from('rc_cycles')
+            .select('start_date, end_date')
+            .eq('id', cycleId)
+            .single();
+          if (cycle) {
+            cycleStart = cycle.start_date;
+            cycleEnd = cycle.end_date;
+          }
+        }
+
         let rows: GlobalCheckin[] = [];
-        
+
         // If filtering is active, only fetch check-ins for visible DOs and SIs
         if (viewAsUserId && filteredNodeIds) {
           const { doIds, siIds } = filteredNodeIds;
@@ -62,7 +77,7 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
           
           // Fetch check-ins for DOs and SIs separately, then combine
           if (doIds.length > 0) {
-            const { data: doCheckins, error: doError } = await supabase
+            let doQuery = supabase
               .from('rc_checkins')
               .select(`
                 id,
@@ -78,14 +93,17 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
               `)
               .eq('parent_type', 'do')
               .in('parent_id', doIds);
-            
+            if (cycleStart) doQuery = doQuery.gte('date', cycleStart);
+            if (cycleEnd) doQuery = doQuery.lte('date', cycleEnd);
+            const { data: doCheckins, error: doError } = await doQuery;
+
             if (!doError && doCheckins) {
               rows.push(...(doCheckins as unknown as GlobalCheckin[]));
             }
           }
-          
+
           if (siIds.length > 0) {
-            const { data: siCheckins, error: siError } = await supabase
+            let siQuery = supabase
               .from('rc_checkins')
               .select(`
                 id,
@@ -101,7 +119,10 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
               `)
               .eq('parent_type', 'initiative')
               .in('parent_id', siIds);
-            
+            if (cycleStart) siQuery = siQuery.gte('date', cycleStart);
+            if (cycleEnd) siQuery = siQuery.lte('date', cycleEnd);
+            const { data: siCheckins, error: siError } = await siQuery;
+
             if (!siError && siCheckins) {
               rows.push(...(siCheckins as unknown as GlobalCheckin[]));
             }
@@ -121,7 +142,7 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
           }
         } else {
           // Default: fetch all check-ins
-          const { data, error } = await supabase
+          let defaultQuery = supabase
             .from('rc_checkins')
             .select(`
               id,
@@ -135,7 +156,10 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
               created_at,
               creator:profiles!created_by(id, first_name, last_name, full_name, avatar_url, avatar_name)
             `)
-            .in('parent_type', ['do', 'initiative', 'task'])
+            .in('parent_type', ['do', 'initiative', 'task']);
+          if (cycleStart) defaultQuery = defaultQuery.gte('date', cycleStart);
+          if (cycleEnd) defaultQuery = defaultQuery.lte('date', cycleEnd);
+          const { data, error } = await defaultQuery
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(30);
@@ -188,7 +212,7 @@ export function CheckinFeedSidebar({ viewAsUserId, filteredNodeIds }: CheckinFee
         setLoading(false);
       }
     })();
-  }, [viewAsUserId, filteredNodeIds]);
+  }, [viewAsUserId, filteredNodeIds, cycleId]);
 
   if (loading) {
     return (

@@ -119,10 +119,7 @@ export default function ChiefOfStaff() {
   const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
   const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const isTodayMonday = new Date().getDay() === 1;
-  const [briefLogged, setBriefLogged] = useState(false);
-  const showBrief = isTodayMonday && !briefLogged;
-  const [activeTab, setActiveTab] = useState(showBrief ? 'brief' : 'priorities');
+  const [activeTab, setActiveTab] = useState('priorities');
 
   useEffect(() => {
     async function load() {
@@ -394,8 +391,6 @@ export default function ChiefOfStaff() {
       if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
     }
     if (!error && data) {
-      setBriefLogged(true);
-      setActiveTab('priorities');
       toast({ title: existingToday ? 'Brief updated' : 'Brief logged' });
     }
   };
@@ -406,8 +401,6 @@ export default function ChiefOfStaff() {
     if (!error && data) setDciLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } as CosDciLog : l));
   };
 
-  const [rerunOpen, setRerunOpen] = useState(false);
-  const openRerunBrief = () => setRerunOpen(true);
   const rerunDci = async (log: CosDciLog) => {
     if (!userId) return;
     const items = [
@@ -507,22 +500,11 @@ export default function ChiefOfStaff() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className={cn('mb-6 grid max-w-sm', showBrief ? 'grid-cols-4' : 'grid-cols-3')}>
-          {showBrief && <TabsTrigger value="brief">Brief</TabsTrigger>}
+        <TabsList className="mb-6 grid max-w-sm grid-cols-3">
           <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
           <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
-
-        {showBrief && (
-          <TabsContent value="brief">
-            <TonightsBrief
-              priorities={thisWeekPriorities}
-              onCopy={copyToClipboard}
-              onLog={logBrief}
-            />
-          </TabsContent>
-        )}
 
         <TabsContent value="priorities">
           {priorities.length === 0 && teamMembers.length === 0 && accountabilities.length === 0 && personTopics.length === 0 ? (
@@ -616,7 +598,17 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="dci">
-          <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={openRerunBrief} />
+          <div className="space-y-8">
+            <TonightsBrief
+              priorities={thisWeekPriorities}
+              onCopy={copyToClipboard}
+              onLog={logBrief}
+              heading="Today's Brief"
+            />
+            <div className="border-t pt-8">
+              <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={rerunDci} />
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="team">
@@ -626,22 +618,8 @@ export default function ChiefOfStaff() {
 
       </Tabs>
 
-      <Sheet open={rerunOpen} onOpenChange={setRerunOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
-          <SheetHeader className="mb-4">
-            <SheetTitle>Rerun DCI</SheetTitle>
-          </SheetHeader>
-          <TonightsBrief
-            priorities={thisWeekPriorities}
-            onCopy={copyToClipboard}
-            onLog={(p, t, n) => {
-              logBrief(p, t, n);
-              setRerunOpen(false);
-            }}
-            heading="Today's Brief"
-          />
-        </SheetContent>
-      </Sheet>
+
+
     </div>
   );
 }
@@ -1830,12 +1808,13 @@ function DciLogItem({
   );
 }
 
-function DciLogCard({ log, onUpdate, onRerun }: {
+function DciLogCard({ log, onUpdate, onRerun, defaultExpanded = false }: {
   log: CosDciLog;
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: () => void;
+  onRerun: (log: CosDciLog) => void;
+  defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const items = [
     { text: log.priority_1, statusKey: 'priority_1_status' as const, commentKey: 'priority_1_comment' as const, status: log.priority_1_status, comment: log.priority_1_comment },
     { text: log.priority_2, statusKey: 'priority_2_status' as const, commentKey: 'priority_2_comment' as const, status: log.priority_2_status, comment: log.priority_2_comment },
@@ -1896,7 +1875,7 @@ function DciLogCard({ log, onUpdate, onRerun }: {
           <Button
             variant="outline"
             className="h-10 text-sm w-full sm:w-auto"
-            onClick={onRerun}
+            onClick={() => onRerun(log)}
           >
             🔄 Rerun DCI
           </Button>
@@ -1909,7 +1888,7 @@ function DciLogCard({ log, onUpdate, onRerun }: {
 function DciHistory({ logs, onUpdate, onRerun }: {
   logs: CosDciLog[];
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: () => void;
+  onRerun: (log: CosDciLog) => void;
 }) {
   const totalDone = logs.reduce((acc, log) => {
     return acc + [log.priority_1_status, log.priority_2_status, log.priority_3_status].filter(s => s === 'done').length;
@@ -1925,7 +1904,7 @@ function DciHistory({ logs, onUpdate, onRerun }: {
       {logs.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground text-sm">
-            No DCI briefs logged yet. Use Tonight's Brief to log your first one.
+            No DCI briefs logged yet. Use the form above to log your first one.
           </CardContent>
         </Card>
       ) : (
@@ -1953,8 +1932,8 @@ function DciHistory({ logs, onUpdate, onRerun }: {
           )}
 
           <div className="space-y-3">
-            {logs.map(log => (
-              <DciLogCard key={log.id} log={log} onUpdate={onUpdate} onRerun={onRerun} />
+            {logs.map((log, i) => (
+              <DciLogCard key={log.id} log={log} onUpdate={onUpdate} onRerun={onRerun} defaultExpanded={i === 0} />
             ))}
           </div>
         </>

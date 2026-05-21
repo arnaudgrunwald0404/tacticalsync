@@ -46,7 +46,7 @@ export interface ParsedTask {
 export interface ParsedSI {
   number: number;
   title: string;
-  description: string;
+  description?: string;
   bullets: string[];
   ownerName?: string;
   successMetric?: string;
@@ -61,8 +61,9 @@ export interface ParsedSI {
 export interface ParsedDO {
   number: number;
   title: string;
-  definition: string;
-  primarySuccessMetric: string;
+  definition?: string;
+  primarySuccessMetric?: string;
+  status?: string;
   strategicInitiatives: ParsedSI[];
   ownerName?: string;
 }
@@ -175,6 +176,13 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
 
     if (line === '### Strategic Initiatives' && currentDO) {
       currentSection = 'si-list';
+      continue;
+    }
+
+    // DO-level status
+    const doStatusMatch = currentDO && line.match(/^\*\*Status\s*:\*\*\s*(.*)$/i);
+    if (doStatusMatch && currentDO && currentSection !== 'si-meta') {
+      currentDO.status = doStatusMatch[1].trim();
       continue;
     }
 
@@ -421,14 +429,6 @@ export function validateParsedRCDO(
   data.definingObjectives.forEach((do_, idx) => {
     if (!do_.title) {
       errors.push(`DO #${idx + 1} is missing a title`);
-    }
-    if (!do_.definition) {
-      warnings.push(`DO #${idx + 1} "${do_.title}" is missing a definition`);
-    }
-    if (!do_.primarySuccessMetric) {
-      warnings.push(
-        `DO #${idx + 1} "${do_.title}" is missing a primary success metric`
-      );
     }
     if (do_.strategicInitiatives.length === 0) {
       warnings.push(`DO #${idx + 1} "${do_.title}" has no Strategic Initiatives`);

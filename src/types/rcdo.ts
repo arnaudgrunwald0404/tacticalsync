@@ -97,6 +97,8 @@ export interface StrategicInitiative {
   status: InitiativeStatus;
   locked_at: string | null;
   locked_by: string | null;
+  primary_success_metric: string | null;
+  benchmark: string | null;
   display_order: number;
   created_at: string;
   updated_at: string;

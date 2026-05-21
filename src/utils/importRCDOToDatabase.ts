@@ -5,7 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import type { ParsedRCDO, ParsedTask } from './markdownRCDOParser';
-import type { TaskStatus } from '@/types/rcdo';
+import type { TaskStatus, InitiativeStatus, DOStatus } from '@/types/rcdo';
 
 export interface ImportRCDOOptions {
   cycleId: string;
@@ -54,6 +54,33 @@ async function findUserByName(name: string, fallbackUserId: string): Promise<str
 
   console.warn(`Owner "${name}" not found, using importing user as fallback`);
   return fallbackUserId;
+}
+
+const SI_STATUS_MAP: Record<string, InitiativeStatus> = {
+  'draft': 'draft',
+  'initialized': 'initialized',
+  'on track': 'on_track',
+  'on_track': 'on_track',
+  'delayed': 'delayed',
+  'cancelled': 'cancelled',
+  'canceled': 'cancelled',
+};
+
+function normalizeInitiativeStatus(raw?: string): InitiativeStatus {
+  if (!raw) return 'draft';
+  return SI_STATUS_MAP[raw.toLowerCase().trim()] || 'draft';
+}
+
+const DO_STATUS_MAP: Record<string, DOStatus> = {
+  'draft': 'draft',
+  'active': 'active',
+  'locked': 'locked',
+  'done': 'done',
+};
+
+function normalizeDOStatus(raw?: string): DOStatus {
+  if (!raw) return 'draft';
+  return DO_STATUS_MAP[raw.toLowerCase().trim()] || 'draft';
 }
 
 const TASK_STATUS_MAP: Record<string, TaskStatus> = {
@@ -164,7 +191,7 @@ export async function importRCDOToDatabase(
           title: do_.title,
           hypothesis: hypothesisHtml,
           owner_user_id: doOwnerId,
-          status: 'draft',
+          status: normalizeDOStatus(do_.status),
           health: 'on_track',
           confidence_pct: 50,
           weight_pct: 100,
@@ -224,10 +251,10 @@ export async function importRCDOToDatabase(
             primary_success_metric: si.successMetric || null,
             benchmark: si.benchmark || null,
             owner_user_id: siOwnerId,
-            status: 'draft',
+            status: normalizeInitiativeStatus(si.status),
             end_date: endDate || null,
             display_order: j,
-          } as Record<string, unknown>)
+          })
           .select('id')
           .single();
 
