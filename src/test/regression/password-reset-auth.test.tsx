@@ -40,9 +40,8 @@ vi.mock('@/hooks/useSessionManager', () => ({
 vi.mock('@/components/Logo', () => ({
   default: () => React.createElement('div', { 'data-testid': 'logo' }),
 }));
-vi.mock('@/components/ui/grid-background', () => ({
-  default: ({ children }: { children?: React.ReactNode }) =>
-    React.createElement('div', null, children),
+vi.mock('@/components/ui/layout-text-flip', () => ({
+  default: () => React.createElement('span', null, 'Own.'),
 }));
 vi.mock('framer-motion', () => ({
   motion: {
