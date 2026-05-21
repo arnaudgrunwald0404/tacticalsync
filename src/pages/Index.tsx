@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Target, Calendar, CheckSquare, ArrowRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Target, CheckSquare, RefreshCw, ArrowRight } from "lucide-react";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
@@ -11,15 +10,11 @@ import { supabase } from "@/integrations/supabase/client";
 const Index = () => {
   const navigate = useNavigate();
 
-  // Check for existing session or OAuth callback
   useEffect(() => {
-    // Check if there's a code parameter (PKCE/OAuth callback)
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const hasCode = !!code;
 
-    // If there's a code parameter, wait for auth state change to handle it
-    // Otherwise, check existing session immediately
     if (!hasCode) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
@@ -29,9 +24,7 @@ const Index = () => {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Handle PKCE callback - code exchange happens automatically with detectSessionInUrl: true
       if (session) {
-        // Clean up URL by removing code parameter after successful auth
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
@@ -82,24 +75,29 @@ const Index = () => {
           <div className="space-y-4 sm:space-y-8">
             {/* Mobile heading - simple text */}
             <h2 className="sm:hidden font-heading text-3xl font-bold tracking-tight leading-tight text-cast-iron">
-              Uncommon execution starts with uncommon alignment.
+              Where Strategy Meets Accountability.
             </h2>
 
             {/* Desktop heading - with animation */}
             <h2 className="hidden sm:block font-heading text-4xl md:text-5xl font-bold tracking-tight leading-tight text-cast-iron">
-              Uncommon Execution Starts <br />with{" "}
+              Great Teams Don't Just Meet —<br />They{" "}
               <LayoutTextFlip
                 text=""
-                words={["Weekly", "Monthly", "Quarterly", "Daily"]}
+                words={["Own.", "Prepare.", "Follow Up.", "Delegate.", "Never Forget.", "Execute."]}
                 duration={3000}
               />
-              {" "}Alignment
             </h2>
 
-            <p className="font-body text-base sm:text-lg md:text-xl text-titanium max-w-2xl mx-auto px-4">
-              Connect strategy to execution with collaborative meetings,
-              defining objectives, and team accountability.
-            </p>
+            {/* Tagline + description */}
+            <div className="space-y-2 !mt-8 sm:!mt-12 md:!mt-16">
+              <p className="hidden sm:block font-body text-sm tracking-widest uppercase text-[#B89A6B] font-semibold">
+                Achieve Uncommon Execution.
+              </p>
+              <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
+                Connect your strategy to daily execution — with built-in check-ins,
+                commitments, and team alignment tools that actually close the loop.
+              </p>
+            </div>
 
             {/* Get Started button - Mobile only, placed after description */}
             <div className="sm:hidden pt-4">
@@ -117,9 +115,9 @@ const Index = () => {
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
             <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
               <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Target className="h-7 w-7 text-copper" />
+                <Target className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Strategic Alignment</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Strategy & Objectives</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
                 Cascade rallying cries into defining objectives and track progress across your team
               </p>
@@ -127,21 +125,21 @@ const Index = () => {
 
             <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
               <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-7 w-7 text-copper" />
+                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Consistent Cadence</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Commitments & Priorities</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
-                Run structured meetings weekly and track accountability over time
+                Track commitments, priorities, and action items with clear ownership and deadlines
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
               <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-copper" />
+                <RefreshCw className="h-7 w-7 text-[#4A5D5F]" />
               </div>
-              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Uncommon Execution</h3>
+              <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Check-ins & Progress</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
-                Turn strategy into action items, assign owners, and drive completion
+                Run structured check-ins and review cycles that keep execution on track
               </p>
             </div>
           </div>
@@ -150,7 +148,7 @@ const Index = () => {
 
       <footer className="border-t border-rose-gold/20 mt-8 sm:mt-12 md:mt-20">
         <div className="container mx-auto px-4 py-6 text-center">
-          <p className="font-body text-sm sm:text-base text-titanium">&copy; 2025 TacticalSync Inc. Built for uncommon execution.</p>
+          <p className="font-body text-sm sm:text-base text-titanium">&copy; 2026 TacticalSync Inc. Built for uncommon execution.</p>
         </div>
       </footer>
     </GridBackground>

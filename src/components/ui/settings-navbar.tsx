@@ -7,6 +7,7 @@ interface SettingsNavbarProps {
   onSectionChange: (section: string) => void;
   userEmail?: string;
   showAdminManagement?: boolean;
+  canManagePermissions?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -18,11 +19,12 @@ const NAV_ITEMS = [
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
 ];
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   const visibleItems = NAV_ITEMS.filter(item => {
     if (item.group === "User Management" && !showAdminManagement) return false;
+    if (item.id === "user-management-permissions" && !canManagePermissions) return false;
     return true;
   });
 

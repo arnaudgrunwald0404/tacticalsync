@@ -1,20 +1,15 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import Logo from "@/components/Logo";
 import { UserProfileHeader } from "@/components/ui/user-profile-header";
-import { useRoles } from "@/hooks/useRoles";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useFeaturePermissions } from "@/hooks/useFeaturePermissions";
 import { cn } from "@/lib/utils";
 
-/**
- * Shared top navigation bar used across all main app sections
- * (DashboardWithTabs, StrategyCanvas, etc.).
- */
 export function AppNavbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { isAdmin, isSuperAdmin } = useRoles();
-  const showInsights = isAdmin || isSuperAdmin;
+  const { canAccess, loading } = useFeaturePermissions();
 
   // Derive active tab from current URL
   const activeTab =
@@ -57,13 +52,13 @@ export function AppNavbar() {
             <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
               <nav className="flex items-center gap-1">
                 {[
-                  { value: "cos",         label: "Chief of Staff" },
-                  { value: "checkins",    label: "My Dashboard" },
-                  { value: "rcdo",        label: "RCDO", title: "Rallying Cry & Defining Objectives" },
-                  { value: "commitments", label: "Commitments" },
-                  { value: "main",        label: "Meetings" },
-                  ...(showInsights ? [{ value: "insights", label: "Insights" }] : []),
-                  ...((isAdmin || isSuperAdmin) ? [{ value: "settings", label: "Settings" }] : []),
+                  ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff" }] : []),
+                  ...(canAccess("view_dashboard") ? [{ value: "checkins", label: "My Dashboard" }] : []),
+                  ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives" }] : []),
+                  ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments" }] : []),
+                  ...(canAccess("view_meetings") ? [{ value: "main", label: "Meetings" }] : []),
+                  ...(canAccess("view_insights") ? [{ value: "insights", label: "Insights" }] : []),
+                  ...(canAccess("view_settings") ? [{ value: "settings", label: "Settings" }] : []),
                 ].map(({ value, label, title }) => (
                   <button
                     key={value}

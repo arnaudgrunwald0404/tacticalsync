@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
@@ -25,6 +25,7 @@ import { AppNavbar } from "@/components/ui/app-navbar";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useCycles } from "@/hooks/useRCDO";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { useFeaturePermissions, FEATURE_CATEGORIES, FEATURE_LABELS, FEATURE_DESCRIPTIONS, type FeatureKey } from "@/hooks/useFeaturePermissions";
 import { suggestCycleDates } from "@/lib/rcdoValidation";
 
 interface TemplateItem {
@@ -60,6 +61,8 @@ const Settings = () => {
   const [newItemDuration, setNewItemDuration] = useState(5);
   const [saving, setSaving] = useState(false);
   const { isSuperAdmin, isAdmin, loading: rolesLoading } = useRoles();
+  const { permissions: featurePerms, canManagePermissions, refetch: refetchFeaturePerms } = useFeaturePermissions();
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [adminSearchEmail, setAdminSearchEmail] = useState("");
   const [adminList, setAdminList] = useState<Array<{ id: string; email: string }>>([]);
   const [loadingAdmins, setLoadingAdmins] = useState(false);
@@ -1604,6 +1607,27 @@ const Settings = () => {
     setUsersWithDetails(prev => prev.map(u => u.id === userId ? { ...u, role_tags: next } : u));
   };
 
+  const isFeatureEnabled = (featureKey: string, roleTag: string): boolean => {
+    return featurePerms.some(p => p.feature_key === featureKey && p.role_tag === roleTag && p.is_enabled);
+  };
+
+  const toggleFeaturePermission = async (featureKey: string, roleTag: string) => {
+    const current = isFeatureEnabled(featureKey, roleTag);
+    setSavingPermissions(true);
+    const { error } = await supabase
+      .from("feature_permissions")
+      .update({ is_enabled: !current })
+      .eq("feature_key", featureKey)
+      .eq("role_tag", roleTag);
+    if (error) {
+      toast({ title: "Failed to update permission", description: error.message, variant: "destructive" });
+    } else {
+      await refetchFeaturePerms();
+      toast({ title: "Permission updated" });
+    }
+    setSavingPermissions(false);
+  };
+
   const handleExportCSV = () => {
     const headers = ['First Name', 'Last Name', 'Email', 'Last Logged In'];
     const rows = filteredUsers.map(u => {
@@ -2067,10 +2091,11 @@ const Settings = () => {
           onSectionChange={setActiveSection}
           userEmail={userEmail}
           showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
+          canManagePermissions={canManagePermissions}
         />
 
         <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
-        {activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin) ? (
+        {activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin || (activeSection === "user-management-permissions" && canManagePermissions)) ? (
           <div className="mb-8">
             {/* Page header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -2278,53 +2303,116 @@ const Settings = () => {
 
             {/* ── PERMISSIONS ── */}
             {activeSection === "user-management-permissions" && (
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Permissions</h3>
-                <p className="text-sm text-muted-foreground mb-6">Define which roles can perform each action</p>
-                <div className="rounded-lg border border-border/50 overflow-hidden shadow-sm">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border/50">
-                        <TableHead className="w-44 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Capability</TableHead>
-                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Description</TableHead>
-                        {ALL_ROLE_TAGS.map(tag => (
-                          <TableHead key={tag} className="w-[72px] text-center py-3">
-                            <span className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag]}`}>
-                              {ROLE_TAG_LABELS[tag]}
-                            </span>
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {PERMISSIONS_MATRIX.map(group => (
-                        <>
-                          <TableRow key={group.category} className="bg-muted/10 hover:bg-muted/10 border-b border-border/25">
-                            <TableCell colSpan={2 + ALL_ROLE_TAGS.length} className="py-2 px-4">
-                              <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">{group.category}</span>
-                            </TableCell>
-                          </TableRow>
-                          {group.capabilities.map(cap => (
-                            <TableRow key={cap.label} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
-                              <TableCell className="px-4 py-2.5 font-medium text-[13px]">{cap.label}</TableCell>
-                              <TableCell className="py-2.5 text-[13px] text-muted-foreground">{cap.desc}</TableCell>
-                              {ALL_ROLE_TAGS.map(tag => (
-                                <TableCell key={tag} className="text-center py-2.5">
-                                  {cap.roles.includes(tag) ? (
-                                    <div className="w-5 h-5 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center mx-auto">
-                                      <Check className="h-3 w-3 text-[#4A5D5F]" />
-                                    </div>
-                                  ) : (
-                                    <div className="w-5 h-5 rounded-full bg-gray-100 mx-auto" />
-                                  )}
-                                </TableCell>
-                              ))}
-                            </TableRow>
+              <div className="space-y-8">
+                {/* Feature Visibility — editable */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">Feature Visibility</h3>
+                  <p className="text-sm text-muted-foreground mb-6">Control which roles can see each section of the app</p>
+                  <div className="rounded-lg border border-border/50 overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border/50">
+                          <TableHead className="w-44 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Feature</TableHead>
+                          <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Description</TableHead>
+                          {ALL_ROLE_TAGS.map(tag => (
+                            <TableHead key={tag} className="w-[72px] text-center py-3">
+                              <span className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag]}`}>
+                                {ROLE_TAG_LABELS[tag]}
+                              </span>
+                            </TableHead>
                           ))}
-                        </>
-                      ))}
-                    </TableBody>
-                  </Table>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {FEATURE_CATEGORIES.map(group => (
+                          <React.Fragment key={group.category}>
+                            <TableRow className="bg-muted/10 hover:bg-muted/10 border-b border-border/25">
+                              <TableCell colSpan={2 + ALL_ROLE_TAGS.length} className="py-2 px-4">
+                                <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">{group.category}</span>
+                              </TableCell>
+                            </TableRow>
+                            {group.features.map(featureKey => (
+                              <TableRow key={featureKey} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
+                                <TableCell className="px-4 py-2.5 font-medium text-[13px]">{FEATURE_LABELS[featureKey]}</TableCell>
+                                <TableCell className="py-2.5 text-[13px] text-muted-foreground">{FEATURE_DESCRIPTIONS[featureKey]}</TableCell>
+                                {ALL_ROLE_TAGS.map(tag => {
+                                  const enabled = isFeatureEnabled(featureKey, tag);
+                                  return (
+                                    <TableCell key={tag} className="text-center py-2.5">
+                                      <button
+                                        disabled={savingPermissions}
+                                        onClick={() => toggleFeaturePermission(featureKey, tag)}
+                                        className="mx-auto block cursor-pointer disabled:opacity-50"
+                                      >
+                                        {enabled ? (
+                                          <div className="w-5 h-5 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center">
+                                            <Check className="h-3 w-3 text-[#4A5D5F]" />
+                                          </div>
+                                        ) : (
+                                          <div className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors" />
+                                        )}
+                                      </button>
+                                    </TableCell>
+                                  );
+                                })}
+                              </TableRow>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* Action Permissions — read-only reference */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">Action Permissions</h3>
+                  <p className="text-sm text-muted-foreground mb-6">Which roles can perform each action (built-in)</p>
+                  <div className="rounded-lg border border-border/50 overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border/50">
+                          <TableHead className="w-44 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Capability</TableHead>
+                          <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Description</TableHead>
+                          {ALL_ROLE_TAGS.map(tag => (
+                            <TableHead key={tag} className="w-[72px] text-center py-3">
+                              <span className={`inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-semibold tracking-wide ${ROLE_TAG_COLORS[tag]}`}>
+                                {ROLE_TAG_LABELS[tag]}
+                              </span>
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {PERMISSIONS_MATRIX.map(group => (
+                          <React.Fragment key={group.category}>
+                            <TableRow className="bg-muted/10 hover:bg-muted/10 border-b border-border/25">
+                              <TableCell colSpan={2 + ALL_ROLE_TAGS.length} className="py-2 px-4">
+                                <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">{group.category}</span>
+                              </TableCell>
+                            </TableRow>
+                            {group.capabilities.map(cap => (
+                              <TableRow key={cap.label} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
+                                <TableCell className="px-4 py-2.5 font-medium text-[13px]">{cap.label}</TableCell>
+                                <TableCell className="py-2.5 text-[13px] text-muted-foreground">{cap.desc}</TableCell>
+                                {ALL_ROLE_TAGS.map(tag => (
+                                  <TableCell key={tag} className="text-center py-2.5">
+                                    {cap.roles.includes(tag) ? (
+                                      <div className="w-5 h-5 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center mx-auto">
+                                        <Check className="h-3 w-3 text-[#4A5D5F]" />
+                                      </div>
+                                    ) : (
+                                      <div className="w-5 h-5 rounded-full bg-gray-100 mx-auto" />
+                                    )}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
             )}

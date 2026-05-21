@@ -34,6 +34,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      feature_permissions: {
+        Row: {
+          id: string
+          feature_key: string
+          role_tag: string
+          is_enabled: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          feature_key: string
+          role_tag: string
+          is_enabled?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          feature_key?: string
+          role_tag?: string
+          is_enabled?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       agenda_template_items: {
         Row: {
           created_at: string | null

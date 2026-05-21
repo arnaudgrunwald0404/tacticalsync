@@ -25,18 +25,18 @@ const LayoutTextFlip: React.FC<LayoutTextFlipProps> = ({
   return (
     <div className="inline-block">
       {text && <span className="inline-block mr-2">{text}</span>}
-      <div className="relative inline-block min-w-[200px] h-[1.2em] ">
+      <div className="relative inline-block min-w-[280px] h-[1.2em] ">
         <AnimatePresence mode="wait">
           <motion.span
             key={currentWordIndex}
             initial={{ y: "65%", opacity: 0 }}
-            animate={{ y: "30%", opacity: 1 }}
+            animate={{ y: "35%", opacity: 1 }}
             exit={{ y: "-20%", opacity: 0 }}
             transition={{
               duration: 0.5,
               ease: "easeInOut",
             }}
-            className="absolute inset-0 bg-[image:var(--logo-gradient)] bg-clip-text text-transparent font-bold"
+            className="absolute inset-0 text-[#B89A6B] font-bold text-left whitespace-nowrap"
           >
             {words[currentWordIndex]}
           </motion.span>
