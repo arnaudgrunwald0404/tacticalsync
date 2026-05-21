@@ -30,7 +30,7 @@ const LayoutTextFlip: React.FC<LayoutTextFlipProps> = ({
           <motion.span
             key={currentWordIndex}
             initial={{ y: "65%", opacity: 0 }}
-            animate={{ y: "35%", opacity: 1 }}
+            animate={{ y: "31%", opacity: 1 }}
             exit={{ y: "-20%", opacity: 0 }}
             transition={{
               duration: 0.5,

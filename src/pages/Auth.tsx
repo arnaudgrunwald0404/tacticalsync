@@ -3,18 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionManager } from "@/hooks/useSessionManager";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Calendar, CheckSquare, Mail } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Mail, ArrowLeft, Target, CheckSquare, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import GridBackground from "@/components/ui/grid-background";
 import Logo from "@/components/Logo";
+import LayoutTextFlip from "@/components/ui/layout-text-flip";
 
 const Auth = () => {
-  // Initialize session management
   useSessionManager();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -28,27 +26,18 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState("signin");
 
   useEffect(() => {
-    // Check for invite code and OAuth callback in URL
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     const code = params.get('code');
     const hasCode = !!code;
-    
-    // Check for hash fragment with access_token (email verification/magic link)
     const hash = window.location.hash;
     const hasAccessToken = hash.includes('access_token=');
-    
-    // If there's an OAuth code or access token, Supabase will handle it automatically
-    // with detectSessionInUrl: true. Just wait for the auth state change.
+
     if (hasCode || hasAccessToken) {
       console.log('[Auth] OAuth callback detected, waiting for Supabase to process...');
-      // Don't manually exchange - Supabase does this automatically
-      // The onAuthStateChange listener below will handle the redirect
     } else {
-      // No OAuth callback, check if user is already logged in
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          // If logged in and has invite code, redirect to join page
           if (inviteCode) {
             navigate(`/join/${inviteCode}`);
           } else {
@@ -67,15 +56,13 @@ const Auth = () => {
       }
 
       if (session) {
-        // Clean up URL by removing code parameter and hash fragment after successful auth
         if (hasCode || hasAccessToken) {
           const currentParams = new URLSearchParams(window.location.search);
           const currentInviteCode = currentParams.get('invite');
           const newUrl = currentInviteCode ? `/auth?invite=${currentInviteCode}` : '/auth';
           window.history.replaceState({}, '', newUrl);
         }
-        
-        // Check for stored invite code after successful auth
+
         const storedInvite = localStorage.getItem('pendingInviteCode');
         if (storedInvite) {
           localStorage.removeItem('pendingInviteCode');
@@ -86,7 +73,6 @@ const Auth = () => {
           navigate("/chief-of-staff");
         }
       } else if (event === 'SIGNED_OUT') {
-        // User signed out, stay on auth page
         console.log('[Auth] User signed out');
       }
     });
@@ -95,13 +81,12 @@ const Auth = () => {
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
-    // Store invite code if present before OAuth redirect
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     if (inviteCode) {
       localStorage.setItem('pendingInviteCode', inviteCode);
     }
-    
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -117,9 +102,8 @@ const Auth = () => {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const trimmedEmail = email.trim();
-    
+
     if (!trimmedEmail) {
       toast.error("Please enter your email address");
       return;
@@ -139,77 +123,38 @@ const Auth = () => {
       });
       if (error) throw error;
       toast.success("Password reset email sent! Check your inbox.");
-      
-      // Try to get password reset link (works in both local and production)
+
       try {
-        // Check if we're running locally based on window.location
-        const isAppLocal = window.location.hostname === 'localhost' || 
+        const isAppLocal = window.location.hostname === 'localhost' ||
                           window.location.hostname === '127.0.0.1' ||
                           window.location.hostname.includes('localhost');
-        
-        // Check if Supabase is local
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const isSupabaseLocal = supabaseUrl && (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1'));
-        
-        console.log('[DEBUG] Application hostname:', window.location.hostname);
-        console.log('[DEBUG] Supabase URL:', supabaseUrl);
-        console.log('[DEBUG] Is app local:', isAppLocal);
-        console.log('[DEBUG] Is Supabase local:', isSupabaseLocal);
-        
-        // Only use local email service if BOTH app and Supabase are local
+
         if (isAppLocal && isSupabaseLocal) {
-          // Local development: try to fetch from email service
           const url = new URL(supabaseUrl);
           const emailServiceUrl = `${url.protocol}//${url.hostname}:54324/emails`;
-          console.log('[DEBUG] Attempting to fetch password reset emails from:', emailServiceUrl);
-          
-          // Try multiple times with increasing delays
+
           const tryFetchEmail = async (attempt: number, delay: number) => {
             await new Promise(resolve => setTimeout(resolve, delay));
-            
             try {
-              console.log(`[DEBUG] Password reset fetch attempt ${attempt}...`);
               const response = await fetch(emailServiceUrl);
-              
               if (!response.ok) {
-                console.log(`[DEBUG] Response not OK: ${response.status} ${response.statusText}`);
-                if (attempt < 5) {
-                  tryFetchEmail(attempt + 1, delay * 1.5);
-                } else {
-                  console.log('%c⚠️ Could not fetch emails after 5 attempts.', 'color: #FF9800; font-size: 12px;');
-                }
+                if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
                 return;
               }
-              
               const emails = await response.json();
-              console.log(`[DEBUG] Found ${emails?.length || 0} emails total`);
-              
-              if (!emails || !Array.isArray(emails)) {
-                console.log('[DEBUG] Unexpected email response format:', emails);
-                return;
-              }
-              
-              // Find password reset emails for this user
+              if (!emails || !Array.isArray(emails)) return;
+
               const userEmails = emails.filter((email: { to?: string; recipient?: string; subject?: string }) => {
                 const emailTo = (email.to?.toLowerCase() || email.recipient?.toLowerCase() || '');
                 const subject = (email.subject?.toLowerCase() || '');
                 return emailTo === trimmedEmail.toLowerCase() &&
                        (subject.includes('reset') || subject.includes('password'));
               });
-              
-              console.log(`[DEBUG] Found ${userEmails.length} password reset emails for ${trimmedEmail}`);
-              
-              if (userEmails.length === 0) {
-                console.log('%c⚠️ No password reset email found for', 'color: #FF9800;', trimmedEmail);
-                console.log('Available emails:', emails.slice(0, 5).map((e: { to?: string; recipient?: string; subject?: string; created_at?: string; createdAt?: string }) => ({
-                  to: e.to || e.recipient,
-                  subject: e.subject,
-                  created: e.created_at || e.createdAt
-                })));
 
-                if (attempt < 5) {
-                  tryFetchEmail(attempt + 1, delay * 1.5);
-                }
+              if (userEmails.length === 0) {
+                if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
                 return;
               }
 
@@ -218,28 +163,17 @@ const Auth = () => {
                 const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
                 return dateB - dateA;
               })[0];
-              
-              console.log('[DEBUG] Most recent password reset email:', { 
-                subject: userEmail.subject,
-                to: userEmail.to || userEmail.recipient
-              });
-              
-              // Extract reset link from email HTML or text
+
               const htmlContent = userEmail.html || userEmail.text || userEmail.body || '';
-              
-              // Try multiple patterns to find the reset link
               const patterns = [
                 /href=["']([^"']*reset[^"']*token=[^"']*)["']/i,
                 /href=["']([^"']*password[^"']*token=[^"']*)["']/i,
                 /href=["']([^"']*\/auth\/v1\/.*recover[^"']*)["']/i,
-                /href=["']([^"']*\/auth\/v1\/.*reset[^"']*)["']/i,
                 /(https?:\/\/[^\s<>"']*reset[^\s<>"']*token=[^\s<>"']*)/i,
-                /(https?:\/\/[^\s<>"']*password[^\s<>"']*token=[^\s<>"']*)/i,
                 /(https?:\/\/[^\s<>"']*\/auth\/v1\/.*recover[^\s<>"']*)/i,
               ];
-              
+
               let resetLink: string | null = null;
-              
               for (const pattern of patterns) {
                 const match = htmlContent.match(pattern);
                 if (match && match[1]) {
@@ -247,51 +181,21 @@ const Auth = () => {
                   break;
                 }
               }
-              
+
               if (resetLink) {
                 console.log('%c🔗 PASSWORD RESET LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
-                console.log('%c' + resetLink, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
-                console.log('%c📋 Copy this link to reset your password (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-              } else {
-                // Try to find any URL in the email
-                const urlMatch = htmlContent.match(/(https?:\/\/[^\s<>"']+)/i);
-                if (urlMatch) {
-                  console.log('%c🔗 Possible password reset link found:', 'background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
-                  console.log('%c' + urlMatch[1], 'color: #2196F3; font-size: 12px; word-break: break-all;');
-                } else {
-                  console.log('%c⚠️ Could not extract password reset link from email.', 'color: #FF9800; font-size: 12px;');
-                  console.log('Email service URL:', emailServiceUrl);
-                  console.log('Email subject:', userEmail.subject);
-                  console.log('Email preview (first 500 chars):', htmlContent.substring(0, 500));
-                  console.log('%c💡 Tip: Check Supabase Studio at http://localhost:54323 or terminal logs for the reset link', 'color: #2196F3; font-size: 11px;');
-                }
+                console.log('%c' + resetLink, 'color: #2196F3; font-size: 12px;');
               }
             } catch (emailErr) {
-              console.log(`[DEBUG] Password reset fetch error on attempt ${attempt}:`, emailErr);
-              if (attempt < 5) {
-                tryFetchEmail(attempt + 1, delay * 1.5);
-              } else {
-                console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr instanceof Error ? emailErr.message : emailErr);
-                console.log('Email service URL:', emailServiceUrl);
-                console.log('%c💡 Tip: Make sure Supabase is running locally and email service is on port 54324', 'color: #2196F3; font-size: 11px;');
-                console.log('%c💡 Check Supabase logs or Studio at http://localhost:54323 for the reset link', 'color: #2196F3; font-size: 11px;');
-              }
+              if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
             }
           };
-          
-          // Start fetching with initial delay
           tryFetchEmail(1, 500);
-        } else {
-          // Production: password reset email is already sent by Supabase via resetPasswordForEmail
-          // No need to generate link - Supabase handles it automatically
-          console.log('[DEBUG] Production mode: password reset email sent by Supabase');
-          console.log('%c💡 Password reset email has been sent. Please check your inbox.', 'color: #2196F3; font-size: 11px;');
-          console.log('%cNote: For security reasons, Supabase sends the email even if the user doesn\'t exist.', 'color: #666; font-size: 10px; font-style: italic;');
         }
       } catch (err) {
         console.log('[DEBUG] Error setting up password reset email fetch:', err instanceof Error ? err.message : err);
       }
-      
+
       setIsForgotPassword(false);
       setEmail("");
     } catch (error: unknown) {
@@ -303,15 +207,13 @@ const Auth = () => {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const trimmedEmail = email.trim();
-    
+
     if (!trimmedEmail || !password) {
       toast.error("Please enter email and password");
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
       toast.error("Please enter a valid email address");
@@ -327,7 +229,6 @@ const Auth = () => {
 
     try {
       if (isSignUp) {
-        console.log("[DEBUG] Starting signup for:", trimmedEmail);
         const { data, error } = await supabase.auth.signUp({
           email: trimmedEmail,
           password,
@@ -335,124 +236,57 @@ const Auth = () => {
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
-        
-        console.log("[DEBUG] SignUp response:", { 
-          hasSession: !!data.session, 
-          hasUser: !!data.user,
-          userEmail: data.user?.email,
-          userConfirmed: data.user?.email_confirmed_at,
-          error: error?.message 
-        });
-        
         if (error) throw error;
 
-        // Try to get verification link (works in both local and production)
         if (data.user && !data.session) {
           try {
-            // Check if we're running locally based on window.location
-            const isAppLocal = window.location.hostname === 'localhost' || 
+            const isAppLocal = window.location.hostname === 'localhost' ||
                               window.location.hostname === '127.0.0.1' ||
                               window.location.hostname.includes('localhost');
-            
-            // Check if Supabase is local
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
             const isSupabaseLocal = supabaseUrl && (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1'));
-            
-            console.log('[DEBUG] Application hostname:', window.location.hostname);
-            console.log('[DEBUG] Supabase URL:', supabaseUrl);
-            console.log('[DEBUG] Is app local:', isAppLocal);
-            console.log('[DEBUG] Is Supabase local:', isSupabaseLocal);
-            
-            // Only use local email service if BOTH app and Supabase are local
+
             if (isAppLocal && isSupabaseLocal) {
-              // Local development: try to fetch from email service
               const url = new URL(supabaseUrl);
               const emailServiceUrl = `${url.protocol}//${url.hostname}:54324/emails`;
-              console.log('[DEBUG] Attempting to fetch emails from:', emailServiceUrl);
-              
-              // Try multiple times with increasing delays
+
               const tryFetchEmail = async (attempt: number, delay: number) => {
                 await new Promise(resolve => setTimeout(resolve, delay));
-                
                 try {
-                  console.log(`[DEBUG] Fetch attempt ${attempt}...`);
                   const response = await fetch(emailServiceUrl);
-                  
                   if (!response.ok) {
-                    console.log(`[DEBUG] Response not OK: ${response.status} ${response.statusText}`);
-                    if (attempt < 5) {
-                      // Retry with longer delay
-                      tryFetchEmail(attempt + 1, delay * 1.5);
-                    } else {
-                      console.log('%c⚠️ Could not fetch emails after 5 attempts. Check if Supabase email service is running on port 54324.', 'color: #FF9800; font-size: 12px;');
-                    }
+                    if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
                     return;
                   }
-                  
                   const emails = await response.json();
-                  console.log(`[DEBUG] Found ${emails?.length || 0} emails total`);
-                  
-                  if (!emails || !Array.isArray(emails)) {
-                    console.log('[DEBUG] Unexpected email response format:', emails);
-                    return;
-                  }
-                  
-                  // Find the most recent email for this user
+                  if (!emails || !Array.isArray(emails)) return;
+
                   const userEmails = emails.filter((email: { to?: string; recipient?: string }) => {
                     const emailTo = email.to?.toLowerCase() || email.recipient?.toLowerCase() || '';
                     return emailTo === trimmedEmail.toLowerCase();
                   });
-                  
-                  console.log(`[DEBUG] Found ${userEmails.length} emails for ${trimmedEmail}`);
-                  
+
                   if (userEmails.length === 0) {
-                    console.log('%c⚠️ No email found for', 'color: #FF9800;', trimmedEmail);
-                    console.log('Available emails:', emails.slice(0, 5).map((e: { to?: string; recipient?: string; subject?: string; created_at?: string; createdAt?: string }) => ({
-                      to: e.to || e.recipient,
-                      subject: e.subject,
-                      created: e.created_at || e.createdAt
-                    })));
-                    
-                    if (attempt < 3) {
-                      // Retry with longer delay
-                      tryFetchEmail(attempt + 1, delay * 1.5);
-                    } else {
-                      // Fallback to Edge Function after 3 attempts
-                      console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
-                      tryGetLinkFromFunction();
-                    }
+                    if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
                     return;
                   }
-                  
+
                   const userEmail = userEmails.sort((a: { created_at?: string; createdAt?: string }, b: { created_at?: string; createdAt?: string }) => {
                     const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
                     const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
                     return dateB - dateA;
                   })[0];
-                  
-                  console.log('[DEBUG] Most recent email:', { 
-                    subject: userEmail.subject,
-                    to: userEmail.to || userEmail.recipient,
-                    hasHtml: !!userEmail.html,
-                    hasText: !!userEmail.text
-                  });
-                  
-                  // Extract verification link from email HTML or text
+
                   const htmlContent = userEmail.html || userEmail.text || userEmail.body || '';
-                  
-                  // Try multiple patterns to find the verification link
                   const patterns = [
                     /href=["']([^"']*confirmation[^"']*token=[^"']*)["']/i,
                     /href=["']([^"']*verify[^"']*token=[^"']*)["']/i,
                     /href=["']([^"']*\/auth\/v1\/verify[^"']*)["']/i,
-                    /href=["']([^"']*\/auth\/v1\/.*token=[^"']*)["']/i,
                     /(https?:\/\/[^\s<>"']*confirmation[^\s<>"']*token=[^\s<>"']*)/i,
                     /(https?:\/\/[^\s<>"']*verify[^\s<>"']*token=[^\s<>"']*)/i,
-                    /(https?:\/\/[^\s<>"']*\/auth\/v1\/verify[^\s<>"']*)/i,
                   ];
-                  
+
                   let verificationLink: string | null = null;
-                  
                   for (const pattern of patterns) {
                     const match = htmlContent.match(pattern);
                     if (match && match[1]) {
@@ -460,108 +294,19 @@ const Auth = () => {
                       break;
                     }
                   }
-                  
+
                   if (verificationLink) {
                     console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
-                    console.log('%c' + verificationLink, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
-                    console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-                  } else {
-                    // Try to find any URL in the email
-                    const urlMatch = htmlContent.match(/(https?:\/\/[^\s<>"']+)/i);
-                    if (urlMatch) {
-                      console.log('%c🔗 Possible verification link found:', 'background: #FF9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
-                      console.log('%c' + urlMatch[1], 'color: #2196F3; font-size: 12px; word-break: break-all;');
-                    } else {
-                      console.log('%c⚠️ Could not extract verification link from email.', 'color: #FF9800; font-size: 12px;');
-                      console.log('Email service URL:', emailServiceUrl);
-                      console.log('Email subject:', userEmail.subject);
-                      console.log('Email preview (first 500 chars):', htmlContent.substring(0, 500));
-                      console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
-                      // Fallback to Edge Function
-                      tryGetLinkFromFunction();
-                    }
+                    console.log('%c' + verificationLink, 'color: #2196F3; font-size: 12px;');
                   }
                 } catch (emailErr) {
-                  console.log(`[DEBUG] Fetch error on attempt ${attempt}:`, emailErr);
-                  if (attempt < 5) {
-                    // Retry with longer delay
-                    tryFetchEmail(attempt + 1, delay * 1.5);
-                  } else {
-                    console.log('%c⚠️ Could not fetch email from local service after 5 attempts:', 'color: #FF9800;', emailErr instanceof Error ? emailErr.message : emailErr);
-                    console.log('Email service URL:', emailServiceUrl);
-                    console.log('%c💡 Falling back to Edge Function...', 'color: #2196F3; font-size: 11px;');
-                    // Fallback to Edge Function
-                    tryGetLinkFromFunction();
-                  }
+                  if (attempt < 5) tryFetchEmail(attempt + 1, delay * 1.5);
                 }
               };
-              
-              // Function to get link from Edge Function (fallback)
-              async function tryGetLinkFromFunction() {
-                try {
-                  console.log('[DEBUG] Attempting to get verification link from Edge Function...');
-                  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                  const response = await fetch(`${supabaseUrl}/functions/v1/get-verification-link`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${supabaseAnonKey}`,
-                    },
-                    body: JSON.stringify({
-                      userId: data.user.id,
-                      email: trimmedEmail,
-                      type: 'signup',
-                      redirectTo: `${window.location.origin}/dashboard`
-                    }),
-                  });
-
-                  const responseData = await response.json();
-                  
-                  if (response.ok && responseData?.link) {
-                    console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
-                    console.log('%c' + responseData.link, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
-                    if (responseData.note) {
-                      console.log('%c📝 ' + responseData.note, 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-                    }
-                    console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-                  } else {
-                    console.log('%c⚠️ Could not get verification link:', 'color: #FF9800; font-size: 12px; font-weight: bold;');
-                    console.log('%c' + (responseData?.error || 'Unknown error'), 'color: #FF5722; font-size: 12px;');
-                    console.log('[DEBUG] Response status:', response.status);
-                    console.log('[DEBUG] Response data:', responseData);
-                    
-                    if (responseData?.userExists !== undefined) {
-                      console.log('[DEBUG] User exists:', responseData.userExists);
-                    }
-                    if (responseData?.userConfirmed !== undefined) {
-                      console.log('[DEBUG] User confirmed:', responseData.userConfirmed);
-                    }
-                    if (responseData?.userProviders && responseData.userProviders.length > 0) {
-                      console.log('[DEBUG] User providers:', responseData.userProviders);
-                      console.log('%c💡 This email is already registered with:', 'color: #2196F3; font-size: 11px;', responseData.userProviders.join(', '));
-                      console.log('%c💡 Try signing in with that provider instead, or use password reset if you have a password set.', 'color: #2196F3; font-size: 11px;');
-                    }
-                    
-                    if (responseData?.details) {
-                      console.log('[DEBUG] Error details:', responseData.details);
-                    }
-                    console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
-                  }
-                } catch (err) {
-                  console.log('[DEBUG] Error calling get-verification-link function:', err instanceof Error ? err.message : err);
-                  console.log('[DEBUG] Full error:', err);
-                  console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
-                }
-              }
-
-              // Start fetching with initial delay
               tryFetchEmail(1, 500);
             } else {
-              // Production: use Edge Function to generate verification link
-              console.log('[DEBUG] Production mode: using Edge Function to get verification link');
+              // Production: use Edge Function
               try {
-                // Use fetch directly to get better error details
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
                 const response = await fetch(`${supabaseUrl}/functions/v1/get-verification-link`, {
@@ -577,60 +322,27 @@ const Auth = () => {
                     redirectTo: `${window.location.origin}/dashboard`
                   }),
                 });
-
                 const responseData = await response.json();
-                
                 if (response.ok && responseData?.link) {
-                  console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;');
-                  console.log('%c' + responseData.link, 'color: #2196F3; font-size: 12px; word-break: break-all; padding: 8px; background: #f5f5f5; border-radius: 4px; display: block;');
-                  if (responseData.note) {
-                    console.log('%c📝 ' + responseData.note, 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-                  }
-                  console.log('%c📋 Copy this link to verify your email (works even with fake emails)', 'color: #666; font-size: 11px; font-style: italic; margin-top: 4px;');
-                } else {
-                  console.log('%c⚠️ Could not get verification link:', 'color: #FF9800; font-size: 12px; font-weight: bold;');
-                  console.log('%c' + (responseData?.error || 'Unknown error'), 'color: #FF5722; font-size: 12px;');
-                  console.log('[DEBUG] Response status:', response.status);
-                  console.log('[DEBUG] Response data:', responseData);
-                  
-                  if (responseData?.userExists !== undefined) {
-                    console.log('[DEBUG] User exists:', responseData.userExists);
-                  }
-                  if (responseData?.userConfirmed !== undefined) {
-                    console.log('[DEBUG] User confirmed:', responseData.userConfirmed);
-                  }
-                  if (responseData?.userProviders && responseData.userProviders.length > 0) {
-                    console.log('[DEBUG] User providers:', responseData.userProviders);
-                    console.log('%c💡 This email is already registered with:', 'color: #2196F3; font-size: 11px;', responseData.userProviders.join(', '));
-                    console.log('%c💡 Try signing in with that provider instead, or use password reset if you have a password set.', 'color: #2196F3; font-size: 11px;');
-                  }
-                  
-                  if (responseData?.details) {
-                    console.log('[DEBUG] Error details:', responseData.details);
-                  }
-                  console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
+                  console.log('%c🔗 VERIFICATION LINK:', 'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+                  console.log('%c' + responseData.link, 'color: #2196F3; font-size: 12px;');
                 }
               } catch (err) {
                 console.log('[DEBUG] Error calling get-verification-link function:', err instanceof Error ? err.message : err);
-                console.log('[DEBUG] Full error:', err);
-                console.log('%c💡 Check your email inbox or Supabase Dashboard for the verification link', 'color: #2196F3; font-size: 11px;');
               }
             }
           } catch (err) {
             console.log('[DEBUG] Error setting up email fetch:', err instanceof Error ? err.message : err);
           }
         }
-        
+
         const session = data.session;
-        
         if (session) {
-          console.log("[DEBUG] Session found! Redirecting to dashboard...");
           toast.success("Account created successfully!");
-          // Check for invite code
           const params = new URLSearchParams(window.location.search);
           const inviteCode = params.get('invite');
           const storedInvite = localStorage.getItem('pendingInviteCode');
-          
+
           if (storedInvite) {
             localStorage.removeItem('pendingInviteCode');
             navigate(`/join/${storedInvite}`);
@@ -640,8 +352,6 @@ const Auth = () => {
             navigate("/chief-of-staff");
           }
         } else {
-          console.log("[DEBUG] No session found - showing verification banner");
-          // No session means email verification is required
           setVerificationEmail(trimmedEmail);
           setShowVerificationBanner(true);
           setPassword("");
@@ -661,332 +371,361 @@ const Auth = () => {
     }
   };
 
+  // ─── Render ───
   return (
-    <GridBackground inverted className="min-h-screen flex items-center justify-center bg-gradient-to-br from-platinum via-white to-platinum overscroll-none px-3 sm:px-4 py-8">
-      <div className="w-full max-w-full  space-y-6">
-       
+    <div className="h-screen flex flex-col lg:flex-row overscroll-none overflow-hidden">
+      {/* ── Left branding panel (hidden on mobile) ── */}
+      <div className="hidden lg:flex lg:w-[45%] xl:w-[50%] bg-[#4A5D5F] relative overflow-hidden">
+        {/* Subtle pattern overlay */}
+        <div className="absolute inset-0 opacity-[0.04]" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
+          backgroundSize: '32px 32px',
+        }} />
 
-        <Card className="border-border/100 shadow-lg shadow-titanium/10 w-full sm:max-w-full">
+        <div className="relative z-10 flex flex-col justify-between p-12 xl:p-16 w-full">
+          {/* Top: logo */}
+          <div>
+            <Logo variant="minimal" size="lg" theme="dark" />
+          </div>
 
- {/* Logo Section */}
- <div className="text-center space-y-2">
-          <div className="flex justify-center mt-12 mb-6">
+          {/* Center: headline + features */}
+          <div className="space-y-10">
+            <div className="space-y-4">
+              <h1 className="font-heading text-3xl xl:text-4xl font-bold text-white leading-tight">
+                Great Teams Don't<br />Just Meet —<br />
+                <span className="text-white/90">They </span>
+                <LayoutTextFlip
+                  text=""
+                  words={["Own.", "Prepare.", "Follow Up.", "Delegate.", "Execute."]}
+                  duration={3000}
+                />
+              </h1>
+              <p className="font-body text-white/40 text-sm tracking-widest uppercase font-medium">
+                Achieve Uncommon Execution
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              {[
+                { icon: Target, label: "Strategy & Objectives", desc: "Cascade your rallying cry into measurable goals" },
+                { icon: CheckSquare, label: "Commitments & Priorities", desc: "Track ownership and follow-through every week" },
+                { icon: RefreshCw, label: "Check-ins & Progress", desc: "Run structured reviews that close the loop" },
+              ].map(({ icon: Icon, label, desc }) => (
+                <div key={label} className="flex items-start gap-4">
+                  <div className="rounded-lg bg-white/10 p-2.5 flex-shrink-0">
+                    <Icon className="h-5 w-5 text-white/70" />
+                  </div>
+                  <div>
+                    <p className="font-heading text-sm font-semibold text-white">{label}</p>
+                    <p className="font-body text-sm text-white/50">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom: footer */}
+          <p className="font-body text-xs text-white/30">
+            &copy; 2026 TacticalSync Inc.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Right form panel ── */}
+      <div className="flex-1 flex items-center justify-center bg-white px-5 sm:px-8 py-10 sm:py-12 overflow-y-auto">
+        <div className="w-full max-w-[420px] space-y-8">
+          {/* Mobile logo */}
+          <div className="lg:hidden flex justify-center">
             <Logo variant="full" size="xl" className="scale-90 sm:scale-100" />
           </div>
 
-        </div>
+          {/* Email Verification Banner */}
+          {showVerificationBanner ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="bg-platinum border border-rose-gold/30 rounded-2xl p-8 text-center">
+                <div className="flex justify-center mb-5">
+                  <div className="rounded-full bg-copper/10 p-4">
+                    <Mail className="h-10 w-10 text-copper" />
+                  </div>
+                </div>
+                <h3 className="font-heading text-2xl font-bold text-cast-iron mb-2">
+                  Check Your Email
+                </h3>
+                <p className="font-body text-sm text-titanium mb-1">
+                  We've sent a verification email to
+                </p>
+                <p className="font-body text-base font-semibold text-cast-iron mb-4 break-words">
+                  {verificationEmail}
+                </p>
+                <p className="font-body text-titanium text-xs mb-6">
+                  Click the link in the email to verify your account.
+                  The link expires in 1 hour.
+                </p>
+                <div className="border-t border-rose-gold/20 pt-4 space-y-2">
+                  <Button
+                    variant="outline"
+                    className="font-body w-full border-titanium/30 text-titanium hover:bg-titanium/5"
+                    onClick={() => {
+                      setShowVerificationBanner(false);
+                      setIsSignUp(true);
+                    }}
+                  >
+                    Try Again
+                  </Button>
+                  <Button
+                    variant="link"
+                    className="font-body w-full text-titanium"
+                    onClick={() => {
+                      setShowVerificationBanner(false);
+                      setEmail("");
+                      setIsSignUp(false);
+                    }}
+                  >
+                    Back to Sign In
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <AnimatePresence mode="wait">
+              {!showEmailForm ? (
+                /* ── Default: Google + email options ── */
+                <motion.div
+                  key="options"
+                  className="space-y-6"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {/* Welcome copy */}
+                  <div className="text-center space-y-2">
+                    <h2 className="font-heading text-2xl sm:text-3xl font-bold text-cast-iron">
+                      Welcome back
+                    </h2>
+                    <p className="font-body text-base text-titanium">
+                      Sign in to continue to TacticalSync
+                    </p>
+                  </div>
 
-          <CardHeader className="space-y-4 pb-6 px-5 sm:px-8 md:px-12">
-            {showEmailForm ? (
-              <>
-                <div className="flex items-center mb-4">
+                  {/* Google */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="font-body w-full h-12 text-base font-normal bg-white text-cast-iron border border-rose-gold/40 shadow-sm hover:shadow-md hover:border-rose-gold/60 transition-all"
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <svg className="h-5 w-5" viewBox="0 0 24 24">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </svg>
+                      <span>Sign in with Google</span>
+                    </div>
+                  </Button>
+
+                  {/* Divider */}
+                  <div className="relative flex items-center">
+                    <div className="flex-1 border-t border-rose-gold/20" />
+                    <span className="px-4 text-xs text-titanium/60 font-medium uppercase tracking-wider">or</span>
+                    <div className="flex-1 border-t border-rose-gold/20" />
+                  </div>
+
+                  {/* Email options */}
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="font-body w-full h-11 text-base font-normal text-titanium hover:bg-platinum hover:text-cast-iron transition-colors"
+                      onClick={() => {
+                        setShowEmailForm(true);
+                        setIsSignUp(false);
+                        setActiveTab("signin");
+                      }}
+                      disabled={loading}
+                    >
+                      Log in with my email
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="font-body w-full h-11 text-base font-normal text-titanium hover:bg-platinum hover:text-cast-iron transition-colors"
+                      onClick={() => {
+                        setShowEmailForm(true);
+                        setIsSignUp(true);
+                        setActiveTab("signup");
+                      }}
+                      disabled={loading}
+                    >
+                      I need to register
+                    </Button>
+                  </div>
+                </motion.div>
+              ) : (
+                /* ── Email form ── */
+                <motion.div
+                  key="email-form"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  {/* Back button */}
                   <Button
                     type="button"
                     variant="ghost"
-                    className="p-0 h-auto hover:bg-transparent"
+                    className="p-0 h-auto hover:bg-transparent text-titanium hover:text-cast-iron -ml-1"
                     onClick={() => {
                       setShowEmailForm(false);
                       setIsSignUp(false);
                       setIsForgotPassword(false);
                     }}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-6 w-6"
-                    >
-                      <path d="m15 18-6-6 6-6"/>
-                    </svg>
-                    <span className="ml-2">Back</span>
+                    <ArrowLeft className="h-5 w-5 mr-2" />
+                    <span className="font-body text-sm">Back</span>
                   </Button>
-                </div>
-                {!isForgotPassword ? (
-                  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4 h-12 sm:h-14">
-                      <TabsTrigger value="signin" onClick={() => {
-                        setIsSignUp(false);
-                        setActiveTab("signin");
-                      }} className="font-body text-base sm:text-lg">
-                        Sign In
-                      </TabsTrigger>
-                      <TabsTrigger value="signup" onClick={() => {
-                        setIsSignUp(true);
-                        setActiveTab("signup");
-                      }} className="font-body text-base sm:text-lg">
-                        Sign Up
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                ) : (
-                  <div className="space-y-2">
-                    <CardTitle className="font-heading text-2xl sm:text-3xl font-bold text-center text-cast-iron">
-                      Reset Password
-                    </CardTitle>
-                    <CardDescription className="font-body text-base sm:text-lg text-center text-titanium">
-                      Enter your email to receive a reset link
-                    </CardDescription>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center space-y-2">
-                <CardTitle className="font-heading text-2xl sm:text-3xl font-bold mb-6 text-cast-iron">
-                  We are so glad you're here!
-                </CardTitle>
-                <CardDescription className="font-body text-base sm:text-lg mb-6 text-titanium">
-                  Sign in to continue to TacticalSync
-                </CardDescription>
-              </div>
-            )}
-          </CardHeader>
 
-          <CardContent className="space-y-6 pt-0 px-5 sm:px-8 md:px-12">
-            {/* Email Verification Banner */}
-            {showVerificationBanner ? (
-              <div className="py-6 sm:py-8 space-y-6">
-                <div className="bg-platinum border-2 border-verdigris/30 rounded-lg p-6 sm:p-6 md:p-8 text-center">
-                  <div className="flex justify-center mb-4">
-                    <Mail className="h-16 w-16 sm:h-16 sm:w-16 text-titanium" />
-                  </div>
-                  <h3 className="font-heading text-2xl sm:text-2xl font-bold text-cast-iron mb-3">
-                    Check Your Email
-                  </h3>
-                  <p className="font-body text-base sm:text-base text-titanium mb-2">
-                    We've sent a verification email to:
-                  </p>
-                  <p className="font-body text-lg sm:text-lg font-semibold text-cast-iron mb-4 break-words">
-                    {verificationEmail}
-                  </p>
-                  <p className="font-body text-titanium text-sm sm:text-sm mb-6">
-                    Click the link in the email to verify your account and complete your sign up.
-                    The link will expire in 1 hour.
-                  </p>
-                  <div className="border-t border-verdigris/30 pt-4 mt-4">
-                    <p className="font-body text-sm text-titanium mb-3">
-                      Didn't receive the email?
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="outline"
-                        className="font-body w-full border-titanium text-titanium hover:bg-titanium/10"
-                        onClick={() => {
-                          setShowVerificationBanner(false);
-                          setIsSignUp(true);
-                        }}
-                      >
-                        Try Again
-                      </Button>
-                      <Button
-                        variant="link"
-                        className="font-body text-titanium"
-                        onClick={() => {
-                          setShowVerificationBanner(false);
-                          setEmail("");
-                          setIsSignUp(false);
-                        }}
-                      >
-                        Back to Sign In
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <AnimatePresence mode="wait">
-                  {!showEmailForm ? (
-                  <motion.div
-                    className="space-y-4"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="font-body w-full h-12 text-base sm:text-lg font-normal bg-white text-cast-iron border-2 border-titanium shadow-sm hover:bg-titanium hover:text-white hover:border-titanium-hover transition-colors"
-                      onClick={handleGoogleSignIn}
-                      disabled={loading}
-                    >
-                      <div className="flex items-center justify-center gap-3">
-                        <svg className="h-6 w-6" viewBox="0 0 24 24">
-                          <path
-                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                            fill="#4285F4"
-                          />
-                          <path
-                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                            fill="#34A853"
-                          />
-                          <path
-                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                            fill="#FBBC05"
-                          />
-                          <path
-                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                            fill="#EA4335"
-                          />
-                        </svg>
-                        <span>Sign in with Google</span>
-                      </div>
-                    </Button>
+                  {!isForgotPassword ? (
+                    <>
+                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 h-11 bg-platinum/60">
+                          <TabsTrigger
+                            value="signin"
+                            onClick={() => { setIsSignUp(false); setActiveTab("signin"); }}
+                            className="font-body text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                          >
+                            Sign In
+                          </TabsTrigger>
+                          <TabsTrigger
+                            value="signup"
+                            onClick={() => { setIsSignUp(true); setActiveTab("signup"); }}
+                            className="font-body text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                          >
+                            Sign Up
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
 
-                    <div className="relative flex items-center justify-center mt-6 py-6">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-300"></div>
-                      </div>
-                      <div className="relative bg-white px-4">
-                        <span className="text-sm text-gray-500 font-medium">OR</span>
-                      </div>
-                    </div>
-
-                    <div >
-                      <Button
-                        type="button"
-        
-                        className="font-body w-full h-12 sm:text-lg font-normal bg-white text-titanium hover:bg-platinum mt-0 py-0"
-                        onClick={() => {
-                          setShowEmailForm(true);
-                          setIsSignUp(false);
-                          setActiveTab("signin");
-                        }}
-                        disabled={loading}
-                      >
-                        Log in with my email
-                      </Button>
-                      
-                      <Button
-                        type="button"
-                 
-                        className="font-body w-full h-12 sm:text-lg font-normal bg-white text-titanium hover:bg-platinum"
-                        onClick={() => {
-                          setShowEmailForm(true);
-                          setIsSignUp(true);
-                          setActiveTab("signup");
-                        }}
-                        disabled={loading}
-                      >
-                        I need to register
-                      </Button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {!isForgotPassword && (
-                      <div className="mb-6">
-                        <h3 className="font-heading text-lg font-semibold mb-1 text-cast-iron">
-                          {isSignUp ? "Create your account" : "Welcome back!"}
+                      <div>
+                        <h3 className="font-heading text-xl font-bold text-cast-iron">
+                          {isSignUp ? "Create your account" : "Welcome back"}
                         </h3>
-                        <p className="font-body text-sm text-titanium">
-                          {isSignUp ? "Enter your details below to create your account" : "Enter your email and password to sign in"}
+                        <p className="font-body text-sm text-titanium mt-1">
+                          {isSignUp ? "Enter your details to get started" : "Enter your credentials to sign in"}
                         </p>
                       </div>
+                    </>
+                  ) : (
+                    <div>
+                      <h3 className="font-heading text-xl font-bold text-cast-iron">
+                        Reset Password
+                      </h3>
+                      <p className="font-body text-sm text-titanium mt-1">
+                        Enter your email to receive a reset link
+                      </p>
+                    </div>
+                  )}
+
+                  <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-4">
+                    {!isForgotPassword && (
+                      <input
+                        type="text"
+                        name="username"
+                        autoComplete="username"
+                        value={email}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}
+                      />
                     )}
-                    <form onSubmit={isForgotPassword ? handleForgotPassword : handleEmailAuth} className="space-y-5">
-                      {/* Hidden username field for accessibility (password forms should have username fields) */}
-                      {!isForgotPassword && (
-                        <input
-                          type="text"
-                          name="username"
-                          autoComplete="username"
-                          value={email}
-                          readOnly
-                          tabIndex={-1}
-                          aria-hidden="true"
-                          style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}
-                        />
-                      )}
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="font-body text-base sm:text-base font-medium text-cast-iron">Email address</Label>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="email" className="font-body text-sm font-medium text-cast-iron">
+                        Email address
+                      </Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={loading}
+                        className="h-11 text-base border-rose-gold/30 focus:border-copper focus:ring-copper/20"
+                        autoComplete={isForgotPassword ? "email" : isSignUp ? "email" : "username"}
+                        required
+                      />
+                    </div>
+
+                    {!isForgotPassword && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="password" className="font-body text-sm font-medium text-cast-iron">
+                          Password
+                        </Label>
                         <Input
-                          id="email"
-                          type="email"
-                          placeholder="you@example.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          id="password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                           disabled={loading}
-                          className="h-12 sm:h-12 text-base sm:text-base"
-                          autoComplete={isForgotPassword ? "email" : isSignUp ? "email" : "username"}
+                          className="h-11 text-base border-rose-gold/30 focus:border-copper focus:ring-copper/20"
+                          autoComplete={isSignUp ? "new-password" : "current-password"}
                           required
+                          minLength={6}
                         />
                       </div>
-                      
-                      {!isForgotPassword && (
-                        <div className="space-y-2">
-                          <Label htmlFor="password" className="font-body text-base sm:text-base font-medium text-cast-iron">Password</Label>
-                          <Input
-                            id="password"
-                            type="password"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            disabled={loading}
-                            className="h-12 sm:h-12 text-base sm:text-base"
-                            autoComplete={isSignUp ? "new-password" : "current-password"}
-                            required
-                            minLength={6}
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Primary Action Button */}
+                    )}
+
+                    <Button
+                      type="submit"
+                      className="font-body w-full h-11 text-base font-medium bg-[#4A5D5F] hover:bg-[#3d4f51] text-white transition-colors"
+                      disabled={loading}
+                    >
+                      {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Create Account" : "Sign In"))}
+                    </Button>
+                  </form>
+
+                  {/* Secondary actions */}
+                  <div className="text-center">
+                    {!isForgotPassword && !isSignUp && (
                       <Button
-                        type="submit"
-                        className="font-body w-full h-12 sm:h-12 text-base sm:text-base font-medium bg-titanium hover:bg-titanium-hover text-white"
+                        type="button"
+                        variant="link"
+                        className="font-body text-sm text-titanium hover:text-cast-iron"
+                        onClick={() => setIsForgotPassword(true)}
                         disabled={loading}
                       >
-                        {loading ? "Loading..." : (isForgotPassword ? "Send Reset Link" : (isSignUp ? "Sign Up" : "Sign In"))}
+                        Forgot password?
                       </Button>
-                    </form>
-
-                    {/* Secondary Actions */}
-                    <div className="space-y-2 pt-2">
-                      {!isForgotPassword && !isSignUp && (
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="font-body w-full text-base text-titanium hover:text-titanium"
-                          onClick={() => setIsForgotPassword(true)}
-                          disabled={loading}
-                        >
-                          Forgot password?
-                        </Button>
-                      )}
-                      {isForgotPassword && (
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="font-body w-full text-base text-titanium hover:text-titanium"
-                          onClick={() => setIsForgotPassword(false)}
-                          disabled={loading}
-                        >
-                          Back to sign in
-                        </Button>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-                </AnimatePresence>
-              </>
-            )}
-          </CardContent>
-        </Card>
+                    )}
+                    {isForgotPassword && (
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="font-body text-sm text-titanium hover:text-cast-iron"
+                        onClick={() => setIsForgotPassword(false)}
+                        disabled={loading}
+                      >
+                        Back to sign in
+                      </Button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
       </div>
-    </GridBackground>
+    </div>
   );
 };
 

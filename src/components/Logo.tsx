@@ -29,13 +29,13 @@ const Logo = ({
     xl: "text-3xl sm:text-5xl"
   };
 
-  const logoSrc = "/logo-icon.png";
+  const logoSrc = theme === "dark" ? "/logo-icon-white.png" : "/logo-icon.png";
 
   const altText = "TacticalSync - Team Meeting Management";
 
   if (!showText) {
     return (
-      <img 
+      <img
         src={logoSrc}
         alt={altText}
         className={cn(sizeClasses[size], "w-auto", className)}
@@ -45,13 +45,13 @@ const Logo = ({
 
   return (
     <div className={cn("flex items-center gap-2 sm:gap-3", className)}>
-      <img 
+      <img
         src={logoSrc}
         alt={altText}
         className={cn(sizeClasses[size], "w-auto")}
       />
       <span
-        className={cn(textSizeClasses[size], "tracking-tight text-[#4A5D5F] font-heading")}
+        className={cn(textSizeClasses[size], "tracking-tight font-heading", theme === "dark" ? "text-white" : "text-[#4A5D5F]")}
       >
         <span className="font-bold uppercase">Tactical</span><span className="font-normal uppercase">Sync</span>
       </span>

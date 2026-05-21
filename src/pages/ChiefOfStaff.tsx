@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw,
+  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
 } from 'lucide-react';
 import {
   DndContext, DragEndEvent,
@@ -524,36 +525,94 @@ export default function ChiefOfStaff() {
         )}
 
         <TabsContent value="priorities">
-          <PrioritiesSection
-            priorities={priorities}
-            onUpdate={updatePriority}
-            onAdd={addPriority}
-            onDelete={deletePriority}
-            onReorder={reorderPriority}
-            onCopy={copyToClipboard}
-            mondayTaggedTexts={mondayTaggedTexts}
-            statusOptions={statusOptions}
-            newlyAddedId={newlyAddedId}
-            onNewlyAddedConsumed={() => setNewlyAddedId(null)}
-            members={teamMembers}
-            accountabilities={accountabilities}
-            personTopics={personTopics}
-            onAddAccountability={addAccountability}
-            onUpdateAccountability={updateAccountability}
-            onDeleteAccountability={deleteAccountability}
-            onAddPersonTopic={addPersonTopic}
-            onUpdatePersonTopic={updatePersonTopic}
-            onDeletePersonTopic={deletePersonTopic}
-            newlyAddedAccountabilityId={newlyAddedAccountabilityId}
-            newlyAddedTopicId={newlyAddedTopicId}
-            onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
-            onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
-            onDropPriorityOnAccountability={dropPriorityOnAccountability}
-            onDropPriorityOnTopic={dropPriorityOnTopic}
-            onPermanentDelete={permanentDeletePriority}
-            onRestoreArchived={restoreArchivedPriority}
-            layoutConfig={layoutConfig}
-          />
+          {priorities.length === 0 && teamMembers.length === 0 && accountabilities.length === 0 && personTopics.length === 0 ? (
+            /* ── Empty state for brand-new users ── */
+            <div className="flex flex-col items-center justify-center py-16 sm:py-24 px-4">
+              {/* Illustration: stylised column layout */}
+              <div className="mb-8 flex items-end gap-3 opacity-80">
+                <div className="w-20 sm:w-24 space-y-2">
+                  <div className="h-3 rounded-full bg-copper/20" />
+                  <div className="h-16 sm:h-20 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                  <div className="h-10 sm:h-12 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                </div>
+                <div className="w-20 sm:w-24 space-y-2">
+                  <div className="h-3 rounded-full bg-titanium/20" />
+                  <div className="h-12 sm:h-14 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                  <div className="h-14 sm:h-18 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                </div>
+                <div className="w-20 sm:w-24 space-y-2">
+                  <div className="h-3 rounded-full bg-copper/20" />
+                  <div className="h-10 sm:h-12 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                  <div className="h-8 sm:h-10 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                  <div className="h-6 sm:h-8 rounded-lg border-2 border-dashed border-rose-gold/40 bg-platinum/50" />
+                </div>
+              </div>
+
+              <h3 className="font-heading text-xl sm:text-2xl font-bold text-cast-iron mb-2 text-center">
+                Your workspace is ready
+              </h3>
+              <p className="font-body text-sm sm:text-base text-titanium max-w-md text-center mb-6 leading-relaxed">
+                This is where you'll track priorities, commitments, and people topics. Add your first item to any column to get started.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <Button
+                  onClick={() => {
+                    // Add a priority to the first enabled section
+                    const firstSection = layoutConfig.columns
+                      .flatMap(c => c.sections)
+                      .find(s => s.enabled && s.type !== 'direct_reports');
+                    if (firstSection) {
+                      addPriority(sectionToCategoryKey(firstSection));
+                    }
+                  }}
+                  className="bg-copper hover:bg-copper-hover text-white font-body h-10 px-6"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add your first item
+                </Button>
+
+                <Link
+                  to="/settings?section=configure-my-lists"
+                  className="inline-flex items-center gap-1.5 font-body text-sm text-titanium hover:text-cast-iron transition-colors underline underline-offset-2 decoration-titanium/30 hover:decoration-cast-iron/50"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Configure columns & sections
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <PrioritiesSection
+              priorities={priorities}
+              onUpdate={updatePriority}
+              onAdd={addPriority}
+              onDelete={deletePriority}
+              onReorder={reorderPriority}
+              onCopy={copyToClipboard}
+              mondayTaggedTexts={mondayTaggedTexts}
+              statusOptions={statusOptions}
+              newlyAddedId={newlyAddedId}
+              onNewlyAddedConsumed={() => setNewlyAddedId(null)}
+              members={teamMembers}
+              accountabilities={accountabilities}
+              personTopics={personTopics}
+              onAddAccountability={addAccountability}
+              onUpdateAccountability={updateAccountability}
+              onDeleteAccountability={deleteAccountability}
+              onAddPersonTopic={addPersonTopic}
+              onUpdatePersonTopic={updatePersonTopic}
+              onDeletePersonTopic={deletePersonTopic}
+              newlyAddedAccountabilityId={newlyAddedAccountabilityId}
+              newlyAddedTopicId={newlyAddedTopicId}
+              onNewlyAddedAccountabilityConsumed={() => setNewlyAddedAccountabilityId(null)}
+              onNewlyAddedTopicConsumed={() => setNewlyAddedTopicId(null)}
+              onDropPriorityOnAccountability={dropPriorityOnAccountability}
+              onDropPriorityOnTopic={dropPriorityOnTopic}
+              onPermanentDelete={permanentDeletePriority}
+              onRestoreArchived={restoreArchivedPriority}
+              layoutConfig={layoutConfig}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="dci">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
 import * as XLSX from "xlsx";
@@ -48,6 +48,7 @@ interface Template {
 
 const Settings = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -56,7 +57,7 @@ const Settings = () => {
   const [templateName, setTemplateName] = useState("");
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   // Set default section: Admin Management first if available, otherwise Agenda Templates
-  const [activeSection, setActiveSection] = useState("agenda-templates");
+  const [activeSection, setActiveSection] = useState(searchParams.get("section") || "agenda-templates");
   const [newItemTitle, setNewItemTitle] = useState("");
   const [newItemDuration, setNewItemDuration] = useState(5);
   const [saving, setSaving] = useState(false);
