@@ -206,17 +206,11 @@ export async function importRCDOToDatabase(
         const siOwnerId = await findUserByName(si.ownerName || '', ownerUserId);
 
         let descriptionHtml = '';
-        if (si.successMetric) {
-          descriptionHtml += `<p><strong>Success Metric:</strong> ${si.successMetric.replace(/\n/g, '<br/>')}</p>`;
-        }
-        if (si.benchmark) {
-          descriptionHtml += `<p><strong>Benchmark:</strong> ${si.benchmark}</p>`;
-        }
         if (si.bullets.length > 0) {
-          descriptionHtml +=
+          descriptionHtml =
             '<ul>' + si.bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
         } else if (si.description) {
-          descriptionHtml += `<p>${si.description}</p>`;
+          descriptionHtml = `<p>${si.description}</p>`;
         }
 
         const endDate = parseDate(si.estimatedCompletion);
@@ -227,11 +221,13 @@ export async function importRCDOToDatabase(
             defining_objective_id: createdDO.id,
             title: si.title,
             description: descriptionHtml || null,
+            primary_success_metric: si.successMetric || null,
+            benchmark: si.benchmark || null,
             owner_user_id: siOwnerId,
             status: 'draft',
             end_date: endDate || null,
             display_order: j,
-          })
+          } as Record<string, unknown>)
           .select('id')
           .single();
 

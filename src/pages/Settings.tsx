@@ -133,10 +133,14 @@ const Settings = () => {
   const [removingFromTeamId, setRemovingFromTeamId] = useState("");
   
   // Strategy cycles
-  const { cycles, loading: cyclesLoading, createCycle, refetch: refetchCycles } = useCycles();
+  const { cycles, loading: cyclesLoading, createCycle, updateCycleDates, refetch: refetchCycles } = useCycles();
   const { canCreateCycle } = useRCDOPermissions();
   const [isCreatingCycle, setIsCreatingCycle] = useState(false);
   const [activatingCycleId, setActivatingCycleId] = useState<string | null>(null);
+  const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+  const [savingCycleDates, setSavingCycleDates] = useState(false);
 
   // Testing mode state
   const [userEmail, setUserEmail] = useState("");
@@ -2069,6 +2073,30 @@ const Settings = () => {
     }
   };
 
+  const handleEditCycleDates = (cycle: typeof cycles[0]) => {
+    setEditingCycleId(cycle.id);
+    setEditStartDate(cycle.start_date);
+    setEditEndDate(cycle.end_date);
+  };
+
+  const handleSaveCycleDates = async () => {
+    if (!editingCycleId) return;
+    if (editEndDate <= editStartDate) {
+      toast({ title: "Error", description: "End date must be after start date", variant: "destructive" });
+      return;
+    }
+    setSavingCycleDates(true);
+    try {
+      await updateCycleDates(editingCycleId, editStartDate, editEndDate);
+      toast({ title: "Cycle dates updated" });
+      setEditingCycleId(null);
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to update dates", variant: "destructive" });
+    } finally {
+      setSavingCycleDates(false);
+    }
+  };
+
   const statusColors: Record<string, string> = { draft: "bg-gray-500", active: "bg-green-500", review: "bg-[#4A5D5F]", archived: "bg-purple-500" };
   const statusLabels: Record<string, string> = { draft: "Draft", active: "Active", review: "Review", archived: "Archived" };
 
@@ -2456,6 +2484,7 @@ const Settings = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Period</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
                       <TableHead>Status</TableHead>
@@ -2464,44 +2493,81 @@ const Settings = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {cycles.map((cycle) => (
-                      <TableRow key={cycle.id}>
-                        <TableCell className="font-medium">
-                          {format(parseLocalDate(cycle.start_date), "MMM yyyy")} –{" "}
-                          {format(parseLocalDate(cycle.end_date), "MMM yyyy")}
-                        </TableCell>
-                        <TableCell>{format(parseLocalDate(cycle.start_date), "MMM d, yyyy")}</TableCell>
-                        <TableCell>{format(parseLocalDate(cycle.end_date), "MMM d, yyyy")}</TableCell>
-                        <TableCell>
-                          <Badge className={statusColors[cycle.status] ?? "bg-gray-500"}>
-                            {statusLabels[cycle.status] ?? cycle.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{format(new Date(cycle.created_at), "MMM d, yyyy")}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {cycle.status === "active" ? (
-                              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/rcdo")}>
-                                View Strategy
-                              </Button>
-                            ) : cycle.status === "draft" ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleActivateCycle(cycle.id)}
-                                disabled={activatingCycleId === cycle.id || !canCreateCycle}
-                              >
-                                {activatingCycleId === cycle.id ? "Activating..." : (
-                                  <><CheckCircle className="h-3 w-3 mr-1" />Activate</>
-                                )}
-                              </Button>
+                    {cycles.map((cycle) => {
+                      const isEditing = editingCycleId === cycle.id;
+                      return (
+                        <TableRow key={cycle.id}>
+                          <TableCell className="font-medium">
+                            {isEditing
+                              ? `${editStartDate && format(parseLocalDate(editStartDate), "MMM yyyy")} – ${editEndDate && format(parseLocalDate(editEndDate), "MMM yyyy")}`
+                              : `${format(parseLocalDate(cycle.start_date), "MMM yyyy")} – ${format(parseLocalDate(cycle.end_date), "MMM yyyy")}`}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+                            {cycle.rc_title || "—"}
+                          </TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <Input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} className="w-40" />
                             ) : (
-                              <Button variant="ghost" size="sm" disabled>Archived</Button>
+                              format(parseLocalDate(cycle.start_date), "MMM d, yyyy")
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <Input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="w-40" />
+                            ) : (
+                              format(parseLocalDate(cycle.end_date), "MMM d, yyyy")
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={statusColors[cycle.status] ?? "bg-gray-500"}>
+                              {statusLabels[cycle.status] ?? cycle.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{format(new Date(cycle.created_at), "MMM d, yyyy")}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {isEditing ? (
+                                <>
+                                  <Button variant="outline" size="sm" onClick={handleSaveCycleDates} disabled={savingCycleDates}>
+                                    {savingCycleDates ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => setEditingCycleId(null)}>
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  {canCreateCycle && (
+                                    <Button variant="ghost" size="sm" onClick={() => handleEditCycleDates(cycle)}>
+                                      <Edit2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                  {cycle.status === "active" ? (
+                                    <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/rcdo")}>
+                                      View Strategy
+                                    </Button>
+                                  ) : cycle.status === "draft" ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleActivateCycle(cycle.id)}
+                                      disabled={activatingCycleId === cycle.id || !canCreateCycle}
+                                    >
+                                      {activatingCycleId === cycle.id ? "Activating..." : (
+                                        <><CheckCircle className="h-3 w-3 mr-1" />Activate</>
+                                      )}
+                                    </Button>
+                                  ) : (
+                                    <Button variant="ghost" size="sm" disabled>Archived</Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Card>
@@ -2510,7 +2576,7 @@ const Settings = () => {
             <Card className="mt-6 p-6 bg-[#F5F3F0] border-[#6B9A8F]/30">
               <h3 className="font-semibold mb-2">About Strategy Cycles</h3>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Cycles are exactly 6 months long (Jan–Jun or Jul–Dec)</li>
+                <li>• Cycles default to 6 months but dates can be adjusted manually</li>
                 <li>• Only one active cycle per team at a time</li>
                 <li>• Each cycle has one Rallying Cry with 4–6 Defining Objectives</li>
                 <li>• Metrics and initiatives track progress throughout the cycle</li>

@@ -72,8 +72,10 @@ export function useActiveCycle() {
 // ============================================================================
 // useCycles - Fetch all cycles (company-wide)
 // ============================================================================
+export type CycleWithRC = RCCycle & { rc_title: string | null };
+
 export function useCycles() {
-  const [cycles, setCycles] = useState<RCCycle[]>([]);
+  const [cycles, setCycles] = useState<CycleWithRC[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -85,12 +87,18 @@ export function useCycles() {
 
       const { data, error: fetchError } = await supabase
         .from('rc_cycles')
-        .select('*')
+        .select('*, rc_rallying_cries(title)')
         .order('start_date', { ascending: false });
 
       if (fetchError) throw fetchError;
 
-      setCycles(data || []);
+      const mapped = (data || []).map((row: any) => ({
+        ...row,
+        rc_title: row.rc_rallying_cries?.[0]?.title ?? row.rc_rallying_cries?.title ?? null,
+        rc_rallying_cries: undefined,
+      }));
+
+      setCycles(mapped);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch cycles';
       setError(errorMessage);
@@ -162,7 +170,18 @@ export function useCycles() {
     }
   };
 
-  return { cycles, loading, error, refetch: fetchCycles, createCycle };
+  const updateCycleDates = async (cycleId: string, startDate: string, endDate: string) => {
+    const { error: updateError } = await supabase
+      .from('rc_cycles')
+      .update({ start_date: startDate, end_date: endDate })
+      .eq('id', cycleId);
+
+    if (updateError) throw updateError;
+
+    await fetchCycles();
+  };
+
+  return { cycles, loading, error, refetch: fetchCycles, createCycle, updateCycleDates };
 }
 
 // ============================================================================

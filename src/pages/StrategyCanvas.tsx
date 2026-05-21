@@ -42,6 +42,7 @@ import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
 import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
+import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -64,14 +65,14 @@ type NodeData = {
   saiItems?: Array<{
     id: string;
     title: string;
-    ownerId?: string; // references profiles.id
-    participantIds?: string[]; // references profiles.id
-    // legacy fields (rendered if ownerId missing)
+    ownerId?: string;
+    participantIds?: string[];
     ownerName?: string;
     ownerAvatarUrl?: string;
     metric?: string;
+    benchmark?: string;
     description?: string;
-    dbId?: string; // database SI ID for fetching locked status and check-ins
+    dbId?: string;
   }>;
   // Rallying cry specific
   rallyCandidates?: string[];
@@ -161,11 +162,10 @@ const createDoNode = (
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
 
     // Check if DO is missing required fields
-    // Strip HTML tags from hypothesis to check if it's actually empty
-    const hypothesisText = data.hypothesis ? data.hypothesis.replace(/<[^>]*>/g, '').trim() : '';
-    const hasMissingFields = !data.title || !data.title.trim() || 
-                            !hypothesisText || 
-                            !data.primarySuccessMetric || !data.primarySuccessMetric.trim() || 
+    const strip = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    const hasMissingFields = !data.title?.trim() ||
+                            !strip(data.hypothesis || '') ||
+                            !data.primarySuccessMetric?.trim() ||
                             !data.ownerId;
 
   useEffect(() => {
@@ -538,6 +538,7 @@ export default function StrategyCanvasPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const { canLockDO } = useRCDOPermissions();
   
   // Get cycle ID and optional focus params from URL query parameters
   const searchParams = new URLSearchParams(location.search);
@@ -557,6 +558,8 @@ export default function StrategyCanvasPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(makeInitialNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeInitialEdges());
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
   const [focusedSI, setFocusedSI] = useState<null | { doId: string; siId: string }>(null);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
@@ -803,10 +806,22 @@ export default function StrategyCanvasPage() {
         // If there are no DOs, nothing to render beyond the RC
         const { data: sis, error: siErr } = await supabase
           .from('rc_strategic_initiatives')
-          .select('id, title, owner_user_id, participant_user_ids, description, defining_objective_id, status, locked_at, created_at')
+          .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, created_at')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
         if (siErr) console.warn('[Canvas] SI query error:', siErr);
         console.log('[Canvas] Fallback SI count', (sis || []).length);
+
+        const { data: doMetrics } = await supabase
+          .from('rc_do_metrics')
+          .select('defining_objective_id, name')
+          .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+          .order('display_order', { ascending: true });
+        const metricsMap = new Map<string, string>();
+        for (const m of doMetrics || []) {
+          if (!metricsMap.has(m.defining_objective_id)) {
+            metricsMap.set(m.defining_objective_id, m.name);
+          }
+        }
 
         // Compute a simple layout identical to the import-based formatter
         const baseX = 400;
@@ -834,7 +849,7 @@ export default function StrategyCanvasPage() {
         const builtEdges: Edge[] = [];
 
         type DORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
-        type SIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; defining_objective_id: string; status?: string; locked_at?: string | null; created_at?: string };
+        type SIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; primary_success_metric?: string; benchmark?: string; defining_objective_id: string; status?: string; locked_at?: string | null; created_at?: string };
         (dos || []).forEach((d: DORow, index: number) => {
           const doId = `do-${index + 1}`;
           const posX = startX + index * gapX;
@@ -845,6 +860,8 @@ export default function StrategyCanvasPage() {
             ownerId: si.owner_user_id || undefined,
             participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
             description: si.description || '',
+            metric: si.primary_success_metric || '',
+            benchmark: si.benchmark || '',
             dbId: si.id,
           }));
 
@@ -857,7 +874,7 @@ export default function StrategyCanvasPage() {
               status: d.status === 'final' ? 'final' : 'draft',
               ownerId: d.owner_user_id || undefined,
               hypothesis: d.hypothesis || '',
-              primarySuccessMetric: '',
+              primarySuccessMetric: metricsMap.get(d.id) || '',
               saiItems,
               size: { w: 260, h: 110 },
               dbId: d.id,
@@ -1273,39 +1290,39 @@ const duplicateSelectedDo = useCallback(() => {
     setSelectedNode(null);
   }, [nodes, edges, selectedNode]);
 
+  const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+
   // Bulk actions
   const lockEverything = useCallback(async () => {
     // Check for incomplete DOs and SIs before locking
+    const currentNodes = nodesRef.current;
     const incompleteDOs: string[] = [];
     const incompleteSIs: Array<{ doTitle: string; siTitle: string }> = [];
-    
-    for (const n of nodes) {
+
+    for (const n of currentNodes) {
       if (n.type === 'do') {
         const data = n.data;
-        const hypothesisText = data.hypothesis ? data.hypothesis.replace(/<[^>]*>/g, '').trim() : '';
-        const hasMissingFields = !data.title || !data.title.trim() || 
-                                !hypothesisText || 
-                                !data.primarySuccessMetric || !data.primarySuccessMetric.trim() || 
+        const hasMissingFields = !data.title?.trim() ||
+                                !stripHtml(data.hypothesis || '') ||
+                                !data.primarySuccessMetric?.trim() ||
                                 !data.ownerId;
-        
+
         if (hasMissingFields) {
           incompleteDOs.push(data.title || n.id);
         }
-        
+
         // Check SIs within this DO
         const items = data.saiItems || [];
         for (const si of items) {
-          const descriptionText = si.description ? si.description.replace(/<[^>]*>/g, '').trim() : '';
-          const metricText = si.metric ? si.metric.trim() : '';
-          const siHasMissingFields = !si.title || !si.title.trim() || 
-                                    !descriptionText || 
-                                    !metricText ||
+          const siHasMissingFields = !si.title?.trim() ||
+                                    !stripHtml(si.description || '') ||
+                                    !si.metric?.trim() ||
                                     !si.ownerId;
-          
+
           if (siHasMissingFields) {
-            incompleteSIs.push({ 
-              doTitle: data.title || n.id, 
-              siTitle: si.title || 'Untitled SI' 
+            incompleteSIs.push({
+              doTitle: data.title || n.id,
+              siTitle: si.title || 'Untitled SI'
             });
           }
         }
@@ -1344,7 +1361,7 @@ const duplicateSelectedDo = useCallback(() => {
     // 2) Optimistically mark DOs as locked in local lock map (UI-only)
     setDoLockedStatus((prev) => {
       const updated = new Map(prev);
-      for (const n of nodes) {
+      for (const n of currentNodes) {
         if (n.type === 'do') {
           const existing = updated.get(n.id);
           const dbId = (existing?.dbId || (n.data as NodeData & { dbId?: string })?.dbId);
@@ -1365,7 +1382,7 @@ const duplicateSelectedDo = useCallback(() => {
 
     // 4) Persist to database: lock DOs; trigger on DO will cascade lock SIs
     try {
-      const doDbIds: string[] = nodes
+      const doDbIds: string[] = currentNodes
         .filter((n) => n.type === 'do')
         .map((n) => {
           const existing = doLockedStatus.get(n.id);
@@ -1409,7 +1426,160 @@ const duplicateSelectedDo = useCallback(() => {
     } catch (_) {
       // best-effort: UI already updated
     }
-  }, [nodes, setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast]);
+  }, [setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast]);
+
+  /** Lock a single DO (and its child SIs) — the per-DO "Finalize" action. */
+  const finalizeSingleDO = useCallback(async (doNodeId: string) => {
+    const currentNodes = nodesRef.current;
+    const doNode = currentNodes.find((n) => n.id === doNodeId && n.type === 'do');
+    if (!doNode) return;
+    const data = doNode.data;
+
+    // Validate required fields on the DO itself
+    const missing: string[] = [];
+    if (!data.title?.trim()) missing.push('Name');
+    if (!stripHtml(data.hypothesis || '')) missing.push('Definition');
+    if (!data.primarySuccessMetric?.trim()) missing.push('Primary Success Metric');
+    if (!data.ownerId) missing.push('Owner');
+
+    if (missing.length > 0) {
+      toast({
+        title: 'Cannot lock — incomplete DO',
+        description: `Missing: ${missing.join(', ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate SIs
+    const incompleteSIs: string[] = [];
+    for (const si of data.saiItems || []) {
+      const siMissing: string[] = [];
+      if (!si.title?.trim()) siMissing.push('Title');
+      if (!stripHtml(si.description || '')) siMissing.push('Description');
+      if (!si.metric?.trim()) siMissing.push('Metric');
+      if (!si.ownerId) siMissing.push('Owner');
+      if (siMissing.length > 0) {
+        incompleteSIs.push(`${si.title || 'Untitled SI'} (${siMissing.join(', ')})`);
+      }
+    }
+    if (incompleteSIs.length > 0) {
+      toast({
+        title: 'Cannot lock — incomplete SIs',
+        description: incompleteSIs.slice(0, 3).join('; ') + (incompleteSIs.length > 3 ? '...' : ''),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // 1) Update local UI state
+    setNodes((curr) => curr.map((n) =>
+      n.id === doNodeId ? { ...n, data: { ...n.data, status: 'final' as const } } as Node<NodeData> : n
+    ));
+
+    const existingStatus = doLockedStatus.get(doNodeId);
+    const doDbId = existingStatus?.dbId || (data as NodeData & { dbId?: string }).dbId;
+    setDoLockedStatus((prev) => {
+      const updated = new Map(prev);
+      updated.set(doNodeId, { locked: true, dbId: doDbId });
+      return updated;
+    });
+
+    // Mark child SIs as locked in siProgressMap
+    if (doDbId) {
+      setSiProgressMap((prev) => {
+        const updated = new Map(prev);
+        for (const si of data.saiItems || []) {
+          if (si.dbId && updated.has(si.dbId)) {
+            const existing = updated.get(si.dbId)!;
+            updated.set(si.dbId, { ...existing, isLocked: true });
+          }
+        }
+        return updated;
+      });
+    }
+
+    // 2) Persist to database
+    if (!doDbId) {
+      toast({ title: 'Finalized locally', description: 'This DO was finalized on the canvas but has no database record yet.' });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: 'Lock failed', description: 'You must be logged in.', variant: 'destructive' });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const { error: doErr } = await supabase
+        .from('rc_defining_objectives')
+        .update({ status: 'final', locked_at: nowIso, locked_by: user.id })
+        .eq('id', doDbId);
+
+      if (doErr) {
+        console.error('Single DO lock error:', doErr);
+        toast({ title: 'Lock failed', description: doErr.message, variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Locked', description: `"${data.title}" and its SIs have been locked.` });
+    } catch (e) {
+      console.error('finalizeSingleDO error', e);
+    }
+  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
+
+  const unlockSingleDO = useCallback(async (doNodeId: string) => {
+    const doStatus = doLockedStatus.get(doNodeId);
+    const doDbId = doStatus?.dbId;
+    if (!doDbId) return;
+
+    try {
+      const { error: doErr } = await supabase
+        .from('rc_defining_objectives')
+        .update({ status: 'draft', locked_at: null, locked_by: null } as Record<string, unknown>)
+        .eq('id', doDbId);
+
+      if (doErr) {
+        toast({ title: 'Unlock failed', description: doErr.message, variant: 'destructive' });
+        return;
+      }
+
+      // Unlock child SIs in database
+      const node = nodesRef.current.find(n => n.id === doNodeId);
+      const siItems = node?.data?.saiItems || [];
+      const siDbIds = siItems.map(si => si.dbId).filter(Boolean) as string[];
+      if (siDbIds.length > 0) {
+        await supabase
+          .from('rc_strategic_initiatives')
+          .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
+          .in('id', siDbIds);
+      }
+
+      // Update local state
+      setNodes(prev => prev.map(n =>
+        n.id === doNodeId ? { ...n, data: { ...n.data, status: 'draft' as const } } : n
+      ));
+      setDoLockedStatus(prev => {
+        const next = new Map(prev);
+        next.set(doNodeId, { locked: false, dbId: doDbId });
+        return next;
+      });
+      setSiProgressMap(prev => {
+        const next = new Map(prev);
+        for (const si of siItems) {
+          const existing = next.get(si.id);
+          if (existing) next.set(si.id, { ...existing, isLocked: false });
+        }
+        return next;
+      });
+
+      toast({ title: 'Unlocked', description: `"${node?.data?.title}" and its SIs have been unlocked.` });
+    } catch (e) {
+      console.error('unlockSingleDO error', e);
+    }
+  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
   const openImportFromFile = useCallback(() => {
     setShowImportDialog(true);
@@ -1791,7 +1961,7 @@ const duplicateSelectedDo = useCallback(() => {
               </TooltipTrigger>
               {!canGoToDetail && (
                 <TooltipContent side="bottom">
-                  <p>Lock your strategy to enable the detail view</p>
+                  <p>While drafting DOs, only the canvas view is available. Lock your strategy to unlock the detail view.</p>
                 </TooltipContent>
               )}
             </Tooltip>
@@ -2155,7 +2325,7 @@ const duplicateSelectedDo = useCallback(() => {
           {isMobile ? (
             <Sheet open={true} onOpenChange={(open) => !open && closePanel()}>
               <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
-                <DOPanelContent 
+                <DOPanelContent
                   selectedNode={selectedNode}
                   doLockedStatus={doLockedStatus}
                   profilesMap={profilesMap}
@@ -2171,6 +2341,9 @@ const duplicateSelectedDo = useCallback(() => {
                   setFocusedSI={setFocusedSI}
                   navigate={navigate}
                   closePanel={closePanel}
+                  onLockDO={() => finalizeSingleDO(selectedNode.id)}
+                  onUnlockDO={() => unlockSingleDO(selectedNode.id)}
+                  canLock={canLockDO}
                 />
               </SheetContent>
             </Sheet>
@@ -2178,7 +2351,7 @@ const duplicateSelectedDo = useCallback(() => {
             <div className="fixed inset-0 z-50">
               <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
               <div className="absolute right-0 top-0 h-full w-[380px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col">
-                <DOPanelContent 
+                <DOPanelContent
                   selectedNode={selectedNode}
                   doLockedStatus={doLockedStatus}
                   profilesMap={profilesMap}
@@ -2194,6 +2367,9 @@ const duplicateSelectedDo = useCallback(() => {
                   setFocusedSI={setFocusedSI}
                   navigate={navigate}
                   closePanel={closePanel}
+                  onLockDO={() => finalizeSingleDO(selectedNode.id)}
+                  onUnlockDO={() => unlockSingleDO(selectedNode.id)}
+                  canLock={canLockDO}
                 />
               </div>
             </div>

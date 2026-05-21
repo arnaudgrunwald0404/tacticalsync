@@ -25,6 +25,7 @@ type NodeData = {
     ownerName?: string;
     ownerAvatarUrl?: string;
     metric?: string;
+    benchmark?: string;
     description?: string;
   }>;
   rallyCandidates?: string[];
@@ -90,20 +91,21 @@ export function formatRCDOForCanvas(data: ParsedRCDO): CanvasLayout {
 
     // Convert SI data to embedded saiItems format with HTML formatting
     const saiItems = do_.strategicInitiatives.map((si, siIndex) => {
-      // Convert bullets to HTML list
       let description = '';
       if (si.bullets.length > 0) {
         description = '<ul>' + si.bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
       } else if (si.description) {
         description = `<p>${si.description}</p>`;
       }
-      
+
       return {
         id: `si-${doId}-${siIndex + 1}`,
         title: si.title,
         ownerId: undefined,
+        ownerName: si.ownerName,
         description: description,
-        metric: siIndex === 0 && do_.primarySuccessMetric ? do_.primarySuccessMetric : '', // Only first SI gets DO's primary metric
+        metric: si.successMetric || '',
+        benchmark: si.benchmark || '',
       };
     });
 

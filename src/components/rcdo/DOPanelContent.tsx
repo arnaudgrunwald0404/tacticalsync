@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MoreVertical, ExternalLink, Plus } from 'lucide-react';
+import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -32,6 +32,7 @@ type NodeData = {
     ownerName?: string;
     ownerAvatarUrl?: string;
     metric?: string;
+    benchmark?: string;
     description?: string;
     dbId?: string;
   }>;
@@ -56,6 +57,9 @@ interface DOPanelContentProps {
   setFocusedSI: (si: { doId: string; siId: string } | null) => void;
   navigate: (path: string) => void;
   closePanel: () => void;
+  onLockDO?: () => void;
+  onUnlockDO?: () => void;
+  canLock?: boolean;
 }
 
 export function DOPanelContent({
@@ -74,6 +78,9 @@ export function DOPanelContent({
   setFocusedSI,
   navigate,
   closePanel,
+  onLockDO,
+  onUnlockDO,
+  canLock,
 }: DOPanelContentProps) {
   const navigateHook = useNavigate();
   const { toast } = useToast();
@@ -329,6 +336,39 @@ export function DOPanelContent({
             )}
           </div>
         </div>
+
+        {/* Finalize button */}
+        {!isLocked && onLockDO && (
+          <div className="pt-4 border-t mt-4">
+            <Button
+              size="sm"
+              onClick={onLockDO}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Lock this DO
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Locking will lock this DO and its SIs
+            </p>
+          </div>
+        )}
+        {isLocked && (
+          <div className="pt-4 border-t mt-4">
+            <p className="text-xs text-muted-foreground text-center">This DO has been finalized.</p>
+            {canLock && onUnlockDO && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onUnlockDO}
+                className="w-full mt-2 flex items-center justify-center gap-2"
+              >
+                <Unlock className="h-3.5 w-3.5" />
+                Unlock this DO
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

@@ -40,6 +40,7 @@ type NodeData = {
     ownerName?: string;
     ownerAvatarUrl?: string;
     metric?: string;
+    benchmark?: string;
     description?: string;
     dbId?: string;
   }>;
@@ -308,21 +309,39 @@ export function SIPanelContent({
         {/* 3. Primary Success Metric */}
         <div>
           <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
-          <textarea 
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none" 
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
             rows={3}
-            placeholder="e.g., % conversion, NPS, etc." 
-            value={si.metric || ""} 
+            placeholder="e.g., % conversion, NPS, etc."
+            value={si.metric || ""}
             onChange={(e)=>{ if (isLocked) return; onUpdate({ metric: e.target.value }); }}
-            disabled={isLocked}
-            style={{ 
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
-              whiteSpace: 'pre-wrap'
+            onBlur={async () => {
+              if (!si.dbId || isLocked) return;
+              await supabase.from('rc_strategic_initiatives').update({ primary_success_metric: si.metric || null } as Record<string, unknown>).eq('id', si.dbId);
             }}
+            disabled={isLocked}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
           />
         </div>
-        
+
+        {/* 3b. Benchmark */}
+        <div>
+          <label className="text-sm font-medium">Benchmark</label>
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            rows={2}
+            placeholder="e.g., baseline or target comparison"
+            value={si.benchmark || ""}
+            onChange={(e) => { if (isLocked) return; onUpdate({ benchmark: e.target.value }); }}
+            onBlur={async () => {
+              if (!si.dbId || isLocked) return;
+              await supabase.from('rc_strategic_initiatives').update({ benchmark: si.benchmark || null } as Record<string, unknown>).eq('id', si.dbId);
+            }}
+            disabled={isLocked}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+          />
+        </div>
+
         {/* % to Goal - Only show when DO and SI are locked */}
         {showPercentToGoal && (
           <div>

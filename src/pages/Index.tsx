@@ -36,9 +36,9 @@ const Index = () => {
   }, [navigate]);
 
   return (
-    <GridBackground className="min-h-screen bg-background">
+    <GridBackground className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2]">
       {/* Header - Hidden on mobile */}
-      <header className="hidden sm:block border-b bg-white">
+      <header className="hidden sm:block border-b border-[#4A5D5F]/10 bg-white/80 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center">
             <Logo variant="minimal" size="lg" className="scale-100" />
@@ -46,7 +46,7 @@ const Index = () => {
           <div className="flex gap-2">
             <Button
               size="lg"
-              className="font-body text-lg h-14 w-48 px-8 bg-copper hover:bg-copper-hover text-white"
+              className="font-body text-lg h-14 w-48 px-8 bg-[#4A5D5F] hover:bg-[#3d4f51] text-white"
               onClick={() => navigate("/auth")}
             >
               Get Started
@@ -56,7 +56,7 @@ const Index = () => {
             <Button
               size="lg"
               variant="outline"
-              className="font-body text-lg h-14 w-48 px-8 border-2 border-titanium text-titanium hover:bg-titanium/10"
+              className="font-body text-lg h-14 w-48 px-8 border-2 border-[#4A5D5F] text-[#4A5D5F] hover:bg-[#4A5D5F]/10"
               onClick={() => navigate("/auth")}
             >
               Sign In
@@ -90,10 +90,10 @@ const Index = () => {
 
             {/* Tagline + description */}
             <div className="space-y-2 !mt-8 sm:!mt-12 md:!mt-16">
-              <p className="hidden sm:block font-body text-sm tracking-widest uppercase text-[#B89A6B] font-semibold">
+              <p className="hidden sm:block font-body text-sm tracking-widest uppercase text-[#4A5D5F] font-semibold">
                 Achieve Uncommon Execution.
               </p>
-              <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F] max-w-2xl mx-auto px-4">
+              <p className="font-body text-base sm:text-lg md:text-xl text-[#4A5D5F]/70 max-w-2xl mx-auto px-4">
                 Connect your strategy to daily execution — with built-in check-ins,
                 commitments, and team alignment tools that actually close the loop.
               </p>
@@ -103,7 +103,7 @@ const Index = () => {
             <div className="sm:hidden pt-4">
               <Button
                 size="lg"
-                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-copper hover:bg-copper-hover text-white"
+                className="font-body text-lg h-14 w-full max-w-sm px-8 bg-[#4A5D5F] hover:bg-[#3d4f51] text-white"
                 onClick={() => navigate("/auth")}
               >
                 Get Started
@@ -113,42 +113,42 @@ const Index = () => {
           </div>
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 pt-8 sm:pt-12 md:pt-16">
-            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Target className="h-7 w-7 text-[#4A5D5F]" />
+            <div className="p-6 rounded-xl bg-white border-2 border-[#B89A6B]/30 hover:border-[#B89A6B]/50 hover:shadow-lg transition-all">
+              <div className="rounded-full bg-[#B89A6B] w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Target className="h-7 w-7 text-white" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Strategy & Objectives</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
-                Cascade rallying cries into defining objectives and track progress across your team
+                Cascade your rallying cry into measurable goals
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all">
-              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <CheckSquare className="h-7 w-7 text-[#4A5D5F]" />
+            <div className="p-6 rounded-xl bg-white border-2 border-[#B89A6B]/30 hover:border-[#B89A6B]/50 hover:shadow-lg transition-all">
+              <div className="rounded-full bg-[#B89A6B] w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <CheckSquare className="h-7 w-7 text-white" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Commitments & Priorities</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
-                Track commitments, priorities, and action items with clear ownership and deadlines
+                Track ownership and follow-through every week
               </p>
             </div>
 
-            <div className="p-6 rounded-xl bg-white border border-rose-gold/30 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
-              <div className="rounded-full bg-copper/10 w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <RefreshCw className="h-7 w-7 text-[#4A5D5F]" />
+            <div className="p-6 rounded-xl bg-white border-2 border-[#B89A6B]/30 hover:border-[#B89A6B]/50 hover:shadow-lg transition-all sm:col-span-2 md:col-span-1">
+              <div className="rounded-full bg-[#B89A6B] w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <RefreshCw className="h-7 w-7 text-white" />
               </div>
               <h3 className="font-heading text-lg font-semibold mb-2 text-cast-iron">Check-ins & Progress</h3>
               <p className="font-body text-sm sm:text-base text-titanium">
-                Run structured check-ins and review cycles that keep execution on track
+                Run structured reviews that close the loop
               </p>
             </div>
           </div>
         </div>
       </main>
 
-      <footer className="border-t border-rose-gold/20 mt-8 sm:mt-12 md:mt-20">
+      <footer className="border-t border-[#4A5D5F]/10 mt-8 sm:mt-12 md:mt-20">
         <div className="container mx-auto px-4 py-6 text-center">
-          <p className="font-body text-sm sm:text-base text-titanium">&copy; 2026 TacticalSync Inc. Built for uncommon execution.</p>
+          <p className="font-body text-sm sm:text-base text-titanium">&copy; 2026 TacticalSync Inc.</p>
         </div>
       </footer>
     </GridBackground>
