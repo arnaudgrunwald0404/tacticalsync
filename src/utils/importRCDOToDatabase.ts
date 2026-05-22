@@ -27,8 +27,8 @@ export type ImportProgressCallback = (progress: {
   label?: string;
 }) => void;
 
-async function findUserByName(name: string, fallbackUserId: string): Promise<string> {
-  if (!name) return fallbackUserId;
+async function findUserByName(name: string): Promise<string | null> {
+  if (!name) return null;
 
   const { data: users } = await supabase
     .from('profiles')
@@ -52,8 +52,8 @@ async function findUserByName(name: string, fallbackUserId: string): Promise<str
     return users[0].id;
   }
 
-  console.warn(`Owner "${name}" not found, using importing user as fallback`);
-  return fallbackUserId;
+  console.warn(`Owner "${name}" not found in profiles, leaving unassigned`);
+  return null;
 }
 
 const SI_STATUS_MAP: Record<string, InitiativeStatus> = {
@@ -181,7 +181,7 @@ export async function importRCDOToDatabase(
 
       onProgress?.({ index: progressIndex, status: 'loading', label: do_.title });
 
-      const doOwnerId = await findUserByName(do_.ownerName || '', ownerUserId);
+      const doOwnerId = (await findUserByName(do_.ownerName || '')) || ownerUserId;
       const hypothesisHtml = do_.definition ? `<p>${do_.definition}</p>` : null;
 
       const { data: createdDO, error: doError } = await supabase
@@ -230,7 +230,7 @@ export async function importRCDOToDatabase(
       // 4. Create Strategic Initiatives
       for (let j = 0; j < do_.strategicInitiatives.length; j++) {
         const si = do_.strategicInitiatives[j];
-        const siOwnerId = await findUserByName(si.ownerName || '', ownerUserId);
+        const siOwnerId = await findUserByName(si.ownerName || '');
 
         let descriptionHtml = '';
         if (si.bullets.length > 0) {
@@ -268,10 +268,7 @@ export async function importRCDOToDatabase(
         // 5. Create Tasks for this SI
         for (let k = 0; k < si.tasks.length; k++) {
           const task = si.tasks[k];
-          const taskOwnerId = await findUserByName(
-            task.ownerName || '',
-            ownerUserId
-          );
+          const taskOwnerId = await findUserByName(task.ownerName || '');
 
           const { error: taskError } = await supabase
             .from('rc_tasks')
