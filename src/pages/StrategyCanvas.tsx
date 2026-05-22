@@ -33,7 +33,6 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParser";
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
-import { formatRCDOForCanvas } from "@/utils/formatRCDOForCanvas";
 import { useToast } from "@/hooks/use-toast";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
@@ -1704,13 +1703,101 @@ const duplicateSelectedDo = useCallback(() => {
       
       // Small delay to let UI update
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const { nodes: importedNodes, edges: importedEdges } = formatRCDOForCanvas(parsedData);
-      
+
+      // Build canvas nodes from DB (not parsed markdown) so we get real IDs, owners, dates
+      const rcId = importResult.rallyingCryId!;
+      const { data: rcRow } = await supabase
+        .from('rc_rallying_cries')
+        .select('id, title')
+        .eq('id', rcId)
+        .single();
+
+      const { data: importedDOs } = await supabase
+        .from('rc_defining_objectives')
+        .select('id, title, hypothesis, owner_user_id, status, locked_at, display_order')
+        .eq('rallying_cry_id', rcId)
+        .order('display_order', { ascending: true });
+
+      const doDbIds = (importedDOs || []).map(d => d.id);
+      const { data: importedSIs } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, start_date, end_date, created_at')
+        .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
+
+      const { data: importedMetrics } = await supabase
+        .from('rc_do_metrics')
+        .select('defining_objective_id, name')
+        .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+        .order('display_order', { ascending: true });
+      const importMetricsMap = new Map<string, string>();
+      for (const m of importedMetrics || []) {
+        if (!importMetricsMap.has(m.defining_objective_id)) {
+          importMetricsMap.set(m.defining_objective_id, m.name);
+        }
+      }
+
+      const baseX = 400;
+      const baseY = 80;
+      const startY = baseY + 180;
+      const gapX = 320;
+      const doCount = (importedDOs || []).length;
+      const totalWidth = (doCount - 1) * gapX;
+      const startX = baseX - totalWidth / 2;
+
+      type ImportDORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
+      type ImportSIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; primary_success_metric?: string; benchmark?: string; defining_objective_id: string; status?: string; locked_at?: string | null; start_date?: string | null; end_date?: string | null; created_at?: string };
+
+      const importedNodes: Node<NodeData>[] = [
+        {
+          id: ROOT_ID,
+          type: 'rally',
+          position: { x: baseX, y: baseY },
+          data: {
+            title: '',
+            rallyCandidates: [rcRow?.title || parsedData.rallyingCry],
+            rallySelectedIndex: 0,
+            rallyFinalized: true,
+            size: { w: 280, h: 100 },
+          },
+        },
+      ];
+
+      (importedDOs || []).forEach((d: ImportDORow, index: number) => {
+        const doId = `do-${index + 1}`;
+        const posX = startX + index * gapX;
+        const relatedSIs = (importedSIs || []).filter((s: ImportSIRow) => s.defining_objective_id === d.id);
+        const saiItems = relatedSIs.map((si: ImportSIRow) => ({
+          id: `si-${doId}-${String(si.id).slice(0, 6)}`,
+          title: si.title,
+          ownerId: si.owner_user_id || undefined,
+          participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
+          description: si.description || '',
+          metric: si.primary_success_metric || '',
+          benchmark: si.benchmark || '',
+          dbId: si.id,
+        }));
+
+        importedNodes.push({
+          id: doId,
+          type: 'do',
+          position: { x: posX, y: startY },
+          data: {
+            title: d.title,
+            status: d.status === 'final' ? 'final' : 'draft',
+            ownerId: d.owner_user_id || undefined,
+            hypothesis: d.hypothesis || '',
+            primarySuccessMetric: importMetricsMap.get(d.id) || '',
+            saiItems,
+            size: { w: 260, h: 110 },
+            dbId: d.id,
+          },
+        });
+      });
+
       // Update canvas
       setNodes(importedNodes);
-      setEdges(importedEdges);
-      
+      setEdges([]);
+
       // Wait for ReactFlow to render
       await new Promise(resolve => setTimeout(resolve, 300));
       
