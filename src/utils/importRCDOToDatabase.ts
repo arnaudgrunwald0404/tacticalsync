@@ -288,6 +288,7 @@ export async function importRCDOToDatabase(
               actual_delivery_date: parseDate(task.actualDeliveryDate) || null,
               notes: task.notes || null,
               status: normalizeTaskStatus(task.status),
+              created_by: ownerUserId,
               display_order: k,
             });
 
