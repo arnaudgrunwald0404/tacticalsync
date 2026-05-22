@@ -249,8 +249,7 @@ const createDoNode = (
             const descriptionText = it.description ? it.description.replace(/<[^>]*>/g, '').trim() : '';
             // Check if metric field is empty (it's called 'metric' for SIs)
             const metricText = it.metric ? it.metric.trim() : '';
-            const siHasMissingFields = !it.title || !it.title.trim() || 
-                                      !descriptionText || 
+            const siHasMissingFields = !it.title || !it.title.trim() ||
                                       !metricText ||
                                       !it.ownerId;
             
@@ -1314,7 +1313,6 @@ const duplicateSelectedDo = useCallback(() => {
         const items = data.saiItems || [];
         for (const si of items) {
           const siHasMissingFields = !si.title?.trim() ||
-                                    !stripHtml(si.description || '') ||
                                     !si.metric?.trim() ||
                                     !si.ownerId;
 
@@ -1455,7 +1453,7 @@ const duplicateSelectedDo = useCallback(() => {
     for (const si of data.saiItems || []) {
       const siMissing: string[] = [];
       if (!si.title?.trim()) siMissing.push('Title');
-      if (!stripHtml(si.description || '')) siMissing.push('Description');
+      // Description is optional
       if (!si.metric?.trim()) siMissing.push('Metric');
       if (!si.ownerId) siMissing.push('Owner');
       if (siMissing.length > 0) {

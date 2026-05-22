@@ -249,7 +249,7 @@ export function SIPanelContent({
         
         {/* 2. Description */}
         <div>
-          <label className={`text-sm font-medium ${!si.description || si.description.trim().replace(/<[^>]*>/g, '').trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Description</label>
+          <label className="text-sm font-medium">Description</label>
           <div className="mt-1">
             <RichTextEditor
               content={si.description || ""}
