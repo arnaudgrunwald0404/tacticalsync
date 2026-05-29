@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle,
+  Sparkles, Pencil, AlertCircle, Info, FolderOpen,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -875,35 +875,18 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
           <h2 className="text-lg font-semibold">{heading}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {hasBrief && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onRefreshBrief}
-              disabled={briefLoading}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <RefreshCw className={cn('h-4 w-4 mr-1.5', briefLoading && 'animate-spin')} />
-              Refresh
-            </Button>
-          )}
-          {!hasBrief && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onLoadBrief}
-              disabled={briefLoading}
-            >
-              {briefLoading ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4 mr-1.5" />
-              )}
-              {briefLoading ? 'Loading…' : 'Load AI Brief'}
-            </Button>
-          )}
-        </div>
+        {hasBrief && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefreshBrief}
+            disabled={briefLoading}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={cn('h-4 w-4 mr-1.5', briefLoading && 'animate-spin')} />
+            Refresh
+          </Button>
+        )}
       </div>
 
       {/* Error */}
@@ -925,6 +908,40 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
           <CardContent className="py-8 flex flex-col items-center gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-copper" />
             <p className="text-sm text-muted-foreground">Loading today's brief…</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty state — no brief loaded yet */}
+      {!hasBrief && !briefLoading && !briefError && (
+        <Card className="border-dashed border-copper/30 bg-copper/[0.02]">
+          <CardContent className="py-6 px-5">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-copper/10 flex items-center justify-center mt-0.5">
+                <Sparkles className="h-5 w-5 text-copper" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold mb-1">AI-powered brief available</p>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                  Load your AI-generated brief to see today's priorities ranked by signals from your
+                  calendar, email, and Slack — merged with your My Lists priorities.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    onClick={onLoadBrief}
+                    disabled={briefLoading}
+                    className="bg-copper hover:bg-copper-hover text-white"
+                  >
+                    <FolderOpen className="h-4 w-4 mr-1.5" />
+                    Open brief folder
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground">
+                    Select your <code className="bg-muted px-1 rounded">dci-briefs</code> folder
+                  </span>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1111,6 +1128,80 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
         <p className="text-xs text-muted-foreground text-right">
           Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
         </p>
+      )}
+
+      {/* How this works */}
+      <DciBriefMethodology hasBrief={!!hasBrief} />
+    </div>
+  );
+}
+
+// ── DCI Brief Methodology ───────────────────────────────────────────────────
+
+function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-t border-border/50 pt-4">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Info className="h-3.5 w-3.5" />
+        <span>How this brief is calculated</span>
+        <ChevronDown className={cn('h-3 w-3 transition-transform', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-3 text-xs text-muted-foreground leading-relaxed">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2 rounded-lg border border-border/50 p-3">
+              <p className="font-semibold text-foreground">Step 1: Generate the brief</p>
+              <p>
+                Run <code className="bg-muted px-1 rounded text-[11px]">claude</code> from your terminal
+                and ask it to generate your DCI brief. It pulls real-time data from:
+              </p>
+              <ul className="space-y-1 pl-1">
+                <li className="flex items-center gap-2">📅 <span>Google Calendar — today's meetings, attendees, prep notes</span></li>
+                <li className="flex items-center gap-2">📧 <span>Gmail — unread and important threads from the last 48h</span></li>
+                <li className="flex items-center gap-2">💬 <span>Slack — recent DMs, mentions, and channel activity</span></li>
+              </ul>
+              <p>
+                The brief is saved as a dated markdown file
+                (<code className="bg-muted px-1 rounded text-[11px]">dci-briefs/2026-05-29.md</code>)
+                on your machine. No data leaves your computer.
+              </p>
+            </div>
+            <div className="space-y-2 rounded-lg border border-border/50 p-3">
+              <p className="font-semibold text-foreground">Step 2: Merge with My Lists</p>
+              <p>
+                When you load the brief here, the app merges AI signals with your
+                manually curated priorities from the <strong>My Lists</strong> tab:
+              </p>
+              <ul className="space-y-1.5 pl-1">
+                <li className="flex items-start gap-2">
+                  <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">Boosted</Badge>
+                  <span>Your priority confirmed by a calendar event, email, or Slack thread — it gets promoted to the top</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Badge variant="secondary" className="bg-copper/10 text-copper text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">New signal</Badge>
+                  <span>A new priority surfaced from email/calendar/Slack that isn't on your lists yet</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">My Lists</Badge>
+                  <span>Your existing priority, unchanged — no external signal matched it today</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/50 p-3">
+            <p className="font-semibold text-foreground mb-1">Step 3: Edit, log, share</p>
+            <p>
+              Hover any priority to edit it inline. When you're satisfied, click <strong>Log this brief</strong> to
+              save it to your DCI history, or <strong>Copy for DCI</strong> to paste it into your meeting.
+              You can re-generate the brief anytime by running Claude Code again and clicking Refresh.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );
