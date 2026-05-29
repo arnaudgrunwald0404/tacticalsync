@@ -795,14 +795,20 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
 }) {
   const [topicRaised, setTopicRaised] = useState('');
   const [numTopics, setNumTopics] = useState<number | ''>('');
-  const [editedMerged, setEditedMerged] = useState<string[] | null>(null);
+  const [editedDaily, setEditedDaily] = useState<string[] | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingTier, setEditingTier] = useState<'daily' | 'weekly' | null>(null);
   const today = format(new Date(), 'EEEE, MMMM d');
 
-  // Merge CoS priorities with brief when brief loads
-  const mergedPriorities = React.useMemo(() => {
+  // Merge CoS priorities with DAILY brief (what's urgent today)
+  const mergedDaily = React.useMemo(() => {
     return mergePrioritiesWithBrief(priorities, brief?.dailyPriorities ?? []);
   }, [priorities, brief?.dailyPriorities]);
+
+  // Merge CoS priorities with WEEKLY brief (what to accomplish by end of week)
+  const mergedWeekly = React.useMemo(() => {
+    return mergePrioritiesWithBrief(priorities, brief?.weeklyPriorities ?? []);
+  }, [priorities, brief?.weeklyPriorities]);
 
   // Pre-fill topic from brief
   useEffect(() => {
@@ -813,26 +819,27 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
 
   // Reset edits when brief/priorities change
   useEffect(() => {
-    setEditedMerged(null);
+    setEditedDaily(null);
     setEditingIdx(null);
+    setEditingTier(null);
   }, [brief, priorities]);
 
-  // The final displayed priorities: edited overrides merged
-  const displayedItems = mergedPriorities.slice(0, 3).map((item, i) => ({
+  // The final displayed daily priorities: edited overrides merged
+  const displayedDailyItems = mergedDaily.slice(0, 3).map((item, i) => ({
     ...item,
-    text: editedMerged?.[i] ?? item.text,
+    text: editedDaily?.[i] ?? item.text,
   }));
 
   const buildBriefText = () => {
     const lines = [
       `DCI Brief — ${today}`,
       '',
-      'Top 3 today:',
-      ...displayedItems.map((p, i) => `${i + 1}. ${p.text}`),
+      'Urgent today:',
+      ...displayedDailyItems.map((p, i) => `${i + 1}. ${p.text}`),
     ];
-    if (brief?.weeklyPriorities && brief.weeklyPriorities.length > 0) {
-      lines.push('', 'Weekly priorities:');
-      brief.weeklyPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p.text}`));
+    if (mergedWeekly.length > 0) {
+      lines.push('', 'Weekly priorities (by end of week):');
+      mergedWeekly.slice(0, 3).forEach((p, i) => lines.push(`${i + 1}. ${p.text}`));
     }
     lines.push('', `Topics for DCI: ${numTopics !== '' ? numTopics : 'TBD'}`);
     if (topicRaised) lines.push('', `Topic to raise: ${topicRaised}`);
@@ -840,7 +847,7 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
   };
 
   const handleLog = () => {
-    const logPriorities = displayedItems.map((item, i) => ({
+    const logPriorities = displayedDailyItems.map((item, i) => ({
       ...(item.cosPriority ?? {
         id: `brief-${i}`,
         user_id: '',
@@ -859,8 +866,8 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
   };
 
   const updateEditedPriority = (idx: number, newText: string) => {
-    setEditedMerged(prev => {
-      const next = prev ? [...prev] : mergedPriorities.slice(0, 3).map(m => m.text);
+    setEditedDaily(prev => {
+      const next = prev ? [...prev] : mergedDaily.slice(0, 3).map(m => m.text);
       next[idx] = newText;
       return next;
     });
@@ -946,15 +953,15 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
         </Card>
       )}
 
-      {/* Today's Priorities — merged view */}
-      <Card>
+      {/* ── Urgent Today — what needs attention right now ── */}
+      <Card className={hasBrief ? 'border-copper/20' : ''}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               {hasBrief ? (
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-copper" />
-                  Top 3 Today
+                  Urgent Today
                 </span>
               ) : (
                 'Top 3 This Week'
@@ -962,33 +969,38 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
             </CardTitle>
             {hasBrief && (
               <span className="text-xs text-muted-foreground">
-                My Lists + AI signals
+                My Lists + today's signals
               </span>
             )}
           </div>
+          {hasBrief && (
+            <p className="text-xs text-muted-foreground mt-1">
+              What needs your attention right now — based on today's calendar, email, and Slack.
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {displayedItems.length === 0 ? (
+          {displayedDailyItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">No priorities for this week yet. Add some in the My Lists tab.</p>
           ) : (
-            displayedItems.map((item, i) => {
+            displayedDailyItems.map((item, i) => {
               const badge = ORIGIN_BADGE[item.origin];
               return (
                 <div key={i} className="group">
                   <div className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-copper/10 text-copper text-xs font-bold flex items-center justify-center mt-0.5">
                       {i + 1}
                     </span>
-                    {editingIdx === i ? (
+                    {editingTier === 'daily' && editingIdx === i ? (
                       <div className="flex-1 flex items-center gap-2">
                         <Input
-                          value={editedMerged?.[i] ?? item.text}
+                          value={editedDaily?.[i] ?? item.text}
                           onChange={e => updateEditedPriority(i, e.target.value)}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') setEditingIdx(null);
-                            if (e.key === 'Escape') setEditingIdx(null);
+                            if (e.key === 'Enter') { setEditingIdx(null); setEditingTier(null); }
+                            if (e.key === 'Escape') { setEditingIdx(null); setEditingTier(null); }
                           }}
-                          onBlur={() => setEditingIdx(null)}
+                          onBlur={() => { setEditingIdx(null); setEditingTier(null); }}
                           autoFocus
                           className="text-sm h-8"
                         />
@@ -1004,7 +1016,7 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
                               </Badge>
                             )}
                             <button
-                              onClick={() => setEditingIdx(i)}
+                              onClick={() => { setEditingIdx(i); setEditingTier('daily'); }}
                               className="opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
@@ -1026,11 +1038,11 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
               );
             })
           )}
-          {/* Show remaining CoS priorities below the top 3 if brief is loaded */}
-          {hasBrief && mergedPriorities.length > 3 && (
+          {/* Show remaining daily items below the top 3 */}
+          {hasBrief && mergedDaily.length > 3 && (
             <div className="pt-2 mt-2 border-t border-border/50">
-              <p className="text-xs text-muted-foreground mb-2">Also on your list:</p>
-              {mergedPriorities.slice(3).map((item, i) => (
+              <p className="text-xs text-muted-foreground mb-2">Also on your radar today:</p>
+              {mergedDaily.slice(3).map((item, i) => (
                 <div key={i + 3} className="flex items-start gap-3 py-1">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
                     {i + 4}
@@ -1050,32 +1062,71 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
         </CardContent>
       </Card>
 
-      {/* Weekly Focus */}
-      {brief?.weeklyPriorities && brief.weeklyPriorities.length > 0 && (
+      {/* ── Weekly Priorities — what to accomplish by end of week ── */}
+      {mergedWeekly.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-copper" />
-                Weekly Focus
-              </span>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                <span className="flex items-center gap-1.5">
+                  {hasBrief && <Sparkles className="h-3.5 w-3.5 text-primary" />}
+                  Weekly Priorities
+                </span>
+              </CardTitle>
+              {hasBrief && brief?.weeklySourceDate && !brief.isMonday && (
+                <span className="text-[10px] text-muted-foreground">
+                  Set {format(new Date(brief.weeklySourceDate + 'T12:00:00'), 'EEEE')}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {hasBrief
+                ? 'What you need to accomplish by end of week. Re-evaluated daily against new signals.'
+                : 'Your top priorities for this week from My Lists.'}
+            </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {brief.weeklyPriorities.map((item, i) => (
-              <div key={i}>
-                <div className="flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-copper/10 text-copper text-xs font-bold flex items-center justify-center mt-0.5">
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium leading-snug">{item.text}</span>
+            {mergedWeekly.slice(0, 3).map((item, i) => {
+              const badge = ORIGIN_BADGE[item.origin];
+              return (
+                <div key={i}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-medium leading-snug">{item.text}</span>
+                        {hasBrief && badge && (
+                          <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 h-5 font-normal flex-shrink-0', badge.className)}>
+                            {badge.label}
+                          </Badge>
+                        )}
+                      </div>
+                      {item.briefReasoning && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-xs">{SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'}</span>
+                          <span className="text-xs text-muted-foreground">{item.briefReasoning}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="ml-9 mt-1 flex items-center gap-2">
-                  <span className="text-xs">{SOURCE_ICONS[item.source] ?? '📋'}</span>
-                  <span className="text-xs text-muted-foreground">{item.reasoning}</span>
-                </div>
+              );
+            })}
+            {mergedWeekly.length > 3 && (
+              <div className="pt-2 mt-2 border-t border-border/50">
+                <p className="text-xs text-muted-foreground mb-2">Also this week:</p>
+                {mergedWeekly.slice(3).map((item, i) => (
+                  <div key={i + 3} className="flex items-start gap-3 py-1">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
+                      {i + 4}
+                    </span>
+                    <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       )}
@@ -1153,6 +1204,21 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
       </button>
       {expanded && (
         <div className="mt-3 space-y-3 text-xs text-muted-foreground leading-relaxed">
+          <div className="rounded-lg border border-border/50 p-3 space-y-2">
+            <p className="font-semibold text-foreground">Two tiers of priorities</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded bg-copper/5 p-2">
+                <p className="font-semibold text-copper text-[11px] uppercase tracking-wide mb-1">Urgent Today</p>
+                <p>What needs your attention <em>right now</em> — driven by today's calendar, emails, and Slack. Re-derived every day.</p>
+              </div>
+              <div className="rounded bg-primary/5 p-2">
+                <p className="font-semibold text-primary text-[11px] uppercase tracking-wide mb-1">Weekly Priorities</p>
+                <p>What you need to accomplish by end of week. Set Monday morning, carried through the week, re-evaluated daily against new signals.</p>
+              </div>
+            </div>
+            <p>Today's urgent items may overlap with your weekly priorities — or not. A fire drill from Slack might push a weekly priority off today's list, but it stays in the weekly view.</p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2 rounded-lg border border-border/50 p-3">
               <p className="font-semibold text-foreground">Step 1: Generate the brief</p>
@@ -1166,29 +1232,27 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
                 <li className="flex items-center gap-2">💬 <span>Slack — recent DMs, mentions, and channel activity</span></li>
               </ul>
               <p>
-                The brief is saved as a dated markdown file
-                (<code className="bg-muted px-1 rounded text-[11px]">dci-briefs/2026-05-29.md</code>)
-                on your machine. No data leaves your computer.
+                The brief is saved as a dated markdown file on your machine. On Monday it sets both daily and weekly priorities. Tue–Fri it re-derives today's focus while carrying forward the weekly plan.
               </p>
             </div>
             <div className="space-y-2 rounded-lg border border-border/50 p-3">
               <p className="font-semibold text-foreground">Step 2: Merge with My Lists</p>
               <p>
-                When you load the brief here, the app merges AI signals with your
-                manually curated priorities from the <strong>My Lists</strong> tab:
+                Your manually curated priorities from <strong>My Lists</strong> are always the foundation.
+                AI signals annotate and reorder them:
               </p>
               <ul className="space-y-1.5 pl-1">
                 <li className="flex items-start gap-2">
                   <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">Boosted</Badge>
-                  <span>Your priority confirmed by a calendar event, email, or Slack thread — it gets promoted to the top</span>
+                  <span>Your priority confirmed by a calendar event, email, or Slack thread</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Badge variant="secondary" className="bg-copper/10 text-copper text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">New signal</Badge>
-                  <span>A new priority surfaced from email/calendar/Slack that isn't on your lists yet</span>
+                  <span>Net-new item surfaced from email/calendar/Slack not on your lists</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">My Lists</Badge>
-                  <span>Your existing priority, unchanged — no external signal matched it today</span>
+                  <span>Your existing priority — no external signal matched it today</span>
                 </li>
               </ul>
             </div>
@@ -1196,9 +1260,9 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
           <div className="rounded-lg border border-border/50 p-3">
             <p className="font-semibold text-foreground mb-1">Step 3: Edit, log, share</p>
             <p>
-              Hover any priority to edit it inline. When you're satisfied, click <strong>Log this brief</strong> to
-              save it to your DCI history, or <strong>Copy for DCI</strong> to paste it into your meeting.
-              You can re-generate the brief anytime by running Claude Code again and clicking Refresh.
+              Hover any priority to edit it inline. Click <strong>Log this brief</strong> to
+              save to DCI history, or <strong>Copy for DCI</strong> to paste into your meeting.
+              Re-generate anytime by running Claude Code again and clicking Refresh.
             </p>
           </div>
         </div>
