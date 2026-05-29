@@ -23,8 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# DCI briefs (local, personal data)
-/dci-briefs/
 
 # Test artifacts
 /test-results/
