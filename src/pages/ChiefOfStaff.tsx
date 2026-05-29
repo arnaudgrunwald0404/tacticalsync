@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
+  Sparkles, Pencil, AlertCircle,
 } from 'lucide-react';
+import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
   DndContext, DragEndEvent,
   PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -599,15 +601,15 @@ export default function ChiefOfStaff() {
 
         <TabsContent value="dci">
           <div className="space-y-8">
-            <TonightsBrief
-              priorities={thisWeekPriorities}
+            <DciTabContent
+              priorities={priorities}
+              thisWeekPriorities={thisWeekPriorities}
+              dciLogs={dciLogs}
               onCopy={copyToClipboard}
               onLog={logBrief}
-              heading="Today's Brief"
+              onUpdateLog={updateDciLog}
+              onRerun={rerunDci}
             />
-            <div className="border-t pt-8">
-              <DciHistory logs={dciLogs} onUpdate={updateDciLog} onRerun={rerunDci} />
-            </div>
           </div>
         </TabsContent>
 
@@ -624,59 +626,451 @@ export default function ChiefOfStaff() {
   );
 }
 
+// ── DCI Tab Content (with AI brief from local file) ─────────────────────────
+
+function DciTabContent({
+  priorities,
+  thisWeekPriorities,
+  dciLogs,
+  onCopy,
+  onLog,
+  onUpdateLog,
+  onRerun,
+}: {
+  priorities: CosPriority[];
+  thisWeekPriorities: CosPriority[];
+  dciLogs: CosDciLog[];
+  onCopy: (text: string, label?: string) => void;
+  onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
+  onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
+  onRerun: (log: CosDciLog) => void;
+}) {
+  const { brief, isLoading, error, loadBrief, refreshBrief } = useDciBrief();
+
+  return (
+    <>
+      <TonightsBrief
+        priorities={thisWeekPriorities}
+        onCopy={onCopy}
+        onLog={onLog}
+        heading="Today's Brief"
+        brief={brief}
+        briefLoading={isLoading}
+        briefError={error}
+        onLoadBrief={loadBrief}
+        onRefreshBrief={refreshBrief}
+      />
+      <div className="border-t pt-8">
+        <DciHistory logs={dciLogs} onUpdate={onUpdateLog} onRerun={onRerun} />
+      </div>
+    </>
+  );
+}
+
+// ── Priority merging: CoS pills + AI brief signals ──────────────────────────
+
+interface MergedPriority {
+  text: string;
+  origin: 'cos' | 'brief' | 'cos+brief';
+  /** The CoS priority if this originated from the pills */
+  cosPriority?: CosPriority;
+  /** Brief annotation (source icon + reasoning) when brief data reinforces or adds this */
+  briefSource?: string;
+  briefReasoning?: string;
+}
+
+/**
+ * Merge CoS priority pills with AI brief suggestions.
+ *
+ * Strategy:
+ * 1. Start with CoS "this_week" priorities as the base.
+ * 2. For each brief daily priority, fuzzy-match against CoS items.
+ *    - Match → mark as "cos+brief" and attach brief reasoning.
+ *    - No match → it's a net-new signal from email/cal/slack.
+ * 3. Build final list: matched CoS items first (in brief order), then
+ *    unmatched CoS items, then net-new brief items.
+ * 4. Return top 3.
+ */
+function mergePrioritiesWithBrief(
+  cosPriorities: CosPriority[],
+  briefPriorities: AiPrioritySuggestion[],
+): MergedPriority[] {
+  if (briefPriorities.length === 0) {
+    // No brief loaded — just return CoS priorities as-is
+    return cosPriorities.map(p => ({
+      text: p.text,
+      origin: 'cos' as const,
+      cosPriority: p,
+    }));
+  }
+
+  const merged: MergedPriority[] = [];
+  const usedCosIds = new Set<string>();
+
+  // Normalize for fuzzy matching
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+
+  // Pass 1: For each brief priority, try to match a CoS item
+  for (const bp of briefPriorities) {
+    const bpNorm = norm(bp.text);
+    const bpWords = bpNorm.split(/\s+/).filter(w => w.length > 3);
+
+    // Try to find a CoS priority that overlaps significantly
+    let bestMatch: CosPriority | null = null;
+    let bestScore = 0;
+    for (const cp of cosPriorities) {
+      if (usedCosIds.has(cp.id)) continue;
+      const cpNorm = norm(cp.text);
+      // Count shared significant words
+      const cpWords = cpNorm.split(/\s+/).filter(w => w.length > 3);
+      const shared = bpWords.filter(w => cpWords.some(cw => cw.includes(w) || w.includes(cw)));
+      const score = shared.length / Math.max(bpWords.length, 1);
+      if (score > bestScore && score >= 0.3) {
+        bestScore = score;
+        bestMatch = cp;
+      }
+    }
+
+    if (bestMatch) {
+      // CoS priority reinforced by the brief
+      usedCosIds.add(bestMatch.id);
+      merged.push({
+        text: bestMatch.text,
+        origin: 'cos+brief',
+        cosPriority: bestMatch,
+        briefSource: bp.source,
+        briefReasoning: bp.reasoning,
+      });
+    } else {
+      // Net-new from brief signals (email/cal/slack)
+      merged.push({
+        text: bp.text,
+        origin: 'brief',
+        briefSource: bp.source,
+        briefReasoning: bp.reasoning,
+      });
+    }
+  }
+
+  // Pass 2: Add remaining CoS priorities that weren't matched
+  for (const cp of cosPriorities) {
+    if (!usedCosIds.has(cp.id)) {
+      merged.push({
+        text: cp.text,
+        origin: 'cos',
+        cosPriority: cp,
+      });
+    }
+  }
+
+  return merged;
+}
+
 // ── Tonight's Brief ───────────────────────────────────────────────────────────
 
-function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief' }: {
+const SOURCE_ICONS: Record<string, string> = {
+  priorities: '📋',
+  email: '📧',
+  calendar: '📅',
+  slack: '💬',
+  dci_history: '🔄',
+};
+
+const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
+  cos: { label: 'My Lists', className: 'bg-primary/10 text-primary' },
+  brief: { label: 'New signal', className: 'bg-copper/10 text-copper' },
+  'cos+brief': { label: 'Boosted', className: 'bg-emerald-500/10 text-emerald-600' },
+};
+
+function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', brief, briefLoading, briefError, onLoadBrief, onRefreshBrief }: {
   priorities: CosPriority[];
   onCopy: (text: string, label?: string) => void;
   onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
   heading?: string;
+  brief?: DciBriefData | null;
+  briefLoading?: boolean;
+  briefError?: string | null;
+  onLoadBrief?: () => void;
+  onRefreshBrief?: () => void;
 }) {
   const [topicRaised, setTopicRaised] = useState('');
   const [numTopics, setNumTopics] = useState<number | ''>('');
+  const [editedMerged, setEditedMerged] = useState<string[] | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const today = format(new Date(), 'EEEE, MMMM d');
+
+  // Merge CoS priorities with brief when brief loads
+  const mergedPriorities = React.useMemo(() => {
+    return mergePrioritiesWithBrief(priorities, brief?.dailyPriorities ?? []);
+  }, [priorities, brief?.dailyPriorities]);
+
+  // Pre-fill topic from brief
+  useEffect(() => {
+    if (brief?.topicSuggestion && !topicRaised) {
+      setTopicRaised(brief.topicSuggestion);
+    }
+  }, [brief]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset edits when brief/priorities change
+  useEffect(() => {
+    setEditedMerged(null);
+    setEditingIdx(null);
+  }, [brief, priorities]);
+
+  // The final displayed priorities: edited overrides merged
+  const displayedItems = mergedPriorities.slice(0, 3).map((item, i) => ({
+    ...item,
+    text: editedMerged?.[i] ?? item.text,
+  }));
 
   const buildBriefText = () => {
     const lines = [
       `DCI Brief — ${today}`,
       '',
-      'Top 3 this week:',
-      ...priorities.map((p, i) => `${i + 1}. ${p.text}`),
-      '',
-      `Topics for DCI: ${numTopics !== '' ? numTopics : 'TBD'}`,
+      'Top 3 today:',
+      ...displayedItems.map((p, i) => `${i + 1}. ${p.text}`),
     ];
+    if (brief?.weeklyPriorities && brief.weeklyPriorities.length > 0) {
+      lines.push('', 'Weekly priorities:');
+      brief.weeklyPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p.text}`));
+    }
+    lines.push('', `Topics for DCI: ${numTopics !== '' ? numTopics : 'TBD'}`);
     if (topicRaised) lines.push('', `Topic to raise: ${topicRaised}`);
     return lines.join('\n');
   };
 
+  const handleLog = () => {
+    const logPriorities = displayedItems.map((item, i) => ({
+      ...(item.cosPriority ?? {
+        id: `brief-${i}`,
+        user_id: '',
+        category: 'this_week',
+        tier_order: i,
+        notes: null,
+        status: null,
+        created_at: '',
+        updated_at: '',
+        done_at: null,
+        archived_at: null,
+      }),
+      text: item.text,
+    } as CosPriority));
+    onLog(logPriorities, topicRaised, numTopics !== '' ? numTopics as number : undefined);
+  };
+
+  const updateEditedPriority = (idx: number, newText: string) => {
+    setEditedMerged(prev => {
+      const next = prev ? [...prev] : mergedPriorities.slice(0, 3).map(m => m.text);
+      next[idx] = newText;
+      return next;
+    });
+  };
+
+  const hasBrief = brief && brief.source !== 'none';
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">{heading}</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">{heading}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasBrief && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRefreshBrief}
+              disabled={briefLoading}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className={cn('h-4 w-4 mr-1.5', briefLoading && 'animate-spin')} />
+              Refresh
+            </Button>
+          )}
+          {!hasBrief && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onLoadBrief}
+              disabled={briefLoading}
+            >
+              {briefLoading ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1.5" />
+              )}
+              {briefLoading ? 'Loading…' : 'Load AI Brief'}
+            </Button>
+          )}
+        </div>
       </div>
 
+      {/* Error */}
+      {briefError && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-destructive">{briefError}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Run <code className="bg-muted px-1 rounded">claude</code> and ask it to generate your DCI brief for today.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {briefLoading && !brief && (
+        <Card>
+          <CardContent className="py-8 flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-copper" />
+            <p className="text-sm text-muted-foreground">Loading today's brief…</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Today's Priorities — merged view */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Top 3 This Week
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              {hasBrief ? (
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-copper" />
+                  Top 3 Today
+                </span>
+              ) : (
+                'Top 3 This Week'
+              )}
+            </CardTitle>
+            {hasBrief && (
+              <span className="text-xs text-muted-foreground">
+                My Lists + AI signals
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {priorities.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No priorities for this week yet. Add some in the Priorities tab.</p>
+          {displayedItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No priorities for this week yet. Add some in the My Lists tab.</p>
           ) : (
-            priorities.map((p, i) => (
-              <div key={p.id} className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
-                  {i + 1}
-                </span>
-                <span className="text-sm font-medium leading-snug">{p.text}</span>
-              </div>
-            ))
+            displayedItems.map((item, i) => {
+              const badge = ORIGIN_BADGE[item.origin];
+              return (
+                <div key={i} className="group">
+                  <div className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                      {i + 1}
+                    </span>
+                    {editingIdx === i ? (
+                      <div className="flex-1 flex items-center gap-2">
+                        <Input
+                          value={editedMerged?.[i] ?? item.text}
+                          onChange={e => updateEditedPriority(i, e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') setEditingIdx(null);
+                            if (e.key === 'Escape') setEditingIdx(null);
+                          }}
+                          onBlur={() => setEditingIdx(null)}
+                          autoFocus
+                          className="text-sm h-8"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-sm font-medium leading-snug">{item.text}</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {hasBrief && badge && (
+                              <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 h-5 font-normal', badge.className)}>
+                                {badge.label}
+                              </Badge>
+                            )}
+                            <button
+                              onClick={() => setEditingIdx(i)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                            </button>
+                          </div>
+                        </div>
+                        {item.briefReasoning && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-xs" title={item.briefSource}>
+                              {SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{item.briefReasoning}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          {/* Show remaining CoS priorities below the top 3 if brief is loaded */}
+          {hasBrief && mergedPriorities.length > 3 && (
+            <div className="pt-2 mt-2 border-t border-border/50">
+              <p className="text-xs text-muted-foreground mb-2">Also on your list:</p>
+              {mergedPriorities.slice(3).map((item, i) => (
+                <div key={i + 3} className="flex items-start gap-3 py-1">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
+                    {i + 4}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
+                    {item.briefReasoning && (
+                      <span className="text-xs text-muted-foreground/70 ml-2">
+                        {SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'} {item.briefReasoning}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Weekly Focus */}
+      {brief?.weeklyPriorities && brief.weeklyPriorities.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-copper" />
+                Weekly Focus
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {brief.weeklyPriorities.map((item, i) => (
+              <div key={i}>
+                <div className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-copper/10 text-copper text-xs font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-medium leading-snug">{item.text}</span>
+                </div>
+                <div className="ml-9 mt-1 flex items-center gap-2">
+                  <span className="text-xs">{SOURCE_ICONS[item.source] ?? '📋'}</span>
+                  <span className="text-xs text-muted-foreground">{item.reasoning}</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Calendar / Email / Slack sections from brief */}
+      {brief && (brief.calendarSection || brief.emailSection || brief.slackSection) && (
+        <BriefContextCards
+          calendarSection={brief.calendarSection}
+          emailSection={brief.emailSection}
+          slackSection={brief.slackSection}
+        />
+      )}
 
       <div className="flex items-center gap-3">
         <label className="text-sm font-medium whitespace-nowrap">Topics for DCI</label>
@@ -706,12 +1100,76 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief' }: 
           <Copy className="h-4 w-4 mr-2" />
           Copy for DCI
         </Button>
-        <Button onClick={() => onLog(priorities, topicRaised, numTopics !== '' ? numTopics as number : undefined)}>
+        <Button onClick={handleLog}>
           <Save className="h-4 w-4 mr-2" />
           Log this brief
         </Button>
       </div>
+
+      {/* Brief timestamp */}
+      {brief?.generatedAt && brief.source !== 'none' && (
+        <p className="text-xs text-muted-foreground text-right">
+          Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
+        </p>
+      )}
     </div>
+  );
+}
+
+// ── Brief Context Cards (Calendar / Email / Slack from markdown) ─────────────
+
+function BriefContextCards({ calendarSection, emailSection, slackSection }: {
+  calendarSection: string | null;
+  emailSection: string | null;
+  slackSection: string | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const sections = [
+    { label: 'Calendar', icon: '📅', content: calendarSection },
+    { label: 'Email Signals', icon: '📧', content: emailSection },
+    { label: 'Slack Signals', icon: '💬', content: slackSection },
+  ].filter(s => s.content);
+
+  if (sections.length === 0) return null;
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-2">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex items-center justify-between w-full"
+        >
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Context Sources
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {sections.map(s => (
+              <span key={s.label} className="text-xs">{s.icon}</span>
+            ))}
+            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+          </div>
+        </button>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="space-y-4 pt-0">
+          {sections.map(s => (
+            <div key={s.label}>
+              <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                {s.icon} {s.label}
+              </p>
+              <div className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed pl-1">
+                {s.content!.split('\n').map((line, i) => (
+                  <div key={i} className={cn(line.startsWith('-') ? 'ml-2' : '', 'mb-0.5')}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
