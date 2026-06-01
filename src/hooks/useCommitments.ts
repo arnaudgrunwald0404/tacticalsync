@@ -36,7 +36,8 @@ export function useActiveQuarter(teamId: string | null) {
       setQuarter(
         rows.find(q => q.status === 'active')
         ?? rows.find(q => q.start_date <= today && today <= q.end_date)
-        ?? rows[0]
+        ?? rows.find(q => q.start_date <= today)
+        ?? rows[rows.length - 1]
         ?? null,
       );
     } catch (err) {

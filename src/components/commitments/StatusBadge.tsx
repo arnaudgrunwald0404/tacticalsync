@@ -15,7 +15,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, onClick, className }: StatusBadgeProps) {
-  const { dot, label } = config[status];
+  const { dot, label } = config[status] ?? { dot: 'bg-gray-300', label: status ?? 'Unknown' };
   return (
     <button
       type="button"
