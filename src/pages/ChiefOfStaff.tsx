@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, startOfWeek, addDays, isToday as isDateToday } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
   Sparkles, Pencil, AlertCircle, Info, FolderOpen,
@@ -371,7 +371,7 @@ export default function ChiefOfStaff() {
     if (!error && data) setPersonTopics(prev => [...prev, data as CosPersonTopic]);
   };
 
-  const logBrief = async (topPriorities: CosPriority[], topicRaised: string, numTopics?: number) => {
+  const logBrief = async (topPriorities: CosPriority[], topicRaised: string) => {
     if (!userId) return;
     const today = format(new Date(), 'yyyy-MM-dd');
     const existingToday = dciLogs.find(l => l.date === today);
@@ -382,7 +382,7 @@ export default function ChiefOfStaff() {
       priority_2: topPriorities[1]?.text ?? null,
       priority_3: topPriorities[2]?.text ?? null,
       topic_raised: topicRaised || null,
-      notes: numTopics != null ? `${numTopics} topics` : null,
+      notes: null,
     };
     let data, error;
     if (existingToday) {
@@ -442,7 +442,7 @@ export default function ChiefOfStaff() {
       done: '✅ Done', in_progress: '🔄 In Progress', blocked: '🚫 Blocked', deferred: '⏭️ Deferred',
     };
     const lines = [
-      `DCI Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
+      `Daily Check-in Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
       `Original brief from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}:`,
       '',
     ];
@@ -456,7 +456,7 @@ export default function ChiefOfStaff() {
       if (item.comment) lines.push(`   Note: ${item.comment}`);
     });
     if (newPriorities.length > 0) {
-      lines.push('', 'Still open for next DCI:');
+      lines.push('', 'Still open for next Daily Check-in:');
       newPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
     }
     lines.push('', 'Given this context, please: (1) identify what needs the most attention right now, (2) suggest any adjustments to the remaining priorities, and (3) draft a brief update I can share with my team.');
@@ -504,7 +504,7 @@ export default function ChiefOfStaff() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6 grid max-w-sm grid-cols-3">
           <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
-          <TabsTrigger value="dci" title="Daily Check-In">DCI</TabsTrigger>
+          <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
@@ -605,7 +605,6 @@ export default function ChiefOfStaff() {
               priorities={priorities}
               thisWeekPriorities={thisWeekPriorities}
               dciLogs={dciLogs}
-              onCopy={copyToClipboard}
               onLog={logBrief}
               onUpdateLog={updateDciLog}
               onRerun={rerunDci}
@@ -626,13 +625,15 @@ export default function ChiefOfStaff() {
   );
 }
 
-// ── DCI Tab Content (with AI brief from local file) ─────────────────────────
+// ── DCI Tab Content (weekly matrix + today's brief) ─────────────────────────
+
+const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const DAY_LABELS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 function DciTabContent({
   priorities,
   thisWeekPriorities,
   dciLogs,
-  onCopy,
   onLog,
   onUpdateLog,
   onRerun,
@@ -640,30 +641,288 @@ function DciTabContent({
   priorities: CosPriority[];
   thisWeekPriorities: CosPriority[];
   dciLogs: CosDciLog[];
-  onCopy: (text: string, label?: string) => void;
-  onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
+  onLog: (priorities: CosPriority[], topic: string) => void;
   onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
   onRerun: (log: CosDciLog) => void;
 }) {
   const { brief, isLoading, error, loadBrief, refreshBrief } = useDciBrief();
 
+  // Compute Monday–Friday dates for this week
+  const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(monday, i));
+  const weekDateStrings = weekDates.map(d => format(d, 'yyyy-MM-dd'));
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayDayIdx = weekDates.findIndex(d => isDateToday(d)); // 0=Mon, 4=Fri, -1 if weekend
+
+  // Build the matrix data: for each weekday, get logged priorities
+  const weekMatrix: { date: string; label: string; shortLabel: string; priorities: (string | null)[]; isToday: boolean; isLogged: boolean; log?: CosDciLog }[] =
+    weekDates.map((d, i) => {
+      const dateStr = weekDateStrings[i];
+      const log = dciLogs.find(l => l.date === dateStr);
+      return {
+        date: dateStr,
+        label: DAY_LABELS[i],
+        shortLabel: DAY_LABELS_SHORT[i],
+        priorities: log
+          ? [log.priority_1, log.priority_2, log.priority_3]
+          : [null, null, null],
+        isToday: dateStr === todayStr,
+        isLogged: !!log,
+        log,
+      };
+    });
+
+  // For today's column, if not yet logged but brief is loaded, show brief priorities
+  const hasBrief = brief && brief.source !== 'none';
+  const mergedDaily = React.useMemo(() => {
+    if (!brief || brief.source === 'none') return [];
+    return mergePrioritiesWithBrief(thisWeekPriorities, brief.dailyPriorities);
+  }, [thisWeekPriorities, brief]);
+
+  const mergedWeekly = React.useMemo(() => {
+    if (!brief || brief.source === 'none') return [];
+    return mergePrioritiesWithBrief(thisWeekPriorities, brief.weeklyPriorities);
+  }, [thisWeekPriorities, brief]);
+
+  // If today is Monday and brief is loaded but not logged, show weekly priorities in Monday column
+  // If today is Tue-Fri and brief is loaded but not logged, show daily priorities in today's column
+  const todayData = weekMatrix[todayDayIdx];
+  const todayBriefPriorities = todayDayIdx === 0
+    ? mergedWeekly.slice(0, 3).map(p => p.text)
+    : mergedDaily.slice(0, 3).map(p => p.text);
+
+  const [topicRaised, setTopicRaised] = useState('');
+
+  // Pre-fill topic from brief
+  useEffect(() => {
+    if (brief?.topicSuggestion && !topicRaised) {
+      setTopicRaised(brief.topicSuggestion);
+    }
+  }, [brief]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLog = () => {
+    // Build priorities to log — use today's merged brief priorities
+    const itemsToLog = todayDayIdx === 0 ? mergedWeekly : mergedDaily;
+    const logPriorities = itemsToLog.slice(0, 3).map((item, i) => ({
+      ...(item.cosPriority ?? {
+        id: `brief-${i}`,
+        user_id: '',
+        category: 'this_week',
+        tier_order: i,
+        notes: null,
+        status: null,
+        created_at: '',
+        updated_at: '',
+        done_at: null,
+        archived_at: null,
+      }),
+      text: item.text,
+    } as CosPriority));
+    onLog(logPriorities, topicRaised);
+  };
+
   return (
-    <>
-      <TonightsBrief
-        priorities={thisWeekPriorities}
-        onCopy={onCopy}
-        onLog={onLog}
-        heading="Today's Brief"
-        brief={brief}
-        briefLoading={isLoading}
-        briefError={error}
-        onLoadBrief={loadBrief}
-        onRefreshBrief={refreshBrief}
-      />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">This Week</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {format(monday, 'MMMM d')} – {format(addDays(monday, 4), 'MMMM d, yyyy')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasBrief && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={refreshBrief}
+              disabled={isLoading}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className={cn('h-4 w-4 mr-1.5', isLoading && 'animate-spin')} />
+              Refresh
+            </Button>
+          )}
+          {!hasBrief && !isLoading && !error && (
+            <Button
+              size="sm"
+              onClick={loadBrief}
+              disabled={isLoading}
+              className="bg-copper hover:bg-copper-hover text-white"
+            >
+              <FolderOpen className="h-4 w-4 mr-1.5" />
+              Load brief
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-destructive">{error}</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {isLoading && !brief && (
+        <Card>
+          <CardContent className="py-6 flex items-center justify-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-copper" />
+            <p className="text-sm text-muted-foreground">Loading today's brief…</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Weekly Matrix ── */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="grid grid-cols-5 divide-x divide-border">
+            {weekMatrix.map((day, dayIdx) => {
+              const isTodayCol = day.isToday;
+              const isPast = dayIdx < todayDayIdx;
+              const isFuture = todayDayIdx >= 0 && dayIdx > todayDayIdx;
+              const isMonday = dayIdx === 0;
+
+              // Determine what to show in this column
+              let displayPriorities = day.priorities;
+              let showBriefPreview = false;
+              if (isTodayCol && !day.isLogged && hasBrief && todayBriefPriorities.length > 0) {
+                displayPriorities = todayBriefPriorities.map(p => p || null);
+                showBriefPreview = true;
+              }
+
+              return (
+                <div
+                  key={day.date}
+                  className={cn(
+                    'min-h-[200px] flex flex-col',
+                    isTodayCol && 'bg-copper/[0.03]',
+                    isFuture && 'opacity-40',
+                  )}
+                >
+                  {/* Day header */}
+                  <div className={cn(
+                    'px-3 py-2.5 border-b border-border text-center',
+                    isTodayCol && 'bg-copper/10',
+                  )}>
+                    <p className={cn(
+                      'text-xs font-semibold uppercase tracking-wide',
+                      isTodayCol ? 'text-copper' : 'text-muted-foreground',
+                    )}>
+                      {day.shortLabel}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {format(weekDates[dayIdx], 'MMM d')}
+                    </p>
+                    {isMonday && (
+                      <p className="text-[9px] text-primary font-medium mt-0.5">Weekly objectives</p>
+                    )}
+                    {!isMonday && (
+                      <p className="text-[9px] text-muted-foreground/60 mt-0.5">Daily priorities</p>
+                    )}
+                  </div>
+
+                  {/* Priority rows */}
+                  <div className="flex-1 flex flex-col divide-y divide-border/50">
+                    {[0, 1, 2].map(rowIdx => {
+                      const text = displayPriorities[rowIdx];
+                      return (
+                        <div
+                          key={rowIdx}
+                          className={cn(
+                            'flex-1 px-3 py-2.5 flex items-start gap-2',
+                            !text && 'items-center justify-center',
+                          )}
+                        >
+                          {text ? (
+                            <>
+                              <span className={cn(
+                                'flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5',
+                                isMonday ? 'bg-primary/10 text-primary' : 'bg-copper/10 text-copper',
+                              )}>
+                                {rowIdx + 1}
+                              </span>
+                              <span className={cn(
+                                'text-xs leading-snug',
+                                showBriefPreview ? 'text-muted-foreground italic' : 'text-foreground font-medium',
+                              )}>
+                                {text}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/30">—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Status indicator */}
+                  <div className="px-3 py-1.5 border-t border-border/50 text-center">
+                    {day.isLogged ? (
+                      <span className="text-[10px] text-emerald-600 font-medium">✓ Logged</span>
+                    ) : isTodayCol && showBriefPreview ? (
+                      <span className="text-[10px] text-copper font-medium">Preview</span>
+                    ) : isFuture ? (
+                      <span className="text-[10px] text-muted-foreground/30">—</span>
+                    ) : isPast ? (
+                      <span className="text-[10px] text-muted-foreground/50">Not logged</span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Today's Brief Detail (only when brief is loaded and today is a weekday) ── */}
+      {hasBrief && todayDayIdx >= 0 && (
+        <TonightsBrief
+          priorities={thisWeekPriorities}
+          onLog={onLog}
+          heading={todayDayIdx === 0 ? "Monday — Set Weekly Objectives" : `${DAY_LABELS[todayDayIdx]} — Today's Focus`}
+          brief={brief}
+          briefLoading={isLoading}
+          briefError={error}
+          onLoadBrief={loadBrief}
+          onRefreshBrief={refreshBrief}
+        />
+      )}
+
+      {/* Topic + Log */}
+      {hasBrief && todayDayIdx >= 0 && (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Topic to raise <span className="text-muted-foreground font-normal">(optional)</span></label>
+            <Textarea
+              placeholder="What else do you want to bring up tonight?"
+              value={topicRaised}
+              onChange={e => setTopicRaised(e.target.value)}
+              rows={2}
+              className="resize-none"
+            />
+          </div>
+          <Button onClick={handleLog}>
+            <Save className="h-4 w-4 mr-2" />
+            Log this brief
+          </Button>
+          {brief?.generatedAt && (
+            <p className="text-xs text-muted-foreground">
+              Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* History */}
       <div className="border-t pt-8">
         <DciHistory logs={dciLogs} onUpdate={onUpdateLog} onRerun={onRerun} />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -776,16 +1035,23 @@ const SOURCE_ICONS: Record<string, string> = {
   dci_history: '🔄',
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  priorities: 'My Lists',
+  email: 'Email',
+  calendar: 'Calendar',
+  slack: 'Slack',
+  dci_history: 'DCI history',
+};
+
 const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
   cos: { label: 'My Lists', className: 'bg-primary/10 text-primary' },
   brief: { label: 'New signal', className: 'bg-copper/10 text-copper' },
   'cos+brief': { label: 'Boosted', className: 'bg-emerald-500/10 text-emerald-600' },
 };
 
-function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', brief, briefLoading, briefError, onLoadBrief, onRefreshBrief }: {
+function TonightsBrief({ priorities, onLog, heading = 'Monday Brief', brief, briefLoading, briefError, onLoadBrief, onRefreshBrief }: {
   priorities: CosPriority[];
-  onCopy: (text: string, label?: string) => void;
-  onLog: (priorities: CosPriority[], topic: string, numTopics?: number) => void;
+  onLog: (priorities: CosPriority[], topic: string) => void;
   heading?: string;
   brief?: DciBriefData | null;
   briefLoading?: boolean;
@@ -793,8 +1059,6 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
   onLoadBrief?: () => void;
   onRefreshBrief?: () => void;
 }) {
-  const [topicRaised, setTopicRaised] = useState('');
-  const [numTopics, setNumTopics] = useState<number | ''>('');
   const [editedDaily, setEditedDaily] = useState<string[] | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingTier, setEditingTier] = useState<'daily' | 'weekly' | null>(null);
@@ -810,13 +1074,6 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
     return mergePrioritiesWithBrief(priorities, brief?.weeklyPriorities ?? []);
   }, [priorities, brief?.weeklyPriorities]);
 
-  // Pre-fill topic from brief
-  useEffect(() => {
-    if (brief?.topicSuggestion && !topicRaised) {
-      setTopicRaised(brief.topicSuggestion);
-    }
-  }, [brief]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Reset edits when brief/priorities change
   useEffect(() => {
     setEditedDaily(null);
@@ -830,41 +1087,6 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
     text: editedDaily?.[i] ?? item.text,
   }));
 
-  const buildBriefText = () => {
-    const lines = [
-      `DCI Brief — ${today}`,
-      '',
-      'Urgent today:',
-      ...displayedDailyItems.map((p, i) => `${i + 1}. ${p.text}`),
-    ];
-    if (mergedWeekly.length > 0) {
-      lines.push('', 'Weekly priorities (by end of week):');
-      mergedWeekly.slice(0, 3).forEach((p, i) => lines.push(`${i + 1}. ${p.text}`));
-    }
-    lines.push('', `Topics for DCI: ${numTopics !== '' ? numTopics : 'TBD'}`);
-    if (topicRaised) lines.push('', `Topic to raise: ${topicRaised}`);
-    return lines.join('\n');
-  };
-
-  const handleLog = () => {
-    const logPriorities = displayedDailyItems.map((item, i) => ({
-      ...(item.cosPriority ?? {
-        id: `brief-${i}`,
-        user_id: '',
-        category: 'this_week',
-        tier_order: i,
-        notes: null,
-        status: null,
-        created_at: '',
-        updated_at: '',
-        done_at: null,
-        archived_at: null,
-      }),
-      text: item.text,
-    } as CosPriority));
-    onLog(logPriorities, topicRaised, numTopics !== '' ? numTopics as number : undefined);
-  };
-
   const updateEditedPriority = (idx: number, newText: string) => {
     setEditedDaily(prev => {
       const next = prev ? [...prev] : mergedDaily.slice(0, 3).map(m => m.text);
@@ -877,107 +1099,23 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{heading}</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
-        </div>
-        {hasBrief && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRefreshBrief}
-            disabled={briefLoading}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <RefreshCw className={cn('h-4 w-4 mr-1.5', briefLoading && 'animate-spin')} />
-            Refresh
-          </Button>
-        )}
-      </div>
-
-      {/* Error */}
-      {briefError && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm text-destructive">{briefError}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Run <code className="bg-muted px-1 rounded">claude</code> and ask it to generate your DCI brief for today.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Loading State */}
-      {briefLoading && !brief && (
-        <Card>
-          <CardContent className="py-8 flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-copper" />
-            <p className="text-sm text-muted-foreground">Loading today's brief…</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Empty state — no brief loaded yet */}
-      {!hasBrief && !briefLoading && !briefError && (
-        <Card className="border-dashed border-copper/30 bg-copper/[0.02]">
-          <CardContent className="py-6 px-5">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-copper/10 flex items-center justify-center mt-0.5">
-                <Sparkles className="h-5 w-5 text-copper" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold mb-1">AI-powered brief available</p>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-                  Load your AI-generated brief to see today's priorities ranked by signals from your
-                  calendar, email, and Slack — merged with your My Lists priorities.
-                </p>
-                <div className="flex items-center gap-3">
-                  <Button
-                    size="sm"
-                    onClick={onLoadBrief}
-                    disabled={briefLoading}
-                    className="bg-copper hover:bg-copper-hover text-white"
-                  >
-                    <FolderOpen className="h-4 w-4 mr-1.5" />
-                    Open brief folder
-                  </Button>
-                  <span className="text-[10px] text-muted-foreground">
-                    Select your <code className="bg-muted px-1 rounded">dci-briefs</code> folder
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── Urgent Today — what needs attention right now ── */}
-      <Card className={hasBrief ? 'border-copper/20' : ''}>
+      {hasBrief && <Card className="border-copper/20">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              {hasBrief ? (
-                <span className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-copper" />
-                  Urgent Today
-                </span>
-              ) : (
-                'Top 3 This Week'
-              )}
-            </CardTitle>
-            {hasBrief && (
-              <span className="text-xs text-muted-foreground">
-                My Lists + today's signals
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-copper" />
+                Urgent Today
               </span>
-            )}
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">
+              My Lists + today's signals
+            </span>
           </div>
-          {hasBrief && (
-            <p className="text-xs text-muted-foreground mt-1">
-              What needs your attention right now — based on today's calendar, email, and Slack.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground mt-1">
+            What needs your attention right now — based on today's calendar, email, and Slack.
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           {displayedDailyItems.length === 0 ? (
@@ -1023,13 +1161,17 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
                             </button>
                           </div>
                         </div>
-                        {item.briefReasoning && (
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="text-xs" title={item.briefSource}>
-                              {SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'}
-                            </span>
-                            <span className="text-xs text-muted-foreground">{item.briefReasoning}</span>
-                          </div>
+                        {hasBrief && (item.briefSource || item.briefReasoning) && (
+                          <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
+                            {item.briefSource && (
+                              <span className="inline-flex items-center gap-1">
+                                <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
+                                <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
+                              </span>
+                            )}
+                            {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
+                            {item.briefReasoning && <span>{item.briefReasoning}</span>}
+                          </p>
                         )}
                       </div>
                     )}
@@ -1049,10 +1191,12 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
                   </span>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
-                    {item.briefReasoning && (
-                      <span className="text-xs text-muted-foreground/70 ml-2">
-                        {SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'} {item.briefReasoning}
-                      </span>
+                    {(item.briefSource || item.briefReasoning) && (
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                        {item.briefSource && <span>{SOURCE_ICONS[item.briefSource] ?? '📋'} {SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>}
+                        {item.briefSource && item.briefReasoning && ' · '}
+                        {item.briefReasoning}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1060,29 +1204,27 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* ── Weekly Priorities — what to accomplish by end of week ── */}
-      {mergedWeekly.length > 0 && (
+      {hasBrief && mergedWeekly.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 <span className="flex items-center gap-1.5">
-                  {hasBrief && <Sparkles className="h-3.5 w-3.5 text-primary" />}
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
                   Weekly Priorities
                 </span>
               </CardTitle>
-              {hasBrief && brief?.weeklySourceDate && !brief.isMonday && (
+              {brief?.weeklySourceDate && !brief.isMonday && (
                 <span className="text-[10px] text-muted-foreground">
                   Set {format(new Date(brief.weeklySourceDate + 'T12:00:00'), 'EEEE')}
                 </span>
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {hasBrief
-                ? 'What you need to accomplish by end of week. Re-evaluated daily against new signals.'
-                : 'Your top priorities for this week from My Lists.'}
+              What you need to accomplish by end of week. Re-evaluated daily against new signals.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1103,11 +1245,17 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
                           </Badge>
                         )}
                       </div>
-                      {item.briefReasoning && (
-                        <div className="mt-1 flex items-center gap-2">
-                          <span className="text-xs">{SOURCE_ICONS[item.briefSource ?? 'priorities'] ?? '📋'}</span>
-                          <span className="text-xs text-muted-foreground">{item.briefReasoning}</span>
-                        </div>
+                      {hasBrief && (item.briefSource || item.briefReasoning) && (
+                        <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
+                          {item.briefSource && (
+                            <span className="inline-flex items-center gap-1">
+                              <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
+                              <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
+                            </span>
+                          )}
+                          {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
+                          {item.briefReasoning && <span>{item.briefReasoning}</span>}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -1122,7 +1270,16 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
                     <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
                       {i + 4}
                     </span>
-                    <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
+                      {(item.briefSource || item.briefReasoning) && (
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                          {item.briefSource && <span>{SOURCE_ICONS[item.briefSource] ?? '📋'} {SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>}
+                          {item.briefSource && item.briefReasoning && ' · '}
+                          {item.briefReasoning}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1139,50 +1296,6 @@ function TonightsBrief({ priorities, onCopy, onLog, heading = 'Monday Brief', br
           slackSection={brief.slackSection}
         />
       )}
-
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium whitespace-nowrap">Topics for DCI</label>
-        <input
-          type="number"
-          min={0}
-          placeholder="TBD"
-          value={numTopics}
-          onChange={e => setNumTopics(e.target.value === '' ? '' : Number(e.target.value))}
-          className="w-20 h-9 rounded-md border border-input bg-background px-3 text-sm text-center"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Topic to raise <span className="text-muted-foreground font-normal">(optional)</span></label>
-        <Textarea
-          placeholder="What else do you want to bring up tonight?"
-          value={topicRaised}
-          onChange={e => setTopicRaised(e.target.value)}
-          rows={3}
-          className="resize-none"
-        />
-      </div>
-
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={() => onCopy(buildBriefText(), 'Brief copied — paste into Cowork')}>
-          <Copy className="h-4 w-4 mr-2" />
-          Copy for DCI
-        </Button>
-        <Button onClick={handleLog}>
-          <Save className="h-4 w-4 mr-2" />
-          Log this brief
-        </Button>
-      </div>
-
-      {/* Brief timestamp */}
-      {brief?.generatedAt && brief.source !== 'none' && (
-        <p className="text-xs text-muted-foreground text-right">
-          Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
-        </p>
-      )}
-
-      {/* How this works */}
-      <DciBriefMethodology hasBrief={!!hasBrief} />
     </div>
   );
 }
@@ -1224,7 +1337,7 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
               <p className="font-semibold text-foreground">Step 1: Generate the brief</p>
               <p>
                 Run <code className="bg-muted px-1 rounded text-[11px]">claude</code> from your terminal
-                and ask it to generate your DCI brief. It pulls real-time data from:
+                and ask it to generate your Daily Check-in brief. It pulls real-time data from:
               </p>
               <ul className="space-y-1 pl-1">
                 <li className="flex items-center gap-2">📅 <span>Google Calendar — today's meetings, attendees, prep notes</span></li>
@@ -1261,7 +1374,7 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
             <p className="font-semibold text-foreground mb-1">Step 3: Edit, log, share</p>
             <p>
               Hover any priority to edit it inline. Click <strong>Log this brief</strong> to
-              save to DCI history, or <strong>Copy for DCI</strong> to paste into your meeting.
+              save to Daily Check-in history, or <strong>Copy for Daily Check-in</strong> to paste into your meeting.
               Re-generate anytime by running Claude Code again and clicking Refresh.
             </p>
           </div>
@@ -2490,7 +2603,7 @@ function DciLogCard({ log, onUpdate, onRerun, defaultExpanded = false }: {
             className="h-10 text-sm w-full sm:w-auto"
             onClick={() => onRerun(log)}
           >
-            🔄 Rerun DCI
+            🔄 Rerun Daily Check-in
           </Button>
         </div>
       </CardContent>
@@ -2510,14 +2623,14 @@ function DciHistory({ logs, onUpdate, onRerun }: {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">DCI History</h2>
+        <h2 className="text-lg font-semibold">Daily Check-in History</h2>
         <p className="text-sm text-muted-foreground mt-0.5">{logs.length} brief{logs.length !== 1 ? 's' : ''} logged</p>
       </div>
 
       {logs.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground text-sm">
-            No DCI briefs logged yet. Use the form above to log your first one.
+            No Daily Check-in briefs logged yet. Use the form above to log your first one.
           </CardContent>
         </Card>
       ) : (
