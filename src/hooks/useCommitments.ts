@@ -34,8 +34,8 @@ export function useActiveQuarter(teamId: string | null) {
       setQuarters(rows);
       const today = new Date().toISOString().slice(0, 10);
       setQuarter(
-        rows.find(q => q.status === 'active')
-        ?? rows.find(q => q.start_date <= today && today <= q.end_date)
+        rows.find(q => q.start_date <= today && today <= q.end_date)
+        ?? rows.find(q => q.status === 'active')
         ?? rows.find(q => q.start_date <= today)
         ?? rows[rows.length - 1]
         ?? null,

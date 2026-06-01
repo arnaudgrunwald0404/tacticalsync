@@ -73,7 +73,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
                 : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
             )}
           >
-            🧪 Testing Mode
+            Role Preview
           </Button>
         )}
       </div>

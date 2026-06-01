@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { RoleOverrideProvider } from "@/contexts/RoleOverrideContext";
+import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
 
@@ -40,9 +42,11 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <RoleOverrideProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <RoleOverrideBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={
@@ -186,6 +190,7 @@ const App = () => (
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </RoleOverrideProvider>
   </QueryClientProvider>
 );
 

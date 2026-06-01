@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveQuarter, useMyCommitments, useTeamCommitments, useReportingLines } from '@/hooks/useCommitments';
+import { useRoleOverride } from '@/contexts/RoleOverrideContext';
 import { QuarterSelector } from '@/components/commitments/QuarterSelector';
 import { MyCommitmentsPanel } from '@/components/commitments/MyCommitmentsPanel';
 import { TeamRollupView } from '@/components/commitments/TeamRollupView';
@@ -19,7 +20,9 @@ export default function Commitments() {
   const [userId, setUserId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [dbIsAdmin, setDbIsAdmin] = useState(false);
+  const { override } = useRoleOverride();
+  const isAdmin = override ? override === 'admin' : dbIsAdmin;
   const [profilesLoading, setProfilesLoading] = useState(true);
 
   // Bootstrap: get current user + their first team
@@ -39,7 +42,7 @@ export default function Commitments() {
 
       if (!memberships) { setProfilesLoading(false); return; }
       setTeamId(memberships.team_id);
-      setIsAdmin(memberships.role === 'admin');
+      setDbIsAdmin(memberships.role === 'admin');
 
       // Load all profiles in team for rollup views
       const { data: members } = await supabase

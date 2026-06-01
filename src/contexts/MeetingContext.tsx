@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useRoleOverride } from '@/contexts/RoleOverrideContext';
 import { formatMemberNames } from '@/lib/nameUtils';
 
 interface Profile {
@@ -65,7 +66,9 @@ interface MeetingProviderProps {
 export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
+  const [dbIsTeamAdmin, setDbIsTeamAdmin] = useState(false);
+  const { override } = useRoleOverride();
+  const isTeamAdmin = override ? override === 'admin' : dbIsTeamAdmin;
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [memberNames, setMemberNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -81,7 +84,7 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
       // Use cached data
       setCurrentUserId(cached.data.currentUserId);
       setIsSuperAdmin(cached.data.isSuperAdmin);
-      setIsTeamAdmin(cached.data.isTeamAdmin);
+      setDbIsTeamAdmin(cached.data.isTeamAdmin);
       setTeamMembers(cached.data.teamMembers);
       setMemberNames(cached.data.memberNames);
       setLoading(false);
@@ -128,7 +131,7 @@ export function MeetingProvider({ teamId, children }: MeetingProviderProps) {
       const teamAdmin = (membershipResult.data as { role?: string } | null)?.role === 'admin';
       
       setIsSuperAdmin(superAdmin);
-      setIsTeamAdmin(teamAdmin);
+      setDbIsTeamAdmin(teamAdmin);
 
       // Fetch profiles for all team members
       let members: TeamMember[] = [];

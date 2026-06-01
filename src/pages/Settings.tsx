@@ -23,6 +23,7 @@ import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import { AppNavbar } from "@/components/ui/app-navbar";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
+import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
 import { useFeaturePermissions, FEATURE_CATEGORIES, FEATURE_LABELS, FEATURE_DESCRIPTIONS, type FeatureKey } from "@/hooks/useFeaturePermissions";
@@ -144,8 +145,7 @@ const Settings = () => {
 
   // Testing mode state
   const [userEmail, setUserEmail] = useState("");
-  const [testingMode, setTestingMode] = useState<"admin" | "member">("admin");
-  const [switchingRole, setSwitchingRole] = useState(false);
+  const { override, setOverride } = useRoleOverride();
 
   useEffect(() => {
     checkAuth();
@@ -1989,53 +1989,14 @@ const Settings = () => {
     return items.reduce((total, item) => total + item.duration_minutes, 0);
   };
 
-  const handleSwitchRole = async () => {
-    setSwitchingRole(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const newRole = testingMode === "admin" ? "member" : "admin";
-
-      // Get all teams where user is a member
-      const { data: memberships, error: fetchError } = await supabase
-        .from("team_members")
-        .select("id, team_id, role")
-        .eq("user_id", user.id);
-
-      if (fetchError) throw fetchError;
-
-      if (!memberships || memberships.length === 0) {
-        toast({
-          title: "No teams found",
-          description: "You are not a member of any teams",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update all memberships to new role
-      const { error: updateError } = await supabase
-        .from("team_members")
-        .update({ role: newRole })
-        .eq("user_id", user.id);
-
-      if (updateError) throw updateError;
-
-      setTestingMode(newRole);
-      toast({
-        title: "Role switched successfully",
-        description: `You are now a ${newRole} on all ${memberships.length} team(s)`,
-      });
-    } catch (error: unknown) {
-      toast({
-        title: "Error switching role",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
-    } finally {
-      setSwitchingRole(false);
-    }
+  const handleSetOverride = (role: "admin" | "member" | null) => {
+    setOverride(role);
+    toast({
+      title: role ? `Viewing as ${role}` : "Role preview off",
+      description: role
+        ? `UI now shows the ${role} experience. No database changes were made.`
+        : "Back to your real permissions.",
+    });
   };
 
   const handleCreateCycle = async () => {
@@ -2597,47 +2558,46 @@ const Settings = () => {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-2xl font-bold mb-2">🧪 Testing Mode</h2>
+                <h2 className="text-2xl font-bold mb-2">Role Preview</h2>
                 <p className="text-muted-foreground">
-                  Switch between admin and member roles on all teams for testing purposes
+                  See the app as a different role — no database changes, instant switch
                 </p>
               </div>
             </div>
 
-            <Card className="border-orange-200 bg-orange-50/50">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <span className="text-2xl">⚠️</span>
-                  Role Switcher
-                </CardTitle>
-                <CardDescription>
-                  This feature is only available for testing purposes and will change your role on ALL teams you're a member of.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-white rounded-lg border">
-                  <div>
-                    <div className="font-semibold">Current Role</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      You are currently set as: <span className="font-bold text-primary">{testingMode}</span>
-                    </div>
+            <Card>
+              <CardContent className="py-6 space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {([null, "admin", "member"] as const).map(role => {
+                    const active = override === role;
+                    const label = role === null ? "Your real role" : role === "admin" ? "Admin" : "Member";
+                    const desc = role === null
+                      ? "Use your actual permissions"
+                      : role === "admin"
+                        ? "Full access: create quarters, edit all, manage team"
+                        : "Limited access: view team, edit own items only";
+                    return (
+                      <button
+                        key={role ?? "real"}
+                        onClick={() => handleSetOverride(role)}
+                        className={`rounded-lg border-2 p-4 text-left transition-colors ${
+                          active
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/30"
+                        }`}
+                      >
+                        <div className="font-semibold text-sm">{label}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {override && (
+                  <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+                    <span>Currently previewing as <strong>{override}</strong>. A floating banner is visible on all pages.</span>
                   </div>
-                  <Button
-                    onClick={handleSwitchRole}
-                    disabled={switchingRole}
-                    variant="outline"
-                    size="lg"
-                  >
-                    {switchingRole ? "Switching..." : `Switch to ${testingMode === "admin" ? "Member" : "Admin"}`}
-                  </Button>
-                </div>
-                
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-900">
-                    <strong>Note:</strong> Switching roles will immediately change your permissions on all teams. 
-                    You may need to refresh pages to see the updated UI based on your new role.
-                  </p>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>

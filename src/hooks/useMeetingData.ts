@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useRoleOverride } from '@/contexts/RoleOverrideContext';
 import {
   MeetingAgendaProps,
   MeetingDataState,
@@ -27,7 +28,9 @@ export function useMeetingData(props: MeetingAgendaProps): {
       setEditingItems([]);
     }
   }, [isEditingAgenda, editingItems]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [dbIsAdmin, setDbIsAdmin] = useState(false);
+  const { override } = useRoleOverride();
+  const isAdmin = override ? override === 'admin' : dbIsAdmin;
 
   // Data fetching
   useEffect(() => {
@@ -80,7 +83,7 @@ export function useMeetingData(props: MeetingAgendaProps): {
         .single();
 
       if (!error && memberData) {
-        setIsAdmin(memberData.role === "admin");
+        setDbIsAdmin(memberData.role === "admin");
       }
     } catch (error: unknown) {
       console.error("Error checking admin status:", error);

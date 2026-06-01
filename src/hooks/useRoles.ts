@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 
 export type RoleTag = 'admin' | 'elt' | 'xlt' | 'user';
 export const ALL_ROLE_TAGS: RoleTag[] = ['admin', 'elt', 'xlt', 'user'];
@@ -76,7 +77,18 @@ export function useRoles(): RolesState {
     return () => { isMounted = false; };
   }, []);
 
-  return state;
+  const { override } = useRoleOverride();
+
+  return useMemo(() => {
+    if (!override) return state;
+    const isAdmin = override === 'admin';
+    return {
+      ...state,
+      isAdmin,
+      isSuperAdmin: isAdmin && state.isSuperAdmin,
+      isRCDOAdmin: isAdmin && state.isRCDOAdmin,
+    };
+  }, [state, override]);
 }
 
 
