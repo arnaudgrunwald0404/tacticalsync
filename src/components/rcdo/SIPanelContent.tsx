@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -75,6 +75,8 @@ export function SIPanelContent({
   isDoPanelOpen,
 }: SIPanelContentProps) {
   const navigate = useNavigate();
+  const [panelSearchParams] = useSearchParams();
+  const cycleParam = panelSearchParams.get('cycle');
   const { toast } = useToast();
   const { isAdmin, isSuperAdmin, isRCDOAdmin } = useRoles();
   const isMobile = useIsMobile();
@@ -169,7 +171,7 @@ export function SIPanelContent({
               className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
               aria-label="Open in full page"
               onClick={() => {
-                navigate(`/rcdo/detail/si/${si.dbId}`);
+                navigate(`/rcdo/detail/si/${si.dbId}${cycleParam ? `?cycle=${cycleParam}` : ''}`);
                 if (isMobile) onClose();
               }}
               title="Open in full page"

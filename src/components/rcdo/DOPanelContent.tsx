@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -83,6 +83,8 @@ export function DOPanelContent({
   canLock,
 }: DOPanelContentProps) {
   const navigateHook = useNavigate();
+  const [panelSearchParams] = useSearchParams();
+  const cycleParam = panelSearchParams.get('cycle');
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -159,7 +161,7 @@ export function DOPanelContent({
               className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
               aria-label="Open in full page"
               onClick={() => {
-                navigateHook(`/rcdo/detail/do/${dbId}`);
+                navigateHook(`/rcdo/detail/do/${dbId}${cycleParam ? `?cycle=${cycleParam}` : ''}`);
                 if (isMobile) closePanel();
               }}
               title="Open in full page"

@@ -39,10 +39,20 @@ export default function DODetail() {
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
   const [siDateError, setSiDateError] = useState<string | null>(null);
 
-  const { cycle } = useActiveCycle();
+  const { cycle: activeCycle } = useActiveCycle();
+  const cycleIdFromUrl = searchParams.get('cycle');
 
   // Fetch DO details
   const { doDetails, loading: doLoading, refetch: refetchDO } = useDODetails(doId);
+
+  // Derive cycle from DO's parent chain so it works even without ?cycle= param
+  const [derivedCycleId, setDerivedCycleId] = useState<string | null>(null);
+  useEffect(() => {
+    if (cycleIdFromUrl || !doDetails?.rallying_cry_id) return;
+    supabase.from('rc_rallying_cries').select('cycle_id').eq('id', doDetails.rallying_cry_id).single()
+      .then(({ data }) => { if (data) setDerivedCycleId(data.cycle_id); });
+  }, [doDetails?.rallying_cry_id, cycleIdFromUrl]);
+  const cycleId = cycleIdFromUrl || derivedCycleId || activeCycle?.id;
 
   // Preserve nav context across DO navigations to avoid sidebar remount
   const lastRallyingCryId = useRef('');
@@ -313,7 +323,7 @@ export default function DODetail() {
   return (
     <DetailPageLayout
       rallyingCryId={doDetails.rallying_cry_id}
-      cycleId={cycle?.id}
+      cycleId={cycleId}
       currentDOId={doId}
       mobileNavOpen={mobileNavOpen}
       onMobileNavOpenChange={setMobileNavOpen}
@@ -859,7 +869,7 @@ export default function DODetail() {
                 <div className="flex gap-2 pt-4 border-t">
                   <Button
                     variant="outline"
-                    onClick={() => navigate(`/rcdo/detail/si/${selectedInitiative.id}`)}
+                    onClick={() => navigate(`/rcdo/detail/si/${selectedInitiative.id}${cycleIdFromUrl ? `?cycle=${cycleIdFromUrl}` : ''}`)}
                     className="flex-1"
                   >
                     View Details

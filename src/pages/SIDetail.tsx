@@ -107,8 +107,19 @@ export default function SIDetail() {
   // Fetch check-ins
   const { checkins, loading: checkinsLoading, refetch: refetchCheckins } = useCheckins('initiative', siId);
 
-  // Fetch cycle for Gantt chart
-  const { cycle } = useActiveCycle();
+  // Fetch cycle for Gantt chart — prefer URL param so draft cycles work
+  const { cycle: activeCycle } = useActiveCycle();
+  const cycleIdFromUrl = searchParams.get('cycle');
+
+  // Derive cycle from SI's parent chain so it works even without ?cycle= param
+  const [derivedCycleId, setDerivedCycleId] = useState<string | null>(null);
+  const siRallyingCryId = (siDetails?.defining_objective as Record<string, unknown> | undefined)?.rallying_cry_id as string | undefined;
+  useEffect(() => {
+    if (cycleIdFromUrl || !siRallyingCryId) return;
+    supabase.from('rc_rallying_cries').select('cycle_id').eq('id', siRallyingCryId).single()
+      .then(({ data }) => { if (data) setDerivedCycleId(data.cycle_id); });
+  }, [siRallyingCryId, cycleIdFromUrl]);
+  const cycleId = cycleIdFromUrl || derivedCycleId || activeCycle?.id;
 
   // Permissions - must be called before any early returns
   const { canEditInitiative, canCreateTask, canEditTask, canDeleteTask, canLockDO } = useRCDOPermissions();
@@ -395,17 +406,17 @@ export default function SIDetail() {
   ) : undefined;
 
   // Get cycle dates for Gantt chart
-  const cycleStartDate = cycle
-    ? parseLocalDate(cycle.start_date)
+  const cycleStartDate = activeCycle
+    ? parseLocalDate(activeCycle.start_date)
     : (siDetails.start_date ? parseLocalDate(siDetails.start_date) : new Date(new Date().getFullYear(), 0, 1));
-  const cycleEndDate = cycle
-    ? parseLocalDate(cycle.end_date)
+  const cycleEndDate = activeCycle
+    ? parseLocalDate(activeCycle.end_date)
     : (siDetails.end_date ? parseLocalDate(siDetails.end_date) : new Date(new Date().getFullYear(), 11, 31));
 
   return (
     <DetailPageLayout
       rallyingCryId={siDetails.defining_objective?.rallying_cry_id || ''}
-      cycleId={cycle?.id}
+      cycleId={cycleId}
       currentSIId={siId}
       currentDOId={siDetails.defining_objective?.id}
       currentTaskId={taskIdFromUrl || undefined}

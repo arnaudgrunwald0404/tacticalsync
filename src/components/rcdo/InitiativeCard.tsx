@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,8 @@ const statusConfig = {
 
 export function InitiativeCard({ initiative, onClick, isDragging = false }: InitiativeCardProps) {
   const navigate = useNavigate();
+  const [cardSearchParams] = useSearchParams();
+  const cycleParam = cardSearchParams.get('cycle');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
@@ -67,7 +69,7 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
     if (onClick) {
       onClick();
     } else {
-      navigate(`/rcdo/detail/si/${initiative.id}`);
+      navigate(`/rcdo/detail/si/${initiative.id}${cycleParam ? `?cycle=${cycleParam}` : ''}`);
     }
   };
 

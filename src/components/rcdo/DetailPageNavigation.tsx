@@ -311,13 +311,13 @@ export function DetailPageNavigation({
         navigate(cycleId ? `/rcdo/all-hands?cycle=${cycleId}` : '/rcdo/all-hands');
         break;
       case 'do':
-        navigate(`/rcdo/detail/do/${item.id}`);
+        navigate(`/rcdo/detail/do/${item.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
         break;
       case 'si':
-        navigate(`/rcdo/detail/si/${item.id}`);
+        navigate(`/rcdo/detail/si/${item.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
         break;
       case 'task':
-        navigate(`/rcdo/detail/si/${currentSIId || ''}?task=${item.id}`);
+        navigate(`/rcdo/detail/si/${currentSIId || ''}?task=${item.id}${cycleId ? `&cycle=${cycleId}` : ''}`);
         break;
     }
   }, [navigate, currentSIId, cycleId]);
