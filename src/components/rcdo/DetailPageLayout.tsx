@@ -51,7 +51,7 @@ export function DetailPageLayout({
       )}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
         <Button
-          onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo')}
+          onClick={() => navigate(cycleId ? `/rcdo/canvas?cycle=${cycleId}` : '/dashboard/rcdo?list=true')}
           className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
         >
           <LayoutGrid className="h-4 w-4 mr-2" />

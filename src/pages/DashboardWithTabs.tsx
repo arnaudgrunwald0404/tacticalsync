@@ -42,15 +42,17 @@ const DashboardWithTabs = () => {
   const { cycle: activeCycle, loading: activeCycleLoading } = useActiveCycle();
 
   // When on /dashboard/rcdo base path, send user to the active canvas if available
+  // Skip redirect when ?list=true is set (user explicitly chose "View all strategies")
   useEffect(() => {
     if (activeTab !== 'rcdo') return;
     const path = location.pathname.replace(/\/$/, '');
-    if (path === '/dashboard/rcdo' && !activeCycleLoading) {
+    const params = new URLSearchParams(location.search);
+    if (path === '/dashboard/rcdo' && !params.has('list') && !activeCycleLoading) {
       if (activeCycle?.id) {
         navigate(`/rcdo/canvas?cycle=${activeCycle.id}`, { replace: true });
       }
     }
-  }, [activeTab, location.pathname, activeCycleLoading, activeCycle?.id, navigate]);
+  }, [activeTab, location.pathname, location.search, activeCycleLoading, activeCycle?.id, navigate]);
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-platinum via-white to-white-gold overscroll-none">

@@ -57,7 +57,7 @@ export default function CyclePlanner() {
       });
 
       if (newCycle) {
-        navigate('/dashboard/rcdo');
+        navigate('/dashboard/rcdo?list=true');
       }
     } finally {
       setIsCreating(false);
@@ -121,7 +121,7 @@ export default function CyclePlanner() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate('/dashboard/rcdo')}
+              onClick={() => navigate('/dashboard/rcdo?list=true')}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
@@ -205,7 +205,7 @@ export default function CyclePlanner() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => navigate('/dashboard/rcdo')}
+                              onClick={() => navigate('/dashboard/rcdo?list=true')}
                             >
                               View Strategy
                             </Button>

@@ -547,7 +547,7 @@ export default function StrategyCanvasPage() {
   // If no cycle ID, redirect back to strategies list
   useEffect(() => {
     if (!cycleId) {
-      navigate('/dashboard/rcdo');
+      navigate('/dashboard/rcdo?list=true');
     }
   }, [cycleId, navigate]);
 
@@ -2031,10 +2031,11 @@ const duplicateSelectedDo = useCallback(() => {
                   <Button
                     disabled={!canGoToDetail}
                     onClick={() => {
-                      if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}`); return; }
-                      if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}`); return; }
+                      const cq = cycleId ? `?cycle=${cycleId}` : '';
+                      if (focusSiId) { navigate(`/rcdo/detail/si/${focusSiId}${cq}`); return; }
+                      if (focusDoId) { navigate(`/rcdo/detail/do/${focusDoId}${cq}`); return; }
                       for (const [, status] of doLockedStatus) {
-                        if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}`); return; }
+                        if (status.dbId) { navigate(`/rcdo/detail/do/${status.dbId}${cq}`); return; }
                       }
                     }}
                     className="flex items-center gap-1.5 text-xs text-white hover:text-white/80 transition-colors"
@@ -2058,7 +2059,7 @@ const duplicateSelectedDo = useCallback(() => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => navigate('/dashboard/rcdo')}>
+              <DropdownMenuItem onClick={() => navigate('/dashboard/rcdo?list=true')}>
                 <Layers className="h-4 w-4 mr-2" />
                 View all strategies
               </DropdownMenuItem>
@@ -3076,7 +3077,7 @@ function StrategyCanvasMobileView({
 
   useEffect(() => {
     if (!cycleId) {
-      navigate('/dashboard/rcdo');
+      navigate('/dashboard/rcdo?list=true');
       return;
     }
 
@@ -3402,7 +3403,7 @@ function StrategyCanvasMobileView({
                 <Button
                   onClick={() => {
                     setSelectedDOId(null);
-                    navigate(`/rcdo/detail/do/${selectedDODetails.id}`);
+                    navigate(`/rcdo/detail/do/${selectedDODetails.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
                   }}
                   className="w-full"
                 >
@@ -3477,7 +3478,7 @@ function StrategyCanvasMobileView({
                 <Button
                   onClick={() => {
                     setSelectedSIId(null);
-                    navigate(`/rcdo/detail/si/${selectedSIDetails.id}`);
+                    navigate(`/rcdo/detail/si/${selectedSIDetails.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
                   }}
                   className="w-full"
                 >
