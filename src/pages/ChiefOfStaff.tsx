@@ -2905,6 +2905,36 @@ async function generatePrep(member: CosTeamMember): Promise<{ content: string; s
   return { content: buildStaticPrepPrompt(member), source: 'static' };
 }
 
+/**
+ * Find the latest dated prep file for a person.
+ * Files follow the pattern: slug_YYYYMMDD.md (e.g. aj_depew_20260601.md).
+ * Returns the file with the most recent date suffix (today or closest prior).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findLatestPrepFile(dirHandle: any, slug: string): Promise<{ content: string; lastModified: number } | null> {
+  const prefix = `${slug}_`;
+  const datePattern = /^(\d{8})\.md$/;
+  let latestDate = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let latestHandle: any = null;
+
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (handle.kind !== 'file') continue;
+    if (!name.startsWith(prefix)) continue;
+    const suffix = name.slice(prefix.length);
+    const match = suffix.match(datePattern);
+    if (match && match[1] > latestDate) {
+      latestDate = match[1];
+      latestHandle = handle;
+    }
+  }
+
+  if (!latestHandle) return null;
+  const file = await latestHandle.getFile();
+  const content = await file.text();
+  return { content, lastModified: file.lastModified };
+}
+
 function formatGeneratedAt(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60000);
@@ -3114,15 +3144,12 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         }
         if (dirHandleRef.current) {
           const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
-          try {
-            const fileHandle = await dirHandleRef.current.getFileHandle(`${slug}.md`);
-            const file = await fileHandle.getFile();
-            const content = await file.text();
-            setPrepSheet({ member, content, source: 'static', generatedAt: new Date().toISOString() });
+          const result = await findLatestPrepFile(dirHandleRef.current, slug);
+          if (result) {
+            setPrepSheet({ member, content: result.content, source: 'static', generatedAt: new Date(result.lastModified).toISOString() });
             return;
-          } catch {
-            dirHandleRef.current = null;
           }
+          dirHandleRef.current = null;
         }
       }
 
@@ -3140,6 +3167,16 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     if (!prepSheet) return;
     setRefreshingPrep(true);
     try {
+      // Try local filesystem first (re-read latest dated file)
+      if (dirHandleRef.current) {
+        const slug = prepSheet.member.name.trim().toLowerCase().replace(/\s+/g, '_');
+        const result = await findLatestPrepFile(dirHandleRef.current, slug);
+        if (result) {
+          setPrepSheet({ ...prepSheet, content: result.content, source: 'static', generatedAt: new Date(result.lastModified).toISOString() });
+          return;
+        }
+      }
+      // Fall back to ClearGO / static
       const { content, source } = await generatePrep(prepSheet.member);
       setPrepSheet({ ...prepSheet, content, source, generatedAt: new Date().toISOString() });
     } catch (err) {
