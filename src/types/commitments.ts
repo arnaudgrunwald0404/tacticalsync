@@ -3,7 +3,7 @@ export type CommitmentStatus = 'draft' | 'in_progress' | 'done' | 'not_done';
 
 export interface CommitmentQuarter {
   id: string;
-  team_id: string;
+  team_id: string | null;
   label: string;         // "Q1 2026"
   start_date: string;    // ISO date
   end_date: string;

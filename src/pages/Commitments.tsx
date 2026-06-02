@@ -63,7 +63,7 @@ export default function Commitments() {
     load();
   }, []);
 
-  const { quarter, quarters, loading: quarterLoading, setQuarter, createQuarter } = useActiveQuarter(teamId);
+  const { quarter, quarters, loading: quarterLoading, setQuarter, createQuarter } = useActiveQuarter();
   const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus } = useMyCommitments(quarter?.id ?? null, userId);
   const { lines: reportingLines, loading: linesLoading, getDirectReportIds, getAllReportIds } = useReportingLines(teamId);
 

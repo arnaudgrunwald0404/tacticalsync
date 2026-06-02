@@ -14,20 +14,18 @@ import type {
 
 // ─── useActiveQuarter ────────────────────────────────────────────────────────
 
-export function useActiveQuarter(teamId: string | null) {
+export function useActiveQuarter() {
   const [quarter, setQuarter] = useState<CommitmentQuarter | null>(null);
   const [quarters, setQuarters] = useState<CommitmentQuarter[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   const fetchQuarters = useCallback(async () => {
-    if (!teamId) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('commitment_quarters')
         .select('*')
-        .eq('team_id', teamId)
         .order('start_date', { ascending: false });
       if (error) throw error;
       const rows = (data ?? []) as CommitmentQuarter[];
@@ -45,22 +43,21 @@ export function useActiveQuarter(teamId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [teamId, toast]);
+  }, [toast]);
 
   useEffect(() => { fetchQuarters(); }, [fetchQuarters]);
 
   const createQuarter = useCallback(async (form: CreateQuarterForm) => {
-    if (!teamId) return null;
     const { data: userData } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('commitment_quarters')
-      .insert({ ...form, team_id: teamId, created_by: userData.user?.id ?? null })
+      .insert({ ...form, created_by: userData.user?.id ?? null })
       .select()
       .single();
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return null; }
     await fetchQuarters();
     return data as CommitmentQuarter;
-  }, [teamId, fetchQuarters, toast]);
+  }, [fetchQuarters, toast]);
 
   return { quarter, quarters, loading, setQuarter, refetch: fetchQuarters, createQuarter };
 }

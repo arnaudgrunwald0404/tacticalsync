@@ -125,7 +125,7 @@ export default function Insights() {
     load();
   }, []);
 
-  const { quarter, quarters, loading: quarterLoading, setQuarter } = useActiveQuarter(teamId);
+  const { quarter, quarters, loading: quarterLoading, setQuarter } = useActiveQuarter();
 
   const allUserIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
   const { priorities, commitments, loading: dataLoading } = useTeamCommitments(quarter?.id ?? null, allUserIds);
