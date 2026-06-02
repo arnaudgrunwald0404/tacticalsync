@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
+  Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
   Sparkles, Pencil, AlertCircle, Info, FolderOpen,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
@@ -668,6 +668,51 @@ function DciTabContent({
 }) {
   const { brief, isLoading, error, loadBrief, refreshBrief } = useDciBrief();
 
+  // ── Commitment data for the carousel (quarterly → monthly → weekly) ──
+  type CarouselTier = 'weekly' | 'monthly' | 'quarterly';
+  const [carouselTier, setCarouselTier] = useState<CarouselTier>('weekly');
+  const [qPriorities, setQPriorities] = useState<{ title: string; description: string | null; status: string }[]>([]);
+  const [monthlyCommitments, setMonthlyCommitments] = useState<{ title: string; description: string | null; status: string }[]>([]);
+  const [quarterLabel, setQuarterLabel] = useState('');
+  const [monthLabel, setMonthLabel] = useState('');
+
+  useEffect(() => {
+    async function loadCommitments() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const { data: quarters } = await db
+        .from('commitment_quarters')
+        .select('*')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .limit(1);
+      const quarter = quarters?.[0];
+      if (!quarter) return;
+      setQuarterLabel(quarter.label ?? '');
+
+      // Current month within the quarter (1, 2, or 3)
+      const qStart = new Date(quarter.start_date + 'T00:00:00');
+      const nowMonth = new Date().getMonth();
+      const monthNum = Math.min(3, Math.max(1, nowMonth - qStart.getMonth() + 1));
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      setMonthLabel(monthNames[qStart.getMonth() + monthNum - 1] ?? '');
+
+      const [priRes, comRes] = await Promise.all([
+        db.from('personal_priorities').select('title, description, status')
+          .eq('quarter_id', quarter.id).eq('user_id', user.id).order('display_order'),
+        db.from('monthly_commitments').select('title, description, status')
+          .eq('quarter_id', quarter.id).eq('user_id', user.id).eq('month_number', monthNum).order('display_order'),
+      ]);
+      setQPriorities(priRes.data ?? []);
+      setMonthlyCommitments(comRes.data ?? []);
+    }
+    loadCommitments();
+  }, []);
+
   // Compute Monday–Friday dates for this week
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekDates = Array.from({ length: 5 }, (_, i) => addDays(monday, i));
@@ -828,76 +873,116 @@ function DciTabContent({
       <div className="grid grid-cols-[2fr_5fr] gap-3">
       <Card>
         <CardContent className="p-0">
-            {/* ── Weekly Objectives column (from Monday's log) ── */}
+            {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
             {(() => {
+              // Weekly data
               const weeklyObjs = [mondayLog?.weekly_obj_1, mondayLog?.weekly_obj_2, mondayLog?.weekly_obj_3];
               const weeklyActivities = [mondayLog?.weekly_obj_1_activities, mondayLog?.weekly_obj_2_activities, mondayLog?.weekly_obj_3_activities];
               const hasWeeklyObjs = weeklyObjs.some(Boolean);
-              // If brief is loaded and weekly not yet logged, preview from orderedWeekly
               const previewWeekly = !hasWeeklyObjs && hasBrief && orderedWeekly.length > 0;
-              const displayObjs = previewWeekly
+              const displayWeeklyObjs = previewWeekly
                 ? orderedWeekly.slice(0, 3).map(o => o.item.text)
                 : weeklyObjs;
-              const displayActivities = previewWeekly
+              const displayWeeklyActs = previewWeekly
                 ? orderedWeekly.slice(0, 3).map(o => o.item.activities)
                 : weeklyActivities;
 
+              // Tier config: colors and labels
+              const tierConfig: Record<CarouselTier, { label: string; sub: string; bgHeader: string; textColor: string; badgeBg: string; badgeText: string }> = {
+                quarterly: { label: quarterLabel || 'Quarterly', sub: 'Priorities', bgHeader: 'bg-violet-500/15', textColor: 'text-violet-600', badgeBg: 'bg-violet-500/10', badgeText: 'text-violet-600' },
+                monthly:   { label: monthLabel || 'Monthly', sub: 'Commitments', bgHeader: 'bg-amber-500/15', textColor: 'text-amber-600', badgeBg: 'bg-amber-500/10', badgeText: 'text-amber-600' },
+                weekly:    { label: 'Weekly', sub: 'Objectives', bgHeader: 'bg-primary/10', textColor: 'text-primary', badgeBg: 'bg-primary/10', badgeText: 'text-primary' },
+              };
+              const tiers: CarouselTier[] = ['quarterly', 'monthly', 'weekly'];
+              const tierIdx = tiers.indexOf(carouselTier);
+              const cfg = tierConfig[carouselTier];
+
+              // Items for current tier
+              const tierItems: { text: string; description?: string | null; activities?: (string | null)[] | null; status?: string }[] =
+                carouselTier === 'quarterly' ? qPriorities.map(p => ({ text: p.title, description: p.description, status: p.status })) :
+                carouselTier === 'monthly' ? monthlyCommitments.map(c => ({ text: c.title, description: c.description, status: c.status })) :
+                displayWeeklyObjs.filter(Boolean).map((text, i) => ({ text: text!, activities: displayWeeklyActs[i] }));
+
+              const STATUS_DOT: Record<string, string> = { done: 'bg-emerald-500', in_progress: 'bg-amber-400', draft: 'bg-muted-foreground/30', not_done: 'bg-destructive/60', at_risk: 'bg-amber-500' };
+
               return (
-                <div className="min-h-[200px] flex flex-col bg-primary/[0.02]">
-                  <div className="px-3 py-2.5 border-b border-border text-center bg-primary/10">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Weekly</p>
-                    <p className="text-[9px] text-primary/70 mt-0.5">Objectives</p>
+                <div className="min-h-[200px] flex flex-col">
+                  {/* Header with arrows */}
+                  <div className={cn('px-3 py-2.5 border-b border-border flex items-center justify-between', cfg.bgHeader)}>
+                    <button
+                      onClick={() => tierIdx > 0 && setCarouselTier(tiers[tierIdx - 1])}
+                      disabled={tierIdx === 0}
+                      className={cn('p-0.5 rounded transition-colors', tierIdx > 0 ? `${cfg.textColor} hover:bg-black/5` : 'text-transparent cursor-default')}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <div className="text-center">
+                      <p className={cn('text-xs font-semibold uppercase tracking-wide', cfg.textColor)}>{cfg.label}</p>
+                      <p className={cn('text-[9px] mt-0.5', cfg.textColor + '/70')}>{cfg.sub}</p>
+                    </div>
+                    <button
+                      onClick={() => tierIdx < tiers.length - 1 && setCarouselTier(tiers[tierIdx + 1])}
+                      disabled={tierIdx === tiers.length - 1}
+                      className={cn('p-0.5 rounded transition-colors', tierIdx < tiers.length - 1 ? `${cfg.textColor} hover:bg-black/5` : 'text-transparent cursor-default')}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </div>
+
+                  {/* Items */}
                   <div className="flex-1 flex flex-col divide-y divide-border/50">
-                    {[0, 1, 2].map(rowIdx => {
-                      const text = displayObjs[rowIdx];
-                      const acts = displayActivities[rowIdx];
-                      return (
-                        <div
-                          key={rowIdx}
-                          className={cn(
-                            'flex-1 px-3 py-2.5 flex items-start gap-2',
-                            !text && 'items-center justify-center',
+                    {tierItems.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <span className="text-[10px] text-muted-foreground/40">No {cfg.sub.toLowerCase()} set</span>
+                      </div>
+                    ) : tierItems.map((item, rowIdx) => (
+                      <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
+                        <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
+                          {rowIdx + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <span className={cn(
+                            'text-xs leading-snug font-medium',
+                            carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
+                          )}>
+                            {item.text}
+                          </span>
+                          {/* Weekly: show activities */}
+                          {item.activities && (item.activities as string[]).length > 0 && (
+                            <ul className="mt-0.5">
+                              {(item.activities as string[]).map((a, j) => (
+                                <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
+                                  <span className="mt-0.5">•</span><span>{a}</span>
+                                </li>
+                              ))}
+                            </ul>
                           )}
-                        >
-                          {text ? (
-                            <div className="flex items-start gap-2">
-                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
-                                {rowIdx + 1}
-                              </span>
-                              <div>
-                                <span className={cn(
-                                  'text-xs leading-snug font-medium',
-                                  previewWeekly && 'text-muted-foreground italic',
-                                )}>
-                                  {text}
-                                </span>
-                                {acts && acts.length > 0 && (
-                                  <ul className="mt-0.5">
-                                    {acts.map((a, j) => (
-                                      <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
-                                        <span className="mt-0.5">•</span>
-                                        <span>{a}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground/30">—</span>
+                          {/* Quarterly/Monthly: show description */}
+                          {item.description && carouselTier !== 'weekly' && (
+                            <p className="mt-0.5 text-[10px] text-muted-foreground/70 leading-snug">{item.description}</p>
+                          )}
+                          {/* Status dot for quarterly/monthly */}
+                          {item.status && carouselTier !== 'weekly' && (
+                            <span className="inline-flex items-center gap-1 mt-1">
+                              <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[item.status] ?? 'bg-muted-foreground/30')} />
+                              <span className="text-[9px] text-muted-foreground capitalize">{item.status?.replace('_', ' ')}</span>
+                            </span>
                           )}
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
+
+                  {/* Footer */}
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
-                    {hasWeeklyObjs ? (
+                    {carouselTier === 'weekly' && hasWeeklyObjs ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Set</span>
-                    ) : previewWeekly && todayDayIdx === 0 ? (
+                    ) : carouselTier === 'weekly' && previewWeekly && todayDayIdx === 0 ? (
                       <button onClick={handleLog} className="text-[10px] font-medium text-white bg-primary hover:bg-primary/90 rounded px-2.5 py-1 transition-colors">
                         Save
                       </button>
+                    ) : carouselTier !== 'weekly' ? (
+                      <span className="text-[9px] text-muted-foreground/50">from Commitments</span>
                     ) : (
                       <span className="text-[10px] text-muted-foreground/50">Not set</span>
                     )}
