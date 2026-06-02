@@ -895,8 +895,10 @@ function DciTabContent({
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
                     {hasWeeklyObjs ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Set</span>
-                    ) : previewWeekly ? (
-                      <span className="text-[10px] text-primary font-medium">Preview</span>
+                    ) : previewWeekly && todayDayIdx === 0 ? (
+                      <button onClick={handleLog} className="text-[10px] font-medium text-white bg-primary hover:bg-primary/90 rounded px-2.5 py-1 transition-colors">
+                        Save
+                      </button>
                     ) : (
                       <span className="text-[10px] text-muted-foreground/50">Not set</span>
                     )}
@@ -982,7 +984,9 @@ function DciTabContent({
                     {day.isLogged ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Logged</span>
                     ) : isTodayCol && showBriefPreview ? (
-                      <span className="text-[10px] text-copper font-medium">Preview</span>
+                      <button onClick={handleLog} className="text-[10px] font-medium text-white bg-copper hover:bg-copper-hover rounded px-2.5 py-1 transition-colors">
+                        Save
+                      </button>
                     ) : isFuture ? (
                       <span className="text-[10px] text-muted-foreground/30">—</span>
                     ) : isPast ? (
@@ -1008,9 +1012,9 @@ function DciTabContent({
         />
       )}
 
-      {/* Topic + Log */}
+      {/* Topic to raise */}
       {hasBrief && todayDayIdx >= 0 && (
-        <div className="space-y-4">
+        <div className="space-y-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Topic to raise <span className="text-muted-foreground font-normal">(optional)</span></label>
             <Textarea
@@ -1021,10 +1025,6 @@ function DciTabContent({
               className="resize-none"
             />
           </div>
-          <Button onClick={handleLog}>
-            <Save className="h-4 w-4 mr-2" />
-            Log this brief
-          </Button>
           {brief?.generatedAt && (
             <p className="text-xs text-muted-foreground">
               Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
