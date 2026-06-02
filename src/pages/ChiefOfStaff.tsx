@@ -826,7 +826,7 @@ function DciTabContent({
       )}
 
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
-      <div className="grid grid-cols-[1fr_5fr] gap-3">
+      <div className="grid grid-cols-[2fr_5fr] gap-3">
       <Card>
         <CardContent className="p-0">
             {/* ── Weekly Objectives column (from Monday's log) ── */}
