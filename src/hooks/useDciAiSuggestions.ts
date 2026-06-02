@@ -7,6 +7,8 @@ export interface AiPrioritySuggestion {
   text: string;
   source: string;        // e.g. "priorities", "email", "calendar", "slack"
   reasoning: string;      // why this was surfaced
+  activities: string[];   // 1-3 bullet points (weekly objectives only)
+  action: string;         // specific action (daily priorities only)
 }
 
 export interface DciBriefData {
@@ -56,27 +58,49 @@ function parsePriorities(section: string | null): AiPrioritySuggestion[] {
 
   for (const block of blocks) {
     const lines = block.trim().split('\n');
-    const text = lines[0]?.trim() ?? '';
+    let text = lines[0]?.trim() ?? '';
     if (!text) continue;
+
+    // Strip "Objective: " prefix if present (weekly objectives)
+    text = text.replace(/^Objective:\s*/i, '');
 
     let source = 'priorities';
     let reasoning = '';
+    let action = '';
+    const activities: string[] = [];
+    let inActivities = false;
 
-    for (const line of lines) {
-      const srcMatch = line.match(/\*\*Source:\*\*\s*(.+)/i);
+    for (const line of lines.slice(1)) {
+      const trimmed = line.trim();
+
+      // "Activities:" header starts the bullet list
+      if (/^Activities:/i.test(trimmed)) { inActivities = true; continue; }
+
+      const srcMatch = trimmed.match(/^\*?\*?Source:\*?\*?\s*(.+)/i);
       if (srcMatch) {
+        inActivities = false;
         const srcText = srcMatch[1].toLowerCase();
         if (srcText.includes('calendar')) source = 'calendar';
         else if (srcText.includes('email')) source = 'email';
         else if (srcText.includes('slack')) source = 'slack';
         else if (srcText.includes('dci') || srcText.includes('history')) source = 'dci_history';
         else source = 'priorities';
+        continue;
       }
-      const whyMatch = line.match(/\*\*Why:\*\*\s*(.+)/i);
-      if (whyMatch) reasoning = whyMatch[1].trim();
+
+      const whyMatch = trimmed.match(/^\*?\*?Why:\*?\*?\s*(.+)/i);
+      if (whyMatch) { inActivities = false; reasoning = whyMatch[1].trim(); continue; }
+
+      const actionMatch = trimmed.match(/^\*?\*?Action:\*?\*?\s*(.+)/i);
+      if (actionMatch) { inActivities = false; action = actionMatch[1].trim(); continue; }
+
+      // Activity bullet points (while inside Activities block)
+      if (inActivities && /^[-*]\s+/.test(trimmed)) {
+        activities.push(trimmed.replace(/^[-*]\s+/, ''));
+      }
     }
 
-    results.push({ text, source, reasoning });
+    results.push({ text, source, reasoning, activities, action });
   }
 
   return results;

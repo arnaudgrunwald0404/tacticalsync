@@ -687,9 +687,24 @@ function DciTabContent({
   // If today is Monday and brief is loaded but not logged, show weekly priorities in Monday column
   // If today is Tue-Fri and brief is loaded but not logged, show daily priorities in today's column
   const todayData = weekMatrix[todayDayIdx];
+  // ── Reorder state: 6 items each, user can drag-and-drop, only top 3 are saved ──
+  const idCounter = React.useRef(0);
+  const assignId = (prefix: string) => `${prefix}-${++idCounter.current}`;
+
+  const [orderedDaily, setOrderedDaily] = useState<OrderedItem[]>([]);
+  const [orderedWeekly, setOrderedWeekly] = useState<OrderedItem[]>([]);
+
+  useEffect(() => {
+    setOrderedDaily(mergedDaily.slice(0, 5).map(item => ({ dragId: assignId('d'), item })));
+  }, [mergedDaily]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setOrderedWeekly(mergedWeekly.slice(0, 5).map(item => ({ dragId: assignId('w'), item })));
+  }, [mergedWeekly]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const todayBriefPriorities = todayDayIdx === 0
-    ? mergedWeekly.slice(0, 3).map(p => p.text)
-    : mergedDaily.slice(0, 3).map(p => p.text);
+    ? orderedWeekly.slice(0, 3).map(o => o.item.text)
+    : orderedDaily.slice(0, 3).map(o => o.item.text);
 
   const [topicRaised, setTopicRaised] = useState('');
 
@@ -701,10 +716,10 @@ function DciTabContent({
   }, [brief]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLog = () => {
-    // Build priorities to log — use today's merged brief priorities
-    const itemsToLog = todayDayIdx === 0 ? mergedWeekly : mergedDaily;
-    const logPriorities = itemsToLog.slice(0, 3).map((item, i) => ({
-      ...(item.cosPriority ?? {
+    // Save only the top 3 from the user's reordered list
+    const items = todayDayIdx === 0 ? orderedWeekly : orderedDaily;
+    const logPriorities = items.slice(0, 3).map((ordered, i) => ({
+      ...(ordered.item.cosPriority ?? {
         id: `brief-${i}`,
         user_id: '',
         category: 'this_week',
@@ -716,7 +731,7 @@ function DciTabContent({
         done_at: null,
         archived_at: null,
       }),
-      text: item.text,
+      text: ordered.item.text,
     } as CosPriority));
     onLog(logPriorities, topicRaised);
   };
@@ -882,14 +897,11 @@ function DciTabContent({
       {/* ── Today's Brief Detail (only when brief is loaded and today is a weekday) ── */}
       {hasBrief && todayDayIdx >= 0 && (
         <TonightsBrief
-          priorities={thisWeekPriorities}
-          onLog={onLog}
-          heading={todayDayIdx === 0 ? "Monday — Set Weekly Objectives" : `${DAY_LABELS[todayDayIdx]} — Today's Focus`}
           brief={brief}
-          briefLoading={isLoading}
-          briefError={error}
-          onLoadBrief={loadBrief}
-          onRefreshBrief={refreshBrief}
+          orderedDaily={orderedDaily}
+          orderedWeekly={orderedWeekly}
+          onReorderDaily={setOrderedDaily}
+          onReorderWeekly={setOrderedWeekly}
         />
       )}
 
@@ -936,6 +948,16 @@ interface MergedPriority {
   /** Brief annotation (source icon + reasoning) when brief data reinforces or adds this */
   briefSource?: string;
   briefReasoning?: string;
+  /** 1-3 activity bullet points (weekly objectives only) */
+  activities: string[];
+  /** Specific action step (daily priorities only) */
+  action: string;
+}
+
+/** Wrapper for drag-and-drop reordering of merged priorities. */
+interface OrderedItem {
+  dragId: string;
+  item: MergedPriority;
 }
 
 /**
@@ -960,6 +982,8 @@ function mergePrioritiesWithBrief(
       text: p.text,
       origin: 'cos' as const,
       cosPriority: p,
+      activities: [],
+      action: '',
     }));
   }
 
@@ -999,6 +1023,8 @@ function mergePrioritiesWithBrief(
         cosPriority: bestMatch,
         briefSource: bp.source,
         briefReasoning: bp.reasoning,
+        activities: bp.activities,
+        action: bp.action,
       });
     } else {
       // Net-new from brief signals (email/cal/slack)
@@ -1007,6 +1033,8 @@ function mergePrioritiesWithBrief(
         origin: 'brief',
         briefSource: bp.source,
         briefReasoning: bp.reasoning,
+        activities: bp.activities,
+        action: bp.action,
       });
     }
   }
@@ -1018,6 +1046,8 @@ function mergePrioritiesWithBrief(
         text: cp.text,
         origin: 'cos',
         cosPriority: cp,
+        activities: [],
+        action: '',
       });
     }
   }
@@ -1049,243 +1079,273 @@ const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
   'cos+brief': { label: 'Boosted', className: 'bg-emerald-500/10 text-emerald-600' },
 };
 
-function TonightsBrief({ priorities, onLog, heading = 'Monday Brief', brief, briefLoading, briefError, onLoadBrief, onRefreshBrief }: {
-  priorities: CosPriority[];
-  onLog: (priorities: CosPriority[], topic: string) => void;
-  heading?: string;
-  brief?: DciBriefData | null;
-  briefLoading?: boolean;
-  briefError?: string | null;
-  onLoadBrief?: () => void;
-  onRefreshBrief?: () => void;
+// ── Sortable priority row for DCI drag-and-drop ─────────────────────────────
+
+function SortableBriefItem({
+  id, index, item, tier, isAboveLine,
+  editingIdx, editingTier, onStartEdit, onStopEdit, onEditText,
+}: {
+  id: string;
+  index: number;
+  item: MergedPriority;
+  tier: 'daily' | 'weekly';
+  isAboveLine: boolean;
+  editingIdx: number | null;
+  editingTier: 'daily' | 'weekly' | null;
+  onStartEdit: (idx: number, tier: 'daily' | 'weekly') => void;
+  onStopEdit: () => void;
+  onEditText: (idx: number, text: string) => void;
 }) {
-  const [editedDaily, setEditedDaily] = useState<string[] | null>(null);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const badge = ORIGIN_BADGE[item.origin];
+  const isEditing = editingTier === tier && editingIdx === index;
+  const colorClass = tier === 'daily' ? 'bg-copper/10 text-copper' : 'bg-primary/10 text-primary';
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn('group py-1', !isAboveLine && 'opacity-50')}>
+      <div className="flex items-start gap-2">
+        <button {...attributes} {...listeners} className="flex-shrink-0 mt-1.5 cursor-grab active:cursor-grabbing text-muted-foreground/30 hover:text-muted-foreground transition-colors">
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className={cn('flex-shrink-0 w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center mt-0.5', colorClass)}>
+          {index + 1}
+        </span>
+        {isEditing ? (
+          <div className="flex-1 flex items-center gap-2">
+            <Input
+              value={item.text}
+              onChange={e => onEditText(index, e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') onStopEdit(); }}
+              onBlur={onStopEdit}
+              autoFocus
+              className="text-sm h-8"
+            />
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <span className={cn('text-sm leading-snug', isAboveLine ? 'font-medium' : '')}>{item.text}</span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {badge && (
+                  <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 h-5 font-normal', badge.className)}>
+                    {badge.label}
+                  </Badge>
+                )}
+                <button
+                  onClick={() => onStartEdit(index, tier)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+              </div>
+            </div>
+            {/* Weekly objectives: show activities as bullet points */}
+            {tier === 'weekly' && item.activities.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {item.activities.map((a, j) => (
+                  <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground leading-snug">
+                    <span className="text-muted-foreground/40 mt-0.5 flex-shrink-0">•</span>
+                    <span>{a}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* Daily priorities: show action if present */}
+            {tier === 'daily' && item.action && (
+              <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
+                <span className="font-medium text-muted-foreground">Action:</span> {item.action}
+              </p>
+            )}
+            {(item.briefSource || item.briefReasoning) && (
+              <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
+                {item.briefSource && (
+                  <span className="inline-flex items-center gap-1">
+                    <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
+                    <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
+                  </span>
+                )}
+                {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
+                {item.briefReasoning && <span>{item.briefReasoning}</span>}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Reorderable priority list (used for both daily and weekly) ──────────────
+
+function ReorderablePriorityList({
+  items,
+  tier,
+  onReorder,
+  onEditItem,
+  editingIdx,
+  editingTier,
+  onStartEdit,
+  onStopEdit,
+}: {
+  items: OrderedItem[];
+  tier: 'daily' | 'weekly';
+  onReorder: (items: OrderedItem[]) => void;
+  onEditItem: (idx: number, text: string) => void;
+  editingIdx: number | null;
+  editingTier: 'daily' | 'weekly' | null;
+  onStartEdit: (idx: number, tier: 'daily' | 'weekly') => void;
+  onStopEdit: () => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex(i => i.dragId === active.id);
+    const newIndex = items.findIndex(i => i.dragId === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) {
+      onReorder(arrayMove(items, oldIndex, newIndex));
+    }
+  };
+
+  if (items.length === 0) {
+    return <p className="text-sm text-muted-foreground">No priorities yet. Add some in the My Lists tab.</p>;
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map(i => i.dragId)} strategy={verticalListSortingStrategy}>
+        {items.map((ordered, i) => (
+          <React.Fragment key={ordered.dragId}>
+            {i === 3 && (
+              <div className="flex items-center gap-2 py-1.5 my-1">
+                <div className="flex-1 border-t border-dashed border-border" />
+                <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap">top 3 saved</span>
+                <div className="flex-1 border-t border-dashed border-border" />
+              </div>
+            )}
+            <SortableBriefItem
+              id={ordered.dragId}
+              index={i}
+              item={ordered.item}
+              tier={tier}
+              isAboveLine={i < 3}
+              editingIdx={editingIdx}
+              editingTier={editingTier}
+              onStartEdit={onStartEdit}
+              onStopEdit={onStopEdit}
+              onEditText={onEditItem}
+            />
+          </React.Fragment>
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function TonightsBrief({
+  brief,
+  orderedDaily,
+  orderedWeekly,
+  onReorderDaily,
+  onReorderWeekly,
+}: {
+  brief?: DciBriefData | null;
+  orderedDaily: OrderedItem[];
+  orderedWeekly: OrderedItem[];
+  onReorderDaily: (items: OrderedItem[]) => void;
+  onReorderWeekly: (items: OrderedItem[]) => void;
+}) {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingTier, setEditingTier] = useState<'daily' | 'weekly' | null>(null);
-  const today = format(new Date(), 'EEEE, MMMM d');
 
-  // Merge CoS priorities with DAILY brief (what's urgent today)
-  const mergedDaily = React.useMemo(() => {
-    return mergePrioritiesWithBrief(priorities, brief?.dailyPriorities ?? []);
-  }, [priorities, brief?.dailyPriorities]);
+  const stopEdit = () => { setEditingIdx(null); setEditingTier(null); };
 
-  // Merge CoS priorities with WEEKLY brief (what to accomplish by end of week)
-  const mergedWeekly = React.useMemo(() => {
-    return mergePrioritiesWithBrief(priorities, brief?.weeklyPriorities ?? []);
-  }, [priorities, brief?.weeklyPriorities]);
+  const editDailyItem = (idx: number, text: string) => {
+    onReorderDaily(orderedDaily.map((o, i) => i === idx ? { ...o, item: { ...o.item, text } } : o));
+  };
 
-  // Reset edits when brief/priorities change
-  useEffect(() => {
-    setEditedDaily(null);
-    setEditingIdx(null);
-    setEditingTier(null);
-  }, [brief, priorities]);
-
-  // The final displayed daily priorities: edited overrides merged
-  const displayedDailyItems = mergedDaily.slice(0, 3).map((item, i) => ({
-    ...item,
-    text: editedDaily?.[i] ?? item.text,
-  }));
-
-  const updateEditedPriority = (idx: number, newText: string) => {
-    setEditedDaily(prev => {
-      const next = prev ? [...prev] : mergedDaily.slice(0, 3).map(m => m.text);
-      next[idx] = newText;
-      return next;
-    });
+  const editWeeklyItem = (idx: number, text: string) => {
+    onReorderWeekly(orderedWeekly.map((o, i) => i === idx ? { ...o, item: { ...o.item, text } } : o));
   };
 
   const hasBrief = brief && brief.source !== 'none';
 
   return (
     <div className="space-y-6">
-      {/* ── Urgent Today — what needs attention right now ── */}
-      {hasBrief && <Card className="border-copper/20">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-copper" />
-                Urgent Today
-              </span>
-            </CardTitle>
-            <span className="text-xs text-muted-foreground">
-              My Lists + today's signals
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            What needs your attention right now — based on today's calendar, email, and Slack.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {displayedDailyItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No priorities for this week yet. Add some in the My Lists tab.</p>
-          ) : (
-            displayedDailyItems.map((item, i) => {
-              const badge = ORIGIN_BADGE[item.origin];
-              return (
-                <div key={i} className="group">
-                  <div className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-copper/10 text-copper text-xs font-bold flex items-center justify-center mt-0.5">
-                      {i + 1}
+      {/* ── Side-by-side: Weekly (left) + Daily (right) ── */}
+      {hasBrief && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Weekly Objectives — left */}
+          {orderedWeekly.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Weekly Objectives
                     </span>
-                    {editingTier === 'daily' && editingIdx === i ? (
-                      <div className="flex-1 flex items-center gap-2">
-                        <Input
-                          value={editedDaily?.[i] ?? item.text}
-                          onChange={e => updateEditedPriority(i, e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { setEditingIdx(null); setEditingTier(null); }
-                            if (e.key === 'Escape') { setEditingIdx(null); setEditingTier(null); }
-                          }}
-                          onBlur={() => { setEditingIdx(null); setEditingTier(null); }}
-                          autoFocus
-                          className="text-sm h-8"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-medium leading-snug">{item.text}</span>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {hasBrief && badge && (
-                              <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 h-5 font-normal', badge.className)}>
-                                {badge.label}
-                              </Badge>
-                            )}
-                            <button
-                              onClick={() => { setEditingIdx(i); setEditingTier('daily'); }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                            </button>
-                          </div>
-                        </div>
-                        {hasBrief && (item.briefSource || item.briefReasoning) && (
-                          <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
-                            {item.briefSource && (
-                              <span className="inline-flex items-center gap-1">
-                                <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
-                                <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
-                              </span>
-                            )}
-                            {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
-                            {item.briefReasoning && <span>{item.briefReasoning}</span>}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-          {/* Show remaining daily items below the top 3 */}
-          {hasBrief && mergedDaily.length > 3 && (
-            <div className="pt-2 mt-2 border-t border-border/50">
-              <p className="text-xs text-muted-foreground mb-2">Also on your radar today:</p>
-              {mergedDaily.slice(3).map((item, i) => (
-                <div key={i + 3} className="flex items-start gap-3 py-1">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
-                    {i + 4}
+                  </CardTitle>
+                  <span className="text-[10px] text-muted-foreground">
+                    top 3 saved
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
-                    {(item.briefSource || item.briefReasoning) && (
-                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                        {item.briefSource && <span>{SOURCE_ICONS[item.briefSource] ?? '📋'} {SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>}
-                        {item.briefSource && item.briefReasoning && ' · '}
-                        {item.briefReasoning}
-                      </p>
-                    )}
-                  </div>
                 </div>
-              ))}
-            </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  What you need to accomplish by end of week.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ReorderablePriorityList
+                  items={orderedWeekly}
+                  tier="weekly"
+                  onReorder={onReorderWeekly}
+                  onEditItem={editWeeklyItem}
+                  editingIdx={editingIdx}
+                  editingTier={editingTier}
+                  onStartEdit={(idx, tier) => { setEditingIdx(idx); setEditingTier(tier); }}
+                  onStopEdit={stopEdit}
+                />
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>}
 
-      {/* ── Weekly Priorities — what to accomplish by end of week ── */}
-      {hasBrief && mergedWeekly.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Weekly Priorities
-                </span>
-              </CardTitle>
-              {brief?.weeklySourceDate && !brief.isMonday && (
+          {/* Daily Priorities — right */}
+          <Card className="border-copper/20">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-copper" />
+                    Today's Priorities
+                  </span>
+                </CardTitle>
                 <span className="text-[10px] text-muted-foreground">
-                  Set {format(new Date(brief.weeklySourceDate + 'T12:00:00'), 'EEEE')}
+                  top 3 saved
                 </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              What you need to accomplish by end of week. Re-evaluated daily against new signals.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {mergedWeekly.slice(0, 3).map((item, i) => {
-              const badge = ORIGIN_BADGE[item.origin];
-              return (
-                <div key={i}>
-                  <div className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-medium leading-snug">{item.text}</span>
-                        {hasBrief && badge && (
-                          <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 h-5 font-normal flex-shrink-0', badge.className)}>
-                            {badge.label}
-                          </Badge>
-                        )}
-                      </div>
-                      {hasBrief && (item.briefSource || item.briefReasoning) && (
-                        <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
-                          {item.briefSource && (
-                            <span className="inline-flex items-center gap-1">
-                              <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
-                              <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
-                            </span>
-                          )}
-                          {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
-                          {item.briefReasoning && <span>{item.briefReasoning}</span>}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {mergedWeekly.length > 3 && (
-              <div className="pt-2 mt-2 border-t border-border/50">
-                <p className="text-xs text-muted-foreground mb-2">Also this week:</p>
-                {mergedWeekly.slice(3).map((item, i) => (
-                  <div key={i + 3} className="flex items-start gap-3 py-1">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium flex items-center justify-center mt-0.5">
-                      {i + 4}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs text-muted-foreground leading-snug">{item.text}</span>
-                      {(item.briefSource || item.briefReasoning) && (
-                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                          {item.briefSource && <span>{SOURCE_ICONS[item.briefSource] ?? '📋'} {SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>}
-                          {item.briefSource && item.briefReasoning && ' · '}
-                          {item.briefReasoning}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <p className="text-xs text-muted-foreground mt-1">
+                What needs your attention right now.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ReorderablePriorityList
+                items={orderedDaily}
+                tier="daily"
+                onReorder={onReorderDaily}
+                onEditItem={editDailyItem}
+                editingIdx={editingIdx}
+                editingTier={editingTier}
+                onStartEdit={(idx, tier) => { setEditingIdx(idx); setEditingTier(tier); }}
+                onStopEdit={stopEdit}
+              />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Calendar / Email / Slack sections from brief */}
