@@ -4,9 +4,9 @@ import { useRoles, type RoleTag } from "./useRoles";
 
 export type FeatureKey =
   | "view_chief_of_staff"
-  | "view_dci_lists"
-  | "view_teams_lists"
-  | "view_dashboard"
+  | "view_my_lists"
+  | "view_daily_checkin"
+  | "view_my_team"
   | "view_rcdo"
   | "view_commitments"
   | "view_meetings"
@@ -16,9 +16,9 @@ export type FeatureKey =
 
 export const ALL_FEATURE_KEYS: FeatureKey[] = [
   "view_chief_of_staff",
-  "view_dci_lists",
-  "view_teams_lists",
-  "view_dashboard",
+  "view_my_lists",
+  "view_daily_checkin",
+  "view_my_team",
   "view_rcdo",
   "view_commitments",
   "view_meetings",
@@ -29,9 +29,9 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
   view_chief_of_staff: "Chief of Staff",
-  view_dci_lists: "DCI Lists",
-  view_teams_lists: "Teams Lists",
-  view_dashboard: "My Dashboard",
+  view_my_lists: "My Lists",
+  view_daily_checkin: "Daily Check-in",
+  view_my_team: "My Team",
   view_rcdo: "RCDO",
   view_commitments: "Commitments",
   view_meetings: "Meetings",
@@ -42,9 +42,9 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 
 export const FEATURE_DESCRIPTIONS: Record<FeatureKey, string> = {
   view_chief_of_staff: "Access the Chief of Staff section",
-  view_dci_lists: "View DCI lists within Chief of Staff",
-  view_teams_lists: "View Teams lists within Chief of Staff",
-  view_dashboard: "Access the personal dashboard",
+  view_my_lists: "View my list within Chief of Staff",
+  view_daily_checkin: "View daily check-in within Chief of Staff",
+  view_my_team: "View my teams",
   view_rcdo: "Access the RCDO strategy section",
   view_commitments: "Access the Commitments section",
   view_meetings: "Access the Meetings section",
@@ -53,14 +53,18 @@ export const FEATURE_DESCRIPTIONS: Record<FeatureKey, string> = {
   manage_permissions: "Change feature permissions for roles",
 };
 
+export const CHILD_FEATURES: Partial<Record<FeatureKey, FeatureKey[]>> = {
+  view_chief_of_staff: ["view_my_lists", "view_daily_checkin", "view_my_team"],
+};
+
 export const FEATURE_CATEGORIES: Array<{ category: string; features: FeatureKey[] }> = [
   {
     category: "Feature Visibility",
     features: [
       "view_chief_of_staff",
-      "view_dci_lists",
-      "view_teams_lists",
-      "view_dashboard",
+      "view_my_lists",
+      "view_daily_checkin",
+      "view_my_team",
       "view_rcdo",
       "view_commitments",
       "view_meetings",

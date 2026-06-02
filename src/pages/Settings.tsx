@@ -25,7 +25,7 @@ import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
-import { useFeaturePermissions, FEATURE_CATEGORIES, FEATURE_LABELS, FEATURE_DESCRIPTIONS, type FeatureKey } from "@/hooks/useFeaturePermissions";
+import { useFeaturePermissions, FEATURE_CATEGORIES, FEATURE_LABELS, FEATURE_DESCRIPTIONS, CHILD_FEATURES, type FeatureKey } from "@/hooks/useFeaturePermissions";
 import { suggestCycleDates } from "@/lib/rcdoValidation";
 
 interface TemplateItem {
@@ -2318,8 +2318,9 @@ const Settings = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">{group.category}</span>
                               </TableCell>
                             </TableRow>
-                            {group.features.map(featureKey => (
-                              <TableRow key={featureKey} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
+                            {group.features.filter(fk => !Object.values(CHILD_FEATURES).some(children => children?.includes(fk))).map(featureKey => (
+                              <React.Fragment key={featureKey}>
+                              <TableRow className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
                                 <TableCell className="px-4 py-2.5 font-medium text-[13px]">{FEATURE_LABELS[featureKey]}</TableCell>
                                 <TableCell className="py-2.5 text-[13px] text-muted-foreground">{FEATURE_DESCRIPTIONS[featureKey]}</TableCell>
                                 {ALL_ROLE_TAGS.map(tag => {
@@ -2343,6 +2344,36 @@ const Settings = () => {
                                   );
                                 })}
                               </TableRow>
+                              {CHILD_FEATURES[featureKey]?.map(childKey => (
+                                <TableRow key={childKey} className="border-b border-border/15 last:border-b-0 hover:bg-muted/10 transition-colors">
+                                  <TableCell className="pl-10 pr-4 py-2.5 font-medium text-[13px] text-muted-foreground">
+                                    <span className="text-muted-foreground/40 mr-1.5">└</span>
+                                    {FEATURE_LABELS[childKey]}
+                                  </TableCell>
+                                  <TableCell className="py-2.5 text-[13px] text-muted-foreground">{FEATURE_DESCRIPTIONS[childKey]}</TableCell>
+                                  {ALL_ROLE_TAGS.map(tag => {
+                                    const enabled = isFeatureEnabled(childKey, tag);
+                                    return (
+                                      <TableCell key={tag} className="text-center py-2.5">
+                                        <button
+                                          disabled={savingPermissions}
+                                          onClick={() => toggleFeaturePermission(childKey, tag)}
+                                          className="mx-auto block cursor-pointer disabled:opacity-50"
+                                        >
+                                          {enabled ? (
+                                            <div className="w-5 h-5 rounded-full bg-[#4A5D5F]/15 flex items-center justify-center">
+                                              <Check className="h-3 w-3 text-[#4A5D5F]" />
+                                            </div>
+                                          ) : (
+                                            <div className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors" />
+                                          )}
+                                        </button>
+                                      </TableCell>
+                                    );
+                                  })}
+                                </TableRow>
+                              ))}
+                              </React.Fragment>
                             ))}
                           </React.Fragment>
                         ))}
