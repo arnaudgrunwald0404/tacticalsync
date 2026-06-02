@@ -726,9 +726,8 @@ function DciTabContent({
     setOrderedWeekly(mergedWeekly.slice(0, 5).map(item => ({ dragId: assignId('w'), item })));
   }, [mergedWeekly]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const todayBriefPriorities = todayDayIdx === 0
-    ? orderedWeekly.slice(0, 3).map(o => o.item.text)
-    : orderedDaily.slice(0, 3).map(o => o.item.text);
+  // Daily column always shows daily priorities — weekly objectives have their own column
+  const todayBriefPriorities = orderedDaily.slice(0, 3).map(o => o.item.text);
 
   const [topicRaised, setTopicRaised] = useState('');
 
