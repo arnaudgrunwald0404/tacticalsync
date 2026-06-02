@@ -825,10 +825,10 @@ function DciTabContent({
         </Card>
       )}
 
-      {/* ── Weekly Matrix: Objectives column + Mon–Fri daily columns ── */}
+      {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
+      <div className="grid grid-cols-[1fr_5fr] gap-3">
       <Card>
         <CardContent className="p-0">
-          <div className="grid grid-cols-6 divide-x divide-border">
             {/* ── Weekly Objectives column (from Monday's log) ── */}
             {(() => {
               const weeklyObjs = [mondayLog?.weekly_obj_1, mondayLog?.weekly_obj_2, mondayLog?.weekly_obj_3];
@@ -905,6 +905,11 @@ function DciTabContent({
               );
             })()}
 
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-0">
+          <div className="grid grid-cols-5 divide-x divide-border">
             {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
@@ -991,6 +996,7 @@ function DciTabContent({
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* ── Today's Brief Detail (only when brief is loaded and today is a weekday) ── */}
       {hasBrief && todayDayIdx >= 0 && (
