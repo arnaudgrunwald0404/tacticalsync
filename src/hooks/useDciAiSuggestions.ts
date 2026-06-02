@@ -119,8 +119,9 @@ function parseBriefMarkdown(md: string): Omit<DciBriefData, 'source'> {
     parseSection(md, "Today's Top 3 Priorities") ??
     parseSection(md, "Today's Priorities");
 
-  // Try both heading conventions for weekly priorities
+  // Try all heading conventions for weekly priorities/objectives
   const weeklySection =
+    parseSection(md, 'Weekly Objectives') ??
     parseSection(md, 'Weekly Priorities') ??
     parseSection(md, 'Weekly Focus') ??
     parseSection(md, "This Week's Priorities");
