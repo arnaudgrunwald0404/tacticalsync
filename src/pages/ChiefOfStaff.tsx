@@ -1260,7 +1260,7 @@ function SortableBriefItem({
                 <span className="font-medium text-muted-foreground">Action:</span> {item.action}
               </p>
             )}
-            {(item.briefSource || item.briefReasoning) && (
+            {tier !== 'weekly' && (item.briefSource || item.briefReasoning) && (
               <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
                 {item.briefSource && (
                   <span className="inline-flex items-center gap-1">
