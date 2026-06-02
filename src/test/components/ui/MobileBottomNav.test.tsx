@@ -32,12 +32,11 @@ describe('MobileBottomNav', () => {
   });
 
   describe('rendering', () => {
-    it('should render all six nav items', () => {
+    it('should render all five nav items', () => {
       renderWithPath('/commitments');
       expect(screen.getByLabelText('Chief of Staff')).toBeInTheDocument();
       expect(screen.getByLabelText('Strategy')).toBeInTheDocument();
       expect(screen.getByLabelText('My Meetings')).toBeInTheDocument();
-      expect(screen.getByLabelText('My Check-Ins')).toBeInTheDocument();
       expect(screen.getByLabelText('My tasks')).toBeInTheDocument();
       expect(screen.getByLabelText('Commitments')).toBeInTheDocument();
     });
@@ -47,10 +46,10 @@ describe('MobileBottomNav', () => {
       expect(screen.getByRole('navigation')).toBeInTheDocument();
     });
 
-    it('should render six buttons', () => {
+    it('should render five buttons', () => {
       renderWithPath('/commitments');
       const buttons = screen.getAllByRole('button');
-      expect(buttons).toHaveLength(6);
+      expect(buttons).toHaveLength(5);
     });
   });
 
@@ -65,12 +64,6 @@ describe('MobileBottomNav', () => {
       renderWithPath('/my-meetings');
       const meetingsBtn = screen.getByLabelText('My Meetings');
       expect(meetingsBtn).toHaveClass('text-primary');
-    });
-
-    it('should mark My Check-Ins as active on /workspace', () => {
-      renderWithPath('/workspace');
-      const workspaceBtn = screen.getByLabelText('My Check-Ins');
-      expect(workspaceBtn).toHaveClass('text-primary');
     });
 
     it('should mark My tasks as active on /dashboard/rcdo/tasks-feed', () => {
@@ -111,13 +104,6 @@ describe('MobileBottomNav', () => {
       renderWithPath('/commitments');
       await user.click(screen.getByLabelText('My Meetings'));
       expect(mockNavigate).toHaveBeenCalledWith('/my-meetings');
-    });
-
-    it('should navigate to /workspace when My Check-Ins is clicked', async () => {
-      const user = userEvent.setup();
-      renderWithPath('/commitments');
-      await user.click(screen.getByLabelText('My Check-Ins'));
-      expect(mockNavigate).toHaveBeenCalledWith('/workspace');
     });
 
     it('should navigate to /commitments when Commitments is clicked', async () => {

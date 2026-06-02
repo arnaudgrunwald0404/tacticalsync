@@ -21,8 +21,6 @@ export function AppNavbar() {
       ? "cos"
       : location.pathname.includes("/rcdo") // covers /rcdo/canvas and /dashboard/rcdo
       ? "rcdo"
-      : location.pathname.includes("/workspace")
-      ? "checkins"
       : location.pathname.includes("/commitments")
       ? "commitments"
       : location.pathname.includes("/my-meetings")
@@ -32,7 +30,6 @@ export function AppNavbar() {
   const handleTabChange = (value: string) => {
     if (value === "main") navigate("/my-meetings");
     else if (value === "rcdo") navigate("/dashboard/rcdo");
-    else if (value === "checkins") navigate("/workspace");
     else if (value === "commitments") navigate("/commitments");
     else if (value === "insights") navigate("/insights");
     else if (value === "cos") navigate("/chief-of-staff");
@@ -55,7 +52,6 @@ export function AppNavbar() {
                   ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff", subtitle: "Day – Week" }] : []),
                   ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments", subtitle: "Month – Quarter" }] : []),
                   ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives", subtitle: "Six months" }] : []),
-                  ...(canAccess("view_dashboard") ? [{ value: "checkins", label: "My Check-Ins" }] : []),
                   ...(canAccess("view_meetings") ? [{ value: "main", label: "Meetings" }] : []),
                   ...(canAccess("view_insights") ? [{ value: "insights", label: "Insights" }] : []),
                   ...(canAccess("view_settings") ? [{ value: "settings", label: "Settings" }] : []),

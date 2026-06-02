@@ -4,7 +4,6 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useEffect, lazy, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
 const StrategyHome = lazy(() => import("./StrategyHome"));
-const LazyCheckinsPage = lazy(() => import("./Checkins"));
 const LazyCommitmentsPage = lazy(() => import("./Commitments"));
 const LazyInsightsPage = lazy(() => import("./Insights"));
 const LazyChiefOfStaffPage = lazy(() => import("./ChiefOfStaff"));
@@ -29,8 +28,6 @@ const DashboardWithTabs = () => {
     ? 'tasks'
     : location.pathname.includes('/dashboard/rcdo')
     ? 'rcdo'
-    : location.pathname.includes('/workspace')
-    ? 'checkins'
     : location.pathname.includes('/commitments')
     ? 'commitments'
     : location.pathname.includes('/my-meetings')
@@ -60,15 +57,6 @@ const DashboardWithTabs = () => {
           {activeTab === 'cos' ? (
             <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Chief of Staff…</div>}>
               <LazyChiefOfStaffPage />
-            </Suspense>
-          ) : null}
-        </TabsContent>
-
-        <TabsContent value="checkins" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
-          {activeTab === 'checkins' ? (
-            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-ins…</div>}>
-              {/* Lazy import to keep initial bundle small */}
-              <LazyCheckinsPage />
             </Suspense>
           ) : null}
         </TabsContent>

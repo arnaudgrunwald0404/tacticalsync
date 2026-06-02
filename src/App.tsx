@@ -82,7 +82,6 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/my-meetings" element={<DashboardWithTabs />} />
             <Route path="/dashboard/rcdo" element={<DashboardWithTabs />} />
-            <Route path="/workspace" element={<DashboardWithTabs />} />
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
             <Route path="/chief-of-staff" element={<DashboardWithTabs />} />
