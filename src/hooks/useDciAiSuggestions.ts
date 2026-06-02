@@ -72,11 +72,13 @@ function parsePriorities(section: string | null): AiPrioritySuggestion[] {
 
     for (const line of lines.slice(1)) {
       const trimmed = line.trim();
+      // Strip leading bullet (- or *) so metadata lines like "- **Source:**" are recognized
+      const stripped = trimmed.replace(/^[-*]\s+/, '');
 
       // "Activities:" header starts the bullet list
       if (/^Activities:/i.test(trimmed)) { inActivities = true; continue; }
 
-      const srcMatch = trimmed.match(/^\*?\*?Source:\*?\*?\s*(.+)/i);
+      const srcMatch = stripped.match(/^\*?\*?Source:\*?\*?\s*(.+)/i);
       if (srcMatch) {
         inActivities = false;
         const srcText = srcMatch[1].toLowerCase();
@@ -88,15 +90,15 @@ function parsePriorities(section: string | null): AiPrioritySuggestion[] {
         continue;
       }
 
-      const whyMatch = trimmed.match(/^\*?\*?Why:\*?\*?\s*(.+)/i);
+      const whyMatch = stripped.match(/^\*?\*?Why:\*?\*?\s*(.+)/i);
       if (whyMatch) { inActivities = false; reasoning = whyMatch[1].trim(); continue; }
 
-      const actionMatch = trimmed.match(/^\*?\*?Action:\*?\*?\s*(.+)/i);
+      const actionMatch = stripped.match(/^\*?\*?Action:\*?\*?\s*(.+)/i);
       if (actionMatch) { inActivities = false; action = actionMatch[1].trim(); continue; }
 
       // Activity bullet points (while inside Activities block)
       if (inActivities && /^[-*]\s+/.test(trimmed)) {
-        activities.push(trimmed.replace(/^[-*]\s+/, ''));
+        activities.push(stripped);
       }
     }
 
