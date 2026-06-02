@@ -1260,18 +1260,22 @@ function SortableBriefItem({
                 <span className="font-medium text-muted-foreground">Action:</span> {item.action}
               </p>
             )}
-            {tier !== 'weekly' && (item.briefSource || item.briefReasoning) && (
+            {tier !== 'weekly' && (() => {
+              // Only show source when the parser extracted a real signal (not the default 'priorities')
+              const hasRealSource = item.briefSource && item.briefSource !== 'priorities';
+              return (hasRealSource || item.briefReasoning) ? (
               <p className="mt-1 text-[11px] text-muted-foreground/70 leading-snug">
-                {item.briefSource && (
+                {hasRealSource && (
                   <span className="inline-flex items-center gap-1">
-                    <span>{SOURCE_ICONS[item.briefSource] ?? '📋'}</span>
-                    <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource] ?? item.briefSource}</span>
+                    <span>{SOURCE_ICONS[item.briefSource!] ?? '📋'}</span>
+                    <span className="font-medium text-muted-foreground">{SOURCE_LABELS[item.briefSource!] ?? item.briefSource}</span>
                   </span>
                 )}
-                {item.briefSource && item.briefReasoning && <span className="mx-1">·</span>}
+                {hasRealSource && item.briefReasoning && <span className="mx-1">·</span>}
                 {item.briefReasoning && <span>{item.briefReasoning}</span>}
               </p>
-            )}
+            ) : null;
+            })()}
           </div>
         )}
       </div>
