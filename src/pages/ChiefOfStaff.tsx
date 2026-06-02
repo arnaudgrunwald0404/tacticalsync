@@ -702,7 +702,7 @@ function DciTabContent({
       setMonthLabel(monthNames[qStart.getMonth() + monthNum - 1] ?? '');
 
       const [priRes, comRes] = await Promise.all([
-        db.from('personal_priorities').select('title, description, status')
+        db.from('quarterly_priorities').select('title, description, status')
           .eq('quarter_id', quarter.id).eq('user_id', user.id).order('display_order'),
         db.from('monthly_commitments').select('title, description, status')
           .eq('quarter_id', quarter.id).eq('user_id', user.id).eq('month_number', monthNum).order('display_order'),

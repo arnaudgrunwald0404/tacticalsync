@@ -21,7 +21,7 @@ export interface TeamReportingLine {
   created_at: string;
 }
 
-export interface PersonalPriority {
+export interface QuarterlyPriority {
   id: string;
   quarter_id: string;
   user_id: string;
@@ -52,7 +52,7 @@ export interface PersonCommitments {
   fullName: string;
   avatarUrl: string | null;
   avatarName: string | null;
-  priorities: PersonalPriority[];              // up to 3
+  priorities: QuarterlyPriority[];              // up to 3
   commitments: Record<number, MonthlyCommitment[]>; // month_number → up to 3 commitments
 }
 

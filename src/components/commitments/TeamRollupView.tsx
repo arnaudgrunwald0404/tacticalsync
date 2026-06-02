@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import type {
   CommitmentQuarter,
   CommitmentStatus,
-  PersonalPriority,
+  QuarterlyPriority,
   MonthlyCommitment,
   TeamReportingLine,
   UpsertPriorityForm,
@@ -31,7 +31,7 @@ interface TeamMember {
 }
 
 interface EditCallbacks {
-  onUpsertPriority: (form: UpsertPriorityForm) => Promise<PersonalPriority | null>;
+  onUpsertPriority: (form: UpsertPriorityForm) => Promise<QuarterlyPriority | null>;
   onDeletePriority: (id: string) => Promise<void>;
   onUpsertCommitment: (form: UpsertCommitmentForm) => Promise<MonthlyCommitment | null>;
   onDeleteCommitment: (id: string) => Promise<void>;
@@ -42,7 +42,7 @@ interface EditCallbacks {
 interface TeamRollupViewProps {
   quarter: CommitmentQuarter;
   members: TeamMember[];
-  priorities: PersonalPriority[];
+  priorities: QuarterlyPriority[];
   commitments: MonthlyCommitment[];
   currentUserId?: string;
   reportingLines?: TeamReportingLine[];
@@ -64,7 +64,7 @@ function EditableMemberCard({
 }: {
   member: TeamMember;
   quarter: CommitmentQuarter;
-  priorities: PersonalPriority[];
+  priorities: QuarterlyPriority[];
   commitments: MonthlyCommitment[];
   monthLabels: string[];
   depth?: number;
@@ -214,7 +214,7 @@ function ReadOnlyMemberCard({
   depth = 0,
 }: {
   member: TeamMember;
-  priorities: PersonalPriority[];
+  priorities: QuarterlyPriority[];
   commitments: MonthlyCommitment[];
   monthLabels: string[];
   depth?: number;

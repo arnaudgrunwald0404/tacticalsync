@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { TeamRollupView } from '@/components/commitments/TeamRollupView';
 import type {
   CommitmentQuarter,
-  PersonalPriority,
+  QuarterlyPriority,
   MonthlyCommitment,
   TeamReportingLine,
 } from '@/types/commitments';
@@ -33,7 +33,7 @@ const makeMember = (id: string, full_name: string) => ({
   avatar_name: null,
 });
 
-const makePriority = (overrides: Partial<PersonalPriority> = {}): PersonalPriority => ({
+const makePriority = (overrides: Partial<QuarterlyPriority> = {}): QuarterlyPriority => ({
   id: `p-${Math.random()}`,
   quarter_id: 'q-1',
   user_id: 'u-1',

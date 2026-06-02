@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type {
   CommitmentQuarter,
-  PersonalPriority,
+  QuarterlyPriority,
   MonthlyCommitment,
   TeamReportingLine,
   PersonCommitments,
@@ -68,7 +68,7 @@ export function useActiveQuarter(teamId: string | null) {
 // ─── useMyCommitments ────────────────────────────────────────────────────────
 
 export function useMyCommitments(quarterId: string | null, userId: string | null) {
-  const [priorities, setPriorities] = useState<PersonalPriority[]>([]);
+  const [priorities, setPriorities] = useState<QuarterlyPriority[]>([]);
   const [commitments, setCommitments] = useState<MonthlyCommitment[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -79,7 +79,7 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
       setLoading(true);
       const [priRes, comRes] = await Promise.all([
         supabase
-          .from('personal_priorities')
+          .from('quarterly_priorities')
           .select('*')
           .eq('quarter_id', quarterId)
           .eq('user_id', userId)
@@ -94,7 +94,7 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
       ]);
       if (priRes.error) throw priRes.error;
       if (comRes.error) throw comRes.error;
-      setPriorities((priRes.data ?? []) as PersonalPriority[]);
+      setPriorities((priRes.data ?? []) as QuarterlyPriority[]);
       setCommitments((comRes.data ?? []) as MonthlyCommitment[]);
     } catch (err) {
       toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
@@ -107,17 +107,17 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
 
   const upsertPriority = useCallback(async (form: UpsertPriorityForm) => {
     const { data, error } = await supabase
-      .from('personal_priorities')
+      .from('quarterly_priorities')
       .upsert({ ...form, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .select()
       .single();
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return null; }
     await fetch();
-    return data as PersonalPriority;
+    return data as QuarterlyPriority;
   }, [fetch, toast]);
 
   const deletePriority = useCallback(async (id: string) => {
-    const { error } = await supabase.from('personal_priorities').delete().eq('id', id);
+    const { error } = await supabase.from('quarterly_priorities').delete().eq('id', id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     await fetch();
   }, [fetch, toast]);
@@ -148,9 +148,9 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
     setCommitments(prev => prev.map(c => c.id === id ? { ...c, status } : c));
   }, [toast]);
 
-  const updatePriorityStatus = useCallback(async (id: string, status: PersonalPriority['status']) => {
+  const updatePriorityStatus = useCallback(async (id: string, status: QuarterlyPriority['status']) => {
     const { error } = await supabase
-      .from('personal_priorities')
+      .from('quarterly_priorities')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
@@ -246,7 +246,7 @@ export function useTeamCommitments(
   quarterId: string | null,
   userIds: string[],
 ) {
-  const [data, setData] = useState<{ priorities: PersonalPriority[]; commitments: MonthlyCommitment[] }>({
+  const [data, setData] = useState<{ priorities: QuarterlyPriority[]; commitments: MonthlyCommitment[] }>({
     priorities: [],
     commitments: [],
   });
@@ -259,7 +259,7 @@ export function useTeamCommitments(
       setLoading(true);
       const [priRes, comRes] = await Promise.all([
         supabase
-          .from('personal_priorities')
+          .from('quarterly_priorities')
           .select('*')
           .eq('quarter_id', quarterId)
           .in('user_id', userIds)
@@ -275,7 +275,7 @@ export function useTeamCommitments(
       if (priRes.error) throw priRes.error;
       if (comRes.error) throw comRes.error;
       setData({
-        priorities: (priRes.data ?? []) as PersonalPriority[],
+        priorities: (priRes.data ?? []) as QuarterlyPriority[],
         commitments: (comRes.data ?? []) as MonthlyCommitment[],
       });
     } catch (err) {

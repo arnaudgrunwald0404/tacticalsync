@@ -3,7 +3,7 @@ import { PrioritySlot } from './PrioritySlot';
 import { CommitmentCell } from './CommitmentCell';
 import type {
   CommitmentQuarter,
-  PersonalPriority,
+  QuarterlyPriority,
   MonthlyCommitment,
   CommitmentStatus,
   UpsertPriorityForm,
@@ -14,9 +14,9 @@ import { getQuarterMonths } from '@/types/commitments';
 interface MyCommitmentsPanelProps {
   quarter: CommitmentQuarter;
   userId: string;
-  priorities: PersonalPriority[];
+  priorities: QuarterlyPriority[];
   commitments: MonthlyCommitment[];
-  onUpsertPriority: (form: UpsertPriorityForm) => Promise<PersonalPriority | null>;
+  onUpsertPriority: (form: UpsertPriorityForm) => Promise<QuarterlyPriority | null>;
   onDeletePriority: (id: string) => Promise<void>;
   onUpsertCommitment: (form: UpsertCommitmentForm) => Promise<MonthlyCommitment | null>;
   onDeleteCommitment: (id: string) => Promise<void>;

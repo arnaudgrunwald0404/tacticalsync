@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import type { PersonalPriority, MonthlyCommitment } from '@/types/commitments';
+import type { QuarterlyPriority, MonthlyCommitment } from '@/types/commitments';
 
 export type PriorityCategory = 'churn_reduction' | 'net_new_functionality' | 'net_new_accounts' | 'uncategorized';
 
@@ -58,7 +58,7 @@ function buildBreakdown(items: { category: PriorityCategory }[]): CategoryBreakd
 
 export function usePriorityAnalysis(
   quarterId: string | null,
-  priorities: PersonalPriority[],
+  priorities: QuarterlyPriority[],
   commitments: MonthlyCommitment[],
 ) {
   const [categorizations, setCategorizations] = useState<PriorityCategorization[]>([]);

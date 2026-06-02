@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@/test/test-utils';
 import userEvent from '@testing-library/user-event';
 import { PrioritySlot } from '@/components/commitments/PrioritySlot';
-import type { PersonalPriority } from '@/types/commitments';
+import type { QuarterlyPriority } from '@/types/commitments';
 
-const makePriority = (overrides: Partial<PersonalPriority> = {}): PersonalPriority => ({
+const makePriority = (overrides: Partial<QuarterlyPriority> = {}): QuarterlyPriority => ({
   id: 'p-1',
   quarter_id: 'q-1',
   user_id: 'u-1',

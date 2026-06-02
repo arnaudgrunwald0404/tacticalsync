@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatusBadge, nextStatus } from './StatusBadge';
-import type { PersonalPriority, CommitmentStatus } from '@/types/commitments';
+import type { QuarterlyPriority, CommitmentStatus } from '@/types/commitments';
 
 const borderByStatus: Record<CommitmentStatus, string> = {
   draft:       'border-gray-300/50',
@@ -12,7 +12,7 @@ const borderByStatus: Record<CommitmentStatus, string> = {
 };
 
 interface PrioritySlotProps {
-  priority?: PersonalPriority;
+  priority?: QuarterlyPriority;
   order: number; // 1-3
   readOnly?: boolean;
   onSave: (title: string) => Promise<void>;
