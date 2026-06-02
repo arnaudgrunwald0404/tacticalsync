@@ -693,6 +693,9 @@ function DciTabContent({
       };
     });
 
+  // Monday's log holds the weekly objectives for the whole week
+  const mondayLog = dciLogs.find(l => l.date === weekDateStrings[0]);
+
   // For today's column, if not yet logged but brief is loaded, show brief priorities
   const hasBrief = brief && brief.source !== 'none';
   const mergedDaily = React.useMemo(() => {
