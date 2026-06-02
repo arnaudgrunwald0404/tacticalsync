@@ -92,7 +92,7 @@ export function useCycles() {
 
       if (fetchError) throw fetchError;
 
-      const mapped = (data || []).map((row: any) => ({
+      const mapped = (data || []).map((row) => ({
         ...row,
         rc_title: row.rc_rallying_cries?.[0]?.title ?? row.rc_rallying_cries?.title ?? null,
         rc_rallying_cries: undefined,

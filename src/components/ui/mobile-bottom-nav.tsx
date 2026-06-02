@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
   },
   {
     id: "workspace",
-    label: "My workspace",
+    label: "My Check-Ins",
     icon: Briefcase,
     path: "/workspace",
   },

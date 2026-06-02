@@ -289,7 +289,7 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
 
       // Bullet points under SI
       if (line.startsWith('*') || line.startsWith('-')) {
-        const bulletText = line.replace(/^[\*\-]\s*/, '').trim();
+        const bulletText = line.replace(/^[*-]\s*/, '').trim();
         currentSI.bullets.push(bulletText);
         continue;
       }
@@ -364,7 +364,7 @@ export function parseMarkdownRCDO(markdown: string): ParsedRCDO {
     ) {
       if (line.startsWith('*') || line.startsWith('-')) {
         if (currentSI) {
-          const bulletText = line.replace(/^[\*\-]\s*/, '').trim();
+          const bulletText = line.replace(/^[*-]\s*/, '').trim();
           currentSI.bullets.push(bulletText);
         }
         continue;
