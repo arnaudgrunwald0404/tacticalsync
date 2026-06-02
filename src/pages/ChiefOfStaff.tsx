@@ -1247,7 +1247,7 @@ function SortableBriefItem({
             {tier === 'weekly' && item.activities.length > 0 && (
               <ul className="mt-1.5 space-y-0.5">
                 {item.activities.map((a, j) => (
-                  <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground leading-snug">
+                  <li key={j} className="flex items-start gap-1.5 text-sm text-muted-foreground leading-snug">
                     <span className="text-muted-foreground/40 mt-0.5 flex-shrink-0">•</span>
                     <span>{a}</span>
                   </li>
