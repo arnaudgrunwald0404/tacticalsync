@@ -72,6 +72,13 @@ interface CosDciLog {
   priority_2_comment: string | null;
   priority_3_status: DciItemStatus | null;
   priority_3_comment: string | null;
+  // Weekly objectives (set on Monday, read Tue–Fri from Monday's row)
+  weekly_obj_1: string | null;
+  weekly_obj_2: string | null;
+  weekly_obj_3: string | null;
+  weekly_obj_1_activities: string[] | null;
+  weekly_obj_2_activities: string[] | null;
+  weekly_obj_3_activities: string[] | null;
 }
 
 interface CosTeamMember {
@@ -371,19 +378,33 @@ export default function ChiefOfStaff() {
     if (!error && data) setPersonTopics(prev => [...prev, data as CosPersonTopic]);
   };
 
-  const logBrief = async (topPriorities: CosPriority[], topicRaised: string) => {
+  const logBrief = async (
+    topPriorities: CosPriority[],
+    topicRaised: string,
+    weeklyObjectives?: { text: string; activities: string[] }[],
+  ) => {
     if (!userId) return;
     const today = format(new Date(), 'yyyy-MM-dd');
     const existingToday = dciLogs.find(l => l.date === today);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
-    const payload = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: Record<string, any> = {
       priority_1: topPriorities[0]?.text ?? null,
       priority_2: topPriorities[1]?.text ?? null,
       priority_3: topPriorities[2]?.text ?? null,
       topic_raised: topicRaised || null,
       notes: null,
     };
+    // On Monday (or whenever weekly objectives are provided), save them too
+    if (weeklyObjectives && weeklyObjectives.length > 0) {
+      payload.weekly_obj_1 = weeklyObjectives[0]?.text ?? null;
+      payload.weekly_obj_2 = weeklyObjectives[1]?.text ?? null;
+      payload.weekly_obj_3 = weeklyObjectives[2]?.text ?? null;
+      payload.weekly_obj_1_activities = weeklyObjectives[0]?.activities ?? [];
+      payload.weekly_obj_2_activities = weeklyObjectives[1]?.activities ?? [];
+      payload.weekly_obj_3_activities = weeklyObjectives[2]?.activities ?? [];
+    }
     let data, error;
     if (existingToday) {
       ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
@@ -641,7 +662,7 @@ function DciTabContent({
   priorities: CosPriority[];
   thisWeekPriorities: CosPriority[];
   dciLogs: CosDciLog[];
-  onLog: (priorities: CosPriority[], topic: string) => void;
+  onLog: (priorities: CosPriority[], topic: string, weeklyObjectives?: { text: string; activities: string[] }[]) => void;
   onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
   onRerun: (log: CosDciLog) => void;
 }) {
@@ -716,9 +737,9 @@ function DciTabContent({
   }, [brief]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLog = () => {
-    // Save only the top 3 from the user's reordered list
-    const items = todayDayIdx === 0 ? orderedWeekly : orderedDaily;
-    const logPriorities = items.slice(0, 3).map((ordered, i) => ({
+    // Daily priorities: always save the top 3 from the daily list
+    const dailyItems = orderedDaily;
+    const logPriorities = dailyItems.slice(0, 3).map((ordered, i) => ({
       ...(ordered.item.cosPriority ?? {
         id: `brief-${i}`,
         user_id: '',
@@ -733,7 +754,17 @@ function DciTabContent({
       }),
       text: ordered.item.text,
     } as CosPriority));
-    onLog(logPriorities, topicRaised);
+
+    // Weekly objectives: save top 3 on Monday (or when weekly list has content)
+    const isMonday = todayDayIdx === 0;
+    const weeklyObjs = isMonday && orderedWeekly.length > 0
+      ? orderedWeekly.slice(0, 3).map(o => ({
+          text: o.item.text,
+          activities: o.item.activities,
+        }))
+      : undefined;
+
+    onLog(logPriorities, topicRaised, weeklyObjs);
   };
 
   return (
@@ -791,17 +822,92 @@ function DciTabContent({
         </Card>
       )}
 
-      {/* ── Weekly Matrix ── */}
+      {/* ── Weekly Matrix: Objectives column + Mon–Fri daily columns ── */}
       <Card>
         <CardContent className="p-0">
-          <div className="grid grid-cols-5 divide-x divide-border">
+          <div className="grid grid-cols-6 divide-x divide-border">
+            {/* ── Weekly Objectives column (from Monday's log) ── */}
+            {(() => {
+              const weeklyObjs = [mondayLog?.weekly_obj_1, mondayLog?.weekly_obj_2, mondayLog?.weekly_obj_3];
+              const weeklyActivities = [mondayLog?.weekly_obj_1_activities, mondayLog?.weekly_obj_2_activities, mondayLog?.weekly_obj_3_activities];
+              const hasWeeklyObjs = weeklyObjs.some(Boolean);
+              // If brief is loaded and weekly not yet logged, preview from orderedWeekly
+              const previewWeekly = !hasWeeklyObjs && hasBrief && orderedWeekly.length > 0;
+              const displayObjs = previewWeekly
+                ? orderedWeekly.slice(0, 3).map(o => o.item.text)
+                : weeklyObjs;
+              const displayActivities = previewWeekly
+                ? orderedWeekly.slice(0, 3).map(o => o.item.activities)
+                : weeklyActivities;
+
+              return (
+                <div className="min-h-[200px] flex flex-col bg-primary/[0.02]">
+                  <div className="px-3 py-2.5 border-b border-border text-center bg-primary/10">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Weekly</p>
+                    <p className="text-[9px] text-primary/70 mt-0.5">Objectives</p>
+                  </div>
+                  <div className="flex-1 flex flex-col divide-y divide-border/50">
+                    {[0, 1, 2].map(rowIdx => {
+                      const text = displayObjs[rowIdx];
+                      const acts = displayActivities[rowIdx];
+                      return (
+                        <div
+                          key={rowIdx}
+                          className={cn(
+                            'flex-1 px-3 py-2.5 flex items-start gap-2',
+                            !text && 'items-center justify-center',
+                          )}
+                        >
+                          {text ? (
+                            <div className="flex items-start gap-2">
+                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                {rowIdx + 1}
+                              </span>
+                              <div>
+                                <span className={cn(
+                                  'text-xs leading-snug font-medium',
+                                  previewWeekly && 'text-muted-foreground italic',
+                                )}>
+                                  {text}
+                                </span>
+                                {acts && acts.length > 0 && (
+                                  <ul className="mt-0.5">
+                                    {acts.map((a, j) => (
+                                      <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
+                                        <span className="mt-0.5">•</span>
+                                        <span>{a}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/30">—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="px-3 py-1.5 border-t border-border/50 text-center">
+                    {hasWeeklyObjs ? (
+                      <span className="text-[10px] text-emerald-600 font-medium">✓ Set</span>
+                    ) : previewWeekly ? (
+                      <span className="text-[10px] text-primary font-medium">Preview</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/50">Not set</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
               const isPast = dayIdx < todayDayIdx;
               const isFuture = todayDayIdx >= 0 && dayIdx > todayDayIdx;
-              const isMonday = dayIdx === 0;
 
-              // Determine what to show in this column
               let displayPriorities = day.priorities;
               let showBriefPreview = false;
               if (isTodayCol && !day.isLogged && hasBrief && todayBriefPriorities.length > 0) {
@@ -818,7 +924,6 @@ function DciTabContent({
                     isFuture && 'opacity-40',
                   )}
                 >
-                  {/* Day header */}
                   <div className={cn(
                     'px-3 py-2.5 border-b border-border text-center',
                     isTodayCol && 'bg-copper/10',
@@ -832,15 +937,9 @@ function DciTabContent({
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       {format(weekDates[dayIdx], 'MMM d')}
                     </p>
-                    {isMonday && (
-                      <p className="text-[9px] text-primary font-medium mt-0.5">Weekly objectives</p>
-                    )}
-                    {!isMonday && (
-                      <p className="text-[9px] text-muted-foreground/60 mt-0.5">Daily priorities</p>
-                    )}
+                    <p className="text-[9px] text-muted-foreground/60 mt-0.5">Daily priorities</p>
                   </div>
 
-                  {/* Priority rows */}
                   <div className="flex-1 flex flex-col divide-y divide-border/50">
                     {[0, 1, 2].map(rowIdx => {
                       const text = displayPriorities[rowIdx];
@@ -854,10 +953,7 @@ function DciTabContent({
                         >
                           {text ? (
                             <>
-                              <span className={cn(
-                                'flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5',
-                                isMonday ? 'bg-primary/10 text-primary' : 'bg-copper/10 text-copper',
-                              )}>
+                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-copper/10 text-copper text-[10px] font-bold flex items-center justify-center mt-0.5">
                                 {rowIdx + 1}
                               </span>
                               <span className={cn(
@@ -875,7 +971,6 @@ function DciTabContent({
                     })}
                   </div>
 
-                  {/* Status indicator */}
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
                     {day.isLogged ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Logged</span>
