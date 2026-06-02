@@ -133,6 +133,35 @@ async function tryReadFile(dirHandle: any, filename: string): Promise<{ content:
 }
 
 /**
+ * Find a brief file for a given date (YYYY-MM-DD).
+ * Tries exact match first (e.g. "2026-06-01.md"), then searches
+ * the directory for any .md file containing the date string
+ * (e.g. "DCI_Brief_2026-06-01.md").
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findFileByDate(dirHandle: any, dateStr: string): Promise<{ content: string; lastModified: number } | null> {
+  // 1. Try exact match (backward compatible)
+  const exact = await tryReadFile(dirHandle, `${dateStr}.md`);
+  if (exact) return exact;
+
+  // 2. Search for any .md file containing the date
+  try {
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (handle.kind !== 'file') continue;
+      if (name.endsWith('.md') && name.includes(dateStr)) {
+        const file = await handle.getFile();
+        const content = await file.text();
+        return { content, lastModified: file.lastModified };
+      }
+    }
+  } catch {
+    // iteration not supported or permission denied
+  }
+
+  return null;
+}
+
+/**
  * Get the Monday date string for the current week.
  */
 function getMondayOfWeek(): string {
@@ -168,8 +197,8 @@ export function useDciBrief(): UseDciBriefReturn {
     const mondayDate = getMondayOfWeek();
     const isMonday = today === mondayDate;
 
-    // 1. Read today's brief
-    const todayFile = await tryReadFile(dirHandleRef.current, `${today}.md`);
+    // 1. Read today's brief (supports both "2026-06-01.md" and "DCI_Brief_2026-06-01.md")
+    const todayFile = await findFileByDate(dirHandleRef.current, today);
 
     if (!todayFile) {
       dirHandleRef.current = null;
@@ -183,7 +212,7 @@ export function useDciBrief(): UseDciBriefReturn {
     // 2. On non-Monday days, if today's file has no weekly section,
     //    fall back to Monday's file for the weekly priorities
     if (!isMonday && parsed.weeklyPriorities.length === 0) {
-      const mondayFile = await tryReadFile(dirHandleRef.current, `${mondayDate}.md`);
+      const mondayFile = await findFileByDate(dirHandleRef.current, mondayDate);
       if (mondayFile) {
         const mondayParsed = parseBriefMarkdown(mondayFile.content);
         if (mondayParsed.weeklyPriorities.length > 0) {
