@@ -22,7 +22,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import { AppNavbar } from "@/components/ui/app-navbar";
 import { CycleSelector } from "@/components/rcdo/CycleSelector";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -2018,9 +2017,6 @@ const duplicateSelectedDo = useCallback(() => {
 
   return (
     <div className="w-full h-dvh flex flex-col">
-      {/* Page header */}
-      <AppNavbar />
-
       {/* Canvas toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
         <div className="flex items-center gap-2">
@@ -3214,9 +3210,6 @@ function StrategyCanvasMobileView({
 
   return (
     <div className="w-full h-dvh flex flex-col">
-      {/* Page header */}
-      <AppNavbar />
-
       {/* Mobile List View */}
       <div className={`flex-1 overflow-y-auto bg-gradient-to-b from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 ${isMobile ? 'pb-20' : ''}`}>
         <div className="container mx-auto px-4 py-6 max-w-2xl">

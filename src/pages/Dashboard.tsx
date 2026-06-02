@@ -14,7 +14,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import { AnimatedTooltip } from "@/components/ui/animated-tooltip";
-import Logo from "@/components/Logo";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import { ProfileCompletionModal } from "@/components/ui/ProfileCompletionModal";
 import {
@@ -24,7 +23,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRoles } from "@/hooks/useRoles";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -760,15 +758,6 @@ const DashboardOld = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          
-          {/* Avatar positioned absolutely to avoid clipping */}
-          <UserProfileHeader />
-        </div>
-      </header>
-
       <main className="container mx-auto px-4 py-6 sm:py-8">
         <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start  gap-4">
           <div>

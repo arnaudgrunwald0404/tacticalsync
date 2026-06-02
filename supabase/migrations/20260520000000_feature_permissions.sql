@@ -20,22 +20,35 @@ ALTER TABLE public.feature_permissions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "feature_permissions_select" ON public.feature_permissions
   FOR SELECT USING (true);
 
+-- Helper: check manage_permissions without triggering RLS recursion
+-- SECURITY DEFINER runs as the function owner (postgres), bypassing RLS on
+-- the inner query against feature_permissions.
+CREATE OR REPLACE FUNCTION public.check_manage_permissions(user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = user_id
+    AND (
+      p.is_super_admin = true
+      OR EXISTS (
+        SELECT 1 FROM public.feature_permissions fp
+        WHERE fp.feature_key = 'manage_permissions'
+        AND fp.role_tag = ANY(p.role_tags)
+        AND fp.is_enabled = true
+      )
+    )
+  );
+$$;
+
 -- Only super admins or users whose role_tag has manage_permissions can modify
 CREATE POLICY "feature_permissions_modify" ON public.feature_permissions
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid()
-      AND (
-        p.is_super_admin = true
-        OR EXISTS (
-          SELECT 1 FROM public.feature_permissions fp
-          WHERE fp.feature_key = 'manage_permissions'
-          AND fp.role_tag = ANY(p.role_tags)
-          AND fp.is_enabled = true
-        )
-      )
-    )
+    public.check_manage_permissions(auth.uid())
   );
 
 -- Updated_at trigger

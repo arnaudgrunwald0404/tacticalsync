@@ -9,8 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Trash2, Save, UserPlus, Link as LinkIcon } from "lucide-react";
 import FancyAvatar from "@/components/ui/fancy-avatar";
-import Logo from "@/components/Logo";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import GridBackground from "@/components/ui/grid-background";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -314,25 +312,16 @@ const MeetingSettings = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
-              className="h-8 sm:h-10 px-2 sm:px-4"
-            >
-              <ArrowLeft className="h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">Back to Meeting</span>
-              <span className="sm:hidden">Back</span>
-            </Button>
-            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          </div>
-          <UserProfileHeader />
-        </div>
-      </header>
       <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(`/team/${teamId}/meeting/${meetingId}`)}
+          className="-ml-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back to Meeting
+        </Button>
 
         <div>
           <h1 className="font-heading text-2xl sm:text-3xl font-bold text-[#2C2C2C]">Meeting Settings</h1>

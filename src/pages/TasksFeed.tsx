@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
@@ -11,9 +11,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import GridBackground from '@/components/ui/grid-background';
 import { useNavigate } from 'react-router-dom';
-import { UserProfileHeader } from '@/components/ui/user-profile-header';
-import Logo from '@/components/Logo';
-import { ArrowLeft } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileBottomNav } from '@/components/ui/mobile-bottom-nav';
 
@@ -181,22 +178,6 @@ export default function TasksFeed() {
 
   return (
     <GridBackground>
-      <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/dashboard/rcdo?list=true')}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          </div>
-          <UserProfileHeader />
-        </div>
-      </header>
       <div className={`min-h-screen bg-gradient-to-b from-[#F5F3F0] via-white to-[#F8F6F2] ${isMobile ? 'pb-20' : ''}`}>
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="mb-6">

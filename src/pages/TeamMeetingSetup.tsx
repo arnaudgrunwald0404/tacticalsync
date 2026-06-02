@@ -6,11 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ArrowLeft } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
-import Logo from "@/components/Logo";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useRoles } from "@/hooks/useRoles";
 import { getMeetingStartDate, getISODateString } from "@/lib/dateUtils";
 
@@ -215,17 +213,6 @@ const TeamMeetingSetup = () => {
   if (!(isSuperAdmin || (isAdmin && isTeamMember))) {
     return (
       <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-        <header className="border-b bg-white">
-          <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-            <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
-              <ArrowLeft className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Back to Home</span>
-              <span className="sm:hidden">Back</span>
-            </Button>
-            <UserProfileHeader />
-          </div>
-        </header>
         <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">
           <Card>
             <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6 space-y-3">
@@ -244,17 +231,6 @@ const TeamMeetingSetup = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-blue-50 overscroll-none">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between relative pr-20">
-          <Logo variant="minimal" size="lg" className="scale-75 sm:scale-100" />
-          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10">
-            <ArrowLeft className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Back to Home</span>
-            <span className="sm:hidden">Back</span>
-          </Button>
-          <UserProfileHeader />
-        </div>
-      </header>
       <main className="container mx-auto px-4 py-6 sm:py-8 max-w-2xl">
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 mb-4">

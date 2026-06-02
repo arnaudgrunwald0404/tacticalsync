@@ -21,7 +21,6 @@ import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
-import { AppNavbar } from "@/components/ui/app-navbar";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2073,8 +2072,6 @@ const Settings = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <AppNavbar />
-      
       <div className="flex flex-col lg:flex-row">
         <SettingsNavbar
           activeSection={activeSection}

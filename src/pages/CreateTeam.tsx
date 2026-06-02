@@ -8,8 +8,6 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
-import Logo from "@/components/Logo";
-import { UserProfileHeader } from "@/components/ui/user-profile-header";
 import { useRoles } from "@/hooks/useRoles";
 
 const CreateTeam = () => {
@@ -105,21 +103,11 @@ const CreateTeam = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between relative pr-20">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 sm:h-10 px-2 sm:px-4">
-              <ArrowLeft className="h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">Back</span>
-              <span className="sm:hidden">Back</span>
-            </Button>
-            <Logo variant="minimal" size="lg" />
-          </div>
-          <UserProfileHeader />
-        </div>
-      </header>
-
       <main className="container mx-auto px-4 py-8 max-w-md">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="mb-4 -ml-2">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back
+        </Button>
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Create New Team</CardTitle>

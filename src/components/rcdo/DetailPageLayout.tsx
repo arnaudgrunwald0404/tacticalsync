@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LayoutGrid, Menu } from 'lucide-react';
 import GridBackground from '@/components/ui/grid-background';
-import { AppNavbar } from '@/components/ui/app-navbar';
 import { DetailPageNavigation } from './DetailPageNavigation';
 import { CycleSelector } from './CycleSelector';
 
@@ -34,7 +33,6 @@ export function DetailPageLayout({
 
   return (
     <GridBackground inverted className="flex flex-col min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
-      <AppNavbar />
       {/* Mobile Navigation Menu Button */}
       {!loading && rallyingCryId && (
         <div className="md:hidden px-4 py-2 border-b bg-white">

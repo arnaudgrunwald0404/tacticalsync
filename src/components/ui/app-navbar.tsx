@@ -52,14 +52,14 @@ export function AppNavbar() {
             <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
               <nav className="flex items-center gap-1">
                 {[
-                  ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff" }] : []),
-                  ...(canAccess("view_dashboard") ? [{ value: "checkins", label: "My Dashboard" }] : []),
-                  ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives" }] : []),
-                  ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments" }] : []),
+                  ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff", subtitle: "Day – Week" }] : []),
+                  ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments", subtitle: "Month – Quarter" }] : []),
+                  ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives", subtitle: "Six months" }] : []),
+                  ...(canAccess("view_dashboard") ? [{ value: "checkins", label: "My Check-Ins" }] : []),
                   ...(canAccess("view_meetings") ? [{ value: "main", label: "Meetings" }] : []),
                   ...(canAccess("view_insights") ? [{ value: "insights", label: "Insights" }] : []),
                   ...(canAccess("view_settings") ? [{ value: "settings", label: "Settings" }] : []),
-                ].map(({ value, label, title }) => (
+                ].map(({ value, label, title, subtitle }) => (
                   <button
                     key={value}
                     title={title}
@@ -73,6 +73,9 @@ export function AppNavbar() {
                     )}
                   >
                     {label}
+                    {subtitle && (
+                      <span className="block text-[10px] font-normal text-muted-foreground leading-tight">{subtitle}</span>
+                    )}
                   </button>
                 ))}
               </nav>

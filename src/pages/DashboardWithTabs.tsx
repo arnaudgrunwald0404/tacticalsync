@@ -12,7 +12,6 @@ import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
-import { AppNavbar } from "@/components/ui/app-navbar";
 
 const DashboardWithTabs = () => {
   const navigate = useNavigate();
@@ -56,8 +55,6 @@ const DashboardWithTabs = () => {
 
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-platinum via-white to-white-gold overscroll-none">
-      <AppNavbar />
-
       <Tabs value={activeTab} className="w-full">
         <TabsContent value="cos" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'cos' ? (

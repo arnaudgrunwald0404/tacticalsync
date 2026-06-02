@@ -7,8 +7,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RoleOverrideProvider } from "@/contexts/RoleOverrideContext";
 import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
-import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
+import { AppLayout } from "@/components/AppLayout";
 
 // Lazy load all page components for code splitting
 const Index = lazy(() => import("./pages/Index"));
@@ -49,6 +49,7 @@ const App = () => (
       <RoleOverrideBanner />
       <BrowserRouter>
         <Routes>
+          {/* Public routes — no shared navbar */}
           <Route path="/" element={
             <Suspense fallback={<PageSkeleton />}>
               <Index />
@@ -64,121 +65,43 @@ const App = () => (
               <ResetPassword />
             </Suspense>
           } />
-          <Route path="/dashboard" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <Dashboard />
-            </Suspense>
-          } />
-          <Route path="/my-meetings" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/dashboard/rcdo" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/workspace" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/commitments" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/insights" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/chief-of-staff" element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <DashboardWithTabs />
-            </Suspense>
-          } />
-          <Route path="/rcdo/detail/do/:doId" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <DODetail />
-            </Suspense>
-          } />
-          <Route path="/rcdo/detail/si/:siId" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <SIDetail />
-            </Suspense>
-          } />
-          <Route path="/dashboard/rcdo/tasks-feed" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <TasksFeed />
-            </Suspense>
-          } />
-<Route path="/rcdo/canvas" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <StrategyCanvas />
-            </Suspense>
-          } />
-          <Route path="/rcdo/all-hands" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <RCDOAllHands />
-            </Suspense>
-          } />
-          <Route path="/dashboard/rcdo/canvas" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <StrategyCanvas />
-            </Suspense>
-          } />
-          <Route path="/create-team" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <CreateTeam />
-            </Suspense>
-          } />
-          <Route path="/profile" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <Profile />
-            </Suspense>
-          } />
-          <Route path="/settings" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <Settings />
-            </Suspense>
-          } />
           <Route path="/join/:inviteCode" element={
             <Suspense fallback={<PageSkeleton />}>
               <JoinTeam />
             </Suspense>
           } />
-          <Route path="/team/:teamId/invite" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <TeamInvite />
-            </Suspense>
-          } />
-          <Route path="/team/:teamId/setup-meeting" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <TeamMeetingSetup />
-            </Suspense>
-          } />
+          {/* Meeting page — has its own specialized header */}
           <Route path="/team/:teamId/meeting/:meetingId" element={
             <Suspense fallback={<MeetingSkeleton />}>
               <TeamMeeting />
             </Suspense>
           } />
-          <Route path="/team/:teamId/meeting/:meetingId/settings" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <MeetingSettings />
-            </Suspense>
-          } />
-          <Route path="/branding" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <BrandingShowcase />
-            </Suspense>
-          } />
-          <Route path="/color-palette" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <ColorPaletteShowcase />
-            </Suspense>
-          } />
+
+          {/* Authenticated routes — AppLayout renders the persistent navbar */}
+          <Route element={<AppLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/my-meetings" element={<DashboardWithTabs />} />
+            <Route path="/dashboard/rcdo" element={<DashboardWithTabs />} />
+            <Route path="/workspace" element={<DashboardWithTabs />} />
+            <Route path="/commitments" element={<DashboardWithTabs />} />
+            <Route path="/insights" element={<DashboardWithTabs />} />
+            <Route path="/chief-of-staff" element={<DashboardWithTabs />} />
+            <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
+            <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
+            <Route path="/dashboard/rcdo/tasks-feed" element={<TasksFeed />} />
+            <Route path="/rcdo/canvas" element={<StrategyCanvas />} />
+            <Route path="/rcdo/all-hands" element={<RCDOAllHands />} />
+            <Route path="/dashboard/rcdo/canvas" element={<StrategyCanvas />} />
+            <Route path="/create-team" element={<CreateTeam />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/team/:teamId/invite" element={<TeamInvite />} />
+            <Route path="/team/:teamId/setup-meeting" element={<TeamMeetingSetup />} />
+            <Route path="/team/:teamId/meeting/:meetingId/settings" element={<MeetingSettings />} />
+            <Route path="/branding" element={<BrandingShowcase />} />
+            <Route path="/color-palette" element={<ColorPaletteShowcase />} />
+          </Route>
+
           {/* Legacy redirects */}
           <Route path="/dashboard/main" element={<Navigate to="/my-meetings" replace />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
