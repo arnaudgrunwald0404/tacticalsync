@@ -37,7 +37,7 @@ describe('MobileBottomNav', () => {
       expect(screen.getByLabelText('Chief of Staff')).toBeInTheDocument();
       expect(screen.getByLabelText('Strategy')).toBeInTheDocument();
       expect(screen.getByLabelText('My Meetings')).toBeInTheDocument();
-      expect(screen.getByLabelText('My workspace')).toBeInTheDocument();
+      expect(screen.getByLabelText('My Check-Ins')).toBeInTheDocument();
       expect(screen.getByLabelText('My tasks')).toBeInTheDocument();
       expect(screen.getByLabelText('Commitments')).toBeInTheDocument();
     });
@@ -67,9 +67,9 @@ describe('MobileBottomNav', () => {
       expect(meetingsBtn).toHaveClass('text-primary');
     });
 
-    it('should mark My workspace as active on /workspace', () => {
+    it('should mark My Check-Ins as active on /workspace', () => {
       renderWithPath('/workspace');
-      const workspaceBtn = screen.getByLabelText('My workspace');
+      const workspaceBtn = screen.getByLabelText('My Check-Ins');
       expect(workspaceBtn).toHaveClass('text-primary');
     });
 
@@ -113,10 +113,10 @@ describe('MobileBottomNav', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/my-meetings');
     });
 
-    it('should navigate to /workspace when My workspace is clicked', async () => {
+    it('should navigate to /workspace when My Check-Ins is clicked', async () => {
       const user = userEvent.setup();
       renderWithPath('/commitments');
-      await user.click(screen.getByLabelText('My workspace'));
+      await user.click(screen.getByLabelText('My Check-Ins'));
       expect(mockNavigate).toHaveBeenCalledWith('/workspace');
     });
 
