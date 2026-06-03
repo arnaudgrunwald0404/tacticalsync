@@ -13,6 +13,7 @@ interface NavigationItem {
   children?: NavigationItem[];
   isExpanded?: boolean;
   isActive?: boolean;
+  parentSIId?: string;
 }
 
 interface DetailPageNavigationProps {
@@ -126,12 +127,14 @@ export function DetailPageNavigation({
           .eq('rallying_cry_id', rallyingCryId)
           .order('display_order', { ascending: true });
 
-        // Fetch ALL SIs for ALL DOs in this Rallying Cry (exhaustive)
+        // Fetch ALL top-level SIs for ALL DOs in this Rallying Cry (sub-SIs are
+        // shown inside their parent SI's detail page, never in this sidebar tree)
         const doIds = (dos || []).map(d => d.id);
         const { data: sis } = await supabase
           .from('rc_strategic_initiatives')
           .select('id, title, defining_objective_id')
           .in('defining_objective_id', doIds.length > 0 ? doIds : ['00000000-0000-0000-0000-000000000000'])
+          .is('parent_si_id', null)
           .order('display_order', { ascending: true });
 
         // Fetch ALL tasks for ALL SIs (exhaustive)
@@ -157,6 +160,7 @@ export function DetailPageNavigation({
                   title: task.title,
                   type: 'task' as const,
                   isActive: task.id === currentTaskId,
+                  parentSIId: si.id,
                 }));
 
               return {
@@ -316,9 +320,15 @@ export function DetailPageNavigation({
       case 'si':
         navigate(`/rcdo/detail/si/${item.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
         break;
-      case 'task':
-        navigate(`/rcdo/detail/si/${currentSIId || ''}?task=${item.id}${cycleId ? `&cycle=${cycleId}` : ''}`);
+      case 'task': {
+        const siForTask = item.parentSIId || currentSIId;
+        if (!siForTask) {
+          console.warn('Cannot navigate to task — no parent SI found', item);
+          return;
+        }
+        navigate(`/rcdo/detail/si/${siForTask}?task=${item.id}${cycleId ? `&cycle=${cycleId}` : ''}`);
         break;
+      }
     }
   }, [navigate, currentSIId, cycleId]);
 

@@ -9,6 +9,7 @@ import { Calendar, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
+import { resolveTopLevelSiId, resolveTaskSiAncestry } from '@/lib/siAncestry';
 import GridBackground from '@/components/ui/grid-background';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -164,15 +165,17 @@ export default function TasksFeed() {
     return 'bg-emerald-400';
   };
 
-  const handleParentClick = (item: CheckinFeedItem) => {
+  const handleParentClick = async (item: CheckinFeedItem) => {
     if (item.parent_type === 'do') {
       navigate(`/rcdo/detail/do/${item.parent_id}`);
     } else if (item.parent_type === 'initiative') {
-      navigate(`/rcdo/detail/si/${item.parent_id}`);
+      const topLevelSiId = await resolveTopLevelSiId(item.parent_id);
+      navigate(`/rcdo/detail/si/${topLevelSiId}`);
     } else if (item.parent_type === 'task') {
-      // Navigate to SI detail page (tasks are shown there)
-      // We'd need to fetch the task's SI ID, but for now just navigate to SI detail
-      navigate(`/rcdo/detail/si/${item.parent_id}`);
+      const { topLevelSiId } = await resolveTaskSiAncestry(item.parent_id);
+      if (topLevelSiId) {
+        navigate(`/rcdo/detail/si/${topLevelSiId}?task=${item.parent_id}`);
+      }
     }
   };
 

@@ -123,9 +123,14 @@ export function TaskDialog({
   const fetchStrategicInitiatives = async () => {
     setLoadingSIs(true);
     try {
+      // Skip SIs in sub-SI mode: they can't accept direct tasks (DB trigger
+      // rcdo_block_tasks_on_sub_si_mode rejects the insert), and listing them would
+      // surface an option that always fails. Sub-SIs themselves (parent_si_id NOT NULL)
+      // are still listed — tasks belong on the sub-SI when its parent is in sub-SI mode.
       const { data, error } = await supabase
         .from('rc_strategic_initiatives')
         .select('id, title, defining_objective_id')
+        .eq('accepts_sub_sis', false)
         .order('title', { ascending: true });
 
       if (error) throw error;

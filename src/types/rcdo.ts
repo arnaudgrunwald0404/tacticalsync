@@ -88,6 +88,8 @@ export interface DOMetric {
 export interface StrategicInitiative {
   id: string;
   defining_objective_id: string;
+  parent_si_id: string | null;
+  accepts_sub_sis: boolean;
   title: string;
   description: string | null;
   owner_user_id: string;

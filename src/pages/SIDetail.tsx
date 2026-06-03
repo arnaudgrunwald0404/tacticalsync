@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, ChevronRight } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { useCheckins } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
 import type { TaskWithRelations } from '@/types/rcdo';
@@ -14,6 +14,21 @@ import { CheckinCard } from '@/components/rcdo/CheckinCard';
 import { TaskRow } from '@/components/rcdo/TaskRow';
 import { TaskDialog } from '@/components/rcdo/TaskDialog';
 import { TaskGanttChart } from '@/components/rcdo/TaskGanttChart';
+import { SITaskTable } from '@/components/rcdo/SITaskTable';
+import { SISubTree } from '@/components/rcdo/SISubTree';
+import { useSubSIs } from '@/hooks/useSubSIs';
+import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -38,8 +53,8 @@ export default function SIDetail() {
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
-  const [editingCell, setEditingCell] = useState<{ taskId: string; field: 'start_date' | 'target_delivery_date' } | null>(null);
-  const [statusMenuTaskId, setStatusMenuTaskId] = useState<string | null>(null);
+  const [showSubSIConvertDialog, setShowSubSIConvertDialog] = useState(false);
+  const [convertingMode, setConvertingMode] = useState(false);
 
   // Fetch SI details
   const [siDetails, setSiDetails] = useState<Record<string, unknown> | null>(null);
@@ -56,6 +71,10 @@ export default function SIDetail() {
 
   // Fetch tasks
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasksBySI(siId);
+
+  // Fetch sub-SIs (used both for the Sub-initiatives tab content and to gate the
+  // mode toggle on the Details tab — can't revert to direct tasks while sub-SIs exist)
+  const { subSIs, loading: subSIsLoading, refetch: refetchSubSIs } = useSubSIs(siId);
   
   // Fetch selected task details if taskId is in URL
   const { task: taskDetails, loading: taskDetailsLoading } = useTaskDetails(taskIdFromUrl || undefined);
@@ -96,6 +115,7 @@ export default function SIDetail() {
         .from('rc_strategic_initiatives')
         .select('id')
         .eq('defining_objective_id', doObj.id)
+        .is('parent_si_id', null)
         .order('display_order', { ascending: true });
       const siIdx = (sis || []).findIndex(s => s.id === siId);
       const siNum = siIdx >= 0 ? siIdx + 1 : 1;
@@ -169,6 +189,7 @@ export default function SIDetail() {
     siId,
     onTasksUpdate: refetchTasks,
     onCheckinsUpdate: refetchCheckins,
+    onSubSIsUpdate: refetchSubSIs,
   });
 
   // Refetch SI details when needed
@@ -251,16 +272,6 @@ export default function SIDetail() {
     }
   };
 
-  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
-    try {
-      const { updateTask } = await import('@/hooks/useTasks');
-      await updateTask(taskId, { [field]: value });
-      refetchTasks();
-    } catch (err) {
-      console.error('Error updating task:', err);
-    }
-  };
-
   const handleCompleteTask = async (taskId: string) => {
     try {
       const { updateTask } = await import('@/hooks/useTasks');
@@ -291,6 +302,8 @@ export default function SIDetail() {
 
   const isOwner = currentUserId === siDetails.owner_user_id;
   const isLocked = !!siDetails.locked_at;
+  const acceptsSubSis = !!siDetails.accepts_sub_sis;
+  const isSubSI = !!siDetails.parent_si_id;
   
   const canEdit = canEditInitiative(
     siDetails.owner_user_id,
@@ -341,6 +354,54 @@ export default function SIDetail() {
       await refetchSI();
     } catch (e) {
       console.warn('Failed to unlock SI', e);
+    }
+  };
+
+  // Switch this SI to "accepts sub-initiatives" mode. If direct tasks already exist,
+  // a confirm dialog wraps them into a default sub-SI via the RPC (atomic). Otherwise
+  // it's a simple flag flip.
+  const handleToggleSubSiMode = async (nextEnabled: boolean) => {
+    if (!siDetails) return;
+    if (nextEnabled) {
+      if (tasks.length > 0) {
+        setShowSubSIConvertDialog(true);
+        return;
+      }
+      await supabase
+        .from('rc_strategic_initiatives')
+        .update({ accepts_sub_sis: true })
+        .eq('id', siDetails.id);
+      await refetchSI();
+      await refetchSubSIs();
+    } else {
+      if (subSIs.length > 0) {
+        // Toggle is disabled in this case at the UI layer; defensive no-op here.
+        return;
+      }
+      await supabase
+        .from('rc_strategic_initiatives')
+        .update({ accepts_sub_sis: false })
+        .eq('id', siDetails.id);
+      await refetchSI();
+    }
+  };
+
+  const handleConfirmConvertToSubSI = async () => {
+    if (!siDetails) return;
+    try {
+      setConvertingMode(true);
+      const { error } = await supabase.rpc('rcdo_convert_si_to_sub_si_mode', {
+        p_si_id: siDetails.id as string,
+      });
+      if (error) throw error;
+      await refetchSI();
+      await refetchTasks();
+      await refetchSubSIs();
+    } catch (e) {
+      console.error('Failed to convert SI to sub-SI mode', e);
+    } finally {
+      setConvertingMode(false);
+      setShowSubSIConvertDialog(false);
     }
   };
 
@@ -439,206 +500,36 @@ export default function SIDetail() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onAddTask={() => setShowTaskDialog(true)}
-        canCreateTask={!isLocked && canCreateTask}
+        canCreateTask={!isLocked && canCreateTask && !acceptsSubSis}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         tasksCount={tasks.length}
         checkinsCount={checkins.length}
+        acceptsSubSis={acceptsSubSis}
+        subSiCount={subSIs.length}
         additionalContent={additionalContent}
       />
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            {/* Tasks Tab */}
+            {/* Tasks / Sub-initiatives Tab */}
             <TabsContent value="tasks">
               <Card className="p-4 sm:p-6">
-
-                {tasksLoading ? (
-                  <div className="space-y-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Skeleton key={i} className="h-16 w-full" />
-                    ))}
-                  </div>
+                {acceptsSubSis ? (
+                  <SISubTree
+                    parentSiId={siDetails.id as string}
+                    parentNumbering={siNumbering || ''}
+                    parentDefiningObjectiveId={siDetails.defining_objective_id as string}
+                    onEditTask={handleEditTask}
+                    focusTaskId={taskIdFromUrl}
+                  />
                 ) : viewMode === 'table' ? (
-                  <div className="overflow-x-auto">
-                    {tasks.length === 0 ? (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        No tasks yet.
-                      </p>
-                    ) : (
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b border-gray-200 dark:border-gray-700">
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                              Description
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                              Owner
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                              Start Date
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                              Target Delivery Date
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tasks.map((task) => {
-                            const taskOwnerName = getFullNameForAvatar(
-                              task.owner?.first_name,
-                              task.owner?.last_name,
-                              task.owner?.full_name
-                            );
-                            const startDate = task.start_date
-                              ? parseLocalDate(task.start_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-                              : '—';
-                            const deliveryDate = task.target_delivery_date
-                              ? parseLocalDate(task.target_delivery_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-                              : '—';
-
-                            const statusOptions: { value: string; label: string; color: string }[] = [
-                              { value: 'not_assigned', label: 'Not Assigned', color: 'text-gray-600 dark:text-gray-400' },
-                              { value: 'assigned', label: 'Assigned', color: 'text-[#4A5D5F]' },
-                              { value: 'in_progress', label: 'In Progress', color: 'text-yellow-600 dark:text-yellow-400' },
-                              { value: 'completed', label: 'Completed', color: 'text-green-600 dark:text-green-400' },
-                              { value: 'delayed', label: 'Delayed', color: 'text-orange-600 dark:text-orange-400' },
-                              { value: 'task_changed_canceled', label: 'Changed/Canceled', color: 'text-red-600 dark:text-red-400' },
-                            ];
-                            const currentStatus = statusOptions.find(s => s.value === task.status) || statusOptions[0];
-
-                            return (
-                              <tr
-                                key={task.id}
-                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                              >
-                                <td
-                                  className="py-3 px-4 text-sm text-gray-900 dark:text-gray-100 cursor-pointer group/desc"
-                                  onClick={() => handleEditTask(task.id)}
-                                >
-                                  <div className="flex items-center gap-1">
-                                    <span className="font-medium">{task.title}</span>
-                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/desc:opacity-100 transition-opacity flex-shrink-0" />
-                                  </div>
-                                  {task.completion_criteria && (
-                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                      {task.completion_criteria.replace(/<[^>]*>/g, '').trim()}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="py-3 px-4 text-sm">
-                                  {task.owner ? (
-                                    <div className="flex items-center gap-2">
-                                      <FancyAvatar
-                                        name={task.owner?.avatar_name || taskOwnerName}
-                                        displayName={taskOwnerName}
-                                        avatarUrl={task.owner?.avatar_url}
-                                        size="sm"
-                                      />
-                                      <span className="text-gray-700 dark:text-gray-300">{taskOwnerName}</span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-gray-600 dark:text-gray-400">—</span>
-                                  )}
-                                </td>
-                                {/* Start Date - double-click to edit */}
-                                <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                  {editingCell?.taskId === task.id && editingCell.field === 'start_date' ? (
-                                    <input
-                                      type="date"
-                                      defaultValue={task.start_date || ''}
-                                      autoFocus
-                                      className="border rounded px-2 py-1 text-sm w-[140px] bg-white dark:bg-gray-800"
-                                      onBlur={(e) => {
-                                        setEditingCell(null);
-                                        if (e.target.value !== (task.start_date || '')) {
-                                          handleInlineUpdate(task.id, 'start_date', e.target.value);
-                                        }
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                        if (e.key === 'Escape') setEditingCell(null);
-                                      }}
-                                    />
-                                  ) : (
-                                    <span
-                                      className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1"
-                                      onDoubleClick={() => setEditingCell({ taskId: task.id, field: 'start_date' })}
-                                    >
-                                      {startDate}
-                                    </span>
-                                  )}
-                                </td>
-                                {/* Target Delivery Date - double-click to edit */}
-                                <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                  {editingCell?.taskId === task.id && editingCell.field === 'target_delivery_date' ? (
-                                    <input
-                                      type="date"
-                                      defaultValue={task.target_delivery_date || ''}
-                                      autoFocus
-                                      className="border rounded px-2 py-1 text-sm w-[140px] bg-white dark:bg-gray-800"
-                                      onBlur={(e) => {
-                                        setEditingCell(null);
-                                        if (e.target.value !== (task.target_delivery_date || '')) {
-                                          handleInlineUpdate(task.id, 'target_delivery_date', e.target.value);
-                                        }
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                        if (e.key === 'Escape') setEditingCell(null);
-                                      }}
-                                    />
-                                  ) : (
-                                    <span
-                                      className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1"
-                                      onDoubleClick={() => setEditingCell({ taskId: task.id, field: 'target_delivery_date' })}
-                                    >
-                                      {deliveryDate}
-                                    </span>
-                                  )}
-                                </td>
-                                {/* Status - click to cycle */}
-                                <td className="py-3 px-4 text-sm relative">
-                                  <div className="relative">
-                                    <span
-                                      className={`${currentStatus.color} cursor-pointer hover:underline`}
-                                      onClick={() => setStatusMenuTaskId(statusMenuTaskId === task.id ? null : task.id)}
-                                    >
-                                      {currentStatus.label}
-                                    </span>
-                                    {statusMenuTaskId === task.id && (
-                                      <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setStatusMenuTaskId(null)} />
-                                        <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border rounded-md shadow-lg py-1 min-w-[160px]">
-                                          {statusOptions.map((opt) => (
-                                            <button
-                                              key={opt.value}
-                                              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${opt.color} ${opt.value === task.status ? 'font-semibold bg-gray-50 dark:bg-gray-700/50' : ''}`}
-                                              onClick={() => {
-                                                setStatusMenuTaskId(null);
-                                                if (opt.value !== task.status) {
-                                                  handleInlineUpdate(task.id, 'status', opt.value);
-                                                }
-                                              }}
-                                            >
-                                              {opt.label}
-                                            </button>
-                                            ))}
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
+                  <SITaskTable
+                    tasks={tasks}
+                    loading={tasksLoading}
+                    onEditTask={handleEditTask}
+                    onRefetch={refetchTasks}
+                  />
                 ) : (
                   <div className="overflow-x-auto">
                     <TaskGanttChart
@@ -746,6 +637,38 @@ export default function SIDetail() {
                     )}
                   </div>
 
+                  {/* Sub-initiatives mode toggle (top-level SIs only) */}
+                  {!isSubSI && (
+                    <div className="flex items-start justify-between gap-4 py-3 border-y border-gray-200 dark:border-gray-700">
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400">
+                          Break this initiative into sub-initiatives
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          When enabled, the "Tasks" tab becomes "Sub-initiatives" and each sub-initiative carries its own tasks. Disable to manage tasks directly.
+                        </p>
+                      </div>
+                      {acceptsSubSis && subSIs.length > 0 ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Switch checked disabled />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Delete all sub-initiatives before switching back to direct tasks.
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Switch
+                          checked={acceptsSubSis}
+                          disabled={!canEdit || isLocked || convertingMode || subSIsLoading}
+                          onCheckedChange={handleToggleSubSiMode}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {/* Timeline */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
@@ -829,6 +752,25 @@ export default function SIDetail() {
           )}
         </>
       )}
+
+      <AlertDialog open={showSubSIConvertDialog} onOpenChange={setShowSubSIConvertDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Convert tasks into a sub-initiative?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This initiative currently has {tasks.length} task{tasks.length === 1 ? '' : 's'}.
+              We'll create a default sub-initiative called "Sub-initiative 1" and move every
+              existing task into it. You can rename the sub-initiative afterwards, or add more.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={convertingMode}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmConvertToSubSI} disabled={convertingMode}>
+              {convertingMode ? 'Converting…' : 'Convert'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DetailPageLayout>
   );
 }

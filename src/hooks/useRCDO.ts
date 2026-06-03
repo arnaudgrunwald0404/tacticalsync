@@ -565,6 +565,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
         `)
         .eq('defining_objective_id', doId)
+        .is('parent_si_id', null)
         .order('display_order', { ascending: true });
 
       if (fetchError) throw fetchError;

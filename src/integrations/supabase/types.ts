@@ -7,60 +7,13 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
-      feature_permissions: {
-        Row: {
-          id: string
-          feature_key: string
-          role_tag: string
-          is_enabled: boolean
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: string
-          feature_key: string
-          role_tag: string
-          is_enabled?: boolean
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: string
-          feature_key?: string
-          role_tag?: string
-          is_enabled?: boolean
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       agenda_template_items: {
         Row: {
           created_at: string | null
@@ -126,6 +79,39 @@ export type Database = {
         }
         Relationships: []
       }
+      birthday_invites: {
+        Row: {
+          code: string
+          created_at: string | null
+          email: string
+          email_sent_at: string | null
+          id: string
+          name: string
+          rsvp_status: string | null
+          rsvped_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          email: string
+          email_sent_at?: string | null
+          id?: string
+          name: string
+          rsvp_status?: string | null
+          rsvped_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          email?: string
+          email_sent_at?: string | null
+          id?: string
+          name?: string
+          rsvp_status?: string | null
+          rsvped_at?: string | null
+        }
+        Relationships: []
+      }
       comments: {
         Row: {
           content: string
@@ -164,6 +150,392 @@ export type Database = {
           },
         ]
       }
+      commitment_quarters: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          end_date: string
+          id: string
+          label: string
+          start_date: string
+          status: string
+          team_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          id?: string
+          label: string
+          start_date: string
+          status?: string
+          team_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          id?: string
+          label?: string
+          start_date?: string
+          status?: string
+          team_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commitment_quarters_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commitment_quarters_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_dci_logs: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          notes: string | null
+          priority_1: string | null
+          priority_1_comment: string | null
+          priority_1_status: string | null
+          priority_2: string | null
+          priority_2_comment: string | null
+          priority_2_status: string | null
+          priority_3: string | null
+          priority_3_comment: string | null
+          priority_3_status: string | null
+          topic_raised: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          priority_1?: string | null
+          priority_1_comment?: string | null
+          priority_1_status?: string | null
+          priority_2?: string | null
+          priority_2_comment?: string | null
+          priority_2_status?: string | null
+          priority_3?: string | null
+          priority_3_comment?: string | null
+          priority_3_status?: string | null
+          topic_raised?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          priority_1?: string | null
+          priority_1_comment?: string | null
+          priority_1_status?: string | null
+          priority_2?: string | null
+          priority_2_comment?: string | null
+          priority_2_status?: string | null
+          priority_3?: string | null
+          priority_3_comment?: string | null
+          priority_3_status?: string | null
+          topic_raised?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cos_meeting_actions: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          status: string
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          status?: string
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          status?: string
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_meeting_actions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_person_accountabilities: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          sort_order: number
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          sort_order?: number
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          sort_order?: number
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_person_accountabilities_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_person_topics: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          sort_order: number
+          status: string | null
+          text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          sort_order?: number
+          status?: string | null
+          text: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          sort_order?: number
+          status?: string | null
+          text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_person_topics_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_prep_settings: {
+        Row: {
+          id: string
+          prep_instructions: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          prep_instructions?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          prep_instructions?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cos_priorities: {
+        Row: {
+          archived_at: string | null
+          category: string
+          created_at: string
+          done_at: string | null
+          id: string
+          notes: string | null
+          status: string | null
+          text: string
+          tier_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          category: string
+          created_at?: string
+          done_at?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          text: string
+          tier_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          category?: string
+          created_at?: string
+          done_at?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          text?: string
+          tier_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cos_settings: {
+        Row: {
+          col1_sections: Json | null
+          col2_sections: Json | null
+          col3_label: string | null
+          layout_config: Json | null
+          status_options: Json
+          tab_labels: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          col1_sections?: Json | null
+          col2_sections?: Json | null
+          col3_label?: string | null
+          layout_config?: Json | null
+          status_options?: Json
+          tab_labels?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          col1_sections?: Json | null
+          col2_sections?: Json | null
+          col3_label?: string | null
+          layout_config?: Json | null
+          status_options?: Json
+          tab_labels?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cos_team_members: {
+        Row: {
+          context_notes: string | null
+          created_at: string
+          id: string
+          last_1on1_date: string | null
+          name: string
+          relationship_type: string
+          reports_to_id: string | null
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context_notes?: string | null
+          created_at?: string
+          id?: string
+          last_1on1_date?: string | null
+          name: string
+          relationship_type: string
+          reports_to_id?: string | null
+          role: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          context_notes?: string | null
+          created_at?: string
+          id?: string
+          last_1on1_date?: string | null
+          name?: string
+          relationship_type?: string
+          reports_to_id?: string | null
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_team_members_reports_to_id_fkey"
+            columns: ["reports_to_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feature_permissions: {
+        Row: {
+          created_at: string | null
+          feature_key: string
+          id: string
+          is_enabled: boolean
+          role_tag: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          feature_key: string
+          id?: string
+          is_enabled?: boolean
+          role_tag: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          feature_key?: string
+          id?: string
+          is_enabled?: boolean
+          role_tag?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           created_at: string | null
@@ -171,9 +543,9 @@ export type Database = {
           expires_at: string | null
           id: string
           invite_code: string | null
-          invited_by: string
+          invited_by: string | null
           role: string
-          status: string
+          status: Database["public"]["Enums"]["invitation_status"] | null
           team_id: string
           updated_at: string | null
         }
@@ -183,9 +555,9 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invite_code?: string | null
-          invited_by: string
-          role: string
-          status?: string
+          invited_by?: string | null
+          role?: string
+          status?: Database["public"]["Enums"]["invitation_status"] | null
           team_id: string
           updated_at?: string | null
         }
@@ -195,13 +567,20 @@ export type Database = {
           expires_at?: string | null
           id?: string
           invite_code?: string | null
-          invited_by?: string
+          invited_by?: string | null
           role?: string
-          status?: string
+          status?: Database["public"]["Enums"]["invitation_status"] | null
           team_id?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invitations_team_id_fkey"
             columns: ["team_id"]
@@ -543,6 +922,60 @@ export type Database = {
           },
         ]
       }
+      monthly_commitments: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          month_number: number
+          quarter_id: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          month_number: number
+          quarter_id: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          month_number?: number
+          quarter_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_commitments_quarter_id_fkey"
+            columns: ["quarter_id"]
+            isOneToOne: false
+            referencedRelation: "commitment_quarters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "monthly_commitments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_name: string | null
@@ -550,16 +983,19 @@ export type Database = {
           birthday: string | null
           blue_percentage: number | null
           created_at: string | null
-          email: string | null
+          department: string | null
+          email: string
           first_name: string | null
-          full_name: string | null
+          full_name: string
           green_percentage: number | null
           id: string
           is_admin: boolean | null
           is_rcdo_admin: boolean | null
           is_super_admin: boolean | null
           last_name: string | null
+          manager_email: string | null
           red_percentage: number | null
+          role_tags: string[] | null
           updated_at: string | null
           yellow_percentage: number | null
         }
@@ -569,16 +1005,19 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email?: string | null
+          department?: string | null
+          email: string
           first_name?: string | null
-          full_name?: string | null
+          full_name: string
           green_percentage?: number | null
           id: string
           is_admin?: boolean | null
           is_rcdo_admin?: boolean | null
           is_super_admin?: boolean | null
           last_name?: string | null
+          manager_email?: string | null
           red_percentage?: number | null
+          role_tags?: string[] | null
           updated_at?: string | null
           yellow_percentage?: number | null
         }
@@ -588,20 +1027,74 @@ export type Database = {
           birthday?: string | null
           blue_percentage?: number | null
           created_at?: string | null
-          email?: string | null
+          department?: string | null
+          email?: string
           first_name?: string | null
-          full_name?: string | null
+          full_name?: string
           green_percentage?: number | null
           id?: string
           is_admin?: boolean | null
           is_rcdo_admin?: boolean | null
           is_super_admin?: boolean | null
           last_name?: string | null
+          manager_email?: string | null
           red_percentage?: number | null
+          role_tags?: string[] | null
           updated_at?: string | null
           yellow_percentage?: number | null
         }
         Relationships: []
+      }
+      quarterly_priorities: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          quarter_id: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          quarter_id: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          quarter_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_priorities_quarter_id_fkey"
+            columns: ["quarter_id"]
+            isOneToOne: false
+            referencedRelation: "commitment_quarters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "personal_priorities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rc_canvas_states: {
         Row: {
@@ -640,6 +1133,7 @@ export type Database = {
           next_steps: string | null
           parent_id: string
           parent_type: string
+          percent_to_goal: number | null
           sentiment: number | null
           summary: string | null
           updated_at: string | null
@@ -653,6 +1147,7 @@ export type Database = {
           next_steps?: string | null
           parent_id: string
           parent_type: string
+          percent_to_goal?: number | null
           sentiment?: number | null
           summary?: string | null
           updated_at?: string | null
@@ -666,11 +1161,20 @@ export type Database = {
           next_steps?: string | null
           parent_id?: string
           parent_type?: string
+          percent_to_goal?: number | null
           sentiment?: number | null
           summary?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rc_checkins_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rc_cycles: {
         Row: {
@@ -895,7 +1399,15 @@ export type Database = {
           parent_type?: string
           ref_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rc_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rc_rallying_cries: {
         Row: {
@@ -960,6 +1472,8 @@ export type Database = {
       }
       rc_strategic_initiatives: {
         Row: {
+          accepts_sub_sis: boolean
+          benchmark: string | null
           created_at: string | null
           created_by: string | null
           defining_objective_id: string
@@ -969,13 +1483,18 @@ export type Database = {
           id: string
           locked_at: string | null
           locked_by: string | null
-          owner_user_id: string
+          owner_user_id: string | null
+          parent_si_id: string | null
+          participant_user_ids: string[] | null
+          primary_success_metric: string | null
           start_date: string | null
           status: string
           title: string
           updated_at: string | null
         }
         Insert: {
+          accepts_sub_sis?: boolean
+          benchmark?: string | null
           created_at?: string | null
           created_by?: string | null
           defining_objective_id: string
@@ -985,13 +1504,18 @@ export type Database = {
           id?: string
           locked_at?: string | null
           locked_by?: string | null
-          owner_user_id: string
+          owner_user_id?: string | null
+          parent_si_id?: string | null
+          participant_user_ids?: string[] | null
+          primary_success_metric?: string | null
           start_date?: string | null
           status?: string
           title: string
           updated_at?: string | null
         }
         Update: {
+          accepts_sub_sis?: boolean
+          benchmark?: string | null
           created_at?: string | null
           created_by?: string | null
           defining_objective_id?: string
@@ -1001,7 +1525,10 @@ export type Database = {
           id?: string
           locked_at?: string | null
           locked_by?: string | null
-          owner_user_id?: string
+          owner_user_id?: string | null
+          parent_si_id?: string | null
+          participant_user_ids?: string[] | null
+          primary_success_metric?: string | null
           start_date?: string | null
           status?: string
           title?: string
@@ -1029,6 +1556,138 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rc_strategic_initiatives_parent_si_id_fkey"
+            columns: ["parent_si_id"]
+            isOneToOne: false
+            referencedRelation: "rc_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_parent_si_id_fkey"
+            columns: ["parent_si_id"]
+            isOneToOne: false
+            referencedRelation: "rc_top_level_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_tasks: {
+        Row: {
+          actual_delivery_date: string | null
+          completion_criteria: string | null
+          created_at: string | null
+          created_by: string
+          display_order: number | null
+          id: string
+          notes: string | null
+          owner_user_id: string | null
+          start_date: string | null
+          status: string
+          strategic_initiative_id: string
+          target_delivery_date: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          actual_delivery_date?: string | null
+          completion_criteria?: string | null
+          created_at?: string | null
+          created_by: string
+          display_order?: number | null
+          id?: string
+          notes?: string | null
+          owner_user_id?: string | null
+          start_date?: string | null
+          status?: string
+          strategic_initiative_id: string
+          target_delivery_date?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          actual_delivery_date?: string | null
+          completion_criteria?: string | null
+          created_at?: string | null
+          created_by?: string
+          display_order?: number | null
+          id?: string
+          notes?: string | null
+          owner_user_id?: string | null
+          start_date?: string | null
+          status?: string
+          strategic_initiative_id?: string
+          target_delivery_date?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_rc_tasks_created_by_profiles"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_rc_tasks_owner_user_id_profiles"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_tasks_strategic_initiative_id_fkey"
+            columns: ["strategic_initiative_id"]
+            isOneToOne: false
+            referencedRelation: "rc_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_tasks_strategic_initiative_id_fkey"
+            columns: ["strategic_initiative_id"]
+            isOneToOne: false
+            referencedRelation: "rc_top_level_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_meetings: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"]
+          id: string
+          name: string
+          team_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name: string
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"]
+          id?: string
+          name?: string
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_meetings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
         ]
       }
       super_admins: {
@@ -1049,27 +1708,30 @@ export type Database = {
       team_members: {
         Row: {
           created_at: string | null
+          custom_avatar_url: string | null
           id: string
-          role: string
-          team_id: string
-          updated_at: string | null
-          user_id: string
+          role: Database["public"]["Enums"]["member_role"]
+          team_id: string | null
+          title: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
+          custom_avatar_url?: string | null
           id?: string
-          role: string
-          team_id: string
-          updated_at?: string | null
-          user_id: string
+          role?: Database["public"]["Enums"]["member_role"]
+          team_id?: string | null
+          title?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
+          custom_avatar_url?: string | null
           id?: string
-          role?: string
-          team_id?: string
-          updated_at?: string | null
-          user_id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          team_id?: string | null
+          title?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1086,43 +1748,303 @@ export type Database = {
             referencedRelation: "teams"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "team_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_reporting_lines: {
+        Row: {
+          created_at: string
+          id: string
+          manager_id: string
+          report_id: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          manager_id: string
+          report_id: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          manager_id?: string
+          report_id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_reporting_lines_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_reporting_lines_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_reporting_lines_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
         ]
       }
       teams: {
         Row: {
           abbreviated_name: string | null
           created_at: string | null
-          created_by: string
+          created_by: string | null
+          frequency: Database["public"]["Enums"]["meeting_frequency"] | null
           id: string
-          invite_code: string | null
+          invite_code: string
           name: string
+          standing_agenda_items: Json | null
           updated_at: string | null
         }
         Insert: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by: string
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
-          invite_code?: string | null
+          invite_code?: string
           name: string
+          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Update: {
           abbreviated_name?: string | null
           created_at?: string | null
-          created_by?: string
+          created_by?: string | null
+          frequency?: Database["public"]["Enums"]["meeting_frequency"] | null
           id?: string
-          invite_code?: string | null
+          invite_code?: string
           name?: string
+          standing_agenda_items?: Json | null
           updated_at?: string | null
         }
         Relationships: []
       }
+      topic_status: {
+        Row: {
+          created_at: string | null
+          id: string
+          status: string
+          topic_id: string
+          updated_at: string | null
+          updated_by: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          status: string
+          topic_id: string
+          updated_at?: string | null
+          updated_by: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          status?: string
+          topic_id?: string
+          updated_at?: string | null
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_status_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      personal_priorities: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string | null
+          quarter_id: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string | null
+          quarter_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string | null
+          quarter_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_priorities_quarter_id_fkey"
+            columns: ["quarter_id"]
+            isOneToOne: false
+            referencedRelation: "commitment_quarters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "personal_priorities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rc_top_level_strategic_initiatives: {
+        Row: {
+          accepts_sub_sis: boolean | null
+          benchmark: string | null
+          created_at: string | null
+          created_by: string | null
+          defining_objective_id: string | null
+          description: string | null
+          display_order: number | null
+          end_date: string | null
+          id: string | null
+          locked_at: string | null
+          locked_by: string | null
+          owner_user_id: string | null
+          parent_si_id: string | null
+          participant_user_ids: string[] | null
+          primary_success_metric: string | null
+          start_date: string | null
+          status: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          accepts_sub_sis?: boolean | null
+          benchmark?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          defining_objective_id?: string | null
+          description?: string | null
+          display_order?: number | null
+          end_date?: string | null
+          id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id?: string | null
+          parent_si_id?: string | null
+          participant_user_ids?: string[] | null
+          primary_success_metric?: string | null
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          accepts_sub_sis?: boolean | null
+          benchmark?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          defining_objective_id?: string | null
+          description?: string | null
+          display_order?: number | null
+          end_date?: string | null
+          id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          owner_user_id?: string | null
+          parent_si_id?: string | null
+          participant_user_ids?: string[] | null
+          primary_success_metric?: string | null
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rc_strategic_initiatives_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_defining_objective_id_fkey"
+            columns: ["defining_objective_id"]
+            isOneToOne: false
+            referencedRelation: "rc_defining_objectives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_parent_si_id_fkey"
+            columns: ["parent_si_id"]
+            isOneToOne: false
+            referencedRelation: "rc_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rc_strategic_initiatives_parent_si_id_fkey"
+            columns: ["parent_si_id"]
+            isOneToOne: false
+            referencedRelation: "rc_top_level_strategic_initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      check_manage_permissions: { Args: { user_id: string }; Returns: boolean }
+      check_team_member_role: {
+        Args: {
+          _required_role: Database["public"]["Enums"]["member_role"]
+          _team_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      get_recurring_meeting: {
+        Args: { meeting_id: string }
+        Returns: {
+          frequency: string
+          id: string
+          name: string
+        }[]
+      }
       get_user_login_info: {
         Args: { user_id: string }
         Returns: {
@@ -1140,9 +2062,17 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
+      rcdo_convert_si_to_sub_si_mode: {
+        Args: { p_si_id: string }
+        Returns: string
+      }
     }
     Enums: {
       completion_status_enum: "completed" | "not_completed" | "pending"
+      invitation_status: "pending" | "accepted" | "expired" | "declined"
+      item_type: "agenda" | "topic" | "priority" | "team_topic" | "action_item"
+      meeting_frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
+      member_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1268,13 +2198,13 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       completion_status_enum: ["completed", "not_completed", "pending"],
+      invitation_status: ["pending", "accepted", "expired", "declined"],
+      item_type: ["agenda", "topic", "priority", "team_topic", "action_item"],
+      meeting_frequency: ["daily", "weekly", "bi-weekly", "monthly"],
+      member_role: ["admin", "member"],
     },
   },
 } as const
-

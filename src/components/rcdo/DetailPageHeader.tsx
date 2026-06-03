@@ -47,7 +47,9 @@ interface DetailPageHeaderProps {
   onTabChange?: (value: string) => void;
   tasksCount?: number;
   checkinsCount?: number;
-  
+  acceptsSubSis?: boolean;
+  subSiCount?: number;
+
   // Additional content (for selected items in header)
   additionalContent?: React.ReactNode;
 }
@@ -76,6 +78,8 @@ export function DetailPageHeader({
   onTabChange,
   tasksCount = 0,
   checkinsCount = 0,
+  acceptsSubSis = false,
+  subSiCount = 0,
   additionalContent,
 }: DetailPageHeaderProps) {
   const ownerName = getFullNameForAvatar(
@@ -246,7 +250,7 @@ export function DetailPageHeader({
           <Tabs value={activeTab} onValueChange={onTabChange}>
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="tasks" className="flex-1 sm:flex-initial">
-                Tasks ({tasksCount})
+                {acceptsSubSis ? `Sub-initiatives (${subSiCount})` : `Tasks (${tasksCount})`}
               </TabsTrigger>
               <TabsTrigger value="checkins" className="flex-1 sm:flex-initial">
                 Check-ins ({checkinsCount})

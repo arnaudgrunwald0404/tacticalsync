@@ -122,6 +122,7 @@ export function useCycleAllSIs(rallyingCryId: string | undefined) {
         .from('rc_strategic_initiatives')
         .select('id, title, display_order, defining_objective_id')
         .in('defining_objective_id', doIds)
+        .is('parent_si_id', null)
         .order('display_order', { ascending: true });
       if (siErr) throw siErr;
 

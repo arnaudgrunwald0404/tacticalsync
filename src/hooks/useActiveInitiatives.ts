@@ -66,6 +66,7 @@ export function useActiveInitiatives(teamId: string | undefined) {
           )
         `)
         .eq('rc_defining_objectives.rallying_cry_id', rallyingCry.id)
+        .is('parent_si_id', null)
         .in('status', ['draft', 'not_started', 'active', 'blocked'])
         .order('title', { ascending: true });
 

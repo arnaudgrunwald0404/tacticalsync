@@ -154,6 +154,7 @@ export function InitiativeDialog({
         .from('rc_strategic_initiatives')
         .insert({
           defining_objective_id: createData.defining_objective_id,
+          parent_si_id: null,
           title: createData.title,
           description: createData.description || null,
           owner_user_id: createData.owner_user_id,

@@ -15,6 +15,7 @@ interface UseRCDORealtimeProps {
   onTasksUpdate?: () => void;
   onLinksUpdate?: () => void;
   onCheckinsUpdate?: () => void;
+  onSubSIsUpdate?: () => void;
 }
 
 /**
@@ -34,6 +35,7 @@ export function useRCDORealtime({
   onTasksUpdate,
   onLinksUpdate,
   onCheckinsUpdate,
+  onSubSIsUpdate,
 }: UseRCDORealtimeProps) {
   useEffect(() => {
     const channels: RealtimeChannel[] = [];
@@ -230,6 +232,29 @@ export function useRCDORealtime({
           .subscribe();
 
         channels.push(checkinsChannel);
+      }
+
+      // Sub-SI updates (children of this SI). Fires on insert/update/delete of any
+      // sub-SI under this parent. Tasks under sub-SIs are not covered here — each
+      // SubSIRow refetches its own tasks via useTasksBySI on its own lifecycle.
+      if (onSubSIsUpdate) {
+        const subSIsChannel = supabase
+          .channel(`rc_sub_sis:${siId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'rc_strategic_initiatives',
+              filter: `parent_si_id=eq.${siId}`,
+            },
+            () => {
+              onSubSIsUpdate();
+            }
+          )
+          .subscribe();
+
+        channels.push(subSIsChannel);
       }
     }
 

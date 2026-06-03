@@ -804,7 +804,8 @@ export default function StrategyCanvasPage() {
         const { data: sis, error: siErr } = await supabase
           .from('rc_strategic_initiatives')
           .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, created_at')
-          .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
+          .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+          .is('parent_si_id', null);
         if (siErr) console.warn('[Canvas] SI query error:', siErr);
         console.log('[Canvas] Fallback SI count', (sis || []).length);
 
@@ -1009,7 +1010,8 @@ export default function StrategyCanvasPage() {
           .from('rc_strategic_initiatives')
           .select('id, title, defining_objective_id, locked_at, created_at')
           .in('defining_objective_id', uniqueDoIds)
-          .in('title', uniqueTitles);
+          .in('title', uniqueTitles)
+          .is('parent_si_id', null);
         const siByKey = new Map<string, { id: string; locked: boolean; createdAt: string | null }>();
         const key = (doId: string, t: string) => `${doId}:::${t}`;
         for (const r of (siRows || [])) siByKey.set(key(r.defining_objective_id, r.title), { id: r.id, locked: !!r.locked_at, createdAt: r.created_at ?? null });
@@ -1719,7 +1721,8 @@ const duplicateSelectedDo = useCallback(() => {
       const { data: importedSIs } = await supabase
         .from('rc_strategic_initiatives')
         .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, start_date, end_date, created_at')
-        .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000']);
+        .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+        .is('parent_si_id', null);
 
       const { data: importedMetrics } = await supabase
         .from('rc_do_metrics')
@@ -3120,8 +3123,9 @@ function StrategyCanvasMobileView({
               .from('rc_strategic_initiatives')
               .select('id, title, defining_objective_id, status, owner_user_id')
               .in('defining_objective_id', doIds)
+              .is('parent_si_id', null)
               .order('display_order', { ascending: true });
-            
+
             setSis(sisData || []);
           }
         }

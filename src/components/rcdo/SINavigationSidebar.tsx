@@ -103,12 +103,13 @@ export function SINavigationSidebar({
           .eq('rallying_cry_id', currentRallyingCryId)
           .order('display_order', { ascending: true });
 
-        // Fetch all SIs for all DOs in this Rallying Cry
+        // Fetch all top-level SIs for all DOs in this Rallying Cry
         const doIds = (dos || []).map(d => d.id);
         const { data: sis } = await supabase
           .from('rc_strategic_initiatives')
           .select('id, title, defining_objective_id')
           .in('defining_objective_id', doIds.length > 0 ? doIds : ['00000000-0000-0000-0000-000000000000'])
+          .is('parent_si_id', null)
           .order('display_order', { ascending: true });
 
         // Fetch all tasks for all SIs
