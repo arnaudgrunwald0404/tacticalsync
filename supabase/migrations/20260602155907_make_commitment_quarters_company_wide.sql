@@ -1,11 +1,10 @@
 -- Make commitment_quarters company-wide so all users see the same quarters.
 -- Only admins (is_admin / is_super_admin on profiles) can create/manage quarters.
 
--- ─── Schema: make team_id nullable ────────────────────────────────────────────
-
+-- Schema: make team_id nullable
 ALTER TABLE commitment_quarters ALTER COLUMN team_id DROP NOT NULL;
 
--- ─── Drop old team-scoped RLS policies ────────────────────────────────────────
+-- Drop old team-scoped RLS policies
 
 -- commitment_quarters
 DROP POLICY IF EXISTS "Team members can view commitment quarters" ON commitment_quarters;
@@ -19,7 +18,7 @@ DROP POLICY IF EXISTS "Team admins can view all priorities in their team" ON qua
 DROP POLICY IF EXISTS "Managers can view direct reports commitments" ON monthly_commitments;
 DROP POLICY IF EXISTS "Team admins can view all commitments in their team" ON monthly_commitments;
 
--- ─── New company-wide RLS policies: commitment_quarters ───────────────────────
+-- New company-wide RLS policies: commitment_quarters
 
 CREATE POLICY "All authenticated users can view commitment quarters"
   ON commitment_quarters FOR SELECT
@@ -55,8 +54,7 @@ CREATE POLICY "Super admins can delete commitment quarters"
     )
   );
 
--- ─── New RLS policies: personal_priorities / quarterly_priorities ──────────────
--- (Table was renamed; use the current name)
+-- New RLS policies: quarterly_priorities
 
 CREATE POLICY "Managers can view direct reports priorities"
   ON quarterly_priorities FOR SELECT
@@ -78,7 +76,7 @@ CREATE POLICY "Admins can view all priorities"
     )
   );
 
--- ─── New RLS policies: monthly_commitments ────────────────────────────────────
+-- New RLS policies: monthly_commitments
 
 CREATE POLICY "Managers can view direct reports commitments"
   ON monthly_commitments FOR SELECT
