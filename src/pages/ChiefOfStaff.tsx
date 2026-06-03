@@ -738,8 +738,13 @@ function DciTabContent({
       };
     });
 
-  // Monday's log holds the weekly objectives for the whole week
-  const mondayLog = dciLogs.find(l => l.date === weekDateStrings[0]);
+  // Weekly objectives normally live in Monday's row, but if Monday was skipped
+  // they may have been set on a later weekday this week. Find whichever row holds them.
+  const weeklyObjectivesLog =
+    weekDateStrings
+      .map(d => dciLogs.find(l => l.date === d))
+      .find((l): l is CosDciLog => !!l && !!(l.weekly_obj_1 || l.weekly_obj_2 || l.weekly_obj_3));
+  const hasWeeklyObjsSet = !!weeklyObjectivesLog;
 
   // For today's column, if not yet logged but brief is loaded, show brief priorities
   const hasBrief = brief && brief.source !== 'none';
@@ -802,9 +807,9 @@ function DciTabContent({
       text: ordered.item.text,
     } as CosPriority));
 
-    // Weekly objectives: save top 3 on Monday (or when weekly list has content)
-    const isMonday = todayDayIdx === 0;
-    const weeklyObjs = isMonday && orderedWeekly.length > 0
+    // Weekly objectives: save top 3 whenever they haven't been set yet this week
+    // (originally Monday-only, but users may set them later in the week too)
+    const weeklyObjs = !hasWeeklyObjsSet && orderedWeekly.length > 0
       ? orderedWeekly.slice(0, 3).map(o => ({
           text: o.item.text,
           activities: o.item.activities,
@@ -876,8 +881,8 @@ function DciTabContent({
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
             {(() => {
               // Weekly data
-              const weeklyObjs = [mondayLog?.weekly_obj_1, mondayLog?.weekly_obj_2, mondayLog?.weekly_obj_3];
-              const weeklyActivities = [mondayLog?.weekly_obj_1_activities, mondayLog?.weekly_obj_2_activities, mondayLog?.weekly_obj_3_activities];
+              const weeklyObjs = [weeklyObjectivesLog?.weekly_obj_1, weeklyObjectivesLog?.weekly_obj_2, weeklyObjectivesLog?.weekly_obj_3];
+              const weeklyActivities = [weeklyObjectivesLog?.weekly_obj_1_activities, weeklyObjectivesLog?.weekly_obj_2_activities, weeklyObjectivesLog?.weekly_obj_3_activities];
               const hasWeeklyObjs = weeklyObjs.some(Boolean);
               const previewWeekly = !hasWeeklyObjs && hasBrief && orderedWeekly.length > 0;
               const displayWeeklyObjs = previewWeekly
@@ -977,7 +982,7 @@ function DciTabContent({
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
                     {carouselTier === 'weekly' && hasWeeklyObjs ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Set</span>
-                    ) : carouselTier === 'weekly' && previewWeekly && todayDayIdx === 0 ? (
+                    ) : carouselTier === 'weekly' && previewWeekly && todayDayIdx >= 0 ? (
                       <button onClick={handleLog} className="text-[10px] font-medium text-white bg-primary hover:bg-primary/90 rounded px-2.5 py-1 transition-colors">
                         Save
                       </button>
