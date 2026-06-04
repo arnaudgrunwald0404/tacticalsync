@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
   { id: "strategy-cycles",              label: "Strategy Cycles",   group: "RCDO" },
   { id: "configure-my-lists",          label: "Configure My Lists", group: "Chief of Staff" },
+  { id: "calendar-sync",               label: "Calendar sync",     group: "Chief of Staff" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
 ];
 

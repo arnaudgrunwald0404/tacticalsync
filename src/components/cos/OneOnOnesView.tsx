@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { format, differenceInCalendarDays } from 'date-fns';
+import { format, differenceInCalendarDays, formatDistanceToNow } from 'date-fns';
 import {
   Play, Clock, FileText, AlertTriangle, ChevronRight, ChevronDown, CheckSquare,
-  ListChecks, Sparkles,
+  ListChecks, Sparkles, CalendarPlus, RefreshCw, Check, Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,10 +24,27 @@ export interface OneOnOneMember {
   reports_to_id: string | null;
 }
 
+export interface UpcomingOneOnOneEvent {
+  id: string;                          // cos_one_on_one_events.id
+  google_event_id: string;
+  team_member_id: string;
+  team_member: OneOnOneMember;          // hydrated by parent
+  title: string | null;
+  start_time: string;                   // ISO
+  end_time: string;                     // ISO
+  status: 'confirmed' | 'tentative' | 'cancelled';
+  prep_available: boolean;
+}
+
 interface OneOnOnesViewProps {
   members: OneOnOneMember[];
   loadingPrep: boolean;
   onViewPrep: (member: OneOnOneMember) => void;
+  upcomingEvents: UpcomingOneOnOneEvent[];
+  calendarConnected: boolean;
+  lastSyncAt: string | null;
+  syncing: boolean;
+  onSyncCalendar: () => void;
 }
 
 // Pending action plus a bit of denormalized member info for the central aggregation.
@@ -108,8 +125,29 @@ export function bucketise(members: OneOnOneMember[], now: Date = new Date()): Me
 
 // ── View ─────────────────────────────────────────────────────────────────────
 
-export function OneOnOnesView({ members, loadingPrep, onViewPrep }: OneOnOnesViewProps) {
+export function OneOnOnesView({
+  members,
+  loadingPrep,
+  onViewPrep,
+  upcomingEvents,
+  calendarConnected,
+  lastSyncAt,
+  syncing,
+  onSyncCalendar,
+}: OneOnOnesViewProps) {
   const scheduled = useMemo(() => bucketise(members), [members]);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+
+  const nonCancelledUpcoming = useMemo(
+    () => (upcomingEvents ?? []).filter(e => e.status !== 'cancelled'),
+    [upcomingEvents],
+  );
+  const sortedUpcoming = useMemo(
+    () => [...nonCancelledUpcoming].sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    [nonCancelledUpcoming],
+  );
+  const visibleEvents = showAllUpcoming ? sortedUpcoming : sortedUpcoming.slice(0, 10);
+  const hasUpcoming = nonCancelledUpcoming.length > 0;
 
   // ── Central aggregation: "my to-dos from 1:1s" ─────────────────────────────
   const [myTodos, setMyTodos] = useState<MyTodo[]>([]);
@@ -183,7 +221,49 @@ export function OneOnOnesView({ members, loadingPrep, onViewPrep }: OneOnOnesVie
             {overdue.length > 0 ? <span className="text-destructive font-medium">{overdue.length} overdue</span> : 'all on track'}
           </p>
         </div>
+        <div className="ml-auto flex flex-col items-end">
+          {calendarConnected ? (
+            <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5">
+              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <RefreshCw className="h-3.5 w-3.5"/>}
+              Sync calendar
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5">
+              <CalendarPlus className="h-3.5 w-3.5"/>
+              Connect Google Calendar
+            </Button>
+          )}
+          {lastSyncAt && (
+            <p className="text-[10px] text-muted-foreground mt-1 text-right">
+              Last synced {formatRelativeTime(lastSyncAt)}
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* Upcoming 1:1s from calendar */}
+      {hasUpcoming && (
+        <section>
+          <div className="flex items-baseline gap-3 mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Upcoming 1:1s</h3>
+            <span className="text-[11px] text-muted-foreground">From your calendar — next 14 days</span>
+            <Badge variant="secondary" className="ml-auto text-[10px]">{nonCancelledUpcoming.length}</Badge>
+          </div>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+            {visibleEvents.map(ev => (
+              <UpcomingEventCard event={ev} onOpen={onViewPrep} loading={loadingPrep} key={ev.id} />
+            ))}
+          </div>
+          {nonCancelledUpcoming.length > 10 && (
+            <button
+              onClick={() => setShowAllUpcoming(o => !o)}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {showAllUpcoming ? 'Show less' : `Show all (${nonCancelledUpcoming.length})`}
+            </button>
+          )}
+        </section>
+      )}
 
       {/* Central aggregation: My to-dos from 1:1s */}
       <section className="rounded-xl border border-border bg-card overflow-hidden">
@@ -234,22 +314,26 @@ export function OneOnOnesView({ members, loadingPrep, onViewPrep }: OneOnOnesVie
         )}
       </section>
 
-      {/* Hero: Up next */}
-      {hero && (
-        <UpNextHero member={hero} pendingForThem={allPendingActions[hero.id] ?? 0} onOpen={onViewPrep} loading={loadingPrep} />
-      )}
+      {!hasUpcoming && (
+        <>
+          {/* Hero: Up next */}
+          {hero && (
+            <UpNextHero member={hero} pendingForThem={allPendingActions[hero.id] ?? 0} onOpen={onViewPrep} loading={loadingPrep} />
+          )}
 
-      {/* Overdue + this-week siblings (excluding the hero) */}
-      {heroRest.length > 0 && (
-        <SectionGroup
-          title="Coming up"
-          subtitle="Next 7 days"
-          tone="primary"
-          members={heroRest}
-          pendingForThemMap={allPendingActions}
-          onOpen={onViewPrep}
-          loading={loadingPrep}
-        />
+          {/* Overdue + this-week siblings (excluding the hero) */}
+          {heroRest.length > 0 && (
+            <SectionGroup
+              title="Coming up"
+              subtitle="Next 7 days"
+              tone="primary"
+              members={heroRest}
+              pendingForThemMap={allPendingActions}
+              onOpen={onViewPrep}
+              loading={loadingPrep}
+            />
+          )}
+        </>
       )}
 
       {/* Later direct reports */}
@@ -528,4 +612,65 @@ function initials(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatRelativeTime(iso: string): string {
+  return formatDistanceToNow(new Date(iso), { addSuffix: true });
+}
+
+// ── Upcoming event card (calendar-driven) ────────────────────────────────────
+
+function UpcomingEventCard({
+  event, onOpen, loading,
+}: { event: UpcomingOneOnOneEvent; onOpen: (m: OneOnOneMember) => void; loading: boolean }) {
+  const style = REL_STYLE[event.team_member.relationship_type];
+  const start = new Date(event.start_time);
+  return (
+    <button
+      onClick={() => onOpen(event.team_member)}
+      disabled={loading}
+      className={cn(
+        'relative flex items-stretch text-left rounded-lg border border-border bg-card overflow-hidden',
+        'shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'disabled:opacity-60 disabled:cursor-not-allowed',
+      )}
+    >
+      <span className={cn('absolute left-0 top-0 bottom-0 w-1', style.rail)} aria-hidden />
+      <div className="flex items-start gap-3 p-4 pl-5 w-full">
+        <div className="flex flex-col items-center justify-center min-w-[44px] text-center">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+            {format(start, 'MMM')}
+          </span>
+          <span className="font-heading text-2xl font-extrabold leading-none">
+            {format(start, 'd')}
+          </span>
+          <span className="text-[11px] text-muted-foreground mt-0.5">
+            {format(start, 'h:mm a')}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold leading-tight truncate text-base">{event.team_member.name}</span>
+            <Badge className={cn('text-[9px] font-semibold uppercase tracking-wide border-0', style.chipBg, style.chipFg)}>
+              {style.label}
+            </Badge>
+            {event.prep_available && (
+              <Badge className="text-[9px] font-semibold uppercase tracking-wide border-0 bg-emerald-50 text-emerald-700 gap-1">
+                <Sparkles className="h-2.5 w-2.5" />
+                Prep ready
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{event.team_member.role}</p>
+          {event.title && event.title.toLowerCase() !== `1:1 with ${event.team_member.name.toLowerCase()}` && (
+            <p className="text-[11px] text-muted-foreground/80 truncate mt-1 italic">{event.title}</p>
+          )}
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary flex-shrink-0 mt-0.5">
+          <FileText className="h-3 w-3" />
+        </span>
+      </div>
+    </button>
+  );
 }

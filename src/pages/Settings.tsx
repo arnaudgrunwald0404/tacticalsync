@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
+import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2613,6 +2614,16 @@ const Settings = () => {
               </p>
             </div>
             <CosSettingsPanel />
+          </div>
+        ) : activeSection === "calendar-sync" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Calendar sync</h2>
+              <p className="text-muted-foreground text-sm">
+                Connect Google Calendar to drive your 1:1 list from real meetings, and configure which events count.
+              </p>
+            </div>
+            <CosCalendarSyncPanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

@@ -13,4 +13,15 @@ enable_confirmations = false
 enabled = false
 
 [auth.external.google]
-enabled = false
+enabled = true
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
+
+[functions.save-google-calendar-tokens]
+verify_jwt = true
+
+[functions.google-calendar-sync]
+verify_jwt = true
+
+[functions.disconnect-google-calendar]
+verify_jwt = true

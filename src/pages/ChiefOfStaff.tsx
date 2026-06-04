@@ -36,7 +36,7 @@ import {
   SECTION_TYPE_LABELS, isAutoType, resolveNewSectionLabel,
   sectionToCategoryKey, totalWidthPct, adjustColumnCount, migrateOldSettings,
 } from '@/types/cos';
-import { OneOnOnesView } from '@/components/cos/OneOnOnesView';
+import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -3224,6 +3224,127 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   const [sharing, setSharing] = useState(false);
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadCalendarState = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const memberIds = members.map(m => m.id);
+    const [eventsRes, credsRes, prepRes] = await Promise.all([
+      db.from('cos_one_on_one_events')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('start_time', new Date().toISOString())
+        .order('start_time', { ascending: true }),
+      db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
+      memberIds.length > 0
+        ? db.from('cos_one_on_one_prep').select('team_member_id').in('team_member_id', memberIds)
+        : Promise.resolve({ data: [] as { team_member_id: string }[] }),
+    ]);
+
+    const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
+    const memberById = new Map(members.map(m => [m.id, m]));
+    const events: UpcomingOneOnOneEvent[] = ((eventsRes.data ?? []) as Array<{
+      id: string;
+      google_event_id: string;
+      team_member_id: string;
+      title: string | null;
+      start_time: string;
+      end_time: string;
+      status: 'confirmed' | 'tentative' | 'cancelled';
+    }>)
+      .filter(e => memberById.has(e.team_member_id))
+      .map(e => ({
+        id: e.id,
+        google_event_id: e.google_event_id,
+        team_member_id: e.team_member_id,
+        team_member: memberById.get(e.team_member_id)!,
+        title: e.title,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        status: e.status,
+        prep_available: prepSet.has(e.team_member_id),
+      }));
+
+    setUpcomingEvents(events);
+    setCalendarConnected(Boolean(credsRes.data?.connected));
+    setLastSyncAt((credsRes.data?.last_sync_at as string | null) ?? null);
+  }, [members]);
+
+  useEffect(() => { loadCalendarState(); }, [loadCalendarState]);
+
+  const kickOffSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      // provider_refresh_token may only be present right after the consent flow.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = session as any;
+      if (s?.provider_refresh_token) {
+        const saveRes = await supabase.functions.invoke('save-google-calendar-tokens', {
+          body: {
+            access_token: s.provider_token ?? '',
+            refresh_token: s.provider_refresh_token,
+            // Google access tokens default to ~3600s; the session payload doesn't carry expires_in.
+            expires_in: 3600,
+            scope: s.user?.app_metadata?.providers?.includes?.('google')
+              ? 'https://www.googleapis.com/auth/calendar.events.readonly'
+              : '',
+          },
+        });
+        if (saveRes.error) throw saveRes.error;
+      }
+
+      const syncRes = await supabase.functions.invoke('google-calendar-sync', { body: {} });
+      if (syncRes.error) throw syncRes.error;
+      const { created = 0, updated = 0, cancelled = 0 } = (syncRes.data ?? {}) as {
+        created?: number; updated?: number; cancelled?: number;
+      };
+      toast({
+        title: 'Calendar synced',
+        description: `${created} added · ${updated} updated · ${cancelled} removed`,
+      });
+      await loadCalendarState();
+    } catch (err) {
+      toast({ title: 'Sync failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  }, [toast, loadCalendarState]);
+
+  const didOAuthRef = React.useRef(false);
+  useEffect(() => {
+    if (didOAuthRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar') === 'connected') {
+      didOAuthRef.current = true;
+      window.history.replaceState(null, '', window.location.pathname);
+      void kickOffSync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSyncCalendar = useCallback(async () => {
+    if (!calendarConnected) {
+      const origin = window.location.origin;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly',
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+          redirectTo: `${origin}/chief-of-staff?calendar=connected`,
+        },
+      });
+      if (error) toast({ title: 'OAuth failed', description: error.message, variant: 'destructive' });
+      return; // browser navigates away
+    }
+    await kickOffSync();
+  }, [calendarConnected, kickOffSync, toast]);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -3328,6 +3449,11 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         members={members}
         loadingPrep={loadingPrep}
         onViewPrep={openPrepFile}
+        upcomingEvents={upcomingEvents}
+        calendarConnected={calendarConnected}
+        lastSyncAt={lastSyncAt}
+        syncing={syncing}
+        onSyncCalendar={handleSyncCalendar}
       />
 
       <OneOnOnePrepDrawer
