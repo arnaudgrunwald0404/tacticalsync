@@ -70,7 +70,18 @@ export default function Commitments() {
   const directReportIds = useMemo(() => userId ? getDirectReportIds(userId) : [], [userId, getDirectReportIds]);
   const allReportIds = useMemo(() => userId ? getAllReportIds(userId) : [], [userId, getAllReportIds]);
 
-  // Team tab: self + direct reports (current user first for context)
+  // Peers tab: my manager + my manager's direct reports (includes me)
+  const managerId = useMemo(
+    () => userId ? reportingLines.find(l => l.report_id === userId)?.manager_id ?? null : null,
+    [userId, reportingLines]
+  );
+  const peerUserIds = useMemo(
+    () => managerId ? [managerId, ...getDirectReportIds(managerId)] : [],
+    [managerId, getDirectReportIds]
+  );
+  const { priorities: peerPriorities, commitments: peerCommitments, loading: peerLoading, refetch: refetchPeers } = useTeamCommitments(quarter?.id ?? null, peerUserIds);
+
+  // Directs tab: self + direct reports (current user first for context)
   const teamUserIds = useMemo(() => [...(userId ? [userId] : []), ...directReportIds], [directReportIds, userId]);
   const { priorities: teamPriorities, commitments: teamCommitments, loading: teamLoading, refetch: refetchTeam } = useTeamCommitments(quarter?.id ?? null, teamUserIds);
 
@@ -78,7 +89,10 @@ export default function Commitments() {
   const orgUserIds = useMemo(() => [...(userId ? [userId] : []), ...allReportIds], [allReportIds, userId]);
   const { priorities: orgPriorities, commitments: orgCommitments, loading: orgLoading, refetch: refetchOrg } = useTeamCommitments(quarter?.id ?? null, orgUserIds);
 
-  const refetchAll = useCallback(() => Promise.all([refetchTeam(), refetchOrg()]), [refetchTeam, refetchOrg]);
+  const refetchAll = useCallback(
+    () => Promise.all([refetchPeers(), refetchTeam(), refetchOrg()]),
+    [refetchPeers, refetchTeam, refetchOrg]
+  );
 
   const teamEditCallbacks = useMemo(() => ({
     onUpsertPriority: async (...args: Parameters<typeof upsertPriority>) => { const r = await upsertPriority(...args); await refetchAll(); return r; },
@@ -152,6 +166,7 @@ export default function Commitments() {
     );
   }
 
+  const hasPeers = !!managerId;
   const hasDirectReports = directReportIds.length > 0;
   const hasOrgReports = allReportIds.length > 0;
 
@@ -175,10 +190,11 @@ export default function Commitments() {
       {/* Tabs */}
       <Tabs defaultValue="mine">
         <TabsList>
-          <TabsTrigger value="mine">My Quarter</TabsTrigger>
-          {hasDirectReports && <TabsTrigger value="team">My Team</TabsTrigger>}
+          <TabsTrigger value="mine">Me</TabsTrigger>
+          {hasPeers && <TabsTrigger value="peers">My Peers</TabsTrigger>}
+          {hasDirectReports && <TabsTrigger value="team">My Directs</TabsTrigger>}
           {hasOrgReports && hasDirectReports && allReportIds.length > directReportIds.length && (
-            <TabsTrigger value="org">Org View</TabsTrigger>
+            <TabsTrigger value="org">My Org</TabsTrigger>
           )}
         </TabsList>
 
@@ -203,6 +219,24 @@ export default function Commitments() {
             />
           ) : null}
         </TabsContent>
+
+        {hasPeers && (
+          <TabsContent value="peers" className="mt-6">
+            {peerLoading || linesLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <TeamRollupView
+                quarter={quarter}
+                members={membersFor(peerUserIds)}
+                priorities={peerPriorities}
+                commitments={peerCommitments}
+                editableUserId={userId ?? undefined}
+                editAll={isAdmin}
+                editCallbacks={teamEditCallbacks}
+              />
+            )}
+          </TabsContent>
+        )}
 
         {hasDirectReports && (
           <TabsContent value="team" className="mt-6">

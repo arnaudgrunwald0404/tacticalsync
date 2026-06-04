@@ -1,15 +1,19 @@
-import { useRef, useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatusBadge, nextStatus } from './StatusBadge';
+import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
+import { isEmptyHtml, sanitizeHtmlForDisplay } from '@/lib/htmlUtils';
 import type { MonthlyCommitment, CommitmentStatus } from '@/types/commitments';
 
-const borderByStatus: Record<CommitmentStatus, string> = {
-  draft:       'border-gray-300/50',
-  in_progress: 'border-yellow-400/60',
-  done:        'border-green-500/60',
-  not_done:    'border-red-500/60',
+const leftBorderByStatus: Record<CommitmentStatus, string> = {
+  draft:       'border-l-gray-300',
+  in_progress: 'border-l-yellow-400',
+  done:        'border-l-green-500',
+  not_done:    'border-l-red-500',
 };
+
+const isHtml = (s: string) => /<\/?[a-z][\s\S]*>/i.test(s);
 
 interface CommitmentCellProps {
   commitment?: MonthlyCommitment;
@@ -36,22 +40,38 @@ export function CommitmentCell({
 }: CommitmentCellProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(commitment?.title ?? '');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setValue(commitment?.title ?? ''); }, [commitment?.title]);
 
-  const handleBlur = async () => {
+  const commit = async (nextValue: string) => {
     setEditing(false);
-    const trimmed = value.trim();
-    if (trimmed === (commitment?.title ?? '').trim()) return;
-    if (!trimmed && !commitment) return; // nothing to save
-    await onSave(trimmed);
+    const original = commitment?.title ?? '';
+    if (nextValue === original) return;
+    if (isEmptyHtml(nextValue) && !commitment) return;
+    await onSave(isEmptyHtml(nextValue) ? '' : nextValue);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { setValue(commitment?.title ?? ''); setEditing(false); }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); textareaRef.current?.blur(); }
-  };
+  useEffect(() => {
+    if (!editing) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        void commit(value);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setValue(commitment?.title ?? '');
+        setEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [editing, value, commitment?.title]);
 
   if (!commitment && !editing) {
     if (readOnly) return null;
@@ -66,30 +86,43 @@ export function CommitmentCell({
     );
   }
 
+  const statusBorder = commitment ? leftBorderByStatus[commitment.status] : 'border-l-gray-300';
+  const renderedHtml = commitment?.title && isHtml(commitment.title)
+    ? sanitizeHtmlForDisplay(commitment.title)
+    : null;
+
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'group relative flex min-h-[3rem] flex-col gap-1 rounded-md border bg-card p-2 text-xs',
-        commitment && borderByStatus[commitment.status],
+        'group relative flex min-h-[3rem] flex-col gap-1 rounded-md border border-l-4 bg-card p-2 text-xs',
+        statusBorder,
         editing && 'ring-1 ring-ring',
       )}
     >
       {editing ? (
-        <textarea
-          ref={textareaRef}
-          autoFocus
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          rows={3}
-          className="w-full resize-none bg-transparent text-xs leading-relaxed outline-none"
+        <RichTextEditor
+          content={value}
+          onChange={setValue}
           placeholder="Describe this commitment…"
+          bare
+          autoFocus
+          minHeight="1.25rem"
+          className="commitments-rte commitments-rte-sm"
+        />
+      ) : renderedHtml ? (
+        <div
+          className={cn(
+            'commitments-rte-display commitments-rte-display-sm flex-1 leading-relaxed text-foreground/90',
+            !readOnly && 'cursor-text',
+          )}
+          onClick={() => !readOnly && setEditing(true)}
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       ) : (
         <p
           className={cn(
-            'flex-1 cursor-text whitespace-pre-line leading-relaxed text-foreground/90',
+            'flex-1 whitespace-pre-line cursor-text leading-relaxed text-foreground/90',
             readOnly && 'cursor-default',
           )}
           onClick={() => !readOnly && setEditing(true)}

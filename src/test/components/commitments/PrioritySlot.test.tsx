@@ -4,6 +4,24 @@ import userEvent from '@testing-library/user-event';
 import { PrioritySlot } from '@/components/commitments/PrioritySlot';
 import type { QuarterlyPriority } from '@/types/commitments';
 
+// Mock the lazy rich text editor with a plain textarea so tests can drive it.
+vi.mock('@/components/ui/rich-text-editor-lazy', () => ({
+  __esModule: true,
+  default: ({ content, onChange, placeholder }: {
+    content?: string;
+    onChange?: (v: string) => void;
+    placeholder?: string;
+  }) => (
+    <textarea
+      data-testid="mock-rte"
+      placeholder={placeholder}
+      defaultValue={content}
+      onChange={(e) => onChange?.(e.target.value)}
+      autoFocus
+    />
+  ),
+}));
+
 const makePriority = (overrides: Partial<QuarterlyPriority> = {}): QuarterlyPriority => ({
   id: 'p-1',
   quarter_id: 'q-1',
@@ -85,25 +103,24 @@ describe('PrioritySlot', () => {
   });
 
   describe('editing mode', () => {
-    it('should call onSave with new value on blur when value changed', async () => {
+    it('should call onSave with new value when clicking outside the cell', async () => {
       const user = userEvent.setup();
       render(<PrioritySlot {...defaultProps} priority={makePriority()} />);
       await user.click(screen.getByText('Improve onboarding'));
-      const textarea = screen.getByPlaceholderText('Describe this quarterly priority…');
-      await user.clear(textarea);
-      await user.type(textarea, 'New priority title');
-      fireEvent.blur(textarea);
+      const editor = screen.getByPlaceholderText('Describe this quarterly priority…');
+      await user.clear(editor);
+      await user.type(editor, 'New priority title');
+      fireEvent.mouseDown(document.body);
       await waitFor(() => {
         expect(defaultProps.onSave).toHaveBeenCalledWith('New priority title');
       });
     });
 
-    it('should not call onSave when value is unchanged on blur', async () => {
+    it('should not call onSave when value is unchanged after clicking outside', async () => {
       const user = userEvent.setup();
       render(<PrioritySlot {...defaultProps} priority={makePriority()} />);
       await user.click(screen.getByText('Improve onboarding'));
-      const textarea = screen.getByPlaceholderText('Describe this quarterly priority…');
-      fireEvent.blur(textarea);
+      fireEvent.mouseDown(document.body);
       await waitFor(() => {
         expect(defaultProps.onSave).not.toHaveBeenCalled();
       });
@@ -113,24 +130,12 @@ describe('PrioritySlot', () => {
       const user = userEvent.setup();
       render(<PrioritySlot {...defaultProps} priority={makePriority()} />);
       await user.click(screen.getByText('Improve onboarding'));
-      const textarea = screen.getByPlaceholderText('Describe this quarterly priority…');
-      await user.clear(textarea);
-      await user.type(textarea, 'Changed');
-      fireEvent.keyDown(textarea, { key: 'Escape' });
+      const editor = screen.getByPlaceholderText('Describe this quarterly priority…');
+      await user.clear(editor);
+      await user.type(editor, 'Changed');
+      fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.getByText('Improve onboarding')).toBeInTheDocument();
-    });
-
-    it('should submit on Enter key (non-shift)', async () => {
-      const user = userEvent.setup();
-      render(<PrioritySlot {...defaultProps} priority={makePriority()} />);
-      await user.click(screen.getByText('Improve onboarding'));
-      const textarea = screen.getByPlaceholderText('Describe this quarterly priority…');
-      await user.clear(textarea);
-      await user.type(textarea, 'Entered value');
-      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-      await waitFor(() => {
-        expect(defaultProps.onSave).toHaveBeenCalled();
-      });
+      expect(defaultProps.onSave).not.toHaveBeenCalled();
     });
   });
 });

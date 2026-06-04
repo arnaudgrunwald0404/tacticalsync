@@ -4,6 +4,23 @@ import userEvent from '@testing-library/user-event';
 import { CommitmentCell } from '@/components/commitments/CommitmentCell';
 import type { MonthlyCommitment } from '@/types/commitments';
 
+vi.mock('@/components/ui/rich-text-editor-lazy', () => ({
+  __esModule: true,
+  default: ({ content, onChange, placeholder }: {
+    content?: string;
+    onChange?: (v: string) => void;
+    placeholder?: string;
+  }) => (
+    <textarea
+      data-testid="mock-rte"
+      placeholder={placeholder}
+      defaultValue={content}
+      onChange={(e) => onChange?.(e.target.value)}
+      autoFocus
+    />
+  ),
+}));
+
 const makeCommitment = (overrides: Partial<MonthlyCommitment> = {}): MonthlyCommitment => ({
   id: 'c-1',
   quarter_id: 'q-1',
@@ -80,7 +97,6 @@ describe('CommitmentCell', () => {
     it('should call onStatusChange with next status when StatusBadge is clicked', async () => {
       const user = userEvent.setup();
       render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'draft' })} />);
-      // StatusBadge button has title = label
       await user.click(screen.getByTitle('Draft'));
       expect(defaultProps.onStatusChange).toHaveBeenCalledWith('in_progress');
     });
@@ -88,8 +104,6 @@ describe('CommitmentCell', () => {
     it('should not call onStatusChange in readOnly mode', async () => {
       const user = userEvent.setup();
       render(<CommitmentCell {...defaultProps} commitment={makeCommitment({ status: 'draft' })} readOnly />);
-      // In readOnly, onClick is undefined so it doesn't cycle
-      // The badge button is still rendered but has no onClick
       const badge = screen.getByTitle('Draft');
       await user.click(badge);
       expect(defaultProps.onStatusChange).not.toHaveBeenCalled();
@@ -97,25 +111,24 @@ describe('CommitmentCell', () => {
   });
 
   describe('editing mode', () => {
-    it('should call onSave with trimmed value on blur when value changed', async () => {
+    it('should call onSave with new value when clicking outside the cell', async () => {
       const user = userEvent.setup();
       render(<CommitmentCell {...defaultProps} commitment={makeCommitment()} />);
       await user.click(screen.getByText('Ship the feature'));
-      const textarea = screen.getByPlaceholderText('Describe this commitment…');
-      await user.clear(textarea);
-      await user.type(textarea, 'New commitment text');
-      fireEvent.blur(textarea);
+      const editor = screen.getByPlaceholderText('Describe this commitment…');
+      await user.clear(editor);
+      await user.type(editor, 'New commitment text');
+      fireEvent.mouseDown(document.body);
       await waitFor(() => {
         expect(defaultProps.onSave).toHaveBeenCalledWith('New commitment text');
       });
     });
 
-    it('should not call onSave when value is unchanged on blur', async () => {
+    it('should not call onSave when value is unchanged after clicking outside', async () => {
       const user = userEvent.setup();
       render(<CommitmentCell {...defaultProps} commitment={makeCommitment()} />);
       await user.click(screen.getByText('Ship the feature'));
-      const textarea = screen.getByPlaceholderText('Describe this commitment…');
-      fireEvent.blur(textarea);
+      fireEvent.mouseDown(document.body);
       await waitFor(() => {
         expect(defaultProps.onSave).not.toHaveBeenCalled();
       });
@@ -125,25 +138,12 @@ describe('CommitmentCell', () => {
       const user = userEvent.setup();
       render(<CommitmentCell {...defaultProps} commitment={makeCommitment()} />);
       await user.click(screen.getByText('Ship the feature'));
-      const textarea = screen.getByPlaceholderText('Describe this commitment…');
-      await user.clear(textarea);
-      await user.type(textarea, 'Changed');
-      fireEvent.keyDown(textarea, { key: 'Escape' });
+      const editor = screen.getByPlaceholderText('Describe this commitment…');
+      await user.clear(editor);
+      await user.type(editor, 'Changed');
+      fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.getByText('Ship the feature')).toBeInTheDocument();
-    });
-
-    it('should submit on Enter key (no shift)', async () => {
-      const user = userEvent.setup();
-      render(<CommitmentCell {...defaultProps} commitment={makeCommitment()} />);
-      await user.click(screen.getByText('Ship the feature'));
-      const textarea = screen.getByPlaceholderText('Describe this commitment…');
-      await user.clear(textarea);
-      await user.type(textarea, 'New value');
-      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-      // After Enter, blur fires which triggers onSave
-      await waitFor(() => {
-        expect(defaultProps.onSave).toHaveBeenCalled();
-      });
+      expect(defaultProps.onSave).not.toHaveBeenCalled();
     });
   });
 });

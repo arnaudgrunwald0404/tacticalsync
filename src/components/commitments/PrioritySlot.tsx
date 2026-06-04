@@ -1,14 +1,16 @@
-import { useRef, useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatusBadge, nextStatus } from './StatusBadge';
+import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
+import { isEmptyHtml, sanitizeHtmlForDisplay } from '@/lib/htmlUtils';
 import type { QuarterlyPriority, CommitmentStatus } from '@/types/commitments';
 
-const borderByStatus: Record<CommitmentStatus, string> = {
-  draft:       'border-gray-300/50',
-  in_progress: 'border-yellow-400/60',
-  done:        'border-green-500/60',
-  not_done:    'border-red-500/60',
+const leftBorderByStatus: Record<CommitmentStatus, string> = {
+  draft:       'border-l-gray-300',
+  in_progress: 'border-l-yellow-400',
+  done:        'border-l-green-500',
+  not_done:    'border-l-red-500',
 };
 
 interface PrioritySlotProps {
@@ -20,25 +22,43 @@ interface PrioritySlotProps {
   onStatusChange?: (status: CommitmentStatus) => Promise<void>;
 }
 
+const isHtml = (s: string) => /<\/?[a-z][\s\S]*>/i.test(s);
+
 export function PrioritySlot({ priority, order, readOnly = false, onSave, onDelete, onStatusChange }: PrioritySlotProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(priority?.title ?? '');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setValue(priority?.title ?? ''); }, [priority?.title]);
 
-  const handleBlur = async () => {
+  const commit = async (nextValue: string) => {
     setEditing(false);
-    const trimmed = value.trim();
-    if (trimmed === (priority?.title ?? '').trim()) return;
-    if (!trimmed && !priority) return;
-    await onSave(trimmed);
+    const original = priority?.title ?? '';
+    if (nextValue === original) return;
+    if (isEmptyHtml(nextValue) && !priority) return;
+    await onSave(isEmptyHtml(nextValue) ? '' : nextValue);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { setValue(priority?.title ?? ''); setEditing(false); }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); textareaRef.current?.blur(); }
-  };
+  useEffect(() => {
+    if (!editing) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        void commit(value);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setValue(priority?.title ?? '');
+        setEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [editing, value, priority?.title]);
 
   if (!priority && !editing) {
     if (readOnly) {
@@ -63,11 +83,17 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
     );
   }
 
+  const statusBorder = priority ? leftBorderByStatus[priority.status] : 'border-l-gray-300';
+  const renderedHtml = priority?.title && isHtml(priority.title)
+    ? sanitizeHtmlForDisplay(priority.title)
+    : null;
+
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'group relative flex min-h-[4rem] gap-2 rounded-md border bg-card p-3',
-        priority && borderByStatus[priority.status],
+        'group relative flex min-h-[4rem] gap-2 rounded-md border border-l-4 bg-card p-3',
+        statusBorder,
         editing && 'ring-1 ring-ring',
       )}
     >
@@ -75,18 +101,25 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
         {order}
       </span>
 
-      <div className="flex-1 flex flex-col gap-1">
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
         {editing ? (
-          <textarea
-            ref={textareaRef}
-            autoFocus
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            rows={3}
-            className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none"
+          <RichTextEditor
+            content={value}
+            onChange={setValue}
             placeholder="Describe this quarterly priority…"
+            bare
+            autoFocus
+            minHeight="1.25rem"
+            className="commitments-rte"
+          />
+        ) : renderedHtml ? (
+          <div
+            className={cn(
+              'commitments-rte-display flex-1 text-sm leading-relaxed text-foreground/90',
+              !readOnly && 'cursor-text',
+            )}
+            onClick={() => !readOnly && setEditing(true)}
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
         ) : (
           <p
