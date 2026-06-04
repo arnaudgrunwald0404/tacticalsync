@@ -2115,6 +2115,10 @@ export type Database = {
         Args: { p_si_id: string }
         Returns: string
       }
+      rcdo_promote_task_to_sub_si: {
+        Args: { p_task_id: string }
+        Returns: string
+      }
     }
     Enums: {
       completion_status_enum: "completed" | "not_completed" | "pending"

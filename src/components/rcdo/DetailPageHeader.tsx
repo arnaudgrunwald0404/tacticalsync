@@ -125,27 +125,6 @@ export function DetailPageHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* SI-specific: View mode toggle */}
-          {type === 'si' && viewMode && onViewModeChange && (
-            <div className="flex items-center gap-2 mr-2">
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onViewModeChange('table')}
-              >
-                <Table2 className="h-4 w-4 mr-2" />
-                Table
-              </Button>
-              <Button
-                variant={viewMode === 'gantt' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onViewModeChange('gantt')}
-              >
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Gantt
-              </Button>
-            </div>
-          )}
           {/* SI-specific: Add Task button */}
           {type === 'si' && !isLocked && canCreateTask && onAddTask && (
             <Button
@@ -246,7 +225,7 @@ export function DetailPageHeader({
 
       {/* SI-specific: Tabs for Tasks, Check-ins, and Details */}
       {type === 'si' && activeTab && onTabChange && (
-        <div className="mt-4 pt-4 border-t">
+        <div className="mt-4 pt-4 border-t flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <Tabs value={activeTab} onValueChange={onTabChange}>
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="tasks" className="flex-1 sm:flex-initial">
@@ -260,6 +239,26 @@ export function DetailPageHeader({
               </TabsTrigger>
             </TabsList>
           </Tabs>
+          {viewMode && onViewModeChange && activeTab === 'tasks' && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onViewModeChange('table')}
+              >
+                <Table2 className="h-4 w-4 mr-2" />
+                Table
+              </Button>
+              <Button
+                variant={viewMode === 'gantt' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onViewModeChange('gantt')}
+              >
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Gantt
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

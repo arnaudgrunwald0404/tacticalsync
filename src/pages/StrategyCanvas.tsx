@@ -37,6 +37,7 @@ import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { MultiSelectParticipants } from "@/components/ui/multi-select-participants";
 import { Switch } from "@/components/ui/switch";
 import { SIPanelContent } from "@/components/rcdo/SIPanelContent";
+import { SubSIPanelContent } from "@/components/rcdo/SubSIPanelContent";
 import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
@@ -559,6 +560,14 @@ export default function StrategyCanvasPage() {
   nodesRef.current = nodes;
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
   const [focusedSI, setFocusedSI] = useState<null | { doId: string; siId: string }>(null);
+  // Tertiary panel — opens to the left of the SI panel when a sub-initiative row is
+  // clicked. Holds the DB id of the sub-SI plus the parent's title for breadcrumb
+  // context. Cleared when the SI panel closes (see effect below) since the panel
+  // it docks against is gone.
+  const [focusedSubSI, setFocusedSubSI] = useState<null | { subSiId: string; parentSiTitle: string }>(null);
+  // Bumped after a sub-SI panel persists a change so the SI panel's list re-fetches
+  // and shows the updated title/status without a full reload.
+  const [subSiListRefreshKey, setSubSiListRefreshKey] = useState(0);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const focusApplied = useRef(false);
   const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
@@ -567,7 +576,14 @@ export default function StrategyCanvasPage() {
   const [showProgress, setShowProgress] = useState(progressFeatureOn);
   const [doLockedStatus, setDoLockedStatus] = useState<Map<string, { locked: boolean; dbId?: string }>>(new Map());
   const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
-  
+
+  // Close the tertiary sub-SI panel whenever its anchor (the SI panel) closes —
+  // a sub-SI panel floating without its parent makes no sense and would be a
+  // dead-end UI state.
+  useEffect(() => {
+    if (!focusedSI && focusedSubSI) setFocusedSubSI(null);
+  }, [focusedSI, focusedSubSI]);
+
   // Map to store SI progress data (dbId -> { percentToGoal, isLocked })
   const [siProgressMap, setSiProgressMap] = useState<Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>>(new Map());
   
@@ -2497,7 +2513,25 @@ const duplicateSelectedDo = useCallback(() => {
             }}
             onClose={() => setFocusedSI(null)}
             isDoPanelOpen={selectedNode?.type === "do"}
+            onOpenSubSI={(subSiId) => setFocusedSubSI({ subSiId, parentSiTitle: si.title || 'Strategic initiative' })}
+            selectedSubSiId={focusedSubSI?.subSiId || null}
+            subSiListRefreshKey={subSiListRefreshKey}
           />
+          {/* Tertiary panel — sub-initiative details, docked to the left of the SI
+              panel. Right offset composes with the DO panel state:
+                DO + SI open → SI sits at right=380, so its left edge is at 800px.
+                SI only      → SI sits at right=0,   so its left edge is at 420px. */}
+          {focusedSubSI && (
+            <SubSIPanelContent
+              key={focusedSubSI.subSiId}
+              subSiId={focusedSubSI.subSiId}
+              rightOffsetPx={selectedNode?.type === 'do' ? 800 : 420}
+              parentSiTitle={focusedSubSI.parentSiTitle}
+              profiles={profiles}
+              onClose={() => setFocusedSubSI(null)}
+              onChanged={() => setSubSiListRefreshKey((k) => k + 1)}
+            />
+          )}
         </>
         );
       })()}
@@ -3073,6 +3107,16 @@ function StrategyCanvasMobileView({
   const [selectedSIId, setSelectedSIId] = useState<string | null>(null);
   const [selectedDODetails, setSelectedDODetails] = useState<Record<string, unknown> | null>(null);
   const [selectedSIDetails, setSelectedSIDetails] = useState<Record<string, unknown> | null>(null);
+  // Sub-SI list shown at the bottom of the SI Detail Sheet, plus the tertiary "Sub-SI
+  // Detail Sheet" that opens on click. Opening the sub-SI sheet closes the SI sheet
+  // (replace pattern) — same UX as DO sheet → SI sheet today.
+  type SubSIListRow = { id: string; title: string; status: string | null; owner_user_id: string | null; display_order: number | null };
+  const [selectedSISubSIs, setSelectedSISubSIs] = useState<SubSIListRow[]>([]);
+  const [selectedSubSIId, setSelectedSubSIId] = useState<string | null>(null);
+  const [selectedSubSIDetails, setSelectedSubSIDetails] = useState<Record<string, unknown> | null>(null);
+  // Captured at click time so the sub-SI sheet header keeps the "X.Y.Z" prefix even
+  // after selectedSIId is cleared by the replace-pattern transition.
+  const [selectedSubSINumbering, setSelectedSubSINumbering] = useState('');
 
   useEffect(() => {
     if (!cycleId) {
@@ -3211,6 +3255,53 @@ function StrategyCanvasMobileView({
 
     fetchSIDetails();
   }, [selectedSIId]);
+
+  // Fetch sub-SIs for the currently-open SI Sheet. Run on every SI change rather than
+  // gating on `accepts_sub_sis`: the SI details fetch is async and the flag arrives
+  // later, so we'd otherwise miss the children for one render cycle. The query is
+  // cheap (single eq on an indexed FK).
+  useEffect(() => {
+    if (!selectedSIId) {
+      setSelectedSISubSIs([]);
+      return;
+    }
+
+    const fetchSubSIs = async () => {
+      const { data } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, title, status, owner_user_id, display_order')
+        .eq('parent_si_id', selectedSIId)
+        .order('display_order', { ascending: true });
+      setSelectedSISubSIs((data || []) as SubSIListRow[]);
+    };
+
+    fetchSubSIs();
+  }, [selectedSIId]);
+
+  // Fetch sub-SI details when the tertiary sheet opens.
+  useEffect(() => {
+    if (!selectedSubSIId) {
+      setSelectedSubSIDetails(null);
+      return;
+    }
+
+    const fetchSubSIDetails = async () => {
+      const { data, error } = await supabase
+        .from('rc_strategic_initiatives')
+        .select(`
+          *,
+          owner:profiles!owner_user_id(id, first_name, last_name, full_name, avatar_url, avatar_name)
+        `)
+        .eq('id', selectedSubSIId)
+        .single();
+
+      if (!error && data) {
+        setSelectedSubSIDetails(data);
+      }
+    };
+
+    fetchSubSIDetails();
+  }, [selectedSubSIId]);
 
   return (
     <div className="w-full h-dvh flex flex-col">
@@ -3416,7 +3507,17 @@ function StrategyCanvasMobileView({
       {/* SI Detail Sheet */}
       <Sheet open={!!selectedSIId && !!selectedSIDetails} onOpenChange={(open) => !open && setSelectedSIId(null)}>
         <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
-          {selectedSIDetails && (
+          {selectedSIDetails && (() => {
+            // Compute "X.Y" prefix for this SI by finding the DO's position in the
+            // rallying cry and the SI's position in that DO. The sub-SI list below
+            // uses this to render "X.Y.Z" rows.
+            const siDoId = selectedSIDetails.defining_objective_id as string | undefined;
+            const doIdx = siDoId ? dos.findIndex(d => d.id === siDoId) : -1;
+            const doSIs = siDoId ? sis.filter(s => s.defining_objective_id === siDoId) : [];
+            const siIdx = doSIs.findIndex(s => s.id === (selectedSIDetails.id as string));
+            const siNumberingPrefix = doIdx >= 0 && siIdx >= 0 ? `${doIdx + 1}.${siIdx + 1}` : '';
+
+            return (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">{selectedSIDetails.title}</h2>
@@ -3471,11 +3572,134 @@ function StrategyCanvasMobileView({
                   </div>
                 )}
 
+                {/* Sub-initiatives list. Only renders when this SI is in sub-SI mode
+                    AND has at least one child. Clicking a row closes this sheet and
+                    opens the tertiary Sub-SI Detail Sheet (replace pattern). */}
+                {selectedSIDetails.accepts_sub_sis === true && selectedSISubSIs.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Sub-initiatives</label>
+                    <div className="mt-2 border rounded-md overflow-hidden bg-[#F5F3F0]">
+                      {selectedSISubSIs.map((sub, idx) => {
+                        const subNumbering = siNumberingPrefix ? `${siNumberingPrefix}.${idx + 1}` : '';
+                        const subOwner = sub.owner_user_id ? profilesMap[sub.owner_user_id] : null;
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSubSINumbering(subNumbering);
+                              setSelectedSubSIId(sub.id);
+                              setSelectedSIId(null);
+                            }}
+                            className="w-full px-4 py-3 flex items-center justify-between min-h-[44px] text-left hover:bg-gray-100 transition-colors border-b last:border-b-0"
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <FileText className="h-4 w-4 text-secondary flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium truncate">
+                                  {subNumbering && <span className="font-mono text-xs text-muted-foreground mr-2">{subNumbering}</span>}
+                                  {sub.title}
+                                </div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+                                  <span className="capitalize">{sub.status || 'draft'}</span>
+                                  {subOwner && (
+                                    <>
+                                      <span>•</span>
+                                      <span>{subOwner.full_name || 'Unknown'}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* View Full Details Button */}
                 <Button
                   onClick={() => {
                     setSelectedSIId(null);
                     navigate(`/rcdo/detail/si/${selectedSIDetails.id}${cycleId ? `?cycle=${cycleId}` : ''}`);
+                  }}
+                  className="w-full"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Full Details
+                </Button>
+              </div>
+            </div>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
+
+      {/* Sub-SI Detail Sheet (tertiary drawer). Opens when the user clicks a sub-SI
+          row inside the SI Detail Sheet. Mirrors the SI Detail Sheet shape — keeps the
+          UX consistent so users don't have to learn a new pattern at this depth. */}
+      <Sheet open={!!selectedSubSIId && !!selectedSubSIDetails} onOpenChange={(open) => !open && setSelectedSubSIId(null)}>
+        <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto">
+          {selectedSubSIDetails && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">
+                  {selectedSubSINumbering && <span className="font-mono text-base text-muted-foreground mr-2">{selectedSubSINumbering}</span>}
+                  {selectedSubSIDetails.title as string}
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedSubSIId(null)}
+                  className="h-11 w-11"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Owner */}
+                {(selectedSubSIDetails.owner as { full_name?: string } | undefined) && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Owner</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <FancyAvatar
+                        user={selectedSubSIDetails.owner as Tables<'profiles'>}
+                        size="sm"
+                      />
+                      <span>{(selectedSubSIDetails.owner as { full_name?: string })?.full_name || 'Unknown'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge variant="outline" className="capitalize">
+                      {(selectedSubSIDetails.status as string) || 'draft'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedSubSIDetails.description ? (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Description</label>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">{selectedSubSIDetails.description as string}</p>
+                  </div>
+                ) : null}
+
+                {/* View Full Details Button */}
+                <Button
+                  onClick={() => {
+                    const subSiId = selectedSubSIDetails.id as string;
+                    setSelectedSubSIId(null);
+                    // Same SIDetail route — it detects isSubSI via parent_si_id and
+                    // hides the mode toggle accordingly.
+                    navigate(`/rcdo/detail/si/${subSiId}${cycleId ? `?cycle=${cycleId}` : ''}`);
                   }}
                   className="w-full"
                 >

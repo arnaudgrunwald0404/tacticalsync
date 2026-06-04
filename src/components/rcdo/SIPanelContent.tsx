@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, MoreVertical, ExternalLink } from 'lucide-react';
+import { X, MoreVertical, ExternalLink, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import FancyAvatar from '@/components/ui/fancy-avatar';
+import { OwnerCombobox } from '@/components/ui/owner-combobox';
 import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import { MultiSelectParticipants } from '@/components/ui/multi-select-participants';
 import { useSIWithProgress } from '@/hooks/useSIWithProgress';
@@ -49,6 +49,13 @@ type NodeData = {
   rallyFinalized?: boolean;
 };
 
+type SubSIListRow = {
+  id: string;
+  title: string;
+  status: string | null;
+  owner_user_id: string | null;
+};
+
 interface SIPanelContentProps {
   doNode: Node<NodeData>;
   si: NonNullable<NodeData['saiItems']>[0];
@@ -60,6 +67,15 @@ interface SIPanelContentProps {
   onDelete: () => void;
   onClose: () => void;
   isDoPanelOpen: boolean;
+  // Optional: when provided, the panel renders a "Sub-initiatives" list at the
+  // bottom (for SIs that have children). Clicking a row calls onOpenSubSI so
+  // the parent canvas can open the tertiary panel.
+  onOpenSubSI?: (subSiId: string) => void;
+  // Active sub-SI id — surfaced so the matching row can highlight itself.
+  selectedSubSiId?: string | null;
+  // Bumps when a child component reports an update; lets the parent ask this
+  // panel to re-fetch its sub-SI list without unmounting.
+  subSiListRefreshKey?: number;
 }
 
 export function SIPanelContent({
@@ -73,6 +89,9 @@ export function SIPanelContent({
   onDelete,
   onClose,
   isDoPanelOpen,
+  onOpenSubSI,
+  selectedSubSiId,
+  subSiListRefreshKey,
 }: SIPanelContentProps) {
   const navigate = useNavigate();
   const [panelSearchParams] = useSearchParams();
@@ -152,6 +171,29 @@ export function SIPanelContent({
     };
     getCurrentUser();
   }, []);
+
+  // Sub-SI list (rendered at the bottom when this SI has children). Kept inside
+  // SIPanelContent rather than threaded through StrategyCanvas so callers don't
+  // each have to fetch — the panel owns its own dependent data.
+  const [subSIs, setSubSIs] = useState<SubSIListRow[]>([]);
+  useEffect(() => {
+    if (!si.dbId) {
+      setSubSIs([]);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from('rc_strategic_initiatives')
+      .select('id, title, status, owner_user_id, display_order')
+      .eq('parent_si_id', si.dbId)
+      .order('display_order', { ascending: true })
+      .then(({ data }) => {
+        if (!cancelled) setSubSIs((data || []) as SubSIListRow[]);
+      });
+    return () => { cancelled = true; };
+    // subSiListRefreshKey is a "ping" prop: when the parent canvas wants this
+    // list to re-fetch (e.g., after a child edited a sub-SI), it bumps the key.
+  }, [si.dbId, subSiListRefreshKey]);
 
   const panelContent = (
     <>
@@ -368,15 +410,15 @@ export function SIPanelContent({
             );
           })()}
           <div className="mt-1">
-            <Select
-              value={si.ownerId || ""}
+            <OwnerCombobox
+              profiles={profiles}
+              selectedId={si.ownerId}
               disabled={isLocked}
-              onValueChange={async (val) => {
+              placeholder="Select owner"
+              onSelectionChange={async (val) => {
                 if (isLocked) return;
-                // Update local UI first
-                onUpdate({ ownerId: val || undefined });
+                onUpdate({ ownerId: val });
 
-                // Persist to DB if SI is linked to a DB row
                 try {
                   if (si.dbId && val) {
                     const { error } = await supabase
@@ -392,61 +434,7 @@ export function SIPanelContent({
                   console.warn('[SIPanel] Error updating SI owner in DB', e);
                 }
               }}
-            >
-              <SelectTrigger className="flex-1" disabled={isLocked}>
-                <SelectValue placeholder="Select owner">
-                  {si.ownerId && (() => {
-                    const owner = profilesMap[si.ownerId];
-                    if (!owner) return null;
-                    const displayName = owner.full_name || '';
-                    const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                          {isUnknown ? (
-                            <span className="font-semibold">?</span>
-                          ) : (
-                            <FancyAvatar 
-                              name={owner.avatar_name || displayName} 
-                              displayName={displayName}
-                              avatarUrl={owner.avatar_url}
-                              size="sm" 
-                            />
-                          )}
-                        </span>
-                        <span className="text-sm">{isUnknown ? 'Unknown' : displayName}</span>
-                      </div>
-                    );
-                  })()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="z-[60]">
-                {profiles.length === 0 ? (
-                  <div className="py-2 px-2 text-sm text-muted-foreground text-center">
-                    No profiles available
-                  </div>
-                ) : (
-                  profiles.map((p) => {
-                    const displayName = p.full_name || '';
-                    const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                    return (
-                      <SelectItem key={p.id} value={p.id}>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                            {isUnknown ? (
-                              <span className="font-semibold">?</span>
-                            ) : (
-                              <FancyAvatar name={p.avatar_name || displayName} displayName={displayName} avatarUrl={p.avatar_url} size="sm" />
-                            )}
-                          </span>
-                          <span>{isUnknown ? 'Unknown' : displayName}</span>
-                        </span>
-                      </SelectItem>
-                    );
-                  })
-                )}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </div>
         
@@ -485,6 +473,49 @@ export function SIPanelContent({
             </div>
           </div>
         </div>
+
+        {/* 6. Sub-initiatives — only renders when the SI has children. The kebab/
+            toggle that flips an SI into sub-SI mode lives on the detail page, so
+            the canvas panel simply reflects whatever state the DB already shows. */}
+        {onOpenSubSI && si.dbId && subSIs.length > 0 && (
+          <div>
+            <label className="text-sm font-medium">Sub-initiatives</label>
+            <div className="mt-1 border rounded-md overflow-hidden bg-[#F5F3F0]">
+              {subSIs.map((sub) => {
+                const subOwner = sub.owner_user_id ? profilesMap[sub.owner_user_id] : null;
+                const isActive = selectedSubSiId === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => onOpenSubSI(sub.id)}
+                    className={
+                      `w-full px-3 py-2 flex items-center justify-between min-h-[44px] text-left transition-colors border-b last:border-b-0 ` +
+                      (isActive ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800/60')
+                    }
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{sub.title}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                          <span className="capitalize">{(sub.status || 'draft').replace('_', ' ')}</span>
+                          {subOwner && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate">{subOwner.full_name || 'Unknown'}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

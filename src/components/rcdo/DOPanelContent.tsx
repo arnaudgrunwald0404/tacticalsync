@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
-import FancyAvatar from '@/components/ui/fancy-avatar';
+import { OwnerCombobox } from '@/components/ui/owner-combobox';
 import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { Tables } from '@/integrations/supabase/types';
 import type { Node } from 'reactflow';
@@ -240,65 +239,13 @@ export function DOPanelContent({
             );
           })()}
           <div className="mt-1">
-            <Select
-              value={selectedNode.data.ownerId || ""}
+            <OwnerCombobox
+              profiles={profiles}
+              selectedId={selectedNode.data.ownerId}
+              onSelectionChange={(id) => handleOwnerChange(id || "")}
               disabled={isLocked}
-              onValueChange={handleOwnerChange}
-            >
-              <SelectTrigger className="flex-1" disabled={isLocked}>
-                <SelectValue placeholder="Select owner">
-                  {selectedNode.data.ownerId && (() => {
-                    const owner = profilesMap[selectedNode.data.ownerId];
-                    if (!owner) return null;
-                    const displayName = owner.full_name || '';
-                    const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                          {isUnknown ? (
-                            <span className="font-semibold">?</span>
-                          ) : (
-                            <FancyAvatar 
-                              name={owner.avatar_name || displayName} 
-                              displayName={displayName}
-                              avatarUrl={owner.avatar_url}
-                              size="sm" 
-                            />
-                          )}
-                        </span>
-                        <span className="text-sm">{isUnknown ? 'Unknown' : displayName}</span>
-                      </div>
-                    );
-                  })()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="z-[60]">
-                {profiles.length === 0 ? (
-                  <div className="py-2 px-2 text-sm text-muted-foreground text-center">
-                    No profiles available
-                  </div>
-                ) : (
-                  profiles.map((p) => {
-                    const displayName = p.full_name || '';
-                    const isUnknown = !displayName || displayName.trim().toLowerCase() === 'unknown';
-                    return (
-                      <SelectItem key={p.id} value={p.id}>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px]">
-                            {isUnknown ? (
-                              <span className="font-semibold">?</span>
-                            ) : (
-                              <FancyAvatar name={p.avatar_name || displayName} displayName={displayName} avatarUrl={p.avatar_url} size="sm" />
-                            )}
-                          </span>
-                          <span>{isUnknown ? 'Unknown' : displayName}</span>
-                        </span>
-                      </SelectItem>
-                    );
-                  })
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="Select owner"
+            />
           </div>
         </div>
         
