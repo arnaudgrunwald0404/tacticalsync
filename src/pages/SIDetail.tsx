@@ -81,22 +81,34 @@ export default function SIDetail() {
   
   // Set active tab to tasks if taskId is in URL
   useEffect(() => {
-    if (taskIdFromUrl) {
-      setActiveTab('tasks');
-      // Find the task in the tasks list
-      const task = tasks.find(t => t.id === taskIdFromUrl);
-      if (task) {
-        setSelectedTask(task);
-      }
+    if (!taskIdFromUrl) {
+      // URL no longer carries ?task= — drop any stale selection so a previously
+      // selected task can't leak into the header on the next render.
+      setSelectedTask(null);
+      return;
+    }
+    setActiveTab('tasks');
+    // useTasksBySI returns only direct tasks of this SI, so a hit here is a
+    // safe match. A miss may just mean the list hasn't loaded yet — the
+    // taskDetails effect below handles the verified fallback.
+    const task = tasks.find(t => t.id === taskIdFromUrl);
+    if (task) {
+      setSelectedTask(task);
     }
   }, [taskIdFromUrl, tasks]);
-  
-  // Update selected task when taskDetails loads
+
+  // Update selected task when taskDetails loads — but only if the task actually
+  // belongs to this SI. A stale `?task=` (e.g., the task was moved into a sub-SI
+  // when this SI was converted to sub-SI mode, or the user landed via an old
+  // link) must not render in this SI's header.
   useEffect(() => {
-    if (taskDetails) {
+    if (!taskDetails) return;
+    if ((taskDetails as { strategic_initiative_id?: string }).strategic_initiative_id === siId) {
       setSelectedTask(taskDetails);
+    } else {
+      setSelectedTask(null);
     }
-  }, [taskDetails]);
+  }, [taskDetails, siId]);
 
   // Compute numbering (e.g. "2.3") for this SI within the rallying cry
   const [siNumbering, setSiNumbering] = useState('');
