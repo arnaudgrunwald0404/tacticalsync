@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppNavbar } from "@/components/ui/app-navbar";
 import { ContentSkeleton } from "@/components/ui/content-skeleton";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
@@ -8,14 +8,21 @@ import { useSessionManager } from "@/hooks/useSessionManager";
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useSessionManager();
 
   useEffect(() => {
+    // Build a returnTo param so the user lands back here after login
+    const returnTo = location.pathname + location.search;
+    const authUrl = returnTo && returnTo !== '/'
+      ? `/auth?returnTo=${encodeURIComponent(returnTo)}`
+      : '/auth';
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        navigate("/auth", { replace: true });
+        navigate(authUrl, { replace: true });
       } else {
         setIsAuthenticated(true);
       }
@@ -23,14 +30,14 @@ export function AppLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
-        navigate("/auth", { replace: true });
+        navigate(authUrl, { replace: true });
       } else {
         setIsAuthenticated(true);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, location.pathname, location.search]);
 
   if (!isAuthenticated) {
     return <PageSkeleton />;

@@ -23,6 +23,27 @@ const Auth = () => {
   const [verificationEmail, setVerificationEmail] = useState("");
   const [activeTab, setActiveTab] = useState("signin");
 
+  // Resolve where to go after login: invite flow > returnTo > default
+  const resolvePostLoginPath = (): string => {
+    const storedInvite = localStorage.getItem('pendingInviteCode');
+    if (storedInvite) {
+      localStorage.removeItem('pendingInviteCode');
+      return `/join/${storedInvite}`;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get('invite');
+    if (inviteCode) return `/join/${inviteCode}`;
+    // returnTo may be stored in localStorage (survives OAuth redirect) or in the URL
+    const storedReturnTo = localStorage.getItem('pendingReturnTo');
+    if (storedReturnTo) {
+      localStorage.removeItem('pendingReturnTo');
+      return storedReturnTo;
+    }
+    const returnTo = params.get('returnTo');
+    if (returnTo) return returnTo;
+    return '/chief-of-staff';
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
@@ -36,11 +57,7 @@ const Auth = () => {
     } else {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          if (inviteCode) {
-            navigate(`/join/${inviteCode}`);
-          } else {
-            navigate("/chief-of-staff");
-          }
+          navigate(resolvePostLoginPath());
         }
       });
     }
@@ -57,19 +74,15 @@ const Auth = () => {
         if (hasCode || hasAccessToken) {
           const currentParams = new URLSearchParams(window.location.search);
           const currentInviteCode = currentParams.get('invite');
-          const newUrl = currentInviteCode ? `/auth?invite=${currentInviteCode}` : '/auth';
-          window.history.replaceState({}, '', newUrl);
+          const currentReturnTo = currentParams.get('returnTo');
+          const preservedParams = new URLSearchParams();
+          if (currentInviteCode) preservedParams.set('invite', currentInviteCode);
+          if (currentReturnTo) preservedParams.set('returnTo', currentReturnTo);
+          const qs = preservedParams.toString();
+          window.history.replaceState({}, '', qs ? `/auth?${qs}` : '/auth');
         }
 
-        const storedInvite = localStorage.getItem('pendingInviteCode');
-        if (storedInvite) {
-          localStorage.removeItem('pendingInviteCode');
-          navigate(`/join/${storedInvite}`);
-        } else if (inviteCode) {
-          navigate(`/join/${inviteCode}`);
-        } else {
-          navigate("/chief-of-staff");
-        }
+        navigate(resolvePostLoginPath());
       } else if (event === 'SIGNED_OUT') {
         console.log('[Auth] User signed out');
       }
@@ -83,6 +96,11 @@ const Auth = () => {
     const inviteCode = params.get('invite');
     if (inviteCode) {
       localStorage.setItem('pendingInviteCode', inviteCode);
+    }
+    // Persist returnTo through the OAuth redirect (URL params are lost)
+    const returnTo = params.get('returnTo');
+    if (returnTo) {
+      localStorage.setItem('pendingReturnTo', returnTo);
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -337,18 +355,7 @@ const Auth = () => {
         const session = data.session;
         if (session) {
           toast.success("Account created successfully!");
-          const params = new URLSearchParams(window.location.search);
-          const inviteCode = params.get('invite');
-          const storedInvite = localStorage.getItem('pendingInviteCode');
-
-          if (storedInvite) {
-            localStorage.removeItem('pendingInviteCode');
-            navigate(`/join/${storedInvite}`);
-          } else if (inviteCode) {
-            navigate(`/join/${inviteCode}`);
-          } else {
-            navigate("/chief-of-staff");
-          }
+          navigate(resolvePostLoginPath());
         } else {
           setVerificationEmail(trimmedEmail);
           setShowVerificationBanner(true);
