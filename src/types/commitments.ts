@@ -28,6 +28,7 @@ export interface QuarterlyPriority {
   title: string;
   description: string | null;
   status: CommitmentStatus;
+  flagged: boolean;
   display_order: number; // 1-3
   created_at: string;
   updated_at: string;
@@ -41,6 +42,7 @@ export interface MonthlyCommitment {
   title: string;
   description: string | null;
   status: CommitmentStatus;
+  flagged: boolean;
   display_order: number; // 1-3
   created_at: string;
   updated_at: string;

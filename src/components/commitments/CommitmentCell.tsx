@@ -25,6 +25,7 @@ interface CommitmentCellProps {
   onSave: (value: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onStatusChange: (status: CommitmentStatus) => Promise<void>;
+  onToggleFlagged?: (flagged: boolean) => Promise<void>;
 }
 
 export function CommitmentCell({
@@ -37,6 +38,7 @@ export function CommitmentCell({
   onSave,
   onDelete,
   onStatusChange,
+  onToggleFlagged,
 }: CommitmentCellProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(commitment?.title ?? '');
@@ -86,7 +88,8 @@ export function CommitmentCell({
     );
   }
 
-  const statusBorder = commitment ? leftBorderByStatus[commitment.status] : 'border-l-gray-300';
+  const isFlagged = commitment?.flagged ?? false;
+  const statusBorder = isFlagged ? 'border-l-red-500' : (commitment ? leftBorderByStatus[commitment.status] : 'border-l-gray-300');
   const renderedHtml = commitment?.title && isHtml(commitment.title)
     ? sanitizeHtmlForDisplay(commitment.title)
     : null;
@@ -95,11 +98,19 @@ export function CommitmentCell({
     <div
       ref={containerRef}
       className={cn(
-        'group relative flex min-h-[3rem] flex-col gap-1 rounded-md border border-l-4 bg-card p-2 text-xs',
+        'group relative flex min-h-[3rem] flex-col gap-1 rounded-md border bg-card p-2 text-xs',
+        isFlagged ? 'border-l-[6px]' : 'border-l-4',
         statusBorder,
         editing && 'ring-1 ring-ring',
       )}
     >
+      {commitment && !readOnly && (
+        <button
+          aria-label={isFlagged ? 'Remove flag' : 'Flag as red hot'}
+          onClick={(e) => { e.stopPropagation(); onToggleFlagged?.(!isFlagged); }}
+          className="absolute inset-y-0 left-0 w-3 cursor-pointer rounded-l-md"
+        />
+      )}
       {editing ? (
         <RichTextEditor
           content={value}

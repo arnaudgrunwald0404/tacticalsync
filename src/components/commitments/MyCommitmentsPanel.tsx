@@ -22,6 +22,8 @@ interface MyCommitmentsPanelProps {
   onDeleteCommitment: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
   onPriorityStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
+  onToggleCommitmentFlagged?: (id: string, flagged: boolean) => Promise<void>;
+  onTogglePriorityFlagged?: (id: string, flagged: boolean) => Promise<void>;
 }
 
 export function MyCommitmentsPanel({
@@ -35,6 +37,8 @@ export function MyCommitmentsPanel({
   onDeleteCommitment,
   onStatusChange,
   onPriorityStatusChange,
+  onToggleCommitmentFlagged,
+  onTogglePriorityFlagged,
 }: MyCommitmentsPanelProps) {
   const months = getQuarterMonths(quarter);
   const monthLabels = [months.month1, months.month2, months.month3];
@@ -83,6 +87,7 @@ export function MyCommitmentsPanel({
               onSave={title => handleSavePriority(order, title)}
               onDelete={() => { const p = priorityAt(order); if (p) onDeletePriority(p.id); return Promise.resolve(); }}
               onStatusChange={status => { const p = priorityAt(order); return p ? onPriorityStatusChange(p.id, status) : Promise.resolve(); }}
+              onToggleFlagged={flagged => { const p = priorityAt(order); return p && onTogglePriorityFlagged ? onTogglePriorityFlagged(p.id, flagged) : Promise.resolve(); }}
             />
           ))}
         </div>
@@ -115,6 +120,10 @@ export function MyCommitmentsPanel({
                   onStatusChange={status => {
                     const c = commitmentsFor(monthNum, order);
                     return c ? onStatusChange(c.id, status) : Promise.resolve();
+                  }}
+                  onToggleFlagged={flagged => {
+                    const c = commitmentsFor(monthNum, order);
+                    return c && onToggleCommitmentFlagged ? onToggleCommitmentFlagged(c.id, flagged) : Promise.resolve();
                   }}
                 />
               ))}

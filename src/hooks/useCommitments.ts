@@ -154,6 +154,24 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
     setPriorities(prev => prev.map(p => p.id === id ? { ...p, status } : p));
   }, [toast]);
 
+  const toggleCommitmentFlagged = useCallback(async (id: string, flagged: boolean) => {
+    const { error } = await supabase
+      .from('monthly_commitments')
+      .update({ flagged, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    setCommitments(prev => prev.map(c => c.id === id ? { ...c, flagged } : c));
+  }, [toast]);
+
+  const togglePriorityFlagged = useCallback(async (id: string, flagged: boolean) => {
+    const { error } = await supabase
+      .from('quarterly_priorities')
+      .update({ flagged, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    setPriorities(prev => prev.map(p => p.id === id ? { ...p, flagged } : p));
+  }, [toast]);
+
   return {
     priorities,
     commitments,
@@ -165,10 +183,14 @@ export function useMyCommitments(quarterId: string | null, userId: string | null
     deleteCommitment,
     updateCommitmentStatus,
     updatePriorityStatus,
+    toggleCommitmentFlagged,
+    togglePriorityFlagged,
   };
 }
 
 // ─── useReportingLines ───────────────────────────────────────────────────────
+// Derives reporting lines from profiles.manager_email (the authoritative org
+// chart source) instead of the team_reporting_lines table.
 
 export function useReportingLines(teamId: string | null) {
   const [lines, setLines] = useState<TeamReportingLine[]>([]);
@@ -179,12 +201,39 @@ export function useReportingLines(teamId: string | null) {
     if (!teamId) { setLoading(false); return; }
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('team_reporting_lines')
-        .select('*')
-        .eq('team_id', teamId);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: profiles, error } = await (supabase as any)
+        .from('profiles')
+        .select('id, email, manager_email')
+        .not('email', 'is', null);
       if (error) throw error;
-      setLines((data ?? []) as TeamReportingLine[]);
+
+      type OrgProfile = { id: string; email: string; manager_email: string | null };
+      const allProfiles = (profiles ?? []) as OrgProfile[];
+
+      const emailToId = new Map<string, string>();
+      for (const p of allProfiles) {
+        emailToId.set(p.email.toLowerCase(), p.id);
+      }
+
+      const derived: TeamReportingLine[] = [];
+      let counter = 0;
+      for (const p of allProfiles) {
+        if (!p.manager_email) continue;
+        const managerId = emailToId.get(p.manager_email.toLowerCase());
+        if (managerId && managerId !== p.id) {
+          derived.push({
+            id: `derived-${counter++}`,
+            team_id: teamId,
+            manager_id: managerId,
+            report_id: p.id,
+            created_at: '',
+          });
+        }
+      }
+
+      setLines(derived);
     } catch (err) {
       toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
     } finally {

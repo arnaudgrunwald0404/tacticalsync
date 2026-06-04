@@ -20,11 +20,12 @@ interface PrioritySlotProps {
   onSave: (title: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onStatusChange?: (status: CommitmentStatus) => Promise<void>;
+  onToggleFlagged?: (flagged: boolean) => Promise<void>;
 }
 
 const isHtml = (s: string) => /<\/?[a-z][\s\S]*>/i.test(s);
 
-export function PrioritySlot({ priority, order, readOnly = false, onSave, onDelete, onStatusChange }: PrioritySlotProps) {
+export function PrioritySlot({ priority, order, readOnly = false, onSave, onDelete, onStatusChange, onToggleFlagged }: PrioritySlotProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(priority?.title ?? '');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,7 +84,8 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
     );
   }
 
-  const statusBorder = priority ? leftBorderByStatus[priority.status] : 'border-l-gray-300';
+  const isFlagged = priority?.flagged ?? false;
+  const statusBorder = isFlagged ? 'border-l-red-500' : (priority ? leftBorderByStatus[priority.status] : 'border-l-gray-300');
   const renderedHtml = priority?.title && isHtml(priority.title)
     ? sanitizeHtmlForDisplay(priority.title)
     : null;
@@ -92,11 +94,19 @@ export function PrioritySlot({ priority, order, readOnly = false, onSave, onDele
     <div
       ref={containerRef}
       className={cn(
-        'group relative flex min-h-[4rem] gap-2 rounded-md border border-l-4 bg-card p-3',
+        'group relative flex min-h-[4rem] gap-2 rounded-md border bg-card p-3',
+        isFlagged ? 'border-l-[6px]' : 'border-l-4',
         statusBorder,
         editing && 'ring-1 ring-ring',
       )}
     >
+      {priority && !readOnly && (
+        <button
+          aria-label={isFlagged ? 'Remove flag' : 'Flag as red hot'}
+          onClick={(e) => { e.stopPropagation(); onToggleFlagged?.(!isFlagged); }}
+          className="absolute inset-y-0 left-0 w-3 cursor-pointer rounded-l-md"
+        />
+      )}
       <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
         {order}
       </span>

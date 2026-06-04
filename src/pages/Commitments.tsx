@@ -44,27 +44,18 @@ export default function Commitments() {
       setTeamId(memberships.team_id);
       setDbIsAdmin(memberships.role === 'admin');
 
-      // Load all profiles in team for rollup views
-      const { data: members } = await supabase
-        .from('team_members')
-        .select('user_id')
-        .eq('team_id', memberships.team_id);
-
-      const memberIds = (members ?? []).map((m: { user_id: string }) => m.user_id);
-      if (memberIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, avatar_name')
-          .in('id', memberIds);
-        setTeamMembers((profiles ?? []) as Profile[]);
-      }
+      // Load all org profiles so peers/managers outside the team render correctly
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, avatar_name');
+      setTeamMembers((profiles ?? []) as Profile[]);
       setProfilesLoading(false);
     }
     load();
   }, []);
 
   const { quarter, quarters, loading: quarterLoading, setQuarter, createQuarter } = useActiveQuarter();
-  const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus } = useMyCommitments(quarter?.id ?? null, userId);
+  const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus, toggleCommitmentFlagged, togglePriorityFlagged } = useMyCommitments(quarter?.id ?? null, userId);
   const { lines: reportingLines, loading: linesLoading, getDirectReportIds, getAllReportIds } = useReportingLines(teamId);
 
   const directReportIds = useMemo(() => userId ? getDirectReportIds(userId) : [], [userId, getDirectReportIds]);
@@ -101,7 +92,9 @@ export default function Commitments() {
     onDeleteCommitment: async (...args: Parameters<typeof deleteCommitment>) => { await deleteCommitment(...args); await refetchAll(); },
     onCommitmentStatusChange: async (...args: Parameters<typeof updateCommitmentStatus>) => { await updateCommitmentStatus(...args); await refetchAll(); },
     onPriorityStatusChange: async (...args: Parameters<typeof updatePriorityStatus>) => { await updatePriorityStatus(...args); await refetchAll(); },
-  }), [upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus, refetchAll]);
+    onToggleCommitmentFlagged: async (...args: Parameters<typeof toggleCommitmentFlagged>) => { await toggleCommitmentFlagged(...args); await refetchAll(); },
+    onTogglePriorityFlagged: async (...args: Parameters<typeof togglePriorityFlagged>) => { await togglePriorityFlagged(...args); await refetchAll(); },
+  }), [upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus, toggleCommitmentFlagged, togglePriorityFlagged, refetchAll]);
 
   const profileById = useMemo(() => {
     const map: Record<string, Profile> = {};
@@ -216,6 +209,8 @@ export default function Commitments() {
               onDeleteCommitment={deleteCommitment}
               onStatusChange={updateCommitmentStatus}
               onPriorityStatusChange={updatePriorityStatus}
+              onToggleCommitmentFlagged={toggleCommitmentFlagged}
+              onTogglePriorityFlagged={togglePriorityFlagged}
             />
           ) : null}
         </TabsContent>

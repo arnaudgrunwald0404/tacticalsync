@@ -37,6 +37,8 @@ interface EditCallbacks {
   onDeleteCommitment: (id: string) => Promise<void>;
   onCommitmentStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
   onPriorityStatusChange: (id: string, status: CommitmentStatus) => Promise<void>;
+  onToggleCommitmentFlagged?: (id: string, flagged: boolean) => Promise<void>;
+  onTogglePriorityFlagged?: (id: string, flagged: boolean) => Promise<void>;
 }
 
 interface TeamRollupViewProps {
@@ -146,6 +148,7 @@ function EditableMemberCard({
                 onSave={title => handleSavePriority(order, title)}
                 onDelete={() => { const p = priorityAt(order); if (p) callbacks.onDeletePriority(p.id); return Promise.resolve(); }}
                 onStatusChange={status => { const p = priorityAt(order); return p ? callbacks.onPriorityStatusChange(p.id, status) : Promise.resolve(); }}
+                onToggleFlagged={flagged => { const p = priorityAt(order); return p && callbacks.onTogglePriorityFlagged ? callbacks.onTogglePriorityFlagged(p.id, flagged) : Promise.resolve(); }}
               />
             ))}
           </div>
@@ -191,6 +194,10 @@ function EditableMemberCard({
                       onStatusChange={status => {
                         const c = commitmentsFor(monthNum, order);
                         return c ? callbacks.onCommitmentStatusChange(c.id, status) : Promise.resolve();
+                      }}
+                      onToggleFlagged={flagged => {
+                        const c = commitmentsFor(monthNum, order);
+                        return c && callbacks.onToggleCommitmentFlagged ? callbacks.onToggleCommitmentFlagged(c.id, flagged) : Promise.resolve();
                       }}
                     />
                   ))}
@@ -268,7 +275,7 @@ function ReadOnlyMemberCard({
                 </p>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {myPriorities.map((p, i) => (
-                    <div key={p.id} className={cn('flex min-h-[3rem] gap-2 rounded-md border bg-card p-3', borderByStatus[p.status])}>
+                    <div key={p.id} className={cn('flex min-h-[3rem] gap-2 rounded-md border bg-card p-3', p.flagged ? 'border-l-[6px] border-l-red-500' : borderByStatus[p.status])}>
                       <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                         {i + 1}
                       </span>
@@ -309,7 +316,7 @@ function ReadOnlyMemberCard({
                           <p className="text-xs text-muted-foreground/40 italic">—</p>
                         ) : (
                           byMonth(month).map(c => (
-                            <div key={c.id} className={cn('rounded-md border bg-card p-2 text-xs', borderByStatus[c.status])}>
+                            <div key={c.id} className={cn('rounded-md border bg-card p-2 text-xs', c.flagged ? 'border-l-[6px] border-l-red-500' : borderByStatus[c.status])}>
                               <p className="whitespace-pre-line leading-relaxed text-foreground/80">{c.title}</p>
                               <StatusBadge status={c.status} className="mt-1" />
                             </div>
