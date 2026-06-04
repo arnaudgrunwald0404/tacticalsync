@@ -26,7 +26,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,6 +36,8 @@ import {
   SECTION_TYPE_LABELS, isAutoType, resolveNewSectionLabel,
   sectionToCategoryKey, totalWidthPct, adjustColumnCount, migrateOldSettings,
 } from '@/types/cos';
+import { OneOnOnesView } from '@/components/cos/OneOnOnesView';
+import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -526,7 +527,7 @@ export default function ChiefOfStaff() {
         <TabsList className="mb-6 grid max-w-sm grid-cols-3">
           <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
           <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
-          <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="team">1:1s</TabsTrigger>
         </TabsList>
 
         <TabsContent value="priorities">
@@ -3073,15 +3074,16 @@ function buildPersonTopicSuggestPrompt(
   return lines.join('\n');
 }
 
-function buildStaticPrepPrompt(member: CosTeamMember): string {
+function buildStaticPrepPrompt(member: CosTeamMember, prepInstructions?: string): string {
   const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
   if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
   if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
+  if (prepInstructions) parts.push(`My standing instructions for this prep: ${prepInstructions}`);
   parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
   return parts.join(' ');
 }
 
-function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember): string {
+function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember, prepInstructions?: string): string {
   const lines: string[] = [
     `1:1 Prep — ${prep.person.name} (${prep.person.role})`,
     `Generated: ${format(new Date(), 'MMM d yyyy, h:mm a')}`,
@@ -3123,12 +3125,16 @@ function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember): string {
 
   if (member.context_notes) lines.push(`📝 Context: ${member.context_notes}`);
   if (member.last_1on1_date) lines.push(`📅 Last 1:1: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}`);
+  if (prepInstructions) {
+    lines.push('');
+    lines.push(`⚙️ Standing instructions: ${prepInstructions}`);
+  }
 
   lines.push('', 'Based on the above, help me prepare for this 1:1: what should I prioritise, what questions should I ask, and how can I best support this person?');
   return lines.join('\n');
 }
 
-async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
+async function fetchCleargoPrep(member: CosTeamMember, prepInstructions?: string): Promise<string> {
   const headers = { 'X-ClearGo-Key': CLEARGO_API_KEY };
 
   const membersRes = await fetch(`${CLEARGO_API_URL}/api/v1/team-members`, { headers });
@@ -3146,19 +3152,19 @@ async function fetchCleargoPrep(member: CosTeamMember): Promise<string> {
   if (!prepRes.ok) throw new Error('1on1-prep fetch failed');
   const prep: CleargoPrep = await prepRes.json();
 
-  return buildLivePrepPrompt(prep, member);
+  return buildLivePrepPrompt(prep, member, prepInstructions);
 }
 
-async function generatePrep(member: CosTeamMember): Promise<{ content: string; source: 'cleargo' | 'static' }> {
+async function generatePrep(member: CosTeamMember, prepInstructions?: string): Promise<{ content: string; source: 'cleargo' | 'static' }> {
   if (CLEARGO_API_KEY) {
     try {
-      const content = await fetchCleargoPrep(member);
+      const content = await fetchCleargoPrep(member, prepInstructions);
       return { content, source: 'cleargo' };
     } catch {
       // fall through to static
     }
   }
-  return { content: buildStaticPrepPrompt(member), source: 'static' };
+  return { content: buildStaticPrepPrompt(member, prepInstructions), source: 'static' };
 }
 
 /**
@@ -3201,44 +3207,9 @@ function formatGeneratedAt(iso: string): string {
   return format(new Date(iso), 'MMM d, h:mm a');
 }
 
-// ── Team ──────────────────────────────────────────────────────────────────────
-
-function MemberCard({ member, onViewPrep, compact }: {
-  member: CosTeamMember;
-  onViewPrep: (member: CosTeamMember) => void;
-  compact?: boolean;
-}) {
-  return (
-    <Card className={cn('border border-border/50', compact && 'bg-muted/20')}>
-      <CardContent className={cn('p-4', compact && 'p-3')}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className={cn('font-medium', compact ? 'text-sm' : 'text-sm')}>{member.name}</p>
-            <p className="text-xs text-muted-foreground">{member.role}</p>
-            {!compact && member.last_1on1_date && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Last 1:1: {format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d')}
-              </p>
-            )}
-            {!compact && member.context_notes && (
-              <p className="text-xs text-muted-foreground mt-1 italic leading-snug">{member.context_notes}</p>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            className={cn('flex-shrink-0 gap-1.5 touch-manipulation', compact ? 'h-8 text-xs' : 'h-10 text-sm')}
-            onClick={() => onViewPrep(member)}
-          >
-            <FileText className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-            <span className="hidden sm:inline">View 1:1 Prep</span>
-            <span className="sm:hidden">Prep</span>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
+// ── 1:1s Tab — wraps OneOnOnesView + OneOnOnePrepDrawer with the existing
+//    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
+// ────────────────────────────────────────────────────────────────────────────
 
 function TeamSection({ members }: { members: CosTeamMember[] }) {
   const { toast } = useToast();
@@ -3253,83 +3224,6 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   const [sharing, setSharing] = useState(false);
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
-
-  // Footer: per-meeting actions
-  const [actionDraft, setActionDraft] = useState('');
-  const [savingActions, setSavingActions] = useState(false);
-
-  // Footer: person context
-  const [contextDraft, setContextDraft] = useState('');
-  const [savingContext, setSavingContext] = useState(false);
-
-  // Footer: global prep feedback
-  const [feedbackDraft, setFeedbackDraft] = useState('');
-  const [savingFeedback, setSavingFeedback] = useState(false);
-
-  // Load global prep instructions whenever a sheet opens
-  useEffect(() => {
-    if (!prepSheet) return;
-    setActionDraft('');
-    setContextDraft(prepSheet.member.context_notes ?? '');
-    supabase
-      .from('cos_prep_settings')
-      .select('prep_instructions')
-      .single()
-      .then(({ data }) => setFeedbackDraft(data?.prep_instructions ?? ''));
-  }, [prepSheet?.member.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const saveActions = async () => {
-    if (!prepSheet || !actionDraft.trim()) return;
-    setSavingActions(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const lines = actionDraft.split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
-      const rows = lines.map(text => ({ user_id: user.id, member_id: prepSheet.member.id, text }));
-      const { error } = await supabase.from('cos_meeting_actions').insert(rows);
-      if (error) throw error;
-      setActionDraft('');
-      toast({ title: `${rows.length} action${rows.length !== 1 ? 's' : ''} queued` });
-    } catch (err) {
-      toast({ title: 'Failed to save actions', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingActions(false);
-    }
-  };
-
-  const saveContext = async () => {
-    if (!prepSheet) return;
-    setSavingContext(true);
-    try {
-      const { error } = await supabase
-        .from('cos_team_members')
-        .update({ context_notes: contextDraft || null })
-        .eq('id', prepSheet.member.id);
-      if (error) throw error;
-      toast({ title: 'Context saved' });
-    } catch (err) {
-      toast({ title: 'Failed to save context', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingContext(false);
-    }
-  };
-
-  const saveFeedback = async () => {
-    setSavingFeedback(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const { error } = await supabase
-        .from('cos_prep_settings')
-        .upsert({ user_id: user.id, prep_instructions: feedbackDraft }, { onConflict: 'user_id' });
-      if (error) throw error;
-      toast({ title: 'Prep instructions saved' });
-    } catch (err) {
-      toast({ title: 'Failed to save feedback', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingFeedback(false);
-    }
-  };
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -3353,33 +3247,17 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     }
   };
 
-  // Build tree: roots = direct_reports with no reports_to_id
-  const directReports = members.filter(
-    m => m.relationship_type === 'direct_report' && !m.reports_to_id
-  ).sort((a, b) => a.name.localeCompare(b.name));
-
-  // Map manager id → their reports
-  const reportsByManager: Record<string, CosTeamMember[]> = {};
-  for (const m of members) {
-    if (m.reports_to_id) {
-      (reportsByManager[m.reports_to_id] ??= []).push(m);
-    }
-  }
-  // Sort each manager's reports alphabetically
-  for (const list of Object.values(reportsByManager)) {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  const collaborators = members.filter(m => m.relationship_type === 'collaborator')
-    .sort((a, b) => a.name.localeCompare(b.name));
-
   const openPrepFile = async (member: CosTeamMember) => {
     setLoadingPrep(true);
     try {
+      // Fetch standing prep instructions upfront (used by ClearGO + static paths)
+      const { data: settings } = await supabase.from('cos_prep_settings').select('prep_instructions').single();
+      const prepInstructions = settings?.prep_instructions || '';
+
       // 1. Try ClearGO API
       if (CLEARGO_API_KEY) {
         try {
-          const content = await fetchCleargoPrep(member);
+          const content = await fetchCleargoPrep(member, prepInstructions);
           setPrepSheet({ member, content, source: 'cleargo', generatedAt: new Date().toISOString() });
           return;
         } catch {
@@ -3410,7 +3288,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       }
 
       // 3. Fall back to static prompt
-      const content = buildStaticPrepPrompt(member);
+      const content = buildStaticPrepPrompt(member, prepInstructions);
       setPrepSheet({ member, content, source: 'static', generatedAt: new Date().toISOString() });
       try { await navigator.clipboard.writeText(content); } catch { /* ignore */ }
       toast({ title: 'Prep prompt ready — also copied to clipboard' });
@@ -3432,8 +3310,10 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
           return;
         }
       }
-      // Fall back to ClearGO / static
-      const { content, source } = await generatePrep(prepSheet.member);
+      // Fall back to ClearGO / static — fetch fresh prep instructions
+      const { data: settings } = await supabase.from('cos_prep_settings').select('prep_instructions').single();
+      const prepInstructions = settings?.prep_instructions || '';
+      const { content, source } = await generatePrep(prepSheet.member, prepInstructions);
       setPrepSheet({ ...prepSheet, content, source, generatedAt: new Date().toISOString() });
     } catch (err) {
       toast({ title: 'Refresh failed', description: String(err), variant: 'destructive' });
@@ -3442,189 +3322,27 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     }
   };
 
-  const totalDirectLine = directReports.length +
-    Object.values(reportsByManager).reduce((s, arr) => s + arr.length, 0);
-
   return (
     <>
-      <div className="space-y-8">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Team</h2>
-          <Badge variant="secondary" className="text-xs">{totalDirectLine}</Badge>
-        </div>
+      <OneOnOnesView
+        members={members}
+        loadingPrep={loadingPrep}
+        onViewPrep={openPrepFile}
+      />
 
-        {/* Org tree */}
-        <div className="space-y-3">
-          {/* You (root) */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20">
-            <div className="h-2 w-2 rounded-full bg-primary" />
-            <span className="text-sm font-semibold text-primary">You</span>
-          </div>
+      <OneOnOnePrepDrawer
+        open={!!prepSheet}
+        member={prepSheet?.member ?? null}
+        content={prepSheet?.content ?? ''}
+        source={prepSheet?.source ?? 'static'}
+        generatedAt={prepSheet?.generatedAt ?? new Date().toISOString()}
+        refreshing={refreshingPrep}
+        sharing={sharing}
+        onClose={() => setPrepSheet(null)}
+        onRefresh={refreshPrep}
+        onShare={sharePrep}
+      />
 
-          {/* Direct reports + their trees */}
-          <div className="pl-4 border-l-2 border-border space-y-4">
-            {directReports.map(manager => {
-              const reports = reportsByManager[manager.id] ?? [];
-              return (
-                <div key={manager.id} className="space-y-2">
-                  {/* Manager row */}
-                  <MemberCard member={manager} onViewPrep={openPrepFile} />
-
-                  {/* Their direct reports indented */}
-                  {reports.length > 0 && (
-                    <div className="pl-4 border-l-2 border-border/50 space-y-1.5 ml-2">
-                      {reports.map(r => (
-                        <div key={r.id}>
-                          <MemberCard member={r} onViewPrep={openPrepFile} compact />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {directReports.length === 0 && (
-              <p className="text-xs text-muted-foreground py-2">No direct reports yet.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Collaborators */}
-        {collaborators.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Collaborators</h3>
-              <Badge variant="secondary" className="text-xs">{collaborators.length}</Badge>
-            </div>
-            <div className="space-y-2">
-              {collaborators.map(m => <MemberCard key={m.id} member={m} onViewPrep={openPrepFile} />)}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 1:1 Prep Sheet */}
-      <Sheet open={!!prepSheet} onOpenChange={open => { if (!open) setPrepSheet(null); }}>
-        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
-          <SheetHeader className="mb-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <SheetTitle className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  {prepSheet?.member.name} — 1:1 Prep
-                </SheetTitle>
-                {prepSheet && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Generated {formatGeneratedAt(prepSheet.generatedAt)} · {prepSheet.source === 'cleargo' ? 'ClearGO' : 'Static'}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  disabled={refreshingPrep}
-                  onClick={refreshPrep}
-                >
-                  {refreshingPrep
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <RefreshCw className="h-4 w-4" />}
-                  <span className="hidden sm:inline">{refreshingPrep ? 'Refreshing…' : 'Refresh'}</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  disabled={sharing}
-                  onClick={sharePrep}
-                >
-                  {sharing
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <Send className="h-4 w-4" />}
-                  <span className="hidden sm:inline">{sharing ? 'Sending…' : 'Share'}</span>
-                </Button>
-              </div>
-            </div>
-          </SheetHeader>
-          <div className="prose-sm text-foreground">
-            {prepSheet && renderMarkdown(prepSheet.content)}
-          </div>
-
-          {/* ── Feedback footer ─────────────────────────────────────────── */}
-          <div className="mt-8 space-y-6 border-t border-border pt-6">
-
-            {/* 1. Meeting actions */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions for this meeting</p>
-              <p className="text-xs text-muted-foreground">One per line — e.g. "Draft an email about X", "Introduce Matt to Y", "Add to priorities: Z"</p>
-              <Textarea
-                value={actionDraft}
-                onChange={e => setActionDraft(e.target.value)}
-                placeholder={"- Draft a follow-up on the LMS release\n- Introduce Matt to the data team lead\n- Add to my priorities: unblock AI Course Builder"}
-                rows={4}
-                className="text-sm resize-none"
-              />
-              <Button
-                size="sm"
-                onClick={saveActions}
-                disabled={savingActions || !actionDraft.trim()}
-              >
-                {savingActions ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                Queue actions
-              </Button>
-            </div>
-
-            {/* 2. Person context */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Context about {prepSheet?.member.name.split(' ')[0]}
-              </p>
-              <p className="text-xs text-muted-foreground">Goals, working style, things the AI missed — appended to every future prep for this person.</p>
-              <Textarea
-                value={contextDraft}
-                onChange={e => setContextDraft(e.target.value)}
-                placeholder="e.g. Matt cares deeply about shipping quality over speed. He's been frustrated by scope creep on Agent Studio. His long-term goal is to move into a VP role."
-                rows={4}
-                className="text-sm resize-none"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={saveContext}
-                disabled={savingContext}
-              >
-                {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                Save context
-              </Button>
-            </div>
-
-            {/* 3. Global prep instructions */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Improve future 1:1 preps</p>
-              <p className="text-xs text-muted-foreground">Standing instructions applied to every prep — tell the AI what good looks like for you.</p>
-              <Textarea
-                value={feedbackDraft}
-                onChange={e => setFeedbackDraft(e.target.value)}
-                placeholder={"e.g. Disregard releases that are already past their target date. Show future releases in ascending date order. Always highlight blockers first. Don't repeat items from last week if status hasn't changed."}
-                rows={5}
-                className="text-sm resize-none"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={saveFeedback}
-                disabled={savingFeedback}
-              >
-                {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                Save instructions
-              </Button>
-            </div>
-
-          </div>
-        </SheetContent>
-      </Sheet>
     </>
   );
 }
