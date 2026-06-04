@@ -24,9 +24,13 @@ interface RichTextEditorProps {
   className?: string
   readOnly?: boolean
   minHeight?: string // e.g., "96px" for 3 rows
+  /** Strip the editor's own border/background. Use when the surrounding cell already provides one. */
+  bare?: boolean
+  /** Focus the editor on mount. */
+  autoFocus?: boolean
 }
 
-const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className = '', readOnly = false, minHeight = '40px' }: RichTextEditorProps) => {
+const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className = '', readOnly = false, minHeight = '40px', bare = false, autoFocus = false }: RichTextEditorProps) => {
   // Clean up empty lines when displaying existing content
   const cleanContent = content ? content.replace(/(<p><\/p>)+/g, '') : content;
   const [isFocused, setIsFocused] = useState(false)
@@ -79,6 +83,12 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       editor.commands.setContent(cleanContent)
     }
   }, [editor, cleanContent])
+
+  useEffect(() => {
+    if (editor && autoFocus) {
+      editor.commands.focus('end')
+    }
+  }, [editor, autoFocus])
 
   if (!editor) {
     return null
@@ -262,12 +272,14 @@ const RichTextEditor = ({ content = '', onChange, onBlur, placeholder, className
       )}
 
       {/* Editor Content */}
-      <div 
-        className="relative border h-auto focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background"
+      <div
+        className={bare
+          ? 'relative h-auto'
+          : 'relative border h-auto focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 bg-background'}
         style={{ minHeight }}
       >
-        <EditorContent 
-          editor={editor} 
+        <EditorContent
+          editor={editor}
         />
       </div>
     </div>

@@ -13,6 +13,8 @@ interface RichTextEditorProps {
   className?: string;
   readOnly?: boolean;
   minHeight?: string;
+  bare?: boolean;
+  autoFocus?: boolean;
 }
 
 /**

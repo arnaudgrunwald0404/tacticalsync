@@ -300,6 +300,53 @@
   text-decoration: underline;
 }
 
+/* Inline editor inside a card cell — no padding, transparent, inherit text size */
+.commitments-rte .ProseMirror {
+  padding: 0 !important;
+  background-color: transparent !important;
+  font-size: inherit;
+  line-height: 1.5;
+  min-height: 1.25rem;
+}
+
+.commitments-rte-sm .ProseMirror {
+  line-height: 1.4;
+}
+
+.commitments-rte .ProseMirror ul,
+.commitments-rte .ProseMirror ol {
+  padding-left: 1.25rem;
+}
+
+.commitments-rte .ProseMirror li {
+  margin: 0.125rem 0;
+}
+
+/* Read-mode rendering of saved HTML in commitments cells */
+.commitments-rte-display p {
+  margin: 0;
+}
+
+.commitments-rte-display ul,
+.commitments-rte-display ol {
+  padding-left: 1.25rem;
+  margin: 0;
+}
+
+.commitments-rte-display ul { list-style-type: disc; }
+.commitments-rte-display ol { list-style-type: decimal; }
+
+.commitments-rte-display li {
+  margin: 0.125rem 0;
+}
+
+.commitments-rte-display strong { font-weight: 600; }
+.commitments-rte-display em     { font-style: italic; }
+.commitments-rte-display a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
 /* ============================================================================
    DESIGN SYSTEM 2 — Utility Classes & Animations
    ============================================================================ */

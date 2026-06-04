@@ -77,6 +77,7 @@ const Settings = () => {
     id: string;
     email: string;
     full_name?: string;
+    manager_email?: string | null;
     is_admin?: boolean;
     is_super_admin?: boolean;
     is_rcdo_admin?: boolean;
@@ -129,6 +130,7 @@ const Settings = () => {
   const [editingUserName, setEditingUserName] = useState("");
   const [editingUserIsAdmin, setEditingUserIsAdmin] = useState(false);
   const [editingUserIsRCDOAdmin, setEditingUserIsRCDOAdmin] = useState(false);
+  const [editingUserManagerEmail, setEditingUserManagerEmail] = useState("");
   const [editingUserTeams, setEditingUserTeams] = useState<Set<string>>(new Set());
   const [removingFromTeamId, setRemovingFromTeamId] = useState("");
   
@@ -348,14 +350,14 @@ const Settings = () => {
       // We'll use a database function to get login info since we can't directly query auth.users
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, is_admin, is_super_admin, is_rcdo_admin, role_tags, created_at, updated_at")
+        .select("id, email, full_name, manager_email, is_admin, is_super_admin, is_rcdo_admin, role_tags, created_at, updated_at")
         .order("email", { ascending: true });
-      
+
       if (profilesError) throw profilesError;
       if (!profiles) return;
 
       // For each user, fetch their team memberships and login info
-      type ProfileRow = { id: string; email?: string | null; full_name?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; role_tags?: string[] | null; created_at?: string | null; updated_at?: string | null };
+      type ProfileRow = { id: string; email?: string | null; full_name?: string | null; manager_email?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; role_tags?: string[] | null; created_at?: string | null; updated_at?: string | null };
       const usersWithTeams = await Promise.all(
         profiles.map(async (profile: ProfileRow) => {
           const { data: memberships } = await supabase
@@ -403,8 +405,10 @@ const Settings = () => {
             id: profile.id,
             email: profile.email || "",
             full_name: profile.full_name || undefined,
+            manager_email: profile.manager_email ?? null,
             is_admin: Boolean(profile.is_admin),
             is_super_admin: Boolean(profile.is_super_admin),
+            is_rcdo_admin: Boolean(profile.is_rcdo_admin),
             role_tags: (profile.role_tags ?? []) as string[],
             has_logged_in: hasLoggedIn,
             last_active: lastActive,
@@ -752,6 +756,22 @@ const Settings = () => {
         updates.is_rcdo_admin = editingUserIsRCDOAdmin;
       }
 
+      // Update manager email if changed (normalize: trim + lowercase, empty → null)
+      const normalizedManagerEmail = editingUserManagerEmail.trim().toLowerCase() || null;
+      const currentManagerEmail = (currentUser?.manager_email || "").trim().toLowerCase() || null;
+      if (normalizedManagerEmail !== currentManagerEmail) {
+        // Guard against self-reference
+        if (normalizedManagerEmail && normalizedManagerEmail === selectedUser.email.trim().toLowerCase()) {
+          toast({
+            title: "Invalid manager",
+            description: "A user cannot be their own manager",
+            variant: "destructive",
+          });
+          return;
+        }
+        updates.manager_email = normalizedManagerEmail;
+      }
+
       // Update profile first
       if (Object.keys(updates).length > 0) {
         const { error } = await supabase
@@ -905,6 +925,7 @@ const Settings = () => {
     setEditingUserName(user.full_name || "");
     setEditingUserIsAdmin(user.is_admin || false);
     setEditingUserIsRCDOAdmin(user.is_rcdo_admin || false);
+    setEditingUserManagerEmail(user.manager_email || "");
     setEditingUserTeams(new Set((user.teams || []).map(t => t.team_id)));
     setShowEditDialog(true);
   };
@@ -2141,6 +2162,7 @@ const Settings = () => {
                         </TableHead>
                         <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Name</TableHead>
                         <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Email</TableHead>
+                        <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Manager</TableHead>
                         <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Roles</TableHead>
                         <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Last Active</TableHead>
                         <TableHead className="w-16 py-3"></TableHead>
@@ -2149,11 +2171,11 @@ const Settings = () => {
                     <TableBody>
                       {loadingUsersWithDetails ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-14 text-muted-foreground text-sm">Loading users…</TableCell>
+                          <TableCell colSpan={7} className="text-center py-14 text-muted-foreground text-sm">Loading users…</TableCell>
                         </TableRow>
                       ) : filteredUsers.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-14 text-muted-foreground text-sm">
+                          <TableCell colSpan={7} className="text-center py-14 text-muted-foreground text-sm">
                             {userSearchQuery ? "No users match your search" : "No users found"}
                           </TableCell>
                         </TableRow>
@@ -2180,6 +2202,16 @@ const Settings = () => {
                               </div>
                             </TableCell>
                             <TableCell className="py-3 text-[13px] text-muted-foreground truncate max-w-[220px]">{user.email}</TableCell>
+                            <TableCell className="py-3 text-[13px] text-muted-foreground truncate max-w-[200px]">
+                              {(() => {
+                                if (!user.manager_email) {
+                                  return <span className="text-muted-foreground/35">—</span>;
+                                }
+                                const manager = usersWithDetails.find(u => u.email.toLowerCase() === user.manager_email!.toLowerCase());
+                                const display = manager?.full_name?.trim() || user.manager_email;
+                                return <span title={user.manager_email}>{display}</span>;
+                              })()}
+                            </TableCell>
                             <TableCell className="py-3">
                               <Popover>
                                 <PopoverTrigger asChild>
@@ -3045,6 +3077,29 @@ const Settings = () => {
                 onChange={(e) => setEditingUserName(e.target.value)}
                 placeholder="Enter full name"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editManagerEmail">Manager's Email</Label>
+              <Input
+                id="editManagerEmail"
+                type="email"
+                list="manager-email-options"
+                value={editingUserManagerEmail}
+                onChange={(e) => setEditingUserManagerEmail(e.target.value)}
+                placeholder="manager@company.com"
+              />
+              <datalist id="manager-email-options">
+                {usersWithDetails
+                  .filter(u => !u.id.startsWith('pending-') && u.id !== selectedUser?.id && u.email)
+                  .map(u => (
+                    <option key={u.id} value={u.email}>
+                      {u.full_name || u.email}
+                    </option>
+                  ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                The email of this person's direct manager. Used to build the reporting hierarchy.
+              </p>
             </div>
             <div className="flex items-center space-x-2 pt-2">
               <Checkbox
