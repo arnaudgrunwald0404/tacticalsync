@@ -519,16 +519,16 @@ export default function ChiefOfStaff() {
 
   return (
     <div className="container mx-auto px-6 py-6 max-w-7xl">
-      <div className="flex items-center gap-2 mb-6">
-        <h1 className="text-xl font-semibold">Chief of Staff</h1>
-      </div>
-
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 grid max-w-sm grid-cols-3">
-          <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
-          <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
-          <TabsTrigger value="team">1:1s</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-6">
+          <h1 className="text-xl font-semibold mr-2">Chief of Staff</h1>
+          <TabsList className="grid max-w-sm grid-cols-3">
+            <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
+            <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
+            <TabsTrigger value="team">1:1s</TabsTrigger>
+          </TabsList>
+        </div>
+        <div id="team-toolbar-slot" className="flex items-center mt-4 mb-6" />
 
         <TabsContent value="priorities">
           {priorities.length === 0 && teamMembers.length === 0 && accountabilities.length === 0 && personTopics.length === 0 ? (
@@ -635,7 +635,7 @@ export default function ChiefOfStaff() {
         </TabsContent>
 
         <TabsContent value="team">
-          <TeamSection members={teamMembers} />
+          <TeamSection members={teamMembers} toolbarPortalId="team-toolbar-slot" />
         </TabsContent>
 
 
@@ -3211,19 +3211,20 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-function TeamSection({ members }: { members: CosTeamMember[] }) {
+function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; toolbarPortalId?: string }) {
   const { toast } = useToast();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{
     member: CosTeamMember;
     content: string;
-    source: 'cleargo' | 'static';
+    source: 'cleargo' | 'static' | 'ai_generated';
     generatedAt: string;
   } | null>(null);
   const [sharing, setSharing] = useState(false);
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
@@ -3542,6 +3543,42 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     }
   };
 
+  const aiGeneratePrep = async () => {
+    if (!prepSheet) return;
+    setAiGenerating(true);
+    try {
+      const res = await supabase.functions.invoke('generate-1on1-prep', {
+        body: {
+          team_member_id: prepSheet.member.id,
+          force_regenerate: true,
+        },
+      });
+      if (res.error) throw res.error;
+      const data = res.data as {
+        content?: string;
+        source?: string;
+        generated_at?: string;
+        data_sources_used?: string[];
+        cached?: boolean;
+      };
+      if (!data?.content) throw new Error('No content returned');
+      setPrepSheet({
+        ...prepSheet,
+        content: data.content,
+        source: 'ai_generated',
+        generatedAt: data.generated_at ?? new Date().toISOString(),
+      });
+      toast({
+        title: data.cached ? 'AI prep loaded (cached)' : 'AI prep generated',
+        description: `Sources: ${(data.data_sources_used ?? []).join(', ')}`,
+      });
+    } catch (err) {
+      toast({ title: 'AI generation failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   return (
     <>
       <OneOnOnesView
@@ -3553,6 +3590,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         lastSyncAt={lastSyncAt}
         syncing={syncing}
         onSyncCalendar={handleSyncCalendar}
+        toolbarPortalId={toolbarPortalId}
       />
 
       <OneOnOnePrepDrawer
@@ -3563,9 +3601,11 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         generatedAt={prepSheet?.generatedAt ?? new Date().toISOString()}
         refreshing={refreshingPrep}
         sharing={sharing}
+        aiGenerating={aiGenerating}
         onClose={() => setPrepSheet(null)}
         onRefresh={refreshPrep}
         onShare={sharePrep}
+        onAiGenerate={aiGeneratePrep}
       />
 
     </>

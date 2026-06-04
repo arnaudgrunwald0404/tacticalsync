@@ -1,19 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { format, differenceInCalendarDays, formatDistanceToNow } from 'date-fns';
+import { createPortal } from 'react-dom';
+import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomorrow, differenceInDays, startOfDay, addDays } from 'date-fns';
 import {
   Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
   ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
+  Search, X, AlertTriangle, Repeat,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
 import { type EventCategory } from '@/lib/calendar/matchEventToMember';
 
-// Member shape used by this view (matches CosTeamMember in ChiefOfStaff.tsx)
 export type MemberRelationshipType =
   | 'direct_report' | 'collaborator' | 'boss' | 'peer' | 'skip_level' | 'stakeholder' | 'external';
 
@@ -29,21 +31,20 @@ export interface OneOnOneMember {
 }
 
 export interface UpcomingOneOnOneEvent {
-  id: string;                          // cos_one_on_one_events.id
+  id: string;
   google_event_id: string;
-  team_member_id: string | null;        // nullable — unmatched attendees have no member
-  team_member: OneOnOneMember | null;   // null for unmatched attendees
-  attendee_name: string | null;         // raw Google display name fallback
-  attendee_email: string | null;        // raw Google email fallback
+  team_member_id: string | null;
+  team_member: OneOnOneMember | null;
+  attendee_name: string | null;
+  attendee_email: string | null;
   inferred_category: EventCategory;
   title: string | null;
-  start_time: string;                   // ISO
-  end_time: string;                     // ISO
+  start_time: string;
+  end_time: string;
   status: 'confirmed' | 'tentative' | 'cancelled';
   prep_available: boolean;
 }
 
-// Re-export for convenience
 export type { EventCategory };
 
 interface OneOnOnesViewProps {
@@ -55,17 +56,9 @@ interface OneOnOnesViewProps {
   lastSyncAt: string | null;
   syncing: boolean;
   onSyncCalendar: () => void;
+  toolbarPortalId?: string;
 }
 
-// Pending action plus a bit of denormalized member info for the central aggregation.
-interface PendingAction {
-  id: string;
-  text: string;
-  created_at: string;
-  member_id: string;
-}
-
-// CoS priority shape — only the fields we read for "my to-dos".
 interface MyTodo {
   id: string;
   text: string;
@@ -75,7 +68,6 @@ interface MyTodo {
   created_at: string;
 }
 
-// Assumed cadence (days) by relationship type — defaults for new types.
 const ASSUMED_CADENCE_DAYS: Partial<Record<MemberRelationshipType, number>> = {
   direct_report: 7,
   collaborator: 14,
@@ -86,53 +78,51 @@ const ASSUMED_CADENCE_DAYS: Partial<Record<MemberRelationshipType, number>> = {
   external: 30,
 };
 
-type RelStyle = { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string };
+type RelStyle = {
+  label: string;
+  short: string;
+  rail: string;
+  chipBg: string;
+  chipFg: string;
+  avatarBg: string;
+  dotColor: string;
+};
 
-// Visual tone per relationship — used by the cadence-based PersonCard fallback view.
 const REL_STYLE: Partial<Record<MemberRelationshipType, RelStyle>> = {
-  direct_report: { label: 'Direct report', rail: 'bg-blue-500',   chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',   avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700' },
-  collaborator:  { label: 'Collaborator',  rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
-  boss:          { label: 'Manager',       rail: 'bg-orange-500', chipBg: 'bg-orange-50', chipFg: 'text-orange-700', avatarBg: 'bg-gradient-to-br from-orange-500 to-orange-700' },
-  peer:          { label: 'Peer',          rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
+  boss:          { label: 'My manager',    short: 'Manager',  rail: 'bg-[#254677]', chipBg: 'bg-[#e8eef7]', chipFg: 'text-[#04356c]', avatarBg: 'bg-gradient-to-br from-[#04356c] to-[#254677]', dotColor: 'bg-[#254677]' },
+  direct_report: { label: 'Direct report', short: 'Report',   rail: 'bg-blue-600',  chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',  avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700',   dotColor: 'bg-blue-600' },
+  skip_level:    { label: 'Skip-level',    short: 'Skip',     rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700', dotColor: 'bg-violet-500' },
+  collaborator:  { label: 'Collaborator',  short: 'Collab',   rail: 'bg-teal-600',  chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',  avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700',   dotColor: 'bg-teal-600' },
+  peer:          { label: 'Peer',          short: 'Peer',     rail: 'bg-gray-400',  chipBg: 'bg-gray-100',  chipFg: 'text-gray-600',  avatarBg: 'bg-gradient-to-br from-gray-400 to-gray-600',   dotColor: 'bg-gray-400' },
+  stakeholder:   { label: 'Stakeholder',   short: 'Stake',    rail: 'bg-slate-400', chipBg: 'bg-slate-50',  chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600', dotColor: 'bg-slate-400' },
+  external:      { label: 'External',      short: 'External', rail: 'bg-stone-400', chipBg: 'bg-stone-50',  chipFg: 'text-stone-700', avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600', dotColor: 'bg-stone-400' },
+};
+
+const DEFAULT_REL_STYLE: RelStyle = {
+  label: 'Team member', short: 'Team', rail: 'bg-slate-400', chipBg: 'bg-slate-50', chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600', dotColor: 'bg-slate-400',
+};
+
+type CategoryConfig = { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string };
+const CATEGORY_CONFIG: Record<EventCategory, CategoryConfig> = {
+  direct_report: { label: 'Direct report', rail: 'bg-blue-600',   chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',   avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700' },
   skip_level:    { label: 'Skip-level',    rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700' },
+  peer:          { label: 'Peer',          rail: 'bg-gray-400',   chipBg: 'bg-gray-100',  chipFg: 'text-gray-600',   avatarBg: 'bg-gradient-to-br from-gray-400 to-gray-600' },
+  boss:          { label: 'Manager',       rail: 'bg-[#254677]',  chipBg: 'bg-[#e8eef7]', chipFg: 'text-[#04356c]',  avatarBg: 'bg-gradient-to-br from-[#04356c] to-[#254677]' },
   stakeholder:   { label: 'Stakeholder',   rail: 'bg-slate-400',  chipBg: 'bg-slate-50',  chipFg: 'text-slate-700',  avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600' },
   external:      { label: 'External',      rail: 'bg-stone-400',  chipBg: 'bg-stone-50',  chipFg: 'text-stone-700',  avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600' },
 };
 
-const DEFAULT_REL_STYLE: RelStyle = {
-  label: 'Team member', rail: 'bg-slate-400', chipBg: 'bg-slate-50', chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600',
-};
 
-const SKIP_STYLE: RelStyle = {
-  label: 'Skip-level',
-  rail: 'bg-violet-500',
-  chipBg: 'bg-violet-50',
-  chipFg: 'text-violet-700',
-  avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700',
-};
-
-// Category config for the grouped upcoming events section
-type CategoryConfig = { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string };
-const CATEGORY_CONFIG: Record<EventCategory, CategoryConfig> = {
-  direct_report: { label: 'My directs',        rail: 'bg-blue-500',   chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',   avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700' },
-  skip_level:    { label: 'My org',             rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700' },
-  peer:          { label: 'My peers',           rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
-  boss:          { label: 'My boss',            rail: 'bg-orange-500', chipBg: 'bg-orange-50', chipFg: 'text-orange-700', avatarBg: 'bg-gradient-to-br from-orange-500 to-orange-700' },
-  stakeholder:   { label: 'Other stakeholders', rail: 'bg-slate-400',  chipBg: 'bg-slate-50',  chipFg: 'text-slate-700',  avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600' },
-  external:      { label: 'Externals',          rail: 'bg-stone-400',  chipBg: 'bg-stone-50',  chipFg: 'text-stone-700',  avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600' },
-};
-
-const CATEGORY_ORDER: EventCategory[] = ['boss', 'direct_report', 'peer', 'skip_level', 'stakeholder', 'external'];
+type TimeBucket = 'today' | 'tomorrow' | 'this_week' | 'later';
 
 interface MemberWithSchedule extends OneOnOneMember {
   daysSinceLast: number | null;
-  daysUntilNext: number | null; // negative = overdue
-  bucket: 'overdue' | 'this_week' | 'later' | 'never';
+  daysUntilNext: number | null;
+  bucket: TimeBucket;
   isSkip: boolean;
 }
 
 export function bucketise(members: OneOnOneMember[], now: Date = new Date()): MemberWithSchedule[] {
-  // Detect skip-levels: a member whose reports_to_id matches another (direct_report) member's id.
   const directReportIds = new Set(members.filter(m => m.relationship_type === 'direct_report').map(m => m.id));
   const today = now;
   return members.map(m => {
@@ -140,9 +130,10 @@ export function bucketise(members: OneOnOneMember[], now: Date = new Date()): Me
     const daysSinceLast = last ? differenceInCalendarDays(today, last) : null;
     const cadence = ASSUMED_CADENCE_DAYS[m.relationship_type] ?? 14;
     const daysUntilNext = daysSinceLast == null ? null : cadence - daysSinceLast;
-    let bucket: MemberWithSchedule['bucket'];
-    if (daysUntilNext == null) bucket = 'never';
-    else if (daysUntilNext < 0) bucket = 'overdue';
+    let bucket: TimeBucket;
+    if (daysUntilNext == null) bucket = 'later';
+    else if (daysUntilNext <= 0) bucket = 'today';
+    else if (daysUntilNext === 1) bucket = 'tomorrow';
     else if (daysUntilNext <= 7) bucket = 'this_week';
     else bucket = 'later';
     const isSkip = !!m.reports_to_id && directReportIds.has(m.reports_to_id);
@@ -150,7 +141,57 @@ export function bucketise(members: OneOnOneMember[], now: Date = new Date()): Me
   });
 }
 
-// ── View ─────────────────────────────────────────────────────────────────────
+function bucketEvent(ev: UpcomingOneOnOneEvent): TimeBucket {
+  const start = new Date(ev.start_time);
+  if (isToday(start)) return 'today';
+  if (isTomorrow(start)) return 'tomorrow';
+  const daysOut = differenceInDays(startOfDay(start), startOfDay(new Date()));
+  if (daysOut >= 2 && daysOut <= 7) return 'this_week';
+  return 'later';
+}
+
+type BucketTone = 'today' | 'tomorrow' | 'week' | 'muted';
+const BUCKET_CONFIG: Record<TimeBucket, { label: string; dateLabel: () => string; tone: BucketTone }> = {
+  today:     { label: 'Today',     dateLabel: () => format(new Date(), 'EEE, MMM d'), tone: 'today' },
+  tomorrow:  { label: 'Tomorrow',  dateLabel: () => format(addDays(new Date(), 1), 'EEE, MMM d'), tone: 'tomorrow' },
+  this_week: { label: 'Coming up', dateLabel: () => {
+    const d2 = addDays(new Date(), 2);
+    const d7 = addDays(new Date(), 7);
+    return `${format(d2, 'MMM d')} – ${format(d7, 'MMM d')}`;
+  }, tone: 'week' },
+  later:     { label: 'Later',     dateLabel: () => `${format(addDays(new Date(), 8), 'MMM d')} +`, tone: 'muted' },
+};
+
+const BUCKET_ORDER: TimeBucket[] = ['today', 'tomorrow', 'this_week', 'later'];
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatRelativeTime(iso: string): string {
+  return formatDistanceToNow(new Date(iso), { addSuffix: true });
+}
+
+function dueLabel(m: MemberWithSchedule): string {
+  if (m.daysUntilNext == null) return 'Never met';
+  if (m.daysUntilNext < 0) return `${Math.abs(m.daysUntilNext)}d overdue`;
+  if (m.daysUntilNext === 0) return 'Due today';
+  return `in ${m.daysUntilNext}d`;
+}
+
+function cadenceLabel(relType: MemberRelationshipType): string {
+  const days = ASSUMED_CADENCE_DAYS[relType] ?? 14;
+  if (days <= 7) return 'Weekly';
+  if (days <= 14) return 'Bi-weekly';
+  return 'Monthly';
+}
+
+// ── View ────────────────────────────────────────────────────────────────────
 
 export function OneOnOnesView({
   members,
@@ -161,17 +202,16 @@ export function OneOnOnesView({
   lastSyncAt,
   syncing,
   onSyncCalendar,
+  toolbarPortalId,
 }: OneOnOnesViewProps) {
+  const [search, setSearch] = useState('');
   const scheduled = useMemo(() => bucketise(members), [members]);
 
-  const grouped = useMemo(() => {
-    // Sort ascending first so the first instance seen per person is the earliest.
+  // Calendar events: deduplicate then bucket chronologically
+  const eventsByBucket = useMemo(() => {
     const active = (upcomingEvents ?? [])
       .filter(e => e.status !== 'cancelled')
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
-
-    // Deduplicate: one card per person — keep only the next (earliest) meeting.
-    // Key: team_member_id when matched, otherwise attendee_email.
     const seen = new Set<string>();
     const deduped = active.filter(ev => {
       const key = ev.team_member_id ?? ev.attendee_email ?? ev.id;
@@ -179,17 +219,16 @@ export function OneOnOnesView({
       seen.add(key);
       return true;
     });
-
-    const map = new Map<EventCategory, UpcomingOneOnOneEvent[]>();
-    for (const cat of CATEGORY_ORDER) map.set(cat, []);
+    const map = new Map<TimeBucket, UpcomingOneOnOneEvent[]>();
+    for (const b of BUCKET_ORDER) map.set(b, []);
     for (const ev of deduped) {
-      map.get(ev.inferred_category)?.push(ev);
+      map.get(bucketEvent(ev))?.push(ev);
     }
     return map;
   }, [upcomingEvents]);
-  const hasUpcoming = Array.from(grouped.values()).some(arr => arr.length > 0);
+  const hasUpcoming = Array.from(eventsByBucket.values()).some(arr => arr.length > 0);
 
-  // ── Central aggregation: "my to-dos from 1:1s" ─────────────────────────────
+  // Central aggregation: to-dos from 1:1s
   const [myTodos, setMyTodos] = useState<MyTodo[]>([]);
   const [todosOpen, setTodosOpen] = useState(true);
   const [allPendingActions, setAllPendingActions] = useState<Record<string, number>>({});
@@ -223,7 +262,6 @@ export function OneOnOnesView({
   }, [members]);
 
   const markTodoDone = async (id: string) => {
-    // Optimistic
     setMyTodos(prev => prev.filter(t => t.id !== id));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any).from('cos_priorities')
@@ -231,113 +269,113 @@ export function OneOnOnesView({
       .eq('id', id);
   };
 
-  // Split into buckets for rendering
-  const overdue = scheduled
-    .filter(m => m.bucket === 'overdue' && !m.isSkip)
-    .sort((a, b) => (a.daysUntilNext ?? 0) - (b.daysUntilNext ?? 0));
-  const thisWeek = scheduled
-    .filter(m => m.bucket === 'this_week' && !m.isSkip)
-    .sort((a, b) => (a.daysUntilNext ?? 0) - (b.daysUntilNext ?? 0));
-  const later = scheduled
-    .filter(m => (m.bucket === 'later' || m.bucket === 'never') && !m.isSkip && m.relationship_type === 'direct_report')
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const collaboratorsLater = scheduled
-    .filter(m => m.relationship_type === 'collaborator' && m.bucket !== 'overdue' && m.bucket !== 'this_week' && !m.isSkip)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const skipLevels = scheduled.filter(m => m.isSkip);
+  // Search filter
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (name: string, role: string) =>
+    !q || name.toLowerCase().includes(q) || role.toLowerCase().includes(q);
 
-  // Hero pick: the most overdue direct report, or the first this-week one.
-  const hero = overdue[0] ?? thisWeek[0] ?? null;
-  const heroRest = hero ? [...overdue.slice(hero.bucket === 'overdue' ? 1 : 0), ...thisWeek.slice(hero.bucket === 'this_week' ? 1 : 0)] : [...overdue, ...thisWeek];
+  // Chronological member buckets (cadence-based fallback)
+  const membersByBucket = useMemo(() => {
+    const map = new Map<TimeBucket, MemberWithSchedule[]>();
+    for (const b of BUCKET_ORDER) map.set(b, []);
+    for (const m of scheduled) {
+      if (!matchesSearch(m.name, m.role)) continue;
+      map.get(m.bucket)!.push(m);
+    }
+    // Sort each bucket: most urgent first
+    for (const [, arr] of map) {
+      arr.sort((a, b) => (a.daysUntilNext ?? 999) - (b.daysUntilNext ?? 999));
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduled, q]);
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight font-heading">1:1s</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {scheduled.length} {scheduled.length === 1 ? 'person' : 'people'} ·{' '}
-            {overdue.length > 0 ? <span className="text-destructive font-medium">{overdue.length} overdue</span> : 'all on track'}
-          </p>
-        </div>
-        <div className="ml-auto flex flex-col items-end">
-          {calendarConnected ? (
-            <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5">
-              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <RefreshCw className="h-3.5 w-3.5"/>}
-              Sync calendar
-            </Button>
-          ) : (
-            <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5">
-              <CalendarPlus className="h-3.5 w-3.5"/>
-              Connect Google Calendar
-            </Button>
-          )}
-          {lastSyncAt && (
-            <p className="text-[10px] text-muted-foreground mt-1 text-right">
-              Last synced {formatRelativeTime(lastSyncAt)}
-            </p>
-          )}
-        </div>
+  // Hero: first "today" person (cadence fallback)
+  const todayMembers = membersByBucket.get('today') ?? [];
+  const hero = todayMembers[0] ?? null;
+
+  // Calendar events filtered by search
+  const filteredEventsByBucket = useMemo(() => {
+    if (!q) return eventsByBucket;
+    const map = new Map<TimeBucket, UpcomingOneOnOneEvent[]>();
+    for (const [bucket, events] of eventsByBucket) {
+      map.set(bucket, events.filter(ev => {
+        const name = ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '';
+        const role = ev.team_member?.role ?? '';
+        return matchesSearch(name, role);
+      }));
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventsByBucket, q]);
+  const hasFilteredUpcoming = Array.from(filteredEventsByBucket.values()).some(arr => arr.length > 0);
+
+  const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
+
+  const toolbar = (
+    <div className="flex items-center">
+      {/* Search — far left */}
+      <div className="relative w-56">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Quick search..."
+          className="h-8 pl-8 pr-8 text-sm"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
-      {/* Upcoming 1:1s from calendar — grouped by category */}
-      {hasUpcoming && (
-        <p className="text-[11px] text-muted-foreground -mt-4">From your calendar — next 14 days</p>
-      )}
-      {hasUpcoming && (
-        <div className="space-y-6">
-          {CATEGORY_ORDER.map(cat => {
-            const events = grouped.get(cat) ?? [];
-            if (events.length === 0) return null;
-            const cfg = CATEGORY_CONFIG[cat];
-            return (
-              <section key={cat}>
-                <div className="flex items-baseline gap-3 mb-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">{cfg.label}</h3>
-                  <Badge variant="secondary" className="ml-auto text-[10px]">{events.length}</Badge>
-                </div>
-                <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
-                  {events
-                    .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                    .map(ev => (
-                      <UpcomingEventCard
-                        key={ev.id}
-                        event={ev}
-                        onOpen={onViewPrep}
-                        loading={loadingPrep}
-                        categoryConfig={cfg}
-                      />
-                    ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Sync — far right */}
+      <div className="flex items-center gap-2.5">
+        {calendarConnected ? (
+          <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Sync
+          </Button>
+        ) : (
+          <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+            <CalendarPlus className="h-3.5 w-3.5" />
+            Connect calendar
+          </Button>
+        )}
+        {lastSyncAt && (
+          <span className="text-[10px] text-muted-foreground">
+            Synced {formatRelativeTime(lastSyncAt)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {portalTarget ? createPortal(toolbar, portalTarget) : toolbar}
 
       {/* Central aggregation: My to-dos from 1:1s */}
-      <section className="rounded-xl border border-border bg-card overflow-hidden">
-        <button
-          onClick={() => setTodosOpen(o => !o)}
-          className="w-full flex items-center gap-2 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
-        >
-          {todosOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-          <CheckSquare className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">My to-dos from 1:1s</span>
-          <Badge variant="secondary" className="text-[10px]">{myTodos.length}</Badge>
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            Central place for everything you owe out of any 1:1
-          </span>
-        </button>
-
-        {todosOpen && (
-          <div className="border-t border-border px-4 py-3">
-            {myTodos.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic py-2">
-                No open to-dos. Capture them from any 1:1 prep — they'll land here.
-              </p>
-            ) : (
+      {myTodos.length > 0 && (
+        <section className="rounded-xl border border-border bg-card overflow-hidden">
+          <button
+            onClick={() => setTodosOpen(o => !o)}
+            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
+          >
+            {todosOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            <CheckSquare className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm">My to-dos from 1:1s</span>
+            <Badge variant="secondary" className="text-[10px]">{myTodos.length}</Badge>
+          </button>
+          {todosOpen && (
+            <div className="border-t border-border px-4 py-3">
               <ul className="space-y-1.5">
                 {myTodos.map(t => {
                   const sourceName = (t.notes ?? '').replace(/^From 1:1 with /i, '');
@@ -360,74 +398,120 @@ export function OneOnOnesView({
                   );
                 })}
               </ul>
-            )}
-          </div>
-        )}
-      </section>
+            </div>
+          )}
+        </section>
+      )}
 
+      {/* Calendar-driven: chronological sections */}
+      {hasUpcoming && (
+        <div className="space-y-6">
+          {BUCKET_ORDER.map(bucket => {
+            const events = (filteredEventsByBucket.get(bucket) ?? [])
+              .sort((a, b) => a.start_time.localeCompare(b.start_time));
+            if (events.length === 0) return null;
+            const cfg = BUCKET_CONFIG[bucket];
+            const showHero = bucket === 'today' && !q && events[0]?.team_member;
+            const cols = bucket === 'later' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+              : bucket === 'this_week' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+              : 'grid-cols-1 md:grid-cols-2';
+            return (
+              <TimelineSection
+                key={bucket}
+                label={cfg.label}
+                subtitle={cfg.dateLabel()}
+                count={events.length}
+                tone={bucket === 'later' ? 'muted' : 'primary'}
+                bucketTone={cfg.tone}
+              >
+                {showHero ? (
+                  /* Today with hero: 2-col, hero left stretches to match stacked cards right */
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
+                    {events.length > 1 && (
+                      <div className="flex flex-col gap-3">
+                        {events.slice(1).map(ev => (
+                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className={cn('grid gap-3', cols)}>
+                    {events.map(ev => (
+                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
+                    ))}
+                  </div>
+                )}
+              </TimelineSection>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Cadence-based: chronological sections (no calendar) */}
       {!hasUpcoming && (
-        <>
-          {/* Hero: Up next */}
-          {hero && (
-            <UpNextHero member={hero} pendingForThem={allPendingActions[hero.id] ?? 0} onOpen={onViewPrep} loading={loadingPrep} />
-          )}
-
-          {/* Overdue + this-week siblings (excluding the hero) */}
-          {heroRest.length > 0 && (
-            <SectionGroup
-              title="Coming up"
-              subtitle="Next 7 days"
-              tone="primary"
-              members={heroRest}
-              pendingForThemMap={allPendingActions}
-              onOpen={onViewPrep}
-              loading={loadingPrep}
-            />
-          )}
-        </>
-      )}
-
-      {/* Later direct reports */}
-      {later.length > 0 && (
-        <SectionGroup
-          title="Later"
-          subtitle="Direct reports — not due yet"
-          tone="muted"
-          members={later}
-          pendingForThemMap={allPendingActions}
-          onOpen={onViewPrep}
-          loading={loadingPrep}
-          dense
-        />
-      )}
-
-      {/* Collaborators */}
-      {collaboratorsLater.length > 0 && (
-        <SectionGroup
-          title="Collaborators"
-          subtitle="Cross-functional partners"
-          tone="muted"
-          members={collaboratorsLater}
-          pendingForThemMap={allPendingActions}
-          onOpen={onViewPrep}
-          loading={loadingPrep}
-          dense
-        />
-      )}
-
-      {/* Skip-levels — folded under */}
-      {skipLevels.length > 0 && (
-        <SectionGroup
-          title="Skip-levels"
-          subtitle="One level below your direct reports"
-          tone="muted"
-          members={skipLevels}
-          pendingForThemMap={allPendingActions}
-          onOpen={onViewPrep}
-          loading={loadingPrep}
-          dense
-          skipStyle
-        />
+        <div className="space-y-6">
+          {BUCKET_ORDER.map(bucket => {
+            const people = membersByBucket.get(bucket) ?? [];
+            if (people.length === 0) return null;
+            const cfg = BUCKET_CONFIG[bucket];
+            const showHero = bucket === 'today' && !q && people.length > 0;
+            const compact = bucket === 'this_week' || bucket === 'later';
+            const cols = compact
+              ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+              : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
+            return (
+              <TimelineSection
+                key={bucket}
+                label={cfg.label}
+                subtitle={cfg.dateLabel()}
+                count={people.length}
+                tone={bucket === 'later' ? 'muted' : 'primary'}
+                bucketTone={cfg.tone}
+              >
+                {showHero ? (
+                  /* Today with hero: 2-col, hero left stretches to match stacked cards right */
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                    <UpNextHero
+                      member={people[0]}
+                      pendingForThem={allPendingActions[people[0].id] ?? 0}
+                      onOpen={onViewPrep}
+                      loading={loadingPrep}
+                    />
+                    {people.length > 1 && (
+                      <div className="flex flex-col gap-3">
+                        {people.slice(1).map(m => (
+                          <CompactPersonCard
+                            key={m.id}
+                            member={m}
+                            pendingForThem={allPendingActions[m.id] ?? 0}
+                            onOpen={onViewPrep}
+                            loading={loadingPrep}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className={cn('grid gap-3', cols)}>
+                    {people.map(m => (
+                      <CompactPersonCard
+                        key={m.id}
+                        member={m}
+                        pendingForThem={allPendingActions[m.id] ?? 0}
+                        onOpen={onViewPrep}
+                        loading={loadingPrep}
+                        compact={compact}
+                        forceStyle={m.isSkip ? REL_STYLE.skip_level : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TimelineSection>
+            );
+          })}
+        </div>
       )}
 
       {scheduled.length === 0 && (
@@ -443,7 +527,43 @@ export function OneOnOnesView({
   );
 }
 
-// ── Hero card ────────────────────────────────────────────────────────────────
+// ── Timeline section ────────────────────────────────────────────────────────
+
+const TONE_PILL: Record<BucketTone, string> = {
+  today:    'bg-amber-500 text-white',
+  tomorrow: 'bg-[#e8eef7] text-[#254677]',
+  week:     'bg-muted text-muted-foreground',
+  muted:    'bg-muted text-muted-foreground',
+};
+
+function TimelineSection({
+  label, subtitle, count, tone, bucketTone, children,
+}: {
+  label: string;
+  subtitle?: string;
+  count: number;
+  tone: 'primary' | 'muted';
+  bucketTone?: BucketTone;
+  children: React.ReactNode;
+}) {
+  const pillCls = bucketTone ? TONE_PILL[bucketTone] : (tone === 'primary' ? TONE_PILL.today : TONE_PILL.muted);
+  return (
+    <section>
+      <div className="flex items-center gap-3 mb-3">
+        <span className={cn('inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide', pillCls)}>
+          {label}
+        </span>
+        {subtitle && <span className="text-sm text-muted-foreground">{subtitle}</span>}
+        <span className="ml-auto text-[11px] font-bold text-muted-foreground bg-muted rounded-full px-2.5 py-0.5 border border-border">
+          {count}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// ── Hero card (cadence-based) ───────────────────────────────────────────────
 
 function UpNextHero({
   member, pendingForThem, onOpen, loading,
@@ -453,140 +573,77 @@ function UpNextHero({
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
 }) {
-  const isOverdue = member.bucket === 'overdue';
-  const dueLabel = member.daysUntilNext == null
-    ? 'Never met'
-    : member.daysUntilNext < 0
-      ? `${Math.abs(member.daysUntilNext)}d overdue`
-      : member.daysUntilNext === 0
-        ? 'Due today'
-        : `Due in ${member.daysUntilNext}d`;
+  const isOverdue = member.daysUntilNext != null && member.daysUntilNext < 0;
+  const style = REL_STYLE[member.relationship_type] ?? DEFAULT_REL_STYLE;
 
   return (
-    <div className="relative rounded-xl overflow-hidden shadow-lg bg-gradient-to-br from-[#042a55] via-[#0a3f7a] to-[#0760c6] text-white">
-      {/* Warm radial highlight */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(120% 80% at 90% -10%, rgba(240,140,0,0.32), transparent 60%)' }} />
-      <div className="relative p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Badge className={cn(
-            'gap-1 font-semibold tracking-wide uppercase text-[11px] border-0',
-            isOverdue ? 'bg-red-500 text-white' : 'bg-amber-500 text-white',
-          )}>
-            <Play className="h-3 w-3 fill-current" />
-            UP NEXT · {dueLabel}
-          </Badge>
-          <span className="text-[12px] text-white/60 inline-flex items-center gap-1.5">
-            <Clock className="h-3 w-3" />
-            Last 1:1 {member.last_1on1_date ? format(parseLocalDate(member.last_1on1_date), 'MMM d') : '—'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-full bg-white/15 border-2 border-white/25 flex items-center justify-center font-bold text-lg flex-shrink-0">
+    <button
+      onClick={() => onOpen(member)}
+      disabled={loading}
+      className="relative rounded-xl overflow-hidden shadow-lg text-white text-left transition-shadow hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed h-full"
+      style={{ background: 'linear-gradient(135deg, #042a55 0%, #0a3f7a 55%, #0760c6 130%)' }}
+    >
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(110% 120% at 100% -20%, rgba(240,140,0,0.3), transparent 55%)' }} />
+      <div className="relative p-4 flex flex-col gap-2.5 h-full justify-between">
+        {/* Person row */}
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full bg-white/15 border-2 border-white/20 flex items-center justify-center font-bold text-sm flex-shrink-0">
             {initials(member.name)}
           </div>
-          <div className="min-w-0">
-            <h3 className="font-heading font-extrabold text-2xl tracking-tight leading-tight">{member.name}</h3>
-            <p className="text-sm text-white/70 mt-0.5">{member.role}</p>
+          <div className="flex-1 min-w-0">
+            <div className="font-heading font-extrabold text-[15px] tracking-tight leading-tight">{member.name}</div>
+            <div className="text-xs text-white/65 mt-0.5">{member.role}</div>
           </div>
+          <Badge className={cn(
+            'gap-1 font-extrabold tracking-wide uppercase text-[10px] border-0 flex-shrink-0 whitespace-nowrap',
+            isOverdue ? 'bg-red-500 text-white' : 'bg-amber-500 text-white',
+          )}>
+            <Play className="h-2.5 w-2.5 fill-current" />
+            {dueLabel(member)}
+          </Badge>
         </div>
 
+        {/* Context preview */}
         {member.context_notes && (
-          <div className="bg-white/10 rounded-lg px-3 py-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">Context</p>
-            <p className="text-sm leading-snug">{member.context_notes}</p>
+          <div className="bg-white/10 rounded-lg px-3 py-2 text-sm leading-snug line-clamp-2">
+            {member.context_notes}
           </div>
         )}
 
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Meta row */}
+        <div className="flex items-center gap-3 flex-wrap mt-auto">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/60">
+            <Repeat className="h-3 w-3" /> {cadenceLabel(member.relationship_type)}
+          </span>
           {pendingForThem > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-sm font-bold text-amber-200">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {pendingForThem} open action{pendingForThem !== 1 ? 's' : ''}
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-200">
+              <AlertTriangle className="h-3 w-3" />
+              {pendingForThem} action item{pendingForThem !== 1 ? 's' : ''}
             </span>
           )}
-          <span className="ml-auto" />
-          <Button
-            onClick={() => onOpen(member)}
-            disabled={loading}
-            className="bg-white text-[#04356c] hover:bg-white/90 gap-1.5 font-semibold"
-          >
-            <FileText className="h-4 w-4" />
-            Open prep
-          </Button>
+          <span className="text-[11px] text-white/40 ml-auto inline-flex items-center gap-1.5">
+            <Clock className="h-3 w-3" />
+            {member.last_1on1_date ? format(parseLocalDate(member.last_1on1_date), 'MMM d') : 'Never met'}
+          </span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
-// ── Section group ────────────────────────────────────────────────────────────
+// ── Compact person card ─────────────────────────────────────────────────────
 
-function SectionGroup({
-  title, subtitle, tone, members, pendingForThemMap, onOpen, loading, dense, skipStyle,
-}: {
-  title: string;
-  subtitle: string;
-  tone: 'primary' | 'muted';
-  members: MemberWithSchedule[];
-  pendingForThemMap: Record<string, number>;
-  onOpen: (m: OneOnOneMember) => void;
-  loading: boolean;
-  dense?: boolean;
-  skipStyle?: boolean;
-}) {
-  return (
-    <section>
-      <div className="flex items-baseline gap-3 mb-3">
-        <h3 className={cn(
-          'text-xs font-bold uppercase tracking-wider',
-          tone === 'primary' ? 'text-foreground' : 'text-muted-foreground',
-        )}>
-          {title}
-        </h3>
-        <span className="text-[11px] text-muted-foreground">{subtitle}</span>
-        <Badge variant="secondary" className="ml-auto text-[10px]">{members.length}</Badge>
-      </div>
-      <div className={cn(
-        'grid gap-3',
-        dense ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2',
-      )}>
-        {members.map(m => (
-          <PersonCard
-            key={m.id}
-            member={m}
-            pendingForThem={pendingForThemMap[m.id] ?? 0}
-            onOpen={onOpen}
-            loading={loading}
-            dense={dense}
-            skipStyle={skipStyle}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ── Person card ──────────────────────────────────────────────────────────────
-
-function PersonCard({
-  member, pendingForThem, onOpen, loading, dense, skipStyle,
+function CompactPersonCard({
+  member, pendingForThem, onOpen, loading, compact, forceStyle,
 }: {
   member: MemberWithSchedule;
   pendingForThem: number;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
-  dense?: boolean;
-  skipStyle?: boolean;
+  compact?: boolean;
+  forceStyle?: RelStyle;
 }) {
-  const style = skipStyle ? SKIP_STYLE : (REL_STYLE[member.relationship_type] ?? DEFAULT_REL_STYLE);
-  const dueLabel = member.daysUntilNext == null
-    ? 'Never met'
-    : member.daysUntilNext < 0
-      ? `${Math.abs(member.daysUntilNext)}d overdue`
-      : member.daysUntilNext === 0
-        ? 'Due today'
-        : `Due in ${member.daysUntilNext}d`;
+  const style = forceStyle ?? (REL_STYLE[member.relationship_type] ?? DEFAULT_REL_STYLE);
   const isOverdue = (member.daysUntilNext ?? 0) < 0;
 
   return (
@@ -594,95 +651,69 @@ function PersonCard({
       onClick={() => onOpen(member)}
       disabled={loading}
       className={cn(
-        'relative flex flex-col items-stretch text-left rounded-lg border border-border bg-card overflow-hidden',
+        'relative flex flex-col text-left rounded-lg border border-border bg-card overflow-hidden',
         'shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
         'disabled:opacity-60 disabled:cursor-not-allowed',
       )}
     >
       {/* Color rail */}
-      <span className={cn('absolute left-0 top-0 bottom-0 w-1', style.rail)} aria-hidden />
+      <span className={cn('absolute left-0 top-0 bottom-0', compact ? 'w-[3px]' : 'w-1', style.rail)} aria-hidden />
 
-      <div className={cn('flex items-start gap-3', dense ? 'p-3 pl-4' : 'p-4 pl-5')}>
-        {/* Avatar */}
+      <div className={cn(
+        'flex items-center gap-3',
+        compact ? 'p-2.5 pl-3.5' : 'p-3 pl-4',
+      )}>
         <div className={cn(
           'rounded-full flex items-center justify-center font-bold text-white flex-shrink-0',
-          dense ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm',
+          compact ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm',
           style.avatarBg,
         )}>
           {initials(member.name)}
         </div>
 
-        {/* Identity */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('font-semibold leading-tight truncate', dense ? 'text-sm' : 'text-base')}>
+            <span className={cn(
+              'font-bold leading-tight truncate',
+              compact ? 'text-[13px]' : 'text-sm',
+            )}>
               {member.name}
             </span>
-            <Badge className={cn('text-[9px] font-semibold uppercase tracking-wide border-0', style.chipBg, style.chipFg)}>
-              {style.label}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{member.role}</p>
-
-          {/* Schedule + items row */}
-          <div className="flex items-center gap-3 mt-2 flex-wrap">
             <span className={cn(
-              'text-[11px] font-semibold inline-flex items-center gap-1',
-              isOverdue ? 'text-destructive' : 'text-muted-foreground',
+              'inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-1.5 py-px',
+              style.chipBg, style.chipFg,
             )}>
-              <Clock className="h-3 w-3" />
-              {dueLabel}
+              <span className={cn('w-[5px] h-[5px] rounded-full', style.dotColor)} />
+              {style.short}
             </span>
-            {pendingForThem > 0 && (
-              <span className="text-[11px] font-semibold inline-flex items-center gap-1 text-amber-700">
-                <ListChecks className="h-3 w-3" />
-                {pendingForThem} open
-              </span>
-            )}
-            {member.last_1on1_date && !dense && (
-              <span className="text-[10px] text-muted-foreground/70 inline-flex items-center gap-1">
-                Last {format(parseLocalDate(member.last_1on1_date), 'MMM d')}
-              </span>
-            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+            <span className="truncate">{member.role}</span>
           </div>
         </div>
 
-        {/* Open prep affordance */}
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary flex-shrink-0 mt-0.5">
-          <Sparkles className="h-3 w-3" />
-          {dense ? '' : 'Prep'}
-        </span>
+        <div className="flex-shrink-0 text-right">
+          <div className={cn(
+            'text-xs font-bold',
+            isOverdue ? 'text-destructive' : 'text-foreground',
+          )}>
+            {dueLabel(member)}
+          </div>
+          {pendingForThem > 0 && (
+            <div className="text-[10px] font-bold text-amber-600 mt-0.5">
+              {pendingForThem} action{pendingForThem !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
       </div>
     </button>
   );
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+// ── Helpers for event display ────────────────────────────────────────────────
 
-function formatRelativeTime(iso: string): string {
-  return formatDistanceToNow(new Date(iso), { addSuffix: true });
-}
-
-// ── Upcoming event card (calendar-driven) ────────────────────────────────────
-
-function UpcomingEventCard({
-  event, onOpen, loading, categoryConfig,
-}: {
-  event: UpcomingOneOnOneEvent;
-  onOpen: (m: OneOnOneMember) => void;
-  loading: boolean;
-  categoryConfig: CategoryConfig;
-}) {
-  // When Google returns no display name (attendee_name == email or null), derive a
-  // readable name from the email local part: "myang@co.com" → "Myang" as a placeholder.
-  // The sync will write the email back to cos_team_members; the next sync will resolve
-  // to the real member name via exact email match.
+function eventDisplayInfo(event: UpcomingOneOnOneEvent) {
   const rawName = event.team_member?.name ?? event.attendee_name ?? null;
   const isEmailAsName = rawName != null && rawName.includes('@');
   const displayName = isEmailAsName
@@ -690,8 +721,75 @@ function UpcomingEventCard({
     : (rawName ?? event.attendee_email ?? 'Unknown');
   const displayRole = event.team_member?.role
     ?? (event.attendee_email && !isEmailAsName ? event.attendee_email : (event.attendee_email ?? ''));
+  const cfg = CATEGORY_CONFIG[event.inferred_category] ?? CATEGORY_CONFIG.stakeholder;
+  const relStyle = event.team_member
+    ? (REL_STYLE[event.team_member.relationship_type] ?? DEFAULT_REL_STYLE)
+    : DEFAULT_REL_STYLE;
+  return { displayName, displayRole, cfg, relStyle };
+}
+
+// ── Hero card (calendar-driven) ─────────────────────────────────────────────
+
+function UpNextHeroEvent({
+  event, onOpen, loading,
+}: {
+  event: UpcomingOneOnOneEvent;
+  onOpen: (m: OneOnOneMember) => void;
+  loading: boolean;
+}) {
+  const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
+  const start = new Date(event.start_time);
+
+  return (
+    <button
+      onClick={() => { if (event.team_member) onOpen(event.team_member); }}
+      disabled={loading || !event.team_member}
+      className="relative rounded-xl overflow-hidden shadow-lg text-white text-left transition-shadow hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed h-full"
+      style={{ background: 'linear-gradient(135deg, #042a55 0%, #0a3f7a 55%, #0760c6 130%)' }}
+    >
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(110% 120% at 100% -20%, rgba(240,140,0,0.3), transparent 55%)' }} />
+      <div className="relative p-4 flex flex-col gap-2.5 h-full justify-between">
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full bg-white/15 border-2 border-white/20 flex items-center justify-center font-bold text-sm flex-shrink-0">
+            {initials(displayName)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-heading font-extrabold text-[15px] tracking-tight leading-tight">{displayName}</div>
+            <div className="text-xs text-white/65 mt-0.5">{displayRole}</div>
+          </div>
+          <Badge className="gap-1 font-extrabold tracking-wide uppercase text-[10px] border-0 flex-shrink-0 whitespace-nowrap bg-amber-500 text-white">
+            <Play className="h-2.5 w-2.5 fill-current" />
+            {format(start, 'h:mm a')}
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap mt-auto">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/60">
+            <Repeat className="h-3 w-3" /> {relStyle.label}
+          </span>
+          <span className="text-[11px] text-white/40 ml-auto inline-flex items-center gap-1.5">
+            <Clock className="h-3 w-3" />
+            {format(start, 'EEE, MMM d')}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Upcoming event card (calendar-driven) ───────────────────────────────────
+
+function UpcomingEventCard({
+  event, onOpen, loading,
+}: {
+  event: UpcomingOneOnOneEvent;
+  onOpen: (m: OneOnOneMember) => void;
+  loading: boolean;
+}) {
+  const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
   const disabled = loading || !event.team_member;
   const start = new Date(event.start_time);
+
   return (
     <button
       onClick={() => { if (event.team_member) onOpen(event.team_member); }}
@@ -704,25 +802,24 @@ function UpcomingEventCard({
         'disabled:opacity-60 disabled:cursor-not-allowed',
       )}
     >
-      <span className={cn('absolute left-0 top-0 bottom-0 w-1', categoryConfig.rail)} aria-hidden />
-      <div className="flex items-start gap-3 p-4 pl-5 w-full">
-        <div className="flex flex-col items-center justify-center min-w-[44px] text-center">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
-            {format(start, 'MMM')}
-          </span>
-          <span className="font-heading text-2xl font-extrabold leading-none">
-            {format(start, 'd')}
-          </span>
-          <span className="text-[11px] text-muted-foreground mt-0.5">
-            {format(start, 'h:mm a')}
-          </span>
+      <span className={cn('absolute left-0 top-0 bottom-0 w-1', relStyle.rail)} aria-hidden />
+      <div className="flex items-center gap-3 p-3 pl-4 w-full">
+        <div className={cn(
+          'h-9 w-9 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 text-xs',
+          relStyle.avatarBg,
+        )}>
+          {initials(displayName)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold leading-tight truncate text-base">{displayName}</span>
-            <Badge className={cn('text-[9px] font-semibold uppercase tracking-wide border-0', categoryConfig.chipBg, categoryConfig.chipFg)}>
-              {categoryConfig.label}
-            </Badge>
+            <span className="font-bold leading-tight truncate text-sm">{displayName}</span>
+            <span className={cn(
+              'inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-1.5 py-px',
+              relStyle.chipBg, relStyle.chipFg,
+            )}>
+              <span className={cn('w-[5px] h-[5px] rounded-full', relStyle.dotColor)} />
+              {relStyle.short}
+            </span>
             {event.prep_available && (
               <Badge className="text-[9px] font-semibold uppercase tracking-wide border-0 bg-emerald-50 text-emerald-700 gap-1">
                 <Sparkles className="h-2.5 w-2.5" />
@@ -730,14 +827,12 @@ function UpcomingEventCard({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{displayRole}</p>
-          {event.title && event.title.toLowerCase() !== `1:1 with ${displayName.toLowerCase()}` && (
-            <p className="text-[11px] text-muted-foreground/80 truncate mt-1 italic">{event.title}</p>
-          )}
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{displayRole}</p>
         </div>
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary flex-shrink-0 mt-0.5">
-          <FileText className="h-3 w-3" />
-        </span>
+        <div className="flex-shrink-0 text-right">
+          <div className="text-xs font-bold">{format(start, 'h:mm a')}</div>
+          <div className="text-[11px] text-muted-foreground">{format(start, 'EEE')}</div>
+        </div>
       </div>
     </button>
   );
