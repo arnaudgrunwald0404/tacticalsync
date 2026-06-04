@@ -218,6 +218,12 @@ export type Database = {
           priority_3_status: string | null
           topic_raised: string | null
           user_id: string
+          weekly_obj_1: string | null
+          weekly_obj_1_activities: string[] | null
+          weekly_obj_2: string | null
+          weekly_obj_2_activities: string[] | null
+          weekly_obj_3: string | null
+          weekly_obj_3_activities: string[] | null
         }
         Insert: {
           created_at?: string
@@ -235,6 +241,12 @@ export type Database = {
           priority_3_status?: string | null
           topic_raised?: string | null
           user_id: string
+          weekly_obj_1?: string | null
+          weekly_obj_1_activities?: string[] | null
+          weekly_obj_2?: string | null
+          weekly_obj_2_activities?: string[] | null
+          weekly_obj_3?: string | null
+          weekly_obj_3_activities?: string[] | null
         }
         Update: {
           created_at?: string
@@ -252,6 +264,12 @@ export type Database = {
           priority_3_status?: string | null
           topic_raised?: string | null
           user_id?: string
+          weekly_obj_1?: string | null
+          weekly_obj_1_activities?: string[] | null
+          weekly_obj_2?: string | null
+          weekly_obj_2_activities?: string[] | null
+          weekly_obj_3?: string | null
+          weekly_obj_3_activities?: string[] | null
         }
         Relationships: []
       }
@@ -285,6 +303,47 @@ export type Database = {
             foreignKeyName: "cos_meeting_actions_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_one_on_one_prep: {
+        Row: {
+          content: string
+          created_at: string
+          generated_at: string
+          id: string
+          source: string
+          team_member_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          source: string
+          team_member_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          source?: string
+          team_member_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_one_on_one_prep_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: true
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -972,6 +1031,44 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      priority_categorizations: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          item_id: string
+          item_type: string
+          quarter_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          item_id: string
+          item_type: string
+          quarter_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          item_id?: string
+          item_type?: string
+          quarter_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "priority_categorizations_quarter_id_fkey"
+            columns: ["quarter_id"]
+            isOneToOne: false
+            referencedRelation: "commitment_quarters"
             referencedColumns: ["id"]
           },
         ]
@@ -1876,54 +1973,6 @@ export type Database = {
       }
     }
     Views: {
-      personal_priorities: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          display_order: number | null
-          id: string | null
-          quarter_id: string | null
-          title: string | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          description?: string | null
-          display_order?: number | null
-          id?: string | null
-          quarter_id?: string | null
-          title?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          description?: string | null
-          display_order?: number | null
-          id?: string | null
-          quarter_id?: string | null
-          title?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "personal_priorities_quarter_id_fkey"
-            columns: ["quarter_id"]
-            isOneToOne: false
-            referencedRelation: "commitment_quarters"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "personal_priorities_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       rc_top_level_strategic_initiatives: {
         Row: {
           accepts_sub_sis: boolean | null
