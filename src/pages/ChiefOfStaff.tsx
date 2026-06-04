@@ -3249,6 +3249,27 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
+
+    // Client-side email local-part → member name matching.
+    // Runs in the browser so it works regardless of edge function deployment state.
+    // Patterns: "myang" → "Matt Yang", "rstaples" → "Rhiannon Staples".
+    function clientMatchByEmailLocal(email: string): CosTeamMember | null {
+      const local = email.split('@')[0].toLowerCase().replace(/[._-]/g, '');
+      for (const m of members) {
+        const parts = m.name.toLowerCase().trim().split(/\s+/);
+        if (parts.length < 2) continue;
+        const first = parts[0], last = parts[parts.length - 1];
+        if (local === first[0] + last || local === first + last) return m;
+      }
+      return null;
+    }
+
+    const CATEGORY_MAP: Record<string, UpcomingOneOnOneEvent['inferred_category']> = {
+      direct_report: 'direct_report', boss: 'boss', peer: 'peer',
+      skip_level: 'skip_level', collaborator: 'stakeholder',
+      stakeholder: 'stakeholder', external: 'external',
+    };
+
     const events: UpcomingOneOnOneEvent[] = ((eventsRes.data ?? []) as Array<{
       id: string;
       google_event_id: string;
@@ -3261,20 +3282,28 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       end_time: string;
       status: 'confirmed' | 'tentative' | 'cancelled';
     }>)
-      .map(e => ({
-        id: e.id,
-        google_event_id: e.google_event_id,
-        team_member_id: e.team_member_id,
-        team_member: e.team_member_id ? (memberById.get(e.team_member_id) ?? null) : null,
-        attendee_name: e.attendee_name,
-        attendee_email: e.attendee_email,
-        inferred_category: (e.inferred_category as UpcomingOneOnOneEvent['inferred_category']) ?? 'stakeholder',
-        title: e.title,
-        start_time: e.start_time,
-        end_time: e.end_time,
-        status: e.status,
-        prep_available: e.team_member_id ? prepSet.has(e.team_member_id) : false,
-      }));
+      .map(e => {
+        // Prefer the DB-resolved member; fall back to client-side match.
+        let member = e.team_member_id ? (memberById.get(e.team_member_id) ?? null) : null;
+        if (!member && e.attendee_email) member = clientMatchByEmailLocal(e.attendee_email);
+        const category = member
+          ? (CATEGORY_MAP[member.relationship_type] ?? 'stakeholder')
+          : ((e.inferred_category as UpcomingOneOnOneEvent['inferred_category']) ?? 'stakeholder');
+        return {
+          id: e.id,
+          google_event_id: e.google_event_id,
+          team_member_id: member?.id ?? e.team_member_id,
+          team_member: member ?? null,
+          attendee_name: e.attendee_name,
+          attendee_email: e.attendee_email,
+          inferred_category: category,
+          title: e.title,
+          start_time: e.start_time,
+          end_time: e.end_time,
+          status: e.status,
+          prep_available: member ? prepSet.has(member.id) : false,
+        };
+      });
 
     setUpcomingEvents(events);
     setCalendarConnected(Boolean(credsRes.data?.connected));
