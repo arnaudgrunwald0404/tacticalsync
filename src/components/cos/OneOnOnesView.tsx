@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomorrow, differenceInDays, startOfDay, addDays } from 'date-fns';
+import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomorrow, differenceInDays, startOfDay, addDays, startOfWeek } from 'date-fns';
 import {
   Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
   ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
@@ -191,6 +191,36 @@ function cadenceLabel(relType: MemberRelationshipType): string {
   return 'Monthly';
 }
 
+// ── Date-based section helpers ─────────────────────────────────────────────
+
+function smartDateLabel(dateStr: string): { label: string; subtitle: string; tone: BucketTone } {
+  const date = startOfDay(parseLocalDate(dateStr));
+  const now = startOfDay(new Date());
+  const diff = differenceInDays(date, now);
+  if (diff === 0) return { label: 'Today', subtitle: format(date, 'EEE, MMM d'), tone: 'today' };
+  if (diff === 1) return { label: 'Tomorrow', subtitle: format(date, 'EEE, MMM d'), tone: 'tomorrow' };
+  if (diff <= 6) return { label: format(date, 'EEEE'), subtitle: format(date, 'MMM d'), tone: 'week' };
+  return { label: format(date, 'EEEE'), subtitle: format(date, 'MMM d'), tone: 'muted' };
+}
+
+function remainingSectionLabel(dates: string[]): { label: string; subtitle: string } {
+  if (dates.length === 0) return { label: '', subtitle: '' };
+  const firstDate = parseLocalDate(dates[0]);
+  const lastDate = parseLocalDate(dates[dates.length - 1]);
+  const now = startOfDay(new Date());
+  const nowWeek = startOfWeek(now, { weekStartsOn: 1 });
+  const firstWeek = startOfWeek(firstDate, { weekStartsOn: 1 });
+  const nextWeek = addDays(nowWeek, 7);
+  const range = `${format(firstDate, 'EEE, MMM d')} – ${format(lastDate, 'EEE, MMM d')}`;
+  if (firstWeek.getTime() === nowWeek.getTime()) {
+    return { label: 'Later this week', subtitle: range };
+  }
+  if (firstWeek.getTime() === nextWeek.getTime()) {
+    return { label: 'Next week', subtitle: range };
+  }
+  return { label: 'Coming up', subtitle: `${format(firstDate, 'MMM d')} +` };
+}
+
 // ── View ────────────────────────────────────────────────────────────────────
 
 export function OneOnOnesView({
@@ -207,26 +237,32 @@ export function OneOnOnesView({
   const [search, setSearch] = useState('');
   const scheduled = useMemo(() => bucketise(members), [members]);
 
-  // Calendar events: deduplicate then bucket chronologically
-  const eventsByBucket = useMemo(() => {
+  // Calendar events: deduplicate and group by date for dynamic featured sections
+  const dedupedEvents = useMemo(() => {
     const active = (upcomingEvents ?? [])
       .filter(e => e.status !== 'cancelled')
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
     const seen = new Set<string>();
-    const deduped = active.filter(ev => {
+    return active.filter(ev => {
       const key = ev.team_member_id ?? ev.attendee_email ?? ev.id;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-    const map = new Map<TimeBucket, UpcomingOneOnOneEvent[]>();
-    for (const b of BUCKET_ORDER) map.set(b, []);
-    for (const ev of deduped) {
-      map.get(bucketEvent(ev))?.push(ev);
+  }, [upcomingEvents]);
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, UpcomingOneOnOneEvent[]>();
+    for (const ev of dedupedEvents) {
+      const dateStr = format(new Date(ev.start_time), 'yyyy-MM-dd');
+      if (!map.has(dateStr)) map.set(dateStr, []);
+      map.get(dateStr)!.push(ev);
     }
     return map;
-  }, [upcomingEvents]);
-  const hasUpcoming = Array.from(eventsByBucket.values()).some(arr => arr.length > 0);
+  }, [dedupedEvents]);
+
+  const sortedEventDates = useMemo(() => [...eventsByDate.keys()].sort(), [eventsByDate]);
+  const hasUpcoming = dedupedEvents.length > 0;
 
   // Central aggregation: to-dos from 1:1s
   const [myTodos, setMyTodos] = useState<MyTodo[]>([]);
@@ -294,21 +330,23 @@ export function OneOnOnesView({
   const todayMembers = membersByBucket.get('today') ?? [];
   const hero = todayMembers[0] ?? null;
 
-  // Calendar events filtered by search
-  const filteredEventsByBucket = useMemo(() => {
-    if (!q) return eventsByBucket;
-    const map = new Map<TimeBucket, UpcomingOneOnOneEvent[]>();
-    for (const [bucket, events] of eventsByBucket) {
-      map.set(bucket, events.filter(ev => {
+  // Calendar events filtered by search, grouped by date
+  const filteredEventsByDate = useMemo(() => {
+    if (!q) return eventsByDate;
+    const map = new Map<string, UpcomingOneOnOneEvent[]>();
+    for (const [date, events] of eventsByDate) {
+      const filtered = events.filter(ev => {
         const name = ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '';
         const role = ev.team_member?.role ?? '';
         return matchesSearch(name, role);
-      }));
+      });
+      if (filtered.length > 0) map.set(date, filtered);
     }
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventsByBucket, q]);
-  const hasFilteredUpcoming = Array.from(filteredEventsByBucket.values()).some(arr => arr.length > 0);
+  }, [eventsByDate, q]);
+
+  const filteredDates = useMemo(() => [...filteredEventsByDate.keys()].sort(), [filteredEventsByDate]);
 
   const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
 
@@ -337,7 +375,7 @@ export function OneOnOnesView({
       <div className="flex-1" />
 
       {/* Sync — far right */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-col items-end gap-1">
         {calendarConnected ? (
           <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
             {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -403,32 +441,32 @@ export function OneOnOnesView({
         </section>
       )}
 
-      {/* Calendar-driven: chronological sections */}
+      {/* Calendar-driven: dynamic featured sections */}
       {hasUpcoming && (
-        <div className="space-y-6">
-          {BUCKET_ORDER.map(bucket => {
-            const events = (filteredEventsByBucket.get(bucket) ?? [])
-              .sort((a, b) => a.start_time.localeCompare(b.start_time));
+        <div className="space-y-8">
+          {/* Featured sections: first 2 unique dates */}
+          {filteredDates.slice(0, 2).map((dateStr, secIdx) => {
+            const events = filteredEventsByDate.get(dateStr) ?? [];
             if (events.length === 0) return null;
-            const cfg = BUCKET_CONFIG[bucket];
-            const showHero = bucket === 'today' && !q && events[0]?.team_member;
-            const cols = bucket === 'later' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-              : bucket === 'this_week' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-              : 'grid-cols-1 md:grid-cols-2';
+            const dateMeta = smartDateLabel(dateStr);
+            const isFirst = secIdx === 0;
+            const showHero = isFirst && !q;
+
             return (
               <TimelineSection
-                key={bucket}
-                label={cfg.label}
-                subtitle={cfg.dateLabel()}
+                key={dateStr}
+                label={dateMeta.label}
+                subtitle={dateMeta.subtitle}
                 count={events.length}
-                tone={bucket === 'later' ? 'muted' : 'primary'}
-                bucketTone={cfg.tone}
+                tone="primary"
+                bucketTone={isFirst ? 'today' : 'tomorrow'}
               >
                 {showHero ? (
-                  /* Today with hero: 2-col, hero left stretches to match stacked cards right */
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
                     <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
-                    {events.length > 1 && (
+                    {events.length === 1 ? (
+                      <PrepCompanionPanel event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
+                    ) : (
                       <div className="flex flex-col gap-3">
                         {events.slice(1).map(ev => (
                           <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
@@ -437,7 +475,7 @@ export function OneOnOnesView({
                     )}
                   </div>
                 ) : (
-                  <div className={cn('grid gap-3', cols)}>
+                  <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                     {events.map(ev => (
                       <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
                     ))}
@@ -446,6 +484,29 @@ export function OneOnOnesView({
               </TimelineSection>
             );
           })}
+
+          {/* Remaining events after the 2 featured dates */}
+          {filteredDates.length > 2 && (() => {
+            const remaining = filteredDates.slice(2);
+            const allEvents = remaining.flatMap(d => filteredEventsByDate.get(d) ?? []);
+            if (allEvents.length === 0) return null;
+            const { label: remLabel, subtitle: remSub } = remainingSectionLabel(remaining);
+            return (
+              <TimelineSection
+                label={remLabel}
+                subtitle={remSub}
+                count={allEvents.length}
+                tone="muted"
+                bucketTone="muted"
+              >
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {allEvents.map(ev => (
+                    <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
+                  ))}
+                </div>
+              </TimelineSection>
+            );
+          })()}
         </div>
       )}
 
@@ -763,10 +824,26 @@ function UpNextHeroEvent({
           </Badge>
         </div>
 
+        {/* Context preview */}
+        {event.team_member?.context_notes && (
+          <div className="bg-white/10 rounded-lg px-3 py-2 text-sm leading-snug line-clamp-2">
+            {event.team_member.context_notes}
+          </div>
+        )}
+
         <div className="flex items-center gap-3 flex-wrap mt-auto">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/60">
             <Repeat className="h-3 w-3" /> {relStyle.label}
           </span>
+          {event.prep_available ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-300">
+              <Sparkles className="h-3 w-3" /> Prep ready
+            </span>
+          ) : event.team_member ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+              <AlertTriangle className="h-3 w-3" /> No prep
+            </span>
+          ) : null}
           <span className="text-[11px] text-white/40 ml-auto inline-flex items-center gap-1.5">
             <Clock className="h-3 w-3" />
             {format(start, 'EEE, MMM d')}
@@ -774,6 +851,105 @@ function UpNextHeroEvent({
         </div>
       </div>
     </button>
+  );
+}
+
+// ── Prep companion panel (shown next to hero when only 1 event) ────────────
+
+function PrepCompanionPanel({
+  event, onOpen, loading,
+}: {
+  event: UpcomingOneOnOneEvent;
+  onOpen: (m: OneOnOneMember) => void;
+  loading: boolean;
+}) {
+  const hasPrep = event.prep_available;
+  const hasMember = !!event.team_member;
+  const { displayName } = eventDisplayInfo(event);
+  const firstName = displayName.split(' ')[0];
+  const member = event.team_member;
+
+  const lastMetLabel = member?.last_1on1_date
+    ? `Last met ${format(parseLocalDate(member.last_1on1_date), 'MMM d')}`
+    : 'First meeting';
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col">
+      <h3 className="text-xs font-extrabold tracking-[0.08em] uppercase text-muted-foreground mb-4">
+        Meeting prep
+      </h3>
+
+      <div className="flex-1 space-y-3">
+        {hasPrep ? (
+          <div className="flex items-start gap-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
+            <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Prep ready</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Topics, talking points, and action items prepared for your 1:1 with {firstName}.
+              </p>
+            </div>
+          </div>
+        ) : hasMember ? (
+          <div className="flex items-start gap-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
+            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No prep yet</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Generate a brief with context, suggested topics, and open action items for {firstName}.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3 rounded-lg bg-muted/50 border border-border p-3">
+            <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">Contact not linked</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Add {firstName} to your team in Settings to enable AI-generated prep, action tracking, and shared context.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {member?.context_notes && (
+          <div className="rounded-lg bg-muted/30 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Context</p>
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{member.context_notes}</p>
+          </div>
+        )}
+
+        {member && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>{lastMetLabel}</span>
+          </div>
+        )}
+      </div>
+
+      {hasMember && (
+        <Button
+          onClick={() => onOpen(event.team_member!)}
+          disabled={loading}
+          size="sm"
+          className={cn(
+            'w-full mt-4 gap-2',
+            hasPrep
+              ? 'bg-[#04356c] hover:bg-[#04356c]/90 text-white'
+              : 'bg-amber-500 hover:bg-amber-600 text-white',
+          )}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : hasPrep ? (
+            <FileText className="h-4 w-4" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {hasPrep ? 'Review prep' : 'Generate prep'}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -820,12 +996,17 @@ function UpcomingEventCard({
               <span className={cn('w-[5px] h-[5px] rounded-full', relStyle.dotColor)} />
               {relStyle.short}
             </span>
-            {event.prep_available && (
+            {event.prep_available ? (
               <Badge className="text-[9px] font-semibold uppercase tracking-wide border-0 bg-emerald-50 text-emerald-700 gap-1">
                 <Sparkles className="h-2.5 w-2.5" />
                 Prep ready
               </Badge>
-            )}
+            ) : event.team_member ? (
+              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-600">
+                <Sparkles className="h-2.5 w-2.5" />
+                Prepare
+              </span>
+            ) : null}
           </div>
           <p className="text-[11px] text-muted-foreground truncate mt-0.5">{displayRole}</p>
         </div>

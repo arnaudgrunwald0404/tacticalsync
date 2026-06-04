@@ -528,7 +528,7 @@ export default function ChiefOfStaff() {
             <TabsTrigger value="team">1:1s</TabsTrigger>
           </TabsList>
         </div>
-        <div id="team-toolbar-slot" className="flex items-center mt-4 mb-6" />
+        <div id="team-toolbar-slot" className="flex items-center mt-6 mb-8" />
 
         <TabsContent value="priorities">
           {priorities.length === 0 && teamMembers.length === 0 && accountabilities.length === 0 && personTopics.length === 0 ? (
