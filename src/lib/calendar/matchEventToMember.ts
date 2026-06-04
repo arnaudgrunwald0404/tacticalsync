@@ -40,7 +40,15 @@ export interface MatchResult {
   // The attendee that resolved to the member, so the edge function can store
   // a stable attendee_emails list including the matched email when present.
   matchedAttendee: MinimalAttendee;
-  matchedBy: 'email' | 'name';
+  matchedBy: 'email' | 'name' | 'first_name';
+}
+
+// Returned for events that passed the attendee cap but had no member match —
+// lets callers surface "who did we see?" so users can add emails or fix names.
+export interface UnmatchedEvent {
+  eventTitle: string | null;
+  attendeeEmail: string | null;
+  attendeeName: string | null;
 }
 
 export const DEFAULT_SYNC_RULES: CalendarSyncRules = {
@@ -130,6 +138,7 @@ export function findMatchingMember(
   }
 
   if (wantsName) {
+    // Exact full-name match first.
     for (const att of others) {
       const displayName = (att.displayName ?? '').trim();
       if (!displayName) continue;
@@ -138,9 +147,56 @@ export function findMatchingMember(
         return { member: m, otherAttendees: others, matchedAttendee: att, matchedBy: 'name' };
       }
     }
+
+    // First-name fallback: handles "Mike" ↔ "Michael Chen", "J. Smith" ↔ "Jane Smith", etc.
+    // Build a map of first-name → member (only when unambiguous — skip if two members share
+    // the same first name to avoid false positives).
+    const byFirstName = new Map<string, MinimalMember | null>();
+    for (const m of eligibleMembers) {
+      const first = normaliseName(m.name).split(' ')[0];
+      if (!first) continue;
+      // null sentinel = ambiguous (multiple members share this first name)
+      byFirstName.set(first, byFirstName.has(first) ? null : m);
+    }
+
+    for (const att of others) {
+      const displayName = (att.displayName ?? '').trim();
+      if (!displayName) continue;
+      const attFirst = normaliseName(displayName).split(' ')[0];
+      if (!attFirst) continue;
+      const m = byFirstName.get(attFirst);
+      if (m) {
+        return { member: m, otherAttendees: others, matchedAttendee: att, matchedBy: 'first_name' };
+      }
+    }
   }
 
   return null;
+}
+
+// Variant that also returns unmatched event details for diagnostics.
+export function findMatchingMemberWithDiagnostics(
+  event: MinimalEvent,
+  members: MinimalMember[],
+  rules: CalendarSyncRules,
+): { match: MatchResult | null; unmatched: UnmatchedEvent | null } {
+  const match = findMatchingMember(event, members, rules);
+  if (match) return { match, unmatched: null };
+
+  // Only report unmatched when the event passed the cap filter (it looked like a 1:1
+  // but we couldn't identify who it's with).
+  if (!passesAttendeeCap(event, rules)) return { match: null, unmatched: null };
+
+  const others = getOtherAttendees(event);
+  const first = others[0] ?? null;
+  return {
+    match: null,
+    unmatched: {
+      eventTitle: event.summary ?? null,
+      attendeeEmail: first?.email ?? null,
+      attendeeName: first?.displayName ?? null,
+    },
+  };
 }
 
 // Full pipeline: returns a MatchResult when the event should be persisted as a

@@ -3228,6 +3228,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [unmatchedSuggestions, setUnmatchedSuggestions] = useState<Array<{ eventTitle: string | null; attendeeEmail: string | null; attendeeName: string | null }>>([]);
 
   const loadCalendarState = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -3302,12 +3303,16 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
 
       const syncRes = await supabase.functions.invoke('google-calendar-sync', { body: {} });
       if (syncRes.error) throw syncRes.error;
-      const { created = 0, updated = 0, cancelled = 0 } = (syncRes.data ?? {}) as {
+      const { created = 0, updated = 0, cancelled = 0, unmatched = [] } = (syncRes.data ?? {}) as {
         created?: number; updated?: number; cancelled?: number;
+        unmatched?: Array<{ eventTitle: string | null; attendeeEmail: string | null; attendeeName: string | null }>;
       };
+      setUnmatchedSuggestions(unmatched);
       toast({
         title: 'Calendar synced',
-        description: `${created} added · ${updated} updated · ${cancelled} removed`,
+        description: unmatched.length > 0
+          ? `${created} added · ${unmatched.length} unrecognised — see below`
+          : `${created} added · ${updated} updated · ${cancelled} removed`,
       });
       await loadCalendarState();
     } catch (err) {
@@ -3454,6 +3459,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         lastSyncAt={lastSyncAt}
         syncing={syncing}
         onSyncCalendar={handleSyncCalendar}
+        unmatchedSuggestions={unmatchedSuggestions}
       />
 
       <OneOnOnePrepDrawer

@@ -1,11 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import {
-  matchEventToMember,
+  findMatchingMemberWithDiagnostics,
+  passesTitleFilters,
   DEFAULT_SYNC_RULES,
   type CalendarSyncRules,
   type MinimalMember,
   type MinimalEvent,
+  type UnmatchedEvent,
 } from "../_shared/matchEventToMember.ts"
 
 const corsHeaders = {
@@ -236,6 +238,7 @@ serve(async (req) => {
     let updated = 0
     let skipped = 0
     const seenEventIds = new Set<string>()
+    const unmatchedEvents: UnmatchedEvent[] = []
 
     for (const event of allEvents) {
       if (!event.start?.dateTime) {
@@ -245,7 +248,14 @@ serve(async (req) => {
       }
       seenEventIds.add(event.id)
 
-      const match = matchEventToMember(event, members, rules)
+      // Skip events that fail title filters before running diagnostics.
+      if (!passesTitleFilters(event, rules)) {
+        skipped++
+        continue
+      }
+
+      const { match, unmatched } = findMatchingMemberWithDiagnostics(event, members, rules)
+      if (unmatched) unmatchedEvents.push(unmatched)
       if (!match) {
         skipped++
         continue
@@ -315,7 +325,7 @@ serve(async (req) => {
       .update({ last_sync_at: new Date().toISOString(), last_sync_status: 'ok' })
       .eq('user_id', userId)
 
-    return jsonResponse({ created, updated, cancelled, skipped }, 200)
+    return jsonResponse({ created, updated, cancelled, skipped, unmatched: unmatchedEvents }, 200)
   } catch (error) {
     return jsonResponse({ error: (error as Error).message }, 500)
   }

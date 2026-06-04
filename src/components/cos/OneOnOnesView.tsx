@@ -36,6 +36,12 @@ export interface UpcomingOneOnOneEvent {
   prep_available: boolean;
 }
 
+export interface UnmatchedSuggestion {
+  eventTitle: string | null;
+  attendeeEmail: string | null;
+  attendeeName: string | null;
+}
+
 interface OneOnOnesViewProps {
   members: OneOnOneMember[];
   loadingPrep: boolean;
@@ -45,6 +51,7 @@ interface OneOnOnesViewProps {
   lastSyncAt: string | null;
   syncing: boolean;
   onSyncCalendar: () => void;
+  unmatchedSuggestions?: UnmatchedSuggestion[];
 }
 
 // Pending action plus a bit of denormalized member info for the central aggregation.
@@ -134,6 +141,7 @@ export function OneOnOnesView({
   lastSyncAt,
   syncing,
   onSyncCalendar,
+  unmatchedSuggestions = [],
 }: OneOnOnesViewProps) {
   const scheduled = useMemo(() => bucketise(members), [members]);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
@@ -262,6 +270,36 @@ export function OneOnOnesView({
               {showAllUpcoming ? 'Show less' : `Show all (${nonCancelledUpcoming.length})`}
             </button>
           )}
+        </section>
+      )}
+
+      {/* Unmatched calendar events — help user understand why people are missing */}
+      {unmatchedSuggestions.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
+          <div className="px-4 py-3 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-900">
+                {unmatchedSuggestions.length} calendar {unmatchedSuggestions.length === 1 ? 'meeting' : 'meetings'} couldn't be matched to a team member
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Add emails to your team members in <strong>Settings → Team</strong>, or check that names match exactly.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {unmatchedSuggestions.map((s, i) => (
+                  <li key={i} className="text-[11px] text-amber-800 flex items-center gap-1.5">
+                    <span className="font-medium">{s.attendeeName ?? s.attendeeEmail ?? 'Unknown'}</span>
+                    {s.attendeeEmail && s.attendeeName && (
+                      <span className="text-amber-600">({s.attendeeEmail})</span>
+                    )}
+                    {s.eventTitle && (
+                      <span className="text-amber-600 italic">· {s.eventTitle}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </section>
       )}
 
