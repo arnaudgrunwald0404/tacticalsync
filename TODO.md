@@ -19,9 +19,11 @@ prep content (from `cos_one_on_one_prep` / the prep markdown) as raw `prose-sm` 
 
 ### 3. Quarterly & monthly reference panel (side)
 - Add a side panel showing **Quarterly Priorities** and **Monthly Commitments** as
-  reference (the carousel already pulls from `quarterly_priorities` and
-  `monthly_commitments`). (Confirm which is quarterly vs monthly — "quarterly
-  commitments and monthly priorities, or vice versa.")
+  reference. Label them exactly as the **Commitments section of the tool** does
+  (`src/pages/Commitments.tsx` / `src/components/commitments/MyCommitmentsPanel.tsx`):
+  quarterly → **"Quarterly Priorities"**, monthly → **"Monthly Commitments"** (types
+  `QuarterlyPriority` and `MonthlyCommitment`). The 1:1 carousel already pulls from
+  `quarterly_priorities` and `monthly_commitments` with these same labels.
 - If they have **not been set up**, show instructions in **red: "Set up now"** as a
   helpful, actionable hint on the side.
 
@@ -50,6 +52,5 @@ prep content (from `cos_one_on_one_prep` / the prep markdown) as raw `prose-sm` 
 - This is **critical**.
 
 ### Open questions / to confirm
-- Quarterly vs monthly: which tier is "commitments" and which is "priorities"?
 - Where does "my personal to-do list" live today (which table / view), so closing a
   drawer can push my to-dos into it and the central aggregation can read from it?
