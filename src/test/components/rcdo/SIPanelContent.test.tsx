@@ -8,7 +8,9 @@ import { supabase } from '@/integrations/supabase/client';
 import * as useSIWithProgressModule from '@/hooks/useSIWithProgress';
 import * as useRolesModule from '@/hooks/useRoles';
 
-// Mock dependencies
+// Mock dependencies. The panel does both an UPDATE (status / owner edits) and
+// a SELECT (the sub-SI list at the bottom). Both chains end on a thenable, so
+// `order()` resolves directly to {data, error} for the select path.
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     auth: {
@@ -17,6 +19,11 @@ vi.mock('@/integrations/supabase/client', () => ({
     from: vi.fn(() => ({
       update: vi.fn(() => ({
         eq: vi.fn(() => Promise.resolve({ data: null, error: null })),
+      })),
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+        })),
       })),
     })),
   },

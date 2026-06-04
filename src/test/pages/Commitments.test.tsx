@@ -226,21 +226,21 @@ describe('Commitments page', () => {
       });
     });
 
-    it('should render "My Quarter" tab', async () => {
+    it('should render "Me" tab (formerly "My Quarter")', async () => {
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('My Quarter')).toBeInTheDocument();
+        expect(screen.getByText('Me')).toBeInTheDocument();
       });
     });
 
-    it('should not render "My Team" tab when user has no direct reports', async () => {
+    it('should not render "My Directs" tab when user has no direct reports', async () => {
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.queryByText('My Team')).not.toBeInTheDocument();
+        expect(screen.queryByText('My Directs')).not.toBeInTheDocument();
       });
     });
 
-    it('should render "My Team" tab when user has direct reports', async () => {
+    it('should render "My Directs" tab when user has direct reports (formerly "My Team")', async () => {
       mockUseReportingLines.mockReturnValue({
         lines: [{ id: 'rl-1', team_id: 't-1', manager_id: 'u-1', report_id: 'u-2', created_at: '2026-01-01T00:00:00Z' }],
         loading: false,
@@ -252,11 +252,11 @@ describe('Commitments page', () => {
       });
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('My Team')).toBeInTheDocument();
+        expect(screen.getByText('My Directs')).toBeInTheDocument();
       });
     });
 
-    it('should render MyCommitmentsPanel in the "My Quarter" tab content area', async () => {
+    it('should render MyCommitmentsPanel in the "Me" tab content area', async () => {
       render(<Commitments />);
       await waitFor(() => {
         expect(screen.getByTestId('my-commitments-panel')).toBeInTheDocument();
@@ -265,7 +265,7 @@ describe('Commitments page', () => {
   });
 
   describe('org view tab visibility', () => {
-    it('should not render Org View tab when allReportIds same length as directReportIds', async () => {
+    it('should not render "My Org" tab when allReportIds same length as directReportIds', async () => {
       // When all reports are also direct reports, no deeper hierarchy exists
       mockUseReportingLines.mockReturnValue({
         lines: [
@@ -280,11 +280,11 @@ describe('Commitments page', () => {
       });
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.queryByText('Org View')).not.toBeInTheDocument();
+        expect(screen.queryByText('My Org')).not.toBeInTheDocument();
       });
     });
 
-    it('should render Org View tab when there are deeper reports beyond direct reports', async () => {
+    it('should render "My Org" tab when there are deeper reports beyond direct reports (formerly "Org View")', async () => {
       mockUseReportingLines.mockReturnValue({
         lines: [
           { id: 'rl-1', team_id: 't-1', manager_id: 'u-1', report_id: 'u-2', created_at: '' },
@@ -303,7 +303,7 @@ describe('Commitments page', () => {
       });
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('Org View')).toBeInTheDocument();
+        expect(screen.getByText('My Org')).toBeInTheDocument();
       });
     });
   });
