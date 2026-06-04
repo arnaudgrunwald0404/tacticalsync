@@ -158,10 +158,24 @@ export function OneOnOnesView({
   const scheduled = useMemo(() => bucketise(members), [members]);
 
   const grouped = useMemo(() => {
-    const active = (upcomingEvents ?? []).filter(e => e.status !== 'cancelled');
+    // Sort ascending first so the first instance seen per person is the earliest.
+    const active = (upcomingEvents ?? [])
+      .filter(e => e.status !== 'cancelled')
+      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+    // Deduplicate: one card per person — keep only the next (earliest) meeting.
+    // Key: team_member_id when matched, otherwise attendee_email.
+    const seen = new Set<string>();
+    const deduped = active.filter(ev => {
+      const key = ev.team_member_id ?? ev.attendee_email ?? ev.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     const map = new Map<EventCategory, UpcomingOneOnOneEvent[]>();
     for (const cat of CATEGORY_ORDER) map.set(cat, []);
-    for (const ev of active) {
+    for (const ev of deduped) {
       map.get(ev.inferred_category)?.push(ev);
     }
     return map;
