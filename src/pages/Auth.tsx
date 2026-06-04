@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useSessionManager } from "@/hooks/useSessionManager";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -13,7 +12,6 @@ import Logo from "@/components/Logo";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 
 const Auth = () => {
-  useSessionManager();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
