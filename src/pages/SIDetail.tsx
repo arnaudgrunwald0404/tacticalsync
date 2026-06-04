@@ -17,6 +17,8 @@ import { TaskGanttChart } from '@/components/rcdo/TaskGanttChart';
 import { SITaskTable } from '@/components/rcdo/SITaskTable';
 import { SISubTree } from '@/components/rcdo/SISubTree';
 import { useSubSIs } from '@/hooks/useSubSIs';
+import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -536,7 +538,8 @@ export default function SIDetail() {
                     focusTaskId={taskIdFromUrl}
                   />
                 ) : viewMode === 'table' ? (
-                  <SITaskTable
+                  <FlatTaskTable
+                    siId={siDetails.id as string}
                     tasks={tasks}
                     loading={tasksLoading}
                     onEditTask={handleEditTask}
@@ -784,6 +787,63 @@ export default function SIDetail() {
         </AlertDialogContent>
       </AlertDialog>
     </DetailPageLayout>
+  );
+}
+
+// Flat-mode wrapper: the sub-SI tree owns its DndContext, but the flat task
+// table on a plain SI page needs its own so intra-SI reordering works without
+// dragging across containers. The 5px activation distance matches SISubTree —
+// keeps click-to-edit and inline date editors responsive while still picking
+// up real drag gestures.
+function FlatTaskTable({
+  siId,
+  tasks,
+  loading,
+  onEditTask,
+  onRefetch,
+}: {
+  siId: string;
+  tasks: TaskWithRelations[];
+  loading: boolean;
+  onEditTask: (taskId: string) => void;
+  onRefetch: () => void | Promise<void>;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const taskIds = tasks.map((t) => t.id);
+
+  const reorderTasks = async (orderedIds: string[]) => {
+    const results = await Promise.all(
+      orderedIds.map((id, idx) =>
+        supabase.from('rc_tasks').update({ display_order: idx }).eq('id', id),
+      ),
+    );
+    const failures = results.filter((r) => r.error);
+    if (failures.length > 0) {
+      console.error('Failed to persist some task display_order updates', failures.map((f) => f.error));
+    }
+    await onRefetch();
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = taskIds.indexOf(String(active.id));
+    const newIndex = taskIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    await reorderTasks(arrayMove(taskIds, oldIndex, newIndex));
+  };
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <SITaskTable
+        tasks={tasks}
+        loading={loading}
+        onEditTask={onEditTask}
+        onRefetch={onRefetch}
+        draggableContainerId={siId}
+        onReorderTasks={reorderTasks}
+      />
+    </DndContext>
   );
 }
 
