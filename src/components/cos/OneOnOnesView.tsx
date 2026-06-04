@@ -87,7 +87,7 @@ interface MemberWithSchedule extends OneOnOneMember {
   isSkip: boolean;
 }
 
-function bucketise(members: OneOnOneMember[]): MemberWithSchedule[] {
+export function bucketise(members: OneOnOneMember[], now: Date = new Date()): MemberWithSchedule[] {
   // Detect skip-levels: a member whose reports_to_id matches another (direct_report) member's id.
   const directReportIds = new Set(members.filter(m => m.relationship_type === 'direct_report').map(m => m.id));
   const today = new Date();

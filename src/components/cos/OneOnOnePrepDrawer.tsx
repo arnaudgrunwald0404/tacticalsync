@@ -68,13 +68,13 @@ const REL_TONE: Record<PrepDrawerMember['relationship_type'], { label: string; b
 // ── Markdown → structured topics ─────────────────────────────────────────────
 // Parse the prep markdown into a list of topic sections so we can render
 // them as a presentation instead of a wall of prose.
-interface TopicSection {
+export interface TopicSection {
   heading: string;
   bullets: string[];
   paragraphs: string[];
 }
 
-function parsePrepMarkdown(md: string): TopicSection[] {
+export function parsePrepMarkdown(md: string): TopicSection[] {
   if (!md) return [];
   const lines = md.split('\n');
   const sections: TopicSection[] = [];
