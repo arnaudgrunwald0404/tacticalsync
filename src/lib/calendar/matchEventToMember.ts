@@ -55,7 +55,7 @@ export interface MatchResult {
   // The attendee that resolved to the member, so the edge function can store
   // a stable attendee_emails list including the matched email when present.
   matchedAttendee: MinimalAttendee;
-  matchedBy: 'email' | 'name' | 'first_name';
+  matchedBy: 'email' | 'name' | 'first_name' | 'email_local';
 }
 
 // Returned for events that passed the attendee cap but had no member match —
@@ -182,6 +182,42 @@ export function findMatchingMember(
       const m = byFirstName.get(attFirst);
       if (m) {
         return { member: m, otherAttendees: others, matchedAttendee: att, matchedBy: 'first_name' };
+      }
+    }
+
+    // Email local-part matching: Google often returns no displayName, only an email.
+    // Parse "myang@company.com" → local="myang", then try to match against member names.
+    // Patterns supported (all case-insensitive):
+    //   firstinitiallastname  — myang   → Matt Yang
+    //   firstnamelastname     — mattyang → Matt Yang
+    //   firstname.lastname    — matt.yang → Matt Yang  (dots already stripped)
+    //   firstinitial.lastname — m.yang  → Matt Yang
+    // Only fires when unambiguous across eligible members.
+    const byEmailLocal = new Map<string, MinimalMember | null>();
+    for (const m of eligibleMembers) {
+      const parts = normaliseName(m.name).split(' ');
+      if (parts.length < 2) continue;
+      const first = parts[0];
+      const last = parts[parts.length - 1];
+      const patterns = [
+        first[0] + last,           // myang
+        first + last,              // mattyang
+        first[0] + '.' + last,     // m.yang (dot stripped → myang — covered above, but keep for clarity)
+        first + '.' + last,        // matt.yang
+      ];
+      for (const pat of patterns) {
+        const key = pat.replace(/\./g, '');
+        byEmailLocal.set(key, byEmailLocal.has(key) ? null : m);
+      }
+    }
+
+    for (const att of others) {
+      const email = normaliseEmail(att.email);
+      if (!email) continue;
+      const local = email.split('@')[0].replace(/[._-]/g, '');
+      const m = byEmailLocal.get(local);
+      if (m) {
+        return { member: m, otherAttendees: others, matchedAttendee: att, matchedBy: 'email_local' };
       }
     }
   }

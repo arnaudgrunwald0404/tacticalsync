@@ -658,8 +658,17 @@ function UpcomingEventCard({
   loading: boolean;
   categoryConfig: CategoryConfig;
 }) {
-  const displayName = event.team_member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
-  const displayRole = event.team_member?.role ?? (event.attendee_email ? event.attendee_email : '');
+  // When Google returns no display name (attendee_name == email or null), derive a
+  // readable name from the email local part: "myang@co.com" → "Myang" as a placeholder.
+  // The sync will write the email back to cos_team_members; the next sync will resolve
+  // to the real member name via exact email match.
+  const rawName = event.team_member?.name ?? event.attendee_name ?? null;
+  const isEmailAsName = rawName != null && rawName.includes('@');
+  const displayName = isEmailAsName
+    ? (event.attendee_email?.split('@')[0] ?? rawName)
+    : (rawName ?? event.attendee_email ?? 'Unknown');
+  const displayRole = event.team_member?.role
+    ?? (event.attendee_email && !isEmailAsName ? event.attendee_email : (event.attendee_email ?? ''));
   const disabled = loading || !event.team_member;
   const start = new Date(event.start_time);
   return (

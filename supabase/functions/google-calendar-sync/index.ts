@@ -271,6 +271,22 @@ serve(async (req) => {
       const primaryAttendee = others[0] as { email?: string | null; displayName?: string | null }
       const attendeeEmail = primaryAttendee?.email ?? null
       const attendeeName = primaryAttendee?.displayName ?? null
+
+      // Auto-populate email on cos_team_members when matched by name/local-part and the
+      // member has no email yet. This bootstraps exact-email matching for future syncs.
+      if (
+        match &&
+        attendeeEmail &&
+        !match.member.email &&
+        (match.matchedBy === 'name' || match.matchedBy === 'first_name' || match.matchedBy === 'email_local')
+      ) {
+        await supabase
+          .from('cos_team_members')
+          .update({ email: attendeeEmail })
+          .eq('id', match.member.id)
+        // Update in-memory so later events in this run benefit too.
+        match.member.email = attendeeEmail
+      }
       const category: EventCategory = inferCategory(attendeeEmail, userEmail, match?.member ?? null)
 
       const status: string =
