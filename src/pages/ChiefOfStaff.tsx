@@ -3273,19 +3273,30 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     const events: UpcomingOneOnOneEvent[] = ((eventsRes.data ?? []) as Array<{
       id: string;
       google_event_id: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       team_member_id: string | null;
-      attendee_name: string | null;
-      attendee_email: string | null;
-      inferred_category: string;
+      attendee_name?: string | null;
+      attendee_email?: string | null;
+      attendee_emails?: string[] | null;  // original array column — fallback email source
+      inferred_category?: string | null;
       title: string | null;
       start_time: string;
       end_time: string;
       status: 'confirmed' | 'tentative' | 'cancelled';
     }>)
       .map(e => {
+        // Resolve best available email. Columns added in later migrations may not
+        // exist yet if db push hasn't been run — fall through to the array column.
+        const bestEmail: string | null =
+          e.attendee_email
+          ?? e.attendee_emails?.[0]
+          ?? (e.attendee_name?.includes('@') ? e.attendee_name : null)
+          ?? null;
+
         // Prefer the DB-resolved member; fall back to client-side match.
         let member = e.team_member_id ? (memberById.get(e.team_member_id) ?? null) : null;
-        if (!member && e.attendee_email) member = clientMatchByEmailLocal(e.attendee_email);
+        if (!member && bestEmail) member = clientMatchByEmailLocal(bestEmail);
+
         const category = member
           ? (CATEGORY_MAP[member.relationship_type] ?? 'stakeholder')
           : ((e.inferred_category as UpcomingOneOnOneEvent['inferred_category']) ?? 'stakeholder');
@@ -3294,8 +3305,8 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
           google_event_id: e.google_event_id,
           team_member_id: member?.id ?? e.team_member_id,
           team_member: member ?? null,
-          attendee_name: e.attendee_name,
-          attendee_email: e.attendee_email,
+          attendee_name: e.attendee_name ?? null,
+          attendee_email: bestEmail,
           inferred_category: category,
           title: e.title,
           start_time: e.start_time,
