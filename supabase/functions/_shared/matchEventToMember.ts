@@ -2,7 +2,22 @@
 // with one of the user's tracked team members. Extracted so the edge function
 // and Vitest tests share the same logic.
 
-export type RelationshipType = 'direct_report' | 'collaborator';
+export type RelationshipType =
+  | 'direct_report'
+  | 'collaborator'
+  | 'boss'
+  | 'peer'
+  | 'skip_level'
+  | 'stakeholder'
+  | 'external';
+
+export type EventCategory =
+  | 'direct_report'
+  | 'skip_level'
+  | 'peer'
+  | 'boss'
+  | 'stakeholder'
+  | 'external';
 
 export interface CalendarSyncRules {
   max_other_attendees: number;
@@ -211,4 +226,34 @@ export function matchEventToMember(
   if (!passesTitleFilters(event, rules)) return null;
   if (!passesAttendeeCap(event, rules)) return null;
   return findMatchingMember(event, members, rules);
+}
+
+// Map a cos_team_members relationship_type to the display category used in the UI.
+const RELATIONSHIP_TO_CATEGORY: Record<string, EventCategory> = {
+  direct_report: 'direct_report',
+  skip_level:    'skip_level',
+  peer:          'peer',
+  boss:          'boss',
+  collaborator:  'stakeholder',
+  stakeholder:   'stakeholder',
+  external:      'external',
+};
+
+export function inferCategory(
+  attendeeEmail: string | null | undefined,
+  userEmail: string,
+  member: MinimalMember | null,
+): EventCategory {
+  if (member) {
+    return RELATIONSHIP_TO_CATEGORY[member.relationship_type] ?? 'stakeholder';
+  }
+  // No member match — classify by domain.
+  if (attendeeEmail) {
+    const userDomain = userEmail.split('@').pop()?.toLowerCase() ?? '';
+    const attendeeDomain = attendeeEmail.split('@').pop()?.toLowerCase() ?? '';
+    if (userDomain && attendeeDomain && userDomain !== attendeeDomain) {
+      return 'external';
+    }
+  }
+  return 'stakeholder';
 }

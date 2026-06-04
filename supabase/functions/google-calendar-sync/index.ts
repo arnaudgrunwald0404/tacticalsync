@@ -3,11 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import {
   findMatchingMemberWithDiagnostics,
   passesTitleFilters,
+  inferCategory,
   DEFAULT_SYNC_RULES,
   type CalendarSyncRules,
   type MinimalMember,
   type MinimalEvent,
   type UnmatchedEvent,
+  type EventCategory,
 } from "../_shared/matchEventToMember.ts"
 
 const corsHeaders = {
@@ -67,6 +69,7 @@ serve(async (req) => {
       return jsonResponse({ error: 'invalid_token' }, 401)
     }
     const userId = userData.user.id
+    const userEmail = userData.user.email ?? ''
 
     // Parse + clamp days.
     let days = 14
@@ -254,12 +257,21 @@ serve(async (req) => {
         continue
       }
 
-      const { match, unmatched } = findMatchingMemberWithDiagnostics(event, members, rules)
-      if (unmatched) unmatchedEvents.push(unmatched)
-      if (!match) {
+      // Check attendee cap (still respect max_other_attendees).
+      const others = (event.attendees ?? []).filter((a: { self?: boolean }) => !a.self)
+      if (others.length === 0 || others.length > rules.max_other_attendees) {
         skipped++
         continue
       }
+
+      // Try to match a team member (optional — just enriches the category).
+      const { match, unmatched } = findMatchingMemberWithDiagnostics(event, members, rules)
+      if (unmatched) unmatchedEvents.push(unmatched)
+
+      const primaryAttendee = others[0] as { email?: string | null; displayName?: string | null }
+      const attendeeEmail = primaryAttendee?.email ?? null
+      const attendeeName = primaryAttendee?.displayName ?? null
+      const category: EventCategory = inferCategory(attendeeEmail, userEmail, match?.member ?? null)
 
       const status: string =
         event.status === 'cancelled'
@@ -268,19 +280,22 @@ serve(async (req) => {
             ? 'tentative'
             : 'confirmed'
 
-      const attendeeEmails = (match.otherAttendees ?? [])
-        .map(a => a.email)
-        .filter((e): e is string => !!e)
+      const attendeeEmails = others
+        .map((a: { email?: string | null }) => a.email)
+        .filter((e: string | null | undefined): e is string => !!e)
 
       const row = {
         user_id: userId,
-        team_member_id: match.member.id,
+        team_member_id: match?.member.id ?? null,
         google_event_id: event.id,
         calendar_id: 'primary',
         title: event.summary ?? null,
         start_time: event.start.dateTime,
         end_time: event.end?.dateTime ?? null,
         attendee_emails: attendeeEmails,
+        attendee_name: attendeeName,
+        attendee_email: attendeeEmail,
+        inferred_category: category,
         status,
         last_synced_at: new Date().toISOString(),
       }

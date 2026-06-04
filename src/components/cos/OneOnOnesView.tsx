@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format, differenceInCalendarDays, formatDistanceToNow } from 'date-fns';
 import {
-  Play, Clock, FileText, AlertTriangle, ChevronRight, ChevronDown, CheckSquare,
-  ListChecks, Sparkles, CalendarPlus, RefreshCw, Check, Loader2,
+  Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
+  ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
+import { type EventCategory } from '@/lib/calendar/matchEventToMember';
 
 // Member shape used by this view (matches CosTeamMember in ChiefOfStaff.tsx)
 export interface OneOnOneMember {
@@ -27,8 +28,11 @@ export interface OneOnOneMember {
 export interface UpcomingOneOnOneEvent {
   id: string;                          // cos_one_on_one_events.id
   google_event_id: string;
-  team_member_id: string;
-  team_member: OneOnOneMember;          // hydrated by parent
+  team_member_id: string | null;        // nullable — unmatched attendees have no member
+  team_member: OneOnOneMember | null;   // null for unmatched attendees
+  attendee_name: string | null;         // raw Google display name fallback
+  attendee_email: string | null;        // raw Google email fallback
+  inferred_category: EventCategory;
   title: string | null;
   start_time: string;                   // ISO
   end_time: string;                     // ISO
@@ -36,11 +40,8 @@ export interface UpcomingOneOnOneEvent {
   prep_available: boolean;
 }
 
-export interface UnmatchedSuggestion {
-  eventTitle: string | null;
-  attendeeEmail: string | null;
-  attendeeName: string | null;
-}
+// Re-export for convenience
+export type { EventCategory };
 
 interface OneOnOnesViewProps {
   members: OneOnOneMember[];
@@ -51,7 +52,6 @@ interface OneOnOnesViewProps {
   lastSyncAt: string | null;
   syncing: boolean;
   onSyncCalendar: () => void;
-  unmatchedSuggestions?: UnmatchedSuggestion[];
 }
 
 // Pending action plus a bit of denormalized member info for the central aggregation.
@@ -78,7 +78,7 @@ const ASSUMED_CADENCE_DAYS: Record<OneOnOneMember['relationship_type'], number> 
   collaborator: 14,
 };
 
-// Visual tone per relationship (mirrors the design's color coding)
+// Visual tone per relationship (mirrors the design's color coding) — used by PersonCard
 const REL_STYLE: Record<OneOnOneMember['relationship_type'], { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string }> = {
   direct_report: {
     label: 'Direct report',
@@ -103,6 +103,19 @@ const SKIP_STYLE = {
   chipFg: 'text-violet-700',
   avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700',
 };
+
+// Category config for the grouped upcoming events section
+type CategoryConfig = { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string };
+const CATEGORY_CONFIG: Record<EventCategory, CategoryConfig> = {
+  direct_report: { label: 'My directs',        rail: 'bg-blue-500',   chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',   avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700' },
+  skip_level:    { label: 'My org',             rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700' },
+  peer:          { label: 'My peers',           rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
+  boss:          { label: 'My boss',            rail: 'bg-orange-500', chipBg: 'bg-orange-50', chipFg: 'text-orange-700', avatarBg: 'bg-gradient-to-br from-orange-500 to-orange-700' },
+  stakeholder:   { label: 'Other stakeholders', rail: 'bg-slate-400',  chipBg: 'bg-slate-50',  chipFg: 'text-slate-700',  avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600' },
+  external:      { label: 'Externals',          rail: 'bg-stone-400',  chipBg: 'bg-stone-50',  chipFg: 'text-stone-700',  avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600' },
+};
+
+const CATEGORY_ORDER: EventCategory[] = ['boss', 'direct_report', 'peer', 'skip_level', 'stakeholder', 'external'];
 
 interface MemberWithSchedule extends OneOnOneMember {
   daysSinceLast: number | null;
@@ -141,21 +154,19 @@ export function OneOnOnesView({
   lastSyncAt,
   syncing,
   onSyncCalendar,
-  unmatchedSuggestions = [],
 }: OneOnOnesViewProps) {
   const scheduled = useMemo(() => bucketise(members), [members]);
-  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
 
-  const nonCancelledUpcoming = useMemo(
-    () => (upcomingEvents ?? []).filter(e => e.status !== 'cancelled'),
-    [upcomingEvents],
-  );
-  const sortedUpcoming = useMemo(
-    () => [...nonCancelledUpcoming].sort((a, b) => a.start_time.localeCompare(b.start_time)),
-    [nonCancelledUpcoming],
-  );
-  const visibleEvents = showAllUpcoming ? sortedUpcoming : sortedUpcoming.slice(0, 10);
-  const hasUpcoming = nonCancelledUpcoming.length > 0;
+  const grouped = useMemo(() => {
+    const active = (upcomingEvents ?? []).filter(e => e.status !== 'cancelled');
+    const map = new Map<EventCategory, UpcomingOneOnOneEvent[]>();
+    for (const cat of CATEGORY_ORDER) map.set(cat, []);
+    for (const ev of active) {
+      map.get(ev.inferred_category)?.push(ev);
+    }
+    return map;
+  }, [upcomingEvents]);
+  const hasUpcoming = Array.from(grouped.values()).some(arr => arr.length > 0);
 
   // ── Central aggregation: "my to-dos from 1:1s" ─────────────────────────────
   const [myTodos, setMyTodos] = useState<MyTodo[]>([]);
@@ -249,58 +260,39 @@ export function OneOnOnesView({
         </div>
       </div>
 
-      {/* Upcoming 1:1s from calendar */}
+      {/* Upcoming 1:1s from calendar — grouped by category */}
       {hasUpcoming && (
-        <section>
-          <div className="flex items-baseline gap-3 mb-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Upcoming 1:1s</h3>
-            <span className="text-[11px] text-muted-foreground">From your calendar — next 14 days</span>
-            <Badge variant="secondary" className="ml-auto text-[10px]">{nonCancelledUpcoming.length}</Badge>
-          </div>
-          <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
-            {visibleEvents.map(ev => (
-              <UpcomingEventCard event={ev} onOpen={onViewPrep} loading={loadingPrep} key={ev.id} />
-            ))}
-          </div>
-          {nonCancelledUpcoming.length > 10 && (
-            <button
-              onClick={() => setShowAllUpcoming(o => !o)}
-              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {showAllUpcoming ? 'Show less' : `Show all (${nonCancelledUpcoming.length})`}
-            </button>
-          )}
-        </section>
+        <p className="text-[11px] text-muted-foreground -mt-4">From your calendar — next 14 days</p>
       )}
-
-      {/* Unmatched calendar events — help user understand why people are missing */}
-      {unmatchedSuggestions.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
-          <div className="px-4 py-3 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-amber-900">
-                {unmatchedSuggestions.length} calendar {unmatchedSuggestions.length === 1 ? 'meeting' : 'meetings'} couldn't be matched to a team member
-              </p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Add emails to your team members in <strong>Settings → Team</strong>, or check that names match exactly.
-              </p>
-              <ul className="mt-2 space-y-1">
-                {unmatchedSuggestions.map((s, i) => (
-                  <li key={i} className="text-[11px] text-amber-800 flex items-center gap-1.5">
-                    <span className="font-medium">{s.attendeeName ?? s.attendeeEmail ?? 'Unknown'}</span>
-                    {s.attendeeEmail && s.attendeeName && (
-                      <span className="text-amber-600">({s.attendeeEmail})</span>
-                    )}
-                    {s.eventTitle && (
-                      <span className="text-amber-600 italic">· {s.eventTitle}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
+      {hasUpcoming && (
+        <div className="space-y-6">
+          {CATEGORY_ORDER.map(cat => {
+            const events = grouped.get(cat) ?? [];
+            if (events.length === 0) return null;
+            const cfg = CATEGORY_CONFIG[cat];
+            return (
+              <section key={cat}>
+                <div className="flex items-baseline gap-3 mb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">{cfg.label}</h3>
+                  <Badge variant="secondary" className="ml-auto text-[10px]">{events.length}</Badge>
+                </div>
+                <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                  {events
+                    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                    .map(ev => (
+                      <UpcomingEventCard
+                        key={ev.id}
+                        event={ev}
+                        onOpen={onViewPrep}
+                        loading={loadingPrep}
+                        categoryConfig={cfg}
+                      />
+                    ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {/* Central aggregation: My to-dos from 1:1s */}
@@ -659,14 +651,22 @@ function formatRelativeTime(iso: string): string {
 // ── Upcoming event card (calendar-driven) ────────────────────────────────────
 
 function UpcomingEventCard({
-  event, onOpen, loading,
-}: { event: UpcomingOneOnOneEvent; onOpen: (m: OneOnOneMember) => void; loading: boolean }) {
-  const style = REL_STYLE[event.team_member.relationship_type];
+  event, onOpen, loading, categoryConfig,
+}: {
+  event: UpcomingOneOnOneEvent;
+  onOpen: (m: OneOnOneMember) => void;
+  loading: boolean;
+  categoryConfig: CategoryConfig;
+}) {
+  const displayName = event.team_member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
+  const displayRole = event.team_member?.role ?? (event.attendee_email ? event.attendee_email : '');
+  const disabled = loading || !event.team_member;
   const start = new Date(event.start_time);
   return (
     <button
-      onClick={() => onOpen(event.team_member)}
-      disabled={loading}
+      onClick={() => { if (event.team_member) onOpen(event.team_member); }}
+      disabled={disabled}
+      title={!event.team_member ? 'Add this person to Settings → Team to enable prep' : undefined}
       className={cn(
         'relative flex items-stretch text-left rounded-lg border border-border bg-card overflow-hidden',
         'shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150',
@@ -674,7 +674,7 @@ function UpcomingEventCard({
         'disabled:opacity-60 disabled:cursor-not-allowed',
       )}
     >
-      <span className={cn('absolute left-0 top-0 bottom-0 w-1', style.rail)} aria-hidden />
+      <span className={cn('absolute left-0 top-0 bottom-0 w-1', categoryConfig.rail)} aria-hidden />
       <div className="flex items-start gap-3 p-4 pl-5 w-full">
         <div className="flex flex-col items-center justify-center min-w-[44px] text-center">
           <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
@@ -689,9 +689,9 @@ function UpcomingEventCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold leading-tight truncate text-base">{event.team_member.name}</span>
-            <Badge className={cn('text-[9px] font-semibold uppercase tracking-wide border-0', style.chipBg, style.chipFg)}>
-              {style.label}
+            <span className="font-semibold leading-tight truncate text-base">{displayName}</span>
+            <Badge className={cn('text-[9px] font-semibold uppercase tracking-wide border-0', categoryConfig.chipBg, categoryConfig.chipFg)}>
+              {categoryConfig.label}
             </Badge>
             {event.prep_available && (
               <Badge className="text-[9px] font-semibold uppercase tracking-wide border-0 bg-emerald-50 text-emerald-700 gap-1">
@@ -700,8 +700,8 @@ function UpcomingEventCard({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{event.team_member.role}</p>
-          {event.title && event.title.toLowerCase() !== `1:1 with ${event.team_member.name.toLowerCase()}` && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{displayRole}</p>
+          {event.title && event.title.toLowerCase() !== `1:1 with ${displayName.toLowerCase()}` && (
             <p className="text-[11px] text-muted-foreground/80 truncate mt-1 italic">{event.title}</p>
           )}
         </div>

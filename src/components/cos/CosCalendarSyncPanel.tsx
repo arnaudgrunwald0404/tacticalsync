@@ -204,7 +204,14 @@ export default function CosCalendarSyncPanel() {
 
           <div className="space-y-2">
             <p className="text-xs font-medium">Include people I track as…</p>
-            {(['direct_report', 'collaborator'] as const).map(rt => (
+            {(Object.entries({
+              direct_report: 'Direct reports',
+              boss:          'My boss',
+              peer:          'Peers',
+              skip_level:    'My org (skip-levels)',
+              stakeholder:   'Other stakeholders',
+              external:      'Externals',
+            }) as Array<[RelationshipType, string]>).map(([rt, label]) => (
               <label key={rt} className="flex items-center gap-2 text-sm">
                 <Switch
                   checked={draftRules.include_relationship_types.includes(rt)}
@@ -217,7 +224,7 @@ export default function CosCalendarSyncPanel() {
                     }))
                   }
                 />
-                <span>{rt === 'direct_report' ? 'Direct reports' : 'Collaborators'}</span>
+                <span>{label}</span>
               </label>
             ))}
           </div>
