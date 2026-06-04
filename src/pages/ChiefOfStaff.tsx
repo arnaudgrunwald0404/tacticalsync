@@ -3235,7 +3235,7 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, prepRes] = await Promise.all([
+    const [eventsRes, credsRes, prepRes, myProfileRes, allProfilesRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3245,14 +3245,51 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       memberIds.length > 0
         ? db.from('cos_one_on_one_prep').select('team_member_id').in('team_member_id', memberIds)
         : Promise.resolve({ data: [] as { team_member_id: string }[] }),
+      // Fetch the current user's profile to get their manager + own email.
+      db.from('profiles').select('email, manager_email').eq('id', user.id).maybeSingle(),
+      // Fetch all profiles so we can compute direct reports, peers, and boss.
+      db.from('profiles').select('id, email, manager_email').not('email', 'is', null),
     ]);
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
 
-    // Client-side email local-part → member name matching.
-    // Runs in the browser so it works regardless of edge function deployment state.
-    // Patterns: "myang" → "Matt Yang", "rstaples" → "Rhiannon Staples".
+    // Build org-chart–based category lookup from the profiles table.
+    // This is the authoritative source — manager_email says who reports to whom.
+    type OrgProfile = { id: string; email: string; manager_email: string | null };
+    const myProfile = myProfileRes.data as { email: string; manager_email: string | null } | null;
+    const allProfiles = (allProfilesRes.data ?? []) as OrgProfile[];
+    const myEmail = (myProfile?.email ?? user.email ?? '').toLowerCase();
+    const myManagerEmail = myProfile?.manager_email?.toLowerCase() ?? null;
+
+    // email → category derived purely from org position
+    const orgCategoryByEmail = new Map<string, UpcomingOneOnOneEvent['inferred_category']>();
+    for (const p of allProfiles) {
+      const pEmail = p.email.toLowerCase();
+      const pManagerEmail = p.manager_email?.toLowerCase() ?? null;
+      if (pEmail === myEmail) continue;
+      if (pManagerEmail === myEmail) {
+        orgCategoryByEmail.set(pEmail, 'direct_report');
+      } else if (myManagerEmail && pEmail === myManagerEmail) {
+        orgCategoryByEmail.set(pEmail, 'boss');
+      } else if (myManagerEmail && pManagerEmail === myManagerEmail) {
+        orgCategoryByEmail.set(pEmail, 'peer');
+      }
+      // skip_level: reports to one of my direct reports
+    }
+    // Second pass: skip-levels (reports to someone who reports to me)
+    const myDirectEmails = new Set(
+      allProfiles.filter(p => p.manager_email?.toLowerCase() === myEmail).map(p => p.email.toLowerCase())
+    );
+    for (const p of allProfiles) {
+      const pEmail = p.email.toLowerCase();
+      if (orgCategoryByEmail.has(pEmail)) continue;
+      if (myDirectEmails.has(p.manager_email?.toLowerCase() ?? '')) {
+        orgCategoryByEmail.set(pEmail, 'skip_level');
+      }
+    }
+
+    // Client-side email local-part → member name matching (for name resolution only).
     function clientMatchByEmailLocal(email: string): CosTeamMember | null {
       const local = email.split('@')[0].toLowerCase().replace(/[._-]/g, '');
       for (const m of members) {
@@ -3264,11 +3301,25 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       return null;
     }
 
-    const CATEGORY_MAP: Record<string, UpcomingOneOnOneEvent['inferred_category']> = {
-      direct_report: 'direct_report', boss: 'boss', peer: 'peer',
-      skip_level: 'skip_level', collaborator: 'stakeholder',
-      stakeholder: 'stakeholder', external: 'external',
-    };
+    // Determine category for a given attendee email.
+    // Priority: org chart (profiles) > cos_team_members > domain inference.
+    function resolveCategory(email: string | null, member: CosTeamMember | null): UpcomingOneOnOneEvent['inferred_category'] {
+      if (email) {
+        const normalised = email.toLowerCase();
+        const orgCat = orgCategoryByEmail.get(normalised);
+        if (orgCat) return orgCat;
+        // External: different domain
+        const myDomain = myEmail.split('@').pop() ?? '';
+        const theirDomain = normalised.split('@').pop() ?? '';
+        if (myDomain && theirDomain && myDomain !== theirDomain) return 'external';
+      }
+      // Fall back to cos_team_members relationship_type only for peer/skip_level/boss/external
+      // — direct_report from the DB is unreliable without org chart confirmation.
+      if (member && ['boss', 'peer', 'skip_level', 'external'].includes(member.relationship_type)) {
+        return member.relationship_type as UpcomingOneOnOneEvent['inferred_category'];
+      }
+      return 'stakeholder';
+    }
 
     const events: UpcomingOneOnOneEvent[] = ((eventsRes.data ?? []) as Array<{
       id: string;
@@ -3297,9 +3348,8 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
         let member = e.team_member_id ? (memberById.get(e.team_member_id) ?? null) : null;
         if (!member && bestEmail) member = clientMatchByEmailLocal(bestEmail);
 
-        const category = member
-          ? (CATEGORY_MAP[member.relationship_type] ?? 'stakeholder')
-          : ((e.inferred_category as UpcomingOneOnOneEvent['inferred_category']) ?? 'stakeholder');
+        // Category comes from the org chart first (profiles.manager_email), then fallbacks.
+        const category = resolveCategory(bestEmail, member);
         return {
           id: e.id,
           google_event_id: e.google_event_id,
