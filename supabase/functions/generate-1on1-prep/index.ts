@@ -335,7 +335,7 @@ ${contextParts.join('\n')}`
         status: 'ready',
         event_id: event_id ?? null,
       }, {
-        onConflict: 'user_id,team_member_id,prep_date',
+        onConflict: 'user_id,team_member_id,prep_date,source',
       })
       .select('id')
       .single()
