@@ -14,12 +14,15 @@ import { cn } from '@/lib/utils';
 import { type EventCategory } from '@/lib/calendar/matchEventToMember';
 
 // Member shape used by this view (matches CosTeamMember in ChiefOfStaff.tsx)
+export type MemberRelationshipType =
+  | 'direct_report' | 'collaborator' | 'boss' | 'peer' | 'skip_level' | 'stakeholder' | 'external';
+
 export interface OneOnOneMember {
   id: string;
   user_id: string;
   name: string;
   role: string;
-  relationship_type: 'direct_report' | 'collaborator';
+  relationship_type: MemberRelationshipType;
   context_notes: string | null;
   last_1on1_date: string | null;
   reports_to_id: string | null;
@@ -72,31 +75,35 @@ interface MyTodo {
   created_at: string;
 }
 
-// Assumed cadence (days) by relationship — refine when we add cadence to cos_team_members.
-const ASSUMED_CADENCE_DAYS: Record<OneOnOneMember['relationship_type'], number> = {
+// Assumed cadence (days) by relationship type — defaults for new types.
+const ASSUMED_CADENCE_DAYS: Partial<Record<MemberRelationshipType, number>> = {
   direct_report: 7,
   collaborator: 14,
+  boss: 14,
+  peer: 14,
+  skip_level: 30,
+  stakeholder: 30,
+  external: 30,
 };
 
-// Visual tone per relationship (mirrors the design's color coding) — used by PersonCard
-const REL_STYLE: Record<OneOnOneMember['relationship_type'], { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string }> = {
-  direct_report: {
-    label: 'Direct report',
-    rail: 'bg-blue-500',
-    chipBg: 'bg-blue-50',
-    chipFg: 'text-blue-700',
-    avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700',
-  },
-  collaborator: {
-    label: 'Collaborator',
-    rail: 'bg-teal-500',
-    chipBg: 'bg-teal-50',
-    chipFg: 'text-teal-700',
-    avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700',
-  },
+type RelStyle = { label: string; rail: string; chipBg: string; chipFg: string; avatarBg: string };
+
+// Visual tone per relationship — used by the cadence-based PersonCard fallback view.
+const REL_STYLE: Partial<Record<MemberRelationshipType, RelStyle>> = {
+  direct_report: { label: 'Direct report', rail: 'bg-blue-500',   chipBg: 'bg-blue-50',   chipFg: 'text-blue-700',   avatarBg: 'bg-gradient-to-br from-blue-500 to-blue-700' },
+  collaborator:  { label: 'Collaborator',  rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
+  boss:          { label: 'Manager',       rail: 'bg-orange-500', chipBg: 'bg-orange-50', chipFg: 'text-orange-700', avatarBg: 'bg-gradient-to-br from-orange-500 to-orange-700' },
+  peer:          { label: 'Peer',          rail: 'bg-teal-500',   chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',   avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700' },
+  skip_level:    { label: 'Skip-level',    rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700' },
+  stakeholder:   { label: 'Stakeholder',   rail: 'bg-slate-400',  chipBg: 'bg-slate-50',  chipFg: 'text-slate-700',  avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600' },
+  external:      { label: 'External',      rail: 'bg-stone-400',  chipBg: 'bg-stone-50',  chipFg: 'text-stone-700',  avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600' },
 };
 
-const SKIP_STYLE = {
+const DEFAULT_REL_STYLE: RelStyle = {
+  label: 'Team member', rail: 'bg-slate-400', chipBg: 'bg-slate-50', chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600',
+};
+
+const SKIP_STYLE: RelStyle = {
   label: 'Skip-level',
   rail: 'bg-violet-500',
   chipBg: 'bg-violet-50',
@@ -572,7 +579,7 @@ function PersonCard({
   dense?: boolean;
   skipStyle?: boolean;
 }) {
-  const style = skipStyle ? SKIP_STYLE : REL_STYLE[member.relationship_type];
+  const style = skipStyle ? SKIP_STYLE : (REL_STYLE[member.relationship_type] ?? DEFAULT_REL_STYLE);
   const dueLabel = member.daysUntilNext == null
     ? 'Never met'
     : member.daysUntilNext < 0

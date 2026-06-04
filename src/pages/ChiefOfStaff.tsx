@@ -3245,10 +3245,14 @@ function TeamSection({ members }: { members: CosTeamMember[] }) {
       memberIds.length > 0
         ? db.from('cos_one_on_one_prep').select('team_member_id').in('team_member_id', memberIds)
         : Promise.resolve({ data: [] as { team_member_id: string }[] }),
-      // Fetch the current user's profile to get their manager + own email.
-      db.from('profiles').select('email, manager_email').eq('id', user.id).maybeSingle(),
-      // Fetch all profiles so we can compute direct reports, peers, and boss.
-      db.from('profiles').select('id, email, manager_email').not('email', 'is', null),
+      // Org chart queries — wrapped in catch so a missing column (migration not applied)
+      // or RLS block doesn't crash the whole Promise.all.
+      db.from('profiles').select('email, manager_email').eq('id', user.id).maybeSingle()
+        .then((r: { data: unknown; error: unknown }) => r)
+        .catch(() => ({ data: null, error: null })),
+      db.from('profiles').select('id, email, manager_email').not('email', 'is', null)
+        .then((r: { data: unknown; error: unknown }) => r)
+        .catch(() => ({ data: [], error: null })),
     ]);
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
