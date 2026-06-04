@@ -243,6 +243,14 @@ export function OneOnOnePrepDrawer({
 
   const topics = useMemo(() => parsePrepMarkdown(content), [content]);
 
+  const [discussed, setDiscussed] = useState<Set<number>>(new Set());
+  const toggleDiscussed = (i: number) => setDiscussed(prev => {
+    const next = new Set(prev);
+    next.has(i) ? next.delete(i) : next.add(i);
+    return next;
+  });
+  const [topicActions, setTopicActions] = useState<Record<number, string>>({});
+
   if (!member) return null;
 
   const tone = REL_TONE[member.relationship_type] ?? DEFAULT_TONE;
@@ -372,17 +380,6 @@ export function OneOnOnePrepDrawer({
 
   const openItems = pastActions;
   const firstName = member.name.split(' ')[0];
-
-  // Track which topics have been "discussed" (checked off) — local state per session
-  const [discussed, setDiscussed] = useState<Set<number>>(new Set());
-  const toggleDiscussed = (i: number) => setDiscussed(prev => {
-    const next = new Set(prev);
-    next.has(i) ? next.delete(i) : next.add(i);
-    return next;
-  });
-
-  // Per-topic action item drafts
-  const [topicActions, setTopicActions] = useState<Record<number, string>>({});
 
   // Filter out noise topics (generic boilerplate, empty-result sections)
   const NOISE_PATTERNS = [
