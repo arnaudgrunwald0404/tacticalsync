@@ -123,6 +123,7 @@ serve(async (req) => {
       pastPrepsRes,
       prepSettingsRes,
       quarterRes,
+      zoomRecordingsRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -172,6 +173,14 @@ serve(async (req) => {
         .gte('end_date', todayDate)
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from('cos_zoom_recordings')
+        .select('id, topic, start_time, duration_minutes, has_transcript, ai_summary')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .gte('start_time', new Date(Date.now() - 30 * 86_400_000).toISOString())
+        .order('start_time', { ascending: false })
+        .limit(5),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -284,6 +293,38 @@ serve(async (req) => {
       }
     }
 
+    // Zoom recordings context
+    const zoomRecordings = (zoomRecordingsRes.data ?? []) as Array<{
+      id: string; topic: string | null; start_time: string;
+      duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
+    }>
+    if (zoomRecordings.length > 0) {
+      contextParts.push(`\nRecent Zoom meetings with ${member.name}:`)
+      let transcriptsIncluded = 0
+      for (const rec of zoomRecordings) {
+        const date = new Date(rec.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        const dur = rec.duration_minutes ? `${rec.duration_minutes}min` : 'unknown duration'
+        contextParts.push(`  - "${rec.topic ?? 'Untitled'}" (${date}, ${dur})`)
+        if (rec.ai_summary) {
+          const preview = rec.ai_summary.length > 500 ? rec.ai_summary.slice(0, 500) + '...' : rec.ai_summary
+          contextParts.push(`    Summary: ${preview}`)
+        }
+        if (rec.has_transcript && transcriptsIncluded < 3) {
+          const { data: transcript } = await supabase
+            .from('cos_zoom_transcripts')
+            .select('content')
+            .eq('recording_id', rec.id)
+            .maybeSingle()
+          if (transcript?.content) {
+            const excerpt = (transcript.content as string).slice(0, 500)
+            contextParts.push(`    Transcript excerpt: "${excerpt}..."`)
+            transcriptsIncluded++
+          }
+        }
+      }
+      dataSources.push('zoom_recordings')
+    }
+
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
 Output structure:
@@ -294,6 +335,7 @@ Output structure:
 - Reference specific priorities, commitments, or actions by name
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
+- If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
 
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
 

@@ -22,6 +22,7 @@ import GridBackground from "@/components/ui/grid-background";
 import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
+import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2624,6 +2625,16 @@ const Settings = () => {
               </p>
             </div>
             <CosCalendarSyncPanel />
+          </div>
+        ) : activeSection === "zoom-sync" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Zoom sync</h2>
+              <p className="text-muted-foreground text-sm">
+                Connect Zoom to include recent meeting recordings and transcripts in your 1:1 prep.
+              </p>
+            </div>
+            <CosZoomSyncPanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

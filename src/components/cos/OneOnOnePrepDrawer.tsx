@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
   CheckSquare, ClipboardList, NotebookText, ArrowRight, AlertCircle, ExternalLink,
-  Play, MoreHorizontal, Repeat, Clock,
+  Play, MoreHorizontal, Repeat, Clock, Video,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
@@ -23,6 +23,7 @@ import type {
 export interface PrepDrawerMember {
   id: string;
   name: string;
+  email: string | null;
   role: string;
   relationship_type: 'direct_report' | 'collaborator';
   context_notes: string | null;
@@ -178,6 +179,10 @@ export function OneOnOnePrepDrawer({
   const [priorities, setPriorities] = useState<QuarterlyPriority[]>([]);
   const [commitments, setCommitments] = useState<MonthlyCommitment[]>([]);
   const [loadingCommitments, setLoadingCommitments] = useState(false);
+  const [zoomRecordings, setZoomRecordings] = useState<Array<{
+    id: string; topic: string | null; start_time: string;
+    duration_minutes: number | null; has_transcript: boolean;
+  }>>([]);
 
   useEffect(() => {
     if (!open || !member) return;
@@ -201,17 +206,39 @@ export function OneOnOnePrepDrawer({
       .then(({ data }: { data: { prep_instructions: string } | null }) => {
         setFeedbackDraft(data?.prep_instructions ?? '');
       });
+
+    db.from('cos_zoom_recordings')
+      .select('id, topic, start_time, duration_minutes, has_transcript')
+      .eq('team_member_id', member.id)
+      .gte('start_time', new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .order('start_time', { ascending: false })
+      .limit(5)
+      .then(({ data }: { data: Array<{ id: string; topic: string | null; start_time: string; duration_minutes: number | null; has_transcript: boolean }> | null }) => {
+        setZoomRecordings(data ?? []);
+      })
+      .catch(() => setZoomRecordings([]));
   }, [open, member]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !member) return;
     let cancelled = false;
     async function load() {
       setLoadingCommitments(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) { setLoadingCommitments(false); return; }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
+
+      // Resolve the member's profile user_id from their email
+      let memberUserId: string | null = null;
+      if (member!.email) {
+        const { data: profile } = await db
+          .from('profiles')
+          .select('id')
+          .eq('email', member!.email)
+          .maybeSingle();
+        memberUserId = profile?.id ?? null;
+      }
+      if (!memberUserId || cancelled) { setPriorities([]); setCommitments([]); setLoadingCommitments(false); return; }
+
       const today = format(new Date(), 'yyyy-MM-dd');
       const { data: quarters } = await db
         .from('commitment_quarters')
@@ -228,9 +255,9 @@ export function OneOnOnePrepDrawer({
       const monthNum = Math.min(3, Math.max(1, nowMonth - qStart.getMonth() + 1));
       const [priRes, comRes] = await Promise.all([
         db.from('quarterly_priorities').select('*')
-          .eq('quarter_id', q.id).eq('user_id', user.id).order('display_order'),
+          .eq('quarter_id', q.id).eq('user_id', memberUserId).order('display_order'),
         db.from('monthly_commitments').select('*')
-          .eq('quarter_id', q.id).eq('user_id', user.id).eq('month_number', monthNum).order('display_order'),
+          .eq('quarter_id', q.id).eq('user_id', memberUserId).eq('month_number', monthNum).order('display_order'),
       ]);
       if (cancelled) return;
       setPriorities(priRes.data ?? []);
@@ -239,7 +266,7 @@ export function OneOnOnePrepDrawer({
     }
     load();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, member]);
 
   const topics = useMemo(() => parsePrepMarkdown(content), [content]);
 
@@ -494,6 +521,21 @@ export function OneOnOnePrepDrawer({
               ) : (
                 <div className="flex flex-col gap-3">
                   {filteredTopics.map((t, i) => {
+                    const isSectionDivider = t.bullets.length === 0 && t.paragraphs.length === 0;
+
+                    if (isSectionDivider) {
+                      return (
+                        <div
+                          key={i}
+                          className="relative mt-5 first:mt-0 mb-1 rounded-lg px-4 py-2.5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-l-[3px] border-primary"
+                        >
+                          <span className="text-xs font-extrabold tracking-wide text-primary">
+                            {t.heading}
+                          </span>
+                        </div>
+                      );
+                    }
+
                     const isDone = discussed.has(i);
                     return (
                       <div
@@ -713,6 +755,36 @@ export function OneOnOnePrepDrawer({
                       </li>
                     ))}
                   </ol>
+                </section>
+              )}
+
+              {/* Recent Zoom calls */}
+              {zoomRecordings.length > 0 && (
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
+                    <Video className="h-3.5 w-3.5" />
+                    Recent Zoom calls
+                  </h3>
+                  <ul className="space-y-1.5">
+                    {zoomRecordings.map(rec => (
+                      <li key={rec.id} className="text-xs leading-snug px-2.5 py-2 rounded-md bg-background border border-border">
+                        <p className="font-medium text-foreground leading-snug">{rec.topic ?? 'Untitled meeting'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {format(new Date(rec.start_time), 'MMM d')}
+                          </span>
+                          {rec.duration_minutes != null && (
+                            <span className="text-[10px] text-muted-foreground">{rec.duration_minutes}min</span>
+                          )}
+                          {rec.has_transcript && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-200 text-emerald-700">
+                              Transcript
+                            </Badge>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
 

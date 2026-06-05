@@ -25,3 +25,15 @@ verify_jwt = true
 
 [functions.disconnect-google-calendar]
 verify_jwt = true
+
+[functions.exchange-zoom-token]
+verify_jwt = true
+
+[functions.zoom-recordings-sync]
+verify_jwt = true
+
+[functions.disconnect-zoom]
+verify_jwt = true
+
+[functions.generate-weekend-banner]
+verify_jwt = true

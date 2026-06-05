@@ -37,6 +37,7 @@ import {
   sectionToCategoryKey, totalWidthPct, adjustColumnCount, migrateOldSettings,
 } from '@/types/cos';
 import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
+import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ interface CosTeamMember {
   id: string;
   user_id: string;
   name: string;
+  email: string | null;
   role: string;
   relationship_type: 'direct_report' | 'collaborator';
   context_notes: string | null;
@@ -3227,8 +3229,10 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
   const [calendarConnected, setCalendarConnected] = useState(false);
+  const [zoomConnected, setZoomConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [loadingInitial, setLoadingInitial] = useState(true);
 
   const loadCalendarState = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -3236,13 +3240,14 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, prepRes, myProfileRes, allProfilesRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
+      db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
       memberIds.length > 0
         ? db.from('cos_one_on_one_prep').select('team_member_id').in('team_member_id', memberIds)
         : Promise.resolve({ data: [] as { team_member_id: string }[] }),
@@ -3254,10 +3259,16 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('profiles').select('id, email, manager_email').not('email', 'is', null)
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: [], error: null })),
+      db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
     ]);
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
+
+    const syncRules = syncSettingsRes?.data?.calendar_sync_rules as { exclude_emails?: string[] } | null;
+    const excludedEmails = new Set(
+      (syncRules?.exclude_emails ?? []).map((e: string) => e.trim().toLowerCase()),
+    );
 
     // Build org-chart–based category lookup from the profiles table.
     // This is the authoritative source — manager_email says who reports to whom.
@@ -3355,6 +3366,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
 
         // Category comes from the org chart first (profiles.manager_email), then fallbacks.
         const category = resolveCategory(bestEmail, member);
+
         return {
           id: e.id,
           google_event_id: e.google_event_id,
@@ -3369,14 +3381,16 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           status: e.status,
           prep_available: member ? prepSet.has(member.id) : false,
         };
-      });
+      })
+      .filter(e => !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase()));
 
     setUpcomingEvents(events);
     setCalendarConnected(Boolean(credsRes.data?.connected));
+    setZoomConnected(Boolean(zoomCredsRes?.data?.connected));
     setLastSyncAt((credsRes.data?.last_sync_at as string | null) ?? null);
   }, [members]);
 
-  useEffect(() => { loadCalendarState(); }, [loadCalendarState]);
+  useEffect(() => { loadCalendarState().finally(() => setLoadingInitial(false)); }, [loadCalendarState]);
 
   const kickOffSync = useCallback(async () => {
     setSyncing(true);
@@ -3424,6 +3438,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     if (params.get('calendar') === 'connected') {
       didOAuthRef.current = true;
       window.history.replaceState(null, '', window.location.pathname);
+      setActiveTab('team');
       void kickOffSync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3579,17 +3594,67 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   };
 
+  const handleIncludeInPrep = useCallback(async (event: UpcomingOneOnOneEvent) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const name = event.attendee_name?.includes('@')
+      ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
+      : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
+    const { error } = await db.from('cos_team_members').insert({
+      user_id: user.id,
+      name,
+      role: '',
+      relationship_type: 'collaborator',
+      email: event.attendee_email,
+    });
+    if (error) {
+      toast({ title: 'Failed to add team member', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: `${name} added to your team` });
+      loadCalendarState();
+    }
+  }, [toast, loadCalendarState]);
+
+  const handleExcludeFromCalendar = useCallback(async (event: UpcomingOneOnOneEvent) => {
+    if (!event.attendee_email) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const settingsRes = await db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle();
+    const current: CalendarSyncRules = { ...DEFAULT_SYNC_RULES, ...(settingsRes.data?.calendar_sync_rules ?? {}) };
+    const email = event.attendee_email.trim().toLowerCase();
+    if (current.exclude_emails.includes(email)) return;
+    const updated = { ...current, exclude_emails: [...current.exclude_emails, email] };
+    const { error } = await db.from('cos_settings').upsert(
+      { user_id: user.id, calendar_sync_rules: updated, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    if (error) {
+      toast({ title: 'Failed to exclude', description: error.message, variant: 'destructive' });
+    } else {
+      const name = event.attendee_name ?? event.attendee_email;
+      toast({ title: `${name} excluded from 1:1s` });
+      setUpcomingEvents(prev => prev.filter(e => e.attendee_email?.toLowerCase() !== email));
+    }
+  }, [toast]);
+
   return (
     <>
       <OneOnOnesView
         members={members}
         loadingPrep={loadingPrep}
+        loadingInitial={loadingInitial}
         onViewPrep={openPrepFile}
         upcomingEvents={upcomingEvents}
         calendarConnected={calendarConnected}
         lastSyncAt={lastSyncAt}
         syncing={syncing}
         onSyncCalendar={handleSyncCalendar}
+        onIncludeInPrep={handleIncludeInPrep}
+        onExcludeFromCalendar={handleExcludeFromCalendar}
         toolbarPortalId={toolbarPortalId}
       />
 
