@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Loader2, Save, Clock, Play, Plus, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +51,39 @@ export default function CosPrepSchedulePanel() {
   const [draft, setDraft] = useState<PrepSchedule>(DEFAULT_SCHEDULE);
   const [newIncludeName, setNewIncludeName] = useState('');
   const [newChannel, setNewChannel] = useState('');
+  const [logs, setLogs] = useState<Array<{
+    id: string;
+    trigger_type: string;
+    started_at: string;
+    finished_at: string | null;
+    status: string;
+    meetings_found: number;
+    meetings_qualified: number;
+    preps_generated: number;
+    preps_cached: number;
+    zoom_synced: boolean;
+    zoom_recordings: number | null;
+    slack_synced: boolean;
+    slack_messages: number | null;
+    errors: Array<{ member_name?: string; error: string }>;
+    summary: string | null;
+  }>>([]);
+
+  const loadLogs = useCallback(async (uid: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any)
+      .from('cos_prep_batch_log')
+      .select('*')
+      .eq('user_id', uid)
+      .order('started_at', { ascending: false })
+      .limit(20);
+    if (data) {
+      setLogs(data.map((row: Record<string, unknown>) => ({
+        ...row,
+        errors: typeof row.errors === 'string' ? JSON.parse(row.errors as string) : (row.errors ?? []),
+      })));
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -80,9 +113,10 @@ export default function CosPrepSchedulePanel() {
         });
       }
       setLoading(false);
+      loadLogs(user.id);
     }
     load();
-  }, []);
+  }, [loadLogs]);
 
   const save = async () => {
     if (!userId) return;
@@ -134,6 +168,7 @@ export default function CosPrepSchedulePanel() {
           last_run_preps_generated: updated.last_run_preps_generated,
         }));
       }
+      if (userId) loadLogs(userId);
     } catch (err) {
       toast({ title: 'Batch prep failed', description: String(err), variant: 'destructive' });
     } finally {
@@ -337,6 +372,90 @@ export default function CosPrepSchedulePanel() {
           Run now
         </Button>
       </div>
+
+      {/* ── Run history ─────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Run history</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No runs yet. Click "Run now" or wait for the scheduled run.</p>
+          ) : (
+            <div className="space-y-3">
+              {logs.map(log => {
+                const statusIcon = log.status === 'ok'
+                  ? <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                  : log.status === 'partial'
+                    ? <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                    : log.status === 'failed'
+                      ? <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                      : <Loader2 className="h-4 w-4 text-muted-foreground animate-spin flex-shrink-0" />;
+
+                const duration = log.finished_at
+                  ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
+                  : null;
+
+                return (
+                  <div key={log.id} className="border rounded-lg p-3 space-y-2">
+                    {/* Header row */}
+                    <div className="flex items-center gap-2">
+                      {statusIcon}
+                      <span className="text-sm font-medium">
+                        {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {' '}
+                        {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {log.trigger_type}
+                      </Badge>
+                      {duration != null && (
+                        <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>
+                      )}
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{log.meetings_found} meeting{log.meetings_found !== 1 ? 's' : ''} found</span>
+                      <span>{log.meetings_qualified} qualified</span>
+                      <span className="text-foreground font-medium">{log.preps_generated} prep{log.preps_generated !== 1 ? 's' : ''} generated</span>
+                      {log.preps_cached > 0 && <span>{log.preps_cached} cached</span>}
+                    </div>
+
+                    {/* Integration badges */}
+                    {(log.zoom_synced || log.slack_synced) && (
+                      <div className="flex gap-2">
+                        {log.zoom_synced && (
+                          <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                            <Video className="h-3 w-3" /> {log.zoom_recordings ?? 0} recordings
+                          </Badge>
+                        )}
+                        {log.slack_synced && (
+                          <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                            <MessageSquare className="h-3 w-3" /> {log.slack_messages ?? 0} messages
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Errors */}
+                    {log.errors.length > 0 && (
+                      <div className="bg-red-50 rounded p-2 space-y-1">
+                        {log.errors.map((err, i) => (
+                          <p key={i} className="text-xs text-red-700">
+                            {err.member_name && <span className="font-medium">{err.member_name}: </span>}
+                            {err.error}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
