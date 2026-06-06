@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Video, Unlink, RefreshCw } from 'lucide-react';
+import { Loader2, Video, Unlink, RefreshCw, Quote } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ export default function CosZoomSyncPanel() {
   } | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const loadState = async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,6 +125,26 @@ export default function CosZoomSyncPanel() {
     }
   };
 
+  const extractQuotes = async () => {
+    setExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-zoom-quotes', { body: {} });
+      if (error) throw error;
+      const { processed = 0, quotes_added = 0 } = (data ?? {}) as {
+        processed?: number;
+        quotes_added?: number;
+      };
+      toast({
+        title: 'Quote extraction complete',
+        description: `${processed} transcript${processed !== 1 ? 's' : ''} processed · ${quotes_added} quote${quotes_added !== 1 ? 's' : ''} added`,
+      });
+    } catch (err) {
+      toast({ title: 'Quote extraction failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   if (loading) return null;
 
   const needsReauth = connection?.lastSyncStatus === 'error: reauth_required';
@@ -150,10 +171,14 @@ export default function CosZoomSyncPanel() {
                 {connection.lastSyncStatus && connection.lastSyncStatus !== 'ok' && ` · ${connection.lastSyncStatus}`}
               </p>
             )}
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-2 flex-wrap">
               <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
                 {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Sync now
+              </Button>
+              <Button size="sm" variant="outline" onClick={extractQuotes} disabled={extracting || syncing} className="gap-1.5">
+                {extracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Quote className="h-3.5 w-3.5" />}
+                Extract quotes
               </Button>
               <Button
                 size="sm"
