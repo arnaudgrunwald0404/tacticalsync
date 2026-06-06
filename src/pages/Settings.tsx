@@ -24,6 +24,7 @@ import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
 import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
+import CosPrepSchedulePanel from "@/components/cos/CosPrepSchedulePanel";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2646,6 +2647,16 @@ const Settings = () => {
               </p>
             </div>
             <CosSlackSyncPanel />
+          </div>
+        ) : activeSection === "prep-schedule" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Prep schedule</h2>
+              <p className="text-muted-foreground text-sm">
+                Automatically generate 1:1 prep briefs each morning for today's qualifying meetings.
+              </p>
+            </div>
+            <CosPrepSchedulePanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

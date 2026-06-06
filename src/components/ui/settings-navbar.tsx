@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { id: "calendar-sync",               label: "Calendar sync",     group: "Chief of Staff" },
   { id: "zoom-sync",                   label: "Zoom sync",         group: "Chief of Staff" },
   { id: "slack-sync",                  label: "Slack sync",        group: "Chief of Staff" },
+  { id: "prep-schedule",               label: "Prep schedule",     group: "Chief of Staff" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
 ];
 

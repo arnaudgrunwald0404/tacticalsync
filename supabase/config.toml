@@ -44,5 +44,8 @@ verify_jwt = true
 [functions.disconnect-slack]
 verify_jwt = true
 
+[functions.daily-prep-batch]
+verify_jwt = false
+
 [functions.generate-weekend-banner]
 verify_jwt = true
