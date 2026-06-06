@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, Edit2, Trash2, GripVertical, Check, X, Search, Users, Shield, Mail, MoreVertical, Upload, ChevronDown, Loader2, CheckCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import GridBackground from "@/components/ui/grid-background";
@@ -2088,14 +2089,6 @@ const Settings = () => {
   const statusColors: Record<string, string> = { draft: "bg-gray-500", active: "bg-green-500", review: "bg-[#4A5D5F]", archived: "bg-purple-500" };
   const statusLabels: Record<string, string> = { draft: "Draft", active: "Active", review: "Review", archived: "Archived" };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   return (
@@ -2103,14 +2096,50 @@ const Settings = () => {
       <div className="flex flex-col lg:flex-row">
         <SettingsNavbar
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={loading ? () => {} : setActiveSection}
           userEmail={userEmail}
           showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
           canManagePermissions={canManagePermissions}
         />
 
         <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
-        {activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin || (activeSection === "user-management-permissions" && canManagePermissions)) ? (
+        {loading ? (
+          <div className="mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div className="min-w-0">
+                <Skeleton className="h-7 w-48 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-28" />
+                <Skeleton className="h-9 w-20" />
+              </div>
+            </div>
+            <Skeleton className="h-10 w-full max-w-sm mb-4" />
+            <div className="rounded-md border">
+              <div className="flex items-center gap-4 px-4 py-3 border-b bg-muted/30">
+                <Skeleton className="h-4 w-4" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0">
+                  <Skeleton className="h-4 w-4" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) :
+        activeSection.startsWith("user-management") && (dbVerifiedSuperAdmin || isSuperAdmin || (activeSection === "user-management-permissions" && canManagePermissions)) ? (
           <div className="mb-8">
             {/* Page header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
