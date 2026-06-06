@@ -3230,6 +3230,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [zoomConnected, setZoomConnected] = useState(false);
+  const [slackConnected, setSlackConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -3240,7 +3241,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, zoomCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3248,6 +3249,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
       db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
+      db.from('user_slack_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
       memberIds.length > 0
         ? db.from('cos_one_on_one_prep').select('team_member_id').in('team_member_id', memberIds)
         : Promise.resolve({ data: [] as { team_member_id: string }[] }),
@@ -3387,6 +3389,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     setUpcomingEvents(events);
     setCalendarConnected(Boolean(credsRes.data?.connected));
     setZoomConnected(Boolean(zoomCredsRes?.data?.connected));
+    setSlackConnected(Boolean(slackCredsRes?.data?.connected));
     setLastSyncAt((credsRes.data?.last_sync_at as string | null) ?? null);
   }, [members]);
 

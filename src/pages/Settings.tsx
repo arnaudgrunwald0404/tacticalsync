@@ -23,6 +23,7 @@ import SettingsNavbar from "@/components/ui/settings-navbar";
 import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
+import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2635,6 +2636,16 @@ const Settings = () => {
               </p>
             </div>
             <CosZoomSyncPanel />
+          </div>
+        ) : activeSection === "slack-sync" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Slack sync</h2>
+              <p className="text-muted-foreground text-sm">
+                Connect Slack to include recent DMs and channel messages in your 1:1 prep, and share prep notes via Slack DM.
+              </p>
+            </div>
+            <CosSlackSyncPanel />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

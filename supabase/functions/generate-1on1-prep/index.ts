@@ -124,6 +124,7 @@ serve(async (req) => {
       prepSettingsRes,
       quarterRes,
       zoomRecordingsRes,
+      slackMessagesRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -181,6 +182,14 @@ serve(async (req) => {
         .gte('start_time', new Date(Date.now() - 30 * 86_400_000).toISOString())
         .order('start_time', { ascending: false })
         .limit(5),
+      supabase
+        .from('cos_slack_messages')
+        .select('content, sender_name, channel_name, is_dm, message_date')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .gte('message_date', new Date(Date.now() - 14 * 86_400_000).toISOString())
+        .order('message_date', { ascending: false })
+        .limit(15),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -325,6 +334,38 @@ serve(async (req) => {
       dataSources.push('zoom_recordings')
     }
 
+    // Slack messages context
+    const slackMessages = (slackMessagesRes.data ?? []) as Array<{
+      content: string; sender_name: string | null; channel_name: string | null;
+      is_dm: boolean; message_date: string;
+    }>
+    if (slackMessages.length > 0) {
+      const dmMessages = slackMessages.filter(m => m.is_dm)
+      const channelMessages = slackMessages.filter(m => !m.is_dm)
+
+      if (dmMessages.length > 0) {
+        contextParts.push(`\nRecent Slack DMs with ${member.name}:`)
+        for (const msg of dmMessages.slice(0, 8)) {
+          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          const sender = msg.sender_name ?? 'unknown'
+          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
+          contextParts.push(`  - [${date}] ${sender}: "${preview}"`)
+        }
+      }
+
+      if (channelMessages.length > 0) {
+        contextParts.push(`\nRecent Slack channel messages from ${member.name}:`)
+        for (const msg of channelMessages.slice(0, 5)) {
+          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          const channel = msg.channel_name ? `#${msg.channel_name}` : 'channel'
+          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
+          contextParts.push(`  - [${date}] in ${channel}: "${preview}"`)
+        }
+      }
+
+      dataSources.push('slack_messages')
+    }
+
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
 Output structure:
@@ -336,6 +377,7 @@ Output structure:
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
 - If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
+- If Slack messages are provided, note any recent topics, requests, or decisions from those conversations
 
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
 

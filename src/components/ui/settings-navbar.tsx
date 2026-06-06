@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { id: "configure-my-lists",          label: "Configure My Lists", group: "Chief of Staff" },
   { id: "calendar-sync",               label: "Calendar sync",     group: "Chief of Staff" },
   { id: "zoom-sync",                   label: "Zoom sync",         group: "Chief of Staff" },
+  { id: "slack-sync",                  label: "Slack sync",        group: "Chief of Staff" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
 ];
 
