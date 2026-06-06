@@ -25,6 +25,9 @@ import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
 import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
 import CosPrepSchedulePanel from "@/components/cos/CosPrepSchedulePanel";
+import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
+import StackOnePanel from "@/components/cos/StackOnePanel";
+import { getPreset } from "@/types/mcp-integration";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 import { useCycles } from "@/hooks/useRCDO";
@@ -2648,6 +2651,31 @@ const Settings = () => {
             </div>
             <CosSlackSyncPanel />
           </div>
+        ) : activeSection === "integration-stackone" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">StackOne</h2>
+              <p className="text-muted-foreground text-sm">
+                Connect your team tools — HRIS, CRM, ATS, messaging, and 200+ more — through a single integration gateway.
+              </p>
+            </div>
+            <StackOnePanel />
+          </div>
+        ) : activeSection.startsWith("integration-") ? (
+          (() => {
+            const integrationKey = activeSection.replace("integration-", "");
+            const preset = getPreset(integrationKey);
+            if (!preset) return <p className="text-sm text-muted-foreground">Unknown integration.</p>;
+            return (
+              <div className="mb-8">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold mb-1">{preset.name}</h2>
+                  <p className="text-muted-foreground text-sm">{preset.description}</p>
+                </div>
+                <McpIntegrationPanel preset={preset} />
+              </div>
+            );
+          })()
         ) : activeSection === "prep-schedule" ? (
           <div className="mb-8">
             <div className="mb-6">

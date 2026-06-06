@@ -16,10 +16,12 @@ const NAV_ITEMS = [
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
   { id: "strategy-cycles",              label: "Strategy Cycles",   group: "RCDO" },
   { id: "configure-my-lists",          label: "Configure My Lists", group: "Chief of Staff" },
-  { id: "calendar-sync",               label: "Calendar sync",     group: "Chief of Staff" },
-  { id: "zoom-sync",                   label: "Zoom sync",         group: "Chief of Staff" },
-  { id: "slack-sync",                  label: "Slack sync",        group: "Chief of Staff" },
   { id: "prep-schedule",               label: "Prep schedule",     group: "Chief of Staff" },
+  { id: "calendar-sync",               label: "Calendar",          group: "1-1s" },
+  { id: "zoom-sync",                   label: "Zoom",              group: "1-1s" },
+  { id: "slack-sync",                  label: "Slack",             group: "1-1s" },
+  { id: "integration-cleargo",         label: "ClearGo",           group: "1-1s" },
+  { id: "integration-stackone",       label: "StackOne",          group: "Integrations" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
 ];
 

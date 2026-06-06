@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -366,6 +367,28 @@ serve(async (req) => {
       dataSources.push('slack_messages')
     }
 
+    // ── StackOne enrichment (HRIS, ticketing, CRM) ────────────────────────
+    if (member.email) {
+      try {
+        const s1Config = await getStackOneConfig(supabase, userId)
+        if (s1Config) {
+          const enrichment = await fetchStackOneEnrichment(
+            s1Config.apiKey,
+            s1Config.accounts,
+            member.email,
+            member.name,
+          )
+          if (enrichment.sections.length > 0) {
+            contextParts.push(`\nExternal system data for ${member.name}:`)
+            contextParts.push(...enrichment.sections)
+            dataSources.push(...enrichment.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        console.warn('StackOne enrichment failed (non-fatal):', err)
+      }
+    }
+
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
 Output structure:
@@ -378,6 +401,7 @@ Output structure:
 - If there are pending action items, include a "Follow up on open items" section
 - If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
 - If Slack messages are provided, note any recent topics, requests, or decisions from those conversations
+- If external system data is provided (HRIS, tickets, CRM), weave relevant context naturally — mention upcoming PTO, blocked tickets, or deal activity where it helps prepare talking points
 
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
 

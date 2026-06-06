@@ -16,6 +16,7 @@ interface PrepSchedule {
   max_others_after_exclude: number;
   sync_zoom_before: boolean;
   sync_slack_before: boolean;
+  enrich_stackone: boolean;
   slack_channels: string[];
   last_run_at: string | null;
   last_run_status: string | null;
@@ -29,6 +30,7 @@ const DEFAULT_SCHEDULE: PrepSchedule = {
   max_others_after_exclude: 1,
   sync_zoom_before: true,
   sync_slack_before: true,
+  enrich_stackone: false,
   slack_channels: [],
   last_run_at: null,
   last_run_status: null,
@@ -106,6 +108,7 @@ export default function CosPrepSchedulePanel() {
           max_others_after_exclude: data.max_others_after_exclude ?? 1,
           sync_zoom_before: data.sync_zoom_before ?? true,
           sync_slack_before: data.sync_slack_before ?? true,
+          enrich_stackone: data.enrich_stackone ?? false,
           slack_channels: data.slack_channels ?? [],
           last_run_at: data.last_run_at ?? null,
           last_run_status: data.last_run_status ?? null,
@@ -131,6 +134,7 @@ export default function CosPrepSchedulePanel() {
         max_others_after_exclude: draft.max_others_after_exclude,
         sync_zoom_before: draft.sync_zoom_before,
         sync_slack_before: draft.sync_slack_before,
+        enrich_stackone: draft.enrich_stackone,
         slack_channels: draft.slack_channels,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
@@ -330,6 +334,22 @@ export default function CosPrepSchedulePanel() {
             />
             <span className="text-sm">Sync Slack messages before generating</span>
           </label>
+
+          <div className="pt-2 border-t">
+            <label className="flex items-center gap-3">
+              <Switch
+                checked={draft.enrich_stackone ?? false}
+                onCheckedChange={v => setDraft(d => ({ ...d, enrich_stackone: v }))}
+              />
+              <div>
+                <span className="text-sm">Enrich with StackOne data</span>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Pull HRIS, project management, and CRM data for each team member during prep generation.
+                  Requires a connected StackOne account in Settings &rarr; Integrations.
+                </p>
+              </div>
+            </label>
+          </div>
 
           <div className="space-y-2">
             <label className="text-xs font-medium">Slack channels to include</label>
