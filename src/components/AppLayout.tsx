@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppNavbar } from "@/components/ui/app-navbar";
+import { WeekendBanner } from "@/components/WeekendBanner";
 import { ContentSkeleton } from "@/components/ui/content-skeleton";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +47,7 @@ export function AppLayout() {
   return (
     <div className="min-h-screen flex flex-col">
       <AppNavbar />
+      <WeekendBanner />
       <Suspense fallback={<ContentSkeleton />}>
         <Outlet />
       </Suspense>
