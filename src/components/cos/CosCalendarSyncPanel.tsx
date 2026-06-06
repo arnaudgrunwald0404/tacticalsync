@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, Calendar, Unlink, RefreshCw } from 'lucide-react';
+import { Loader2, Save, Calendar, Unlink, RefreshCw, Check, ChevronsUpDown, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
 import {
   CalendarSyncRules,
   RelationshipType,
@@ -27,6 +30,8 @@ export default function CosCalendarSyncPanel() {
   const [syncing, setSyncing] = useState(false);
   const [draftRules, setDraftRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
   const [savingRules, setSavingRules] = useState(false);
+  const [knownAttendees, setKnownAttendees] = useState<{ email: string; name: string | null }[]>([]);
+  const [excludeOpen, setExcludeOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -35,9 +40,13 @@ export default function CosCalendarSyncPanel() {
       setUserId(user.id);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      const [credsRes, settingsRes] = await Promise.all([
+      const [credsRes, settingsRes, attendeesRes] = await Promise.all([
         db.from('user_calendar_credentials_public').select('*').maybeSingle(),
         db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
+        db.from('cos_one_on_one_events')
+          .select('attendee_email, attendee_name, attendee_emails')
+          .eq('user_id', user.id)
+          .not('attendee_email', 'is', null),
       ]);
       if (credsRes.data) {
         setConnection({
@@ -55,6 +64,20 @@ export default function CosCalendarSyncPanel() {
           ...(settingsRes.data.calendar_sync_rules as Partial<CalendarSyncRules>),
         });
       }
+
+      // Build deduplicated attendee list from all synced events.
+      const seen = new Map<string, string | null>();
+      for (const row of (attendeesRes.data ?? []) as Array<{ attendee_email?: string | null; attendee_name?: string | null; attendee_emails?: string[] | null }>) {
+        const email = (row.attendee_email ?? row.attendee_emails?.[0] ?? '').trim().toLowerCase();
+        if (!email) continue;
+        if (!seen.has(email)) seen.set(email, row.attendee_name ?? null);
+      }
+      setKnownAttendees(
+        Array.from(seen.entries())
+          .map(([email, name]) => ({ email, name }))
+          .sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email)),
+      );
+
       setLoading(false);
     }
     load();
@@ -250,6 +273,88 @@ export default function CosCalendarSyncPanel() {
               placeholder="e.g. interview|standup"
               className="h-9 text-sm"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Exclude specific people</label>
+            <Popover open={excludeOpen} onOpenChange={setExcludeOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={excludeOpen}
+                  className="w-full justify-between min-h-10 h-auto py-2 text-sm"
+                >
+                  <div className="flex flex-wrap gap-1 flex-1">
+                    {(draftRules.exclude_emails ?? []).length === 0 ? (
+                      <span className="text-muted-foreground">Select people to exclude...</span>
+                    ) : (
+                      (draftRules.exclude_emails ?? []).map(email => {
+                        const att = knownAttendees.find(a => a.email === email.toLowerCase());
+                        return (
+                          <Badge key={email} variant="outline" className="bg-background hover:bg-accent/50">
+                            <span className="text-xs">{att?.name ?? email}</span>
+                            <button
+                              className="ml-1 rounded-full hover:bg-muted"
+                              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+                              onClick={e => {
+                                e.stopPropagation();
+                                setDraftRules(r => ({ ...r, exclude_emails: (r.exclude_emails ?? []).filter(x => x !== email) }));
+                              }}
+                            >
+                              <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                            </button>
+                          </Badge>
+                        );
+                      })
+                    )}
+                  </div>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search by name or email..." />
+                  <CommandList>
+                    <CommandEmpty>No matching attendees.</CommandEmpty>
+                    <CommandGroup>
+                      {knownAttendees.map(att => {
+                        const isExcluded = (draftRules.exclude_emails ?? []).includes(att.email);
+                        return (
+                          <CommandItem
+                            key={att.email}
+                            value={`${att.name ?? ''} ${att.email}`}
+                            onSelect={() => {
+                              setDraftRules(r => ({
+                                ...r,
+                                exclude_emails: isExcluded
+                                  ? (r.exclude_emails ?? []).filter(x => x !== att.email)
+                                  : [...(r.exclude_emails ?? []), att.email],
+                              }));
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <div className={cn(
+                              "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                              isExcluded ? "bg-primary text-primary-foreground" : "opacity-50 [&_svg]:invisible",
+                            )}>
+                              <Check className="h-4 w-4" />
+                            </div>
+                            <div className="flex flex-col">
+                              {att.name && <span className="text-sm">{att.name}</span>}
+                              <span className="text-xs text-muted-foreground">{att.email}</span>
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-[11px] text-muted-foreground">
+              These people's 1:1s will be hidden from your list.
+            </p>
           </div>
 
           <div className="pt-2">

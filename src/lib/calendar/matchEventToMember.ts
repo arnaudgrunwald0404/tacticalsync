@@ -24,6 +24,7 @@ export interface CalendarSyncRules {
   include_relationship_types: RelationshipType[];
   include_titles_regex: string | null;
   exclude_titles_regex: string | null;
+  exclude_emails: string[];
   match_strategy: 'email_then_name' | 'email_only' | 'name_only';
 }
 
@@ -71,6 +72,7 @@ export const DEFAULT_SYNC_RULES: CalendarSyncRules = {
   include_relationship_types: ['direct_report', 'collaborator'],
   include_titles_regex: null,
   exclude_titles_regex: null,
+  exclude_emails: [],
   match_strategy: 'email_then_name',
 };
 
@@ -254,6 +256,13 @@ export function findMatchingMemberWithDiagnostics(
 // placeholder, otherwise null. Cancelled events are also returned (so callers
 // can flip the row's status) — the edge function decides what to do with the
 // status field afterwards.
+export function passesEmailExclusion(event: MinimalEvent, rules: CalendarSyncRules): boolean {
+  if (!rules.exclude_emails || rules.exclude_emails.length === 0) return true;
+  const excluded = new Set(rules.exclude_emails.map(e => e.trim().toLowerCase()));
+  const others = getOtherAttendees(event);
+  return !others.some(a => excluded.has(normaliseEmail(a.email)));
+}
+
 export function matchEventToMember(
   event: MinimalEvent,
   members: MinimalMember[],
@@ -261,6 +270,7 @@ export function matchEventToMember(
 ): MatchResult | null {
   if (!passesTitleFilters(event, rules)) return null;
   if (!passesAttendeeCap(event, rules)) return null;
+  if (!passesEmailExclusion(event, rules)) return null;
   return findMatchingMember(event, members, rules);
 }
 
