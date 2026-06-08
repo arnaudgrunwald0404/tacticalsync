@@ -500,7 +500,7 @@ CRITICAL RULES:
 You MUST respond with valid JSON (no markdown fences, no extra text) matching this structure:
 {
   "brief_markdown": "full brief in markdown (see template)",
-  "priorities": ["top priority 1", "top priority 2", "top priority 3"],
+  "priorities": ["priority 1", "priority 2", "priority 3", "priority 4", "priority 5"],
   "weekly_objectives": [
     {"title": "objective title", "activities": ["activity 1", "activity 2", "activity 3"]}
   ],
@@ -509,9 +509,9 @@ You MUST respond with valid JSON (no markdown fences, no extra text) matching th
 }
 
 NOTES:
-- "priorities" = top 3 items from Today's Focus
-- "weekly_objectives" = 3-5 objectives with 2-3 activities each
-- "weekly_objective_statuses": ONLY on Thursday/Friday, array of "done" | "in_progress" | "blocked" | "deferred". Otherwise null.
+- "priorities" = exactly 5 candidate items from Today's Focus, ranked by importance. The user will choose their top 3 from these.
+- "weekly_objectives" = exactly 5 candidate objectives with 2-3 activities each, ranked by importance. The user will choose their top 3.
+- "weekly_objective_statuses": ONLY on Thursday/Friday, array of "done" | "in_progress" | "blocked" | "deferred" for the top 3. Otherwise null.
 
 BRIEF TEMPLATE for brief_markdown:
 
@@ -527,7 +527,7 @@ Generated: [time] PT
 - **Why:** [1-2 sentences]
 - **Action:** [Specific next action]
 
-[3-5 items total]
+[exactly 5 items — user will select their top 3]
 
 ---
 
@@ -541,7 +541,7 @@ Activities:
 - **Source:** [My Lists | RCDO | etc.]
 - **Why:** [Why this week]
 
-[3-5 objectives]
+[exactly 5 objectives — user will select their top 3]
 
 ---
 

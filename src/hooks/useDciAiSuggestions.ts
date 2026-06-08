@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { format, startOfWeek } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -205,6 +206,73 @@ export function useDciBrief(): UseDciBriefReturn {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dirHandleRef = useRef<any>(null);
 
+  // ── Load from Supabase (cos_dci_logs.brief_markdown) ──────────────────
+  const loadFromSupabase = useCallback(async (): Promise<DciBriefData | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const mondayDate = getMondayOfWeek();
+      const isMonday = today === mondayDate;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+
+      // Fetch today's brief
+      const { data: todayLog } = await db
+        .from('cos_dci_logs')
+        .select('brief_markdown, brief_generated_at, date')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .not('brief_markdown', 'is', null)
+        .maybeSingle();
+
+      if (!todayLog?.brief_markdown) return null;
+
+      const parsed = parseBriefMarkdown(todayLog.brief_markdown);
+      parsed.generatedAt = todayLog.brief_generated_at ?? new Date().toISOString();
+      parsed.weeklySourceDate = today;
+
+      // On non-Monday: if today's brief has no weekly section, try Monday's
+      if (!isMonday && parsed.weeklyPriorities.length === 0) {
+        const { data: mondayLog } = await db
+          .from('cos_dci_logs')
+          .select('brief_markdown')
+          .eq('user_id', user.id)
+          .eq('date', mondayDate)
+          .not('brief_markdown', 'is', null)
+          .maybeSingle();
+
+        if (mondayLog?.brief_markdown) {
+          const mondayParsed = parseBriefMarkdown(mondayLog.brief_markdown);
+          if (mondayParsed.weeklyPriorities.length > 0) {
+            parsed.weeklyPriorities = mondayParsed.weeklyPriorities;
+            parsed.weeklySourceDate = mondayDate;
+          }
+        }
+      }
+
+      return { ...parsed, source: 'api' };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Auto-load from Supabase on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      const sbBrief = await loadFromSupabase();
+      if (!cancelled && sbBrief) {
+        setBrief(sbBrief);
+      }
+      if (!cancelled) setIsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [loadFromSupabase]);
+
   const loadFromLocalFiles = useCallback(async (): Promise<DciBriefData | null> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fsApi = (window as any).showDirectoryPicker;
@@ -257,13 +325,21 @@ export function useDciBrief(): UseDciBriefReturn {
     setError(null);
 
     try {
+      // Try Supabase first (automated brief)
+      const sbBrief = await loadFromSupabase();
+      if (sbBrief) {
+        setBrief(sbBrief);
+        return;
+      }
+
+      // Fall back to local files
       const localBrief = await loadFromLocalFiles();
       if (localBrief) {
         setBrief(localBrief);
         return;
       }
 
-      setError('No DCI brief found for today. Generate one with Claude Code, then open the dci-briefs folder.');
+      setError('No DCI brief found for today. Enable automated briefs or generate one with Claude Code.');
       setBrief(null);
     } catch (err) {
       console.error('DCI brief load error:', err);
@@ -271,28 +347,29 @@ export function useDciBrief(): UseDciBriefReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [loadFromLocalFiles]);
+  }, [loadFromLocalFiles, loadFromSupabase]);
 
   const refreshBrief = useCallback(async () => {
-    if (dirHandleRef.current) {
-      setIsLoading(true);
-      setError(null);
-      try {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Try Supabase first
+      const sbBrief = await loadFromSupabase();
+      if (sbBrief) { setBrief(sbBrief); setIsLoading(false); return; }
+
+      // Try local files
+      if (dirHandleRef.current) {
         const refreshed = await loadFromLocalFiles();
-        if (refreshed) {
-          setBrief(refreshed);
-        } else {
-          setError('No updated brief found. Re-generate with Claude Code.');
-        }
-      } catch {
-        setError('Failed to refresh brief.');
-      } finally {
-        setIsLoading(false);
+        if (refreshed) { setBrief(refreshed); setIsLoading(false); return; }
       }
-    } else {
-      await loadBrief();
+
+      setError('No updated brief found.');
+    } catch {
+      setError('Failed to refresh brief.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [loadBrief, loadFromLocalFiles]);
+  }, [loadFromLocalFiles, loadFromSupabase]);
 
   return {
     brief,

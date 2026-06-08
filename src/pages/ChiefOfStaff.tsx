@@ -710,6 +710,72 @@ export default function ChiefOfStaff() {
   );
 }
 
+// ── Inline editable text for DCI cells ────────────────────────────────────────
+
+function DciEditableText({
+  value,
+  onSave,
+  className,
+  placeholder = 'Enter text...',
+}: {
+  value: string | null;
+  onSave: (newValue: string) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed !== (value ?? '').trim()) {
+      onSave(trimmed);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); }
+        }}
+        className={cn(
+          'w-full bg-transparent border-b border-primary/30 outline-none text-xs leading-snug font-medium px-0 py-0',
+          className,
+        )}
+        placeholder={placeholder}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={() => { setDraft(value ?? ''); setEditing(true); }}
+      className={cn(
+        'cursor-pointer hover:bg-primary/5 rounded px-0.5 -mx-0.5 transition-colors',
+        className,
+      )}
+      title="Click to edit"
+    >
+      {value || <span className="text-muted-foreground/40 italic">{placeholder}</span>}
+    </span>
+  );
+}
+
 // ── DCI Tab Content (weekly matrix + today's brief) ─────────────────────────
 
 const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -949,7 +1015,7 @@ function DciTabContent({
       )}
 
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
-      <div className="grid grid-cols-[2fr_5fr] gap-3">
+      <div className="grid grid-cols-[2fr_5fr] gap-3 items-stretch">
       <Card>
         <CardContent className="p-0">
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
@@ -985,7 +1051,7 @@ function DciTabContent({
               const STATUS_DOT: Record<string, string> = { done: 'bg-emerald-500', in_progress: 'bg-amber-400', draft: 'bg-muted-foreground/30', not_done: 'bg-destructive/60', at_risk: 'bg-amber-500' };
 
               return (
-                <div className="min-h-[200px] flex flex-col">
+                <div className="flex flex-col h-full">
                   {/* Header with arrows */}
                   <div className={cn('px-3 py-2.5 border-b border-border flex items-center justify-between', cfg.bgHeader)}>
                     <button
@@ -1014,18 +1080,30 @@ function DciTabContent({
                       <div className="flex-1 flex items-center justify-center">
                         <span className="text-[10px] text-muted-foreground/40">No {cfg.sub.toLowerCase()} set</span>
                       </div>
-                    ) : tierItems.map((item, rowIdx) => (
+                    ) : tierItems.map((item, rowIdx) => {
+                      const weeklyObjKey = ['weekly_obj_1', 'weekly_obj_2', 'weekly_obj_3'][rowIdx] as 'weekly_obj_1' | 'weekly_obj_2' | 'weekly_obj_3';
+                      const canEditWeeklyObj = carouselTier === 'weekly' && !previewWeekly && hasWeeklyObjsSet && weeklyObjectivesLog;
+                      return (
                       <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
                         <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
                           {rowIdx + 1}
                         </span>
                         <div className="min-w-0">
+                          {canEditWeeklyObj ? (
+                            <DciEditableText
+                              value={item.text}
+                              onSave={(newText) => onUpdateLog(weeklyObjectivesLog!.id, { [weeklyObjKey]: newText || null })}
+                              className="text-xs leading-snug font-medium"
+                              placeholder="Add objective..."
+                            />
+                          ) : (
                           <span className={cn(
                             'text-xs leading-snug font-medium',
                             carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
                           )}>
                             {item.text}
                           </span>
+                          )}
                           {/* Weekly: show activities */}
                           {item.activities && (item.activities as string[]).length > 0 && (
                             <ul className="mt-0.5">
@@ -1049,7 +1127,8 @@ function DciTabContent({
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Footer */}
@@ -1092,7 +1171,7 @@ function DciTabContent({
                 <div
                   key={day.date}
                   className={cn(
-                    'min-h-[200px] flex flex-col',
+                    'flex flex-col',
                     isTodayCol && 'bg-copper/[0.03]',
                     isFuture && 'opacity-40',
                   )}
@@ -1115,25 +1194,39 @@ function DciTabContent({
                   <div className="flex-1 flex flex-col divide-y divide-border/50">
                     {[0, 1, 2].map(rowIdx => {
                       const text = displayPriorities[rowIdx];
+                      const priorityKey = ['priority_1', 'priority_2', 'priority_3'][rowIdx] as 'priority_1' | 'priority_2' | 'priority_3';
+                      const canEdit = day.isLogged && day.log;
                       return (
                         <div
                           key={rowIdx}
                           className={cn(
                             'flex-1 px-3 py-2.5 flex items-start gap-2',
-                            !text && 'items-center justify-center',
+                            !text && !canEdit && 'items-center justify-center',
                           )}
                         >
-                          {text ? (
+                          {text || canEdit ? (
                             <>
                               <span className="flex-shrink-0 w-5 h-5 rounded-full bg-copper/10 text-copper text-[10px] font-bold flex items-center justify-center mt-0.5">
                                 {rowIdx + 1}
                               </span>
-                              <span className={cn(
-                                'text-xs leading-snug',
-                                showBriefPreview ? 'text-muted-foreground italic' : 'text-foreground font-medium',
-                              )}>
-                                {text}
-                              </span>
+                              {canEdit ? (
+                                <DciEditableText
+                                  value={text}
+                                  onSave={(newText) => onUpdateLog(day.log!.id, { [priorityKey]: newText || null })}
+                                  className={cn(
+                                    'text-xs leading-snug',
+                                    showBriefPreview ? 'text-muted-foreground italic' : 'text-foreground font-medium',
+                                  )}
+                                  placeholder="Add priority..."
+                                />
+                              ) : (
+                                <span className={cn(
+                                  'text-xs leading-snug',
+                                  showBriefPreview ? 'text-muted-foreground italic' : 'text-foreground font-medium',
+                                )}>
+                                  {text}
+                                </span>
+                              )}
                             </>
                           ) : (
                             <span className="text-[10px] text-muted-foreground/30">—</span>
@@ -3093,7 +3186,19 @@ function DciHistory({ logs, onUpdate }: {
                                   {rowIdx + 1}
                                 </span>
                                 <div className="min-w-0 flex-1">
-                                  <span className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
+                                  {weeklyObjLog ? (
+                                    <DciEditableText
+                                      value={obj.text}
+                                      onSave={(newText) => {
+                                        const objKey = ['weekly_obj_1', 'weekly_obj_2', 'weekly_obj_3'][rowIdx];
+                                        onUpdate(weeklyObjLog.id, { [objKey]: newText || null });
+                                      }}
+                                      className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}
+                                      placeholder="Add objective..."
+                                    />
+                                  ) : (
+                                    <span className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
+                                  )}
                                   {obj.activities && (obj.activities as string[]).length > 0 && (
                                     <ul className="mt-0.5">
                                       {(obj.activities as string[]).map((a, j) => (
@@ -3150,19 +3255,30 @@ function DciHistory({ logs, onUpdate }: {
                                       className={cn('flex-1 px-3 py-2.5 border-l-4', !p.text && 'flex items-center justify-center')}
                                       style={{ borderLeftColor: statusCfg ? statusCfg.borderColor : 'transparent' }}
                                     >
-                                      {p.text ? (
+                                      {p.text || log ? (
                                         <div className="flex items-start gap-2">
                                           <span className="flex-shrink-0 w-5 h-5 rounded-full bg-copper/10 text-copper text-[10px] font-bold flex items-center justify-center mt-0.5">
                                             {rowIdx + 1}
                                           </span>
                                           <div className="min-w-0 flex-1">
-                                            <span className={cn('text-xs leading-snug font-medium', p.status === 'done' && 'line-through text-muted-foreground')}>{p.text}</span>
+                                            {log ? (
+                                              <DciEditableText
+                                                value={p.text}
+                                                onSave={(newText) => onUpdate(log.id, { [priorityKeys[rowIdx]]: newText || null })}
+                                                className={cn('text-xs leading-snug font-medium', p.status === 'done' && 'line-through text-muted-foreground')}
+                                                placeholder="Add priority..."
+                                              />
+                                            ) : (
+                                              <span className={cn('text-xs leading-snug font-medium', p.status === 'done' && 'line-through text-muted-foreground')}>{p.text}</span>
+                                            )}
+                                            {p.text && (
                                             <div className="mt-1">
                                               <DciStatusPill
                                                 status={p.status}
                                                 onCycle={() => log && onUpdate(log.id, { [p.statusKey]: cycleStatus(p.status) })}
                                               />
                                             </div>
+                                            )}
                                           </div>
                                         </div>
                                       ) : (
