@@ -43,6 +43,7 @@ import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/match
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
+import PrepSetupWizard from '@/components/cos/PrepSetupWizard';
 import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -3502,6 +3503,8 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [teamView, setTeamView] = useState<'calendar' | 'map'>('calendar');
+  const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
 
   const loadCalendarState = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -3509,7 +3512,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes, prepScheduleRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3530,7 +3533,17 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: [], error: null })),
       db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
+      db.from('cos_prep_schedule').select('enabled').eq('user_id', user.id).maybeSingle()
+        .then((r: { data: unknown; error: unknown }) => r)
+        .catch(() => ({ data: null, error: null })),
     ]);
+
+    // Check if prep schedule is configured — show wizard if not
+    const scheduleRow = prepScheduleRes?.data as { enabled: boolean } | null;
+    setPrepScheduleConfigured(scheduleRow?.enabled === true);
+    if (!scheduleRow) {
+      setShowSetupWizard(true);
+    }
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
@@ -3964,7 +3977,16 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
 
   return (
     <>
-      {teamView === 'calendar' ? (
+      {showSetupWizard && prepScheduleConfigured === false ? (
+        <PrepSetupWizard
+          calendarAlreadyConnected={calendarConnected}
+          onComplete={() => {
+            setShowSetupWizard(false);
+            setPrepScheduleConfigured(true);
+            loadCalendarState();
+          }}
+        />
+      ) : teamView === 'calendar' ? (
         <OneOnOnesView
           members={members}
           loadingPrep={loadingPrep}
