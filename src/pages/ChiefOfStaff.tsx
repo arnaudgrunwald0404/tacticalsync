@@ -62,6 +62,7 @@ interface CosPriority {
   updated_at: string;
   done_at: string | null;
   archived_at: string | null;
+  flagged: boolean;
 }
 
 type DciItemStatus = 'done' | 'in_progress' | 'blocked' | 'deferred';
@@ -89,6 +90,9 @@ interface CosDciLog {
   weekly_obj_1_activities: string[] | null;
   weekly_obj_2_activities: string[] | null;
   weekly_obj_3_activities: string[] | null;
+  weekly_obj_1_status: DciItemStatus | null;
+  weekly_obj_2_status: DciItemStatus | null;
+  weekly_obj_3_status: DciItemStatus | null;
 }
 
 interface CosTeamMember {
@@ -120,6 +124,7 @@ interface CosPersonTopic {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  flagged: boolean;
 }
 
 type CategoryKey = string;
@@ -1188,7 +1193,7 @@ function DciTabContent({
 
       {/* History */}
       <div className="border-t pt-8">
-        <DciHistory logs={dciLogs} onUpdate={onUpdateLog} onRerun={onRerun} />
+        <DciHistory logs={dciLogs} onUpdate={updateDciLog} />
       </div>
     </div>
   );
@@ -1836,6 +1841,7 @@ function AccountabilityRow({
 
 function PersonTopicCard({
   topic, autoFocus, onAutoFocusConsumed, onUpdate, onDelete, statusOptions,
+  onToggleFlagged,
 }: {
   topic: CosPersonTopic;
   autoFocus?: boolean;
@@ -1843,6 +1849,7 @@ function PersonTopicCard({
   onUpdate: (id: string, updates: Partial<CosPersonTopic>) => void;
   onDelete: (id: string) => void;
   statusOptions: string[];
+  onToggleFlagged?: (id: string, flagged: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(topic.text);
@@ -1853,6 +1860,9 @@ function PersonTopicCard({
     setEditText('');
     onAutoFocusConsumed?.();
   }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const save = () => {
     const trimmed = editText.trim();
@@ -1869,8 +1879,42 @@ function PersonTopicCard({
   const statusIdx = topic.status ? statusOptions.indexOf(topic.status) : -1;
   const statusColor = statusIdx >= 0 ? STATUS_BADGE_COLORS[statusIdx % STATUS_BADGE_COLORS.length] : null;
 
+  const handleStatusPointerDown = () => {
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      setStatusMenuOpen(true);
+    }, 500);
+  };
+  const handleStatusPointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+      cycleStatus();
+    }
+  };
+  const handleStatusPointerLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const isFlagged = topic.flagged ?? false;
+
   return (
-    <div className="flex items-center gap-1.5 group/topic py-0.5">
+    <div className={cn(
+      'flex items-center gap-1.5 group/topic py-0.5 relative rounded-sm',
+      isFlagged ? 'border-l-[4px] border-l-red-500 pl-1.5' : 'pl-0',
+    )}>
+      {/* Left-border flag toggle hit target */}
+      <button
+        aria-label={isFlagged ? 'Remove red-hot flag' : 'Flag as red hot'}
+        onClick={() => onToggleFlagged?.(topic.id, !isFlagged)}
+        className={cn(
+          'absolute inset-y-0 left-0 cursor-pointer z-10',
+          isFlagged ? 'w-2' : 'w-1.5',
+        )}
+      />
       {editing ? (
         <>
           <Input
@@ -1898,16 +1942,58 @@ function PersonTopicCard({
           >
             {topic.text || <span className="text-muted-foreground/60 italic">Click to add</span>}
           </button>
-          <button
-            onClick={cycleStatus}
-            title={topic.status ? `Status: ${topic.status} — click to advance` : 'Click to set status'}
-            className={cn(
-              'text-xs font-medium px-1.5 py-0.5 rounded border transition-colors flex-shrink-0',
-              statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
+          <div className="relative flex-shrink-0">
+            <button
+              onPointerDown={handleStatusPointerDown}
+              onPointerUp={handleStatusPointerUp}
+              onPointerLeave={handleStatusPointerLeave}
+              title={topic.status ? `Status: ${topic.status} — click to advance, hold for options` : 'Click to set status, hold for options'}
+              className={cn(
+                'text-xs font-medium px-1.5 py-0.5 rounded border transition-colors select-none',
+                statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
+              )}
+            >
+              {topic.status ?? '·'}
+            </button>
+            {statusMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setStatusMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-md border bg-popover p-1 shadow-md">
+                  {statusOptions.map((opt, i) => (
+                    <button
+                      key={opt}
+                      onClick={() => { onUpdate(topic.id, { status: opt }); setStatusMenuOpen(false); }}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs hover:bg-accent',
+                        topic.status === opt && 'font-semibold',
+                      )}
+                    >
+                      <span className={cn('h-2 w-2 rounded-full', STATUS_BADGE_COLORS[i % STATUS_BADGE_COLORS.length].split(' ')[0])} />
+                      {opt}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => { onUpdate(topic.id, { status: null }); setStatusMenuOpen(false); }}
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                    Clear status
+                  </button>
+                  <div className="my-1 border-t border-border" />
+                  <button
+                    onClick={() => { onToggleFlagged?.(topic.id, !isFlagged); setStatusMenuOpen(false); }}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs hover:bg-accent',
+                      isFlagged ? 'text-red-600 font-semibold' : 'text-red-500',
+                    )}
+                  >
+                    <span className={cn('h-2 w-2 rounded-full', isFlagged ? 'bg-red-500' : 'bg-red-300')} />
+                    {isFlagged ? 'Remove red hot' : 'Flag as red hot'}
+                  </button>
+                </div>
+              </>
             )}
-          >
-            {topic.status ?? '·'}
-          </button>
+          </div>
           <button
             onClick={() => onDelete(topic.id)}
             className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover/topic:opacity-100 transition-opacity flex-shrink-0"
@@ -2062,6 +2148,7 @@ function PersonSectionCard({
                   onUpdate={onUpdateTopic}
                   onDelete={onDeleteTopic}
                   statusOptions={statusOptions}
+                  onToggleFlagged={(id, flagged) => onUpdateTopic(id, { flagged })}
                 />
               ))}
               {topics.length === 0 && (
@@ -2088,6 +2175,7 @@ function PersonSectionCard({
                       onUpdate={onUpdateTopic}
                       onDelete={onDeleteTopic}
                       statusOptions={statusOptions}
+                      onToggleFlagged={(id, flagged) => onUpdateTopic(id, { flagged })}
                     />
                   ))}
                   {provided.placeholder}
@@ -2286,6 +2374,7 @@ function CategoryBucket({
               statusOptions={statusOptions}
               autoEdit={item.id === newlyAddedId}
               onAutoEditConsumed={onNewlyAddedConsumed}
+              onToggleFlagged={(id, flagged) => onUpdate(id, { flagged })}
             />
           ) : (
             <DraggablePriorityCard
@@ -2370,6 +2459,7 @@ function DraggablePriorityCard({
             statusOptions={statusOptions}
             autoEdit={autoEdit}
             onAutoEditConsumed={onAutoEditConsumed}
+            onToggleFlagged={(id, flagged) => onUpdate(id, { flagged })}
           />
         </div>
       )}
@@ -2608,6 +2698,7 @@ const STATUS_BADGE_COLORS = [
 
 function PriorityCard({
   item, dragListeners, dragAttributes, onUpdate, onDelete, onPermanentDelete, onCopy, isTagged, statusOptions, autoEdit, onAutoEditConsumed,
+  onToggleFlagged,
 }: {
   item: CosPriority;
   dragListeners?: Record<string, unknown> | null;
@@ -2620,6 +2711,7 @@ function PriorityCard({
   statusOptions: string[];
   autoEdit?: boolean;
   onAutoEditConsumed?: () => void;
+  onToggleFlagged?: (id: string, flagged: boolean) => void;
 }) {
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -2639,6 +2731,9 @@ function PriorityCard({
   const [editNotes, setEditNotes] = useState(item.notes ?? '');
   const [agentQuery, setAgentQuery] = useState('');
 
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const cycleStatus = () => {
     const idx = item.status ? statusOptions.indexOf(item.status) : -1;
     const next = idx < statusOptions.length - 1 ? statusOptions[idx + 1] : null;
@@ -2647,10 +2742,32 @@ function PriorityCard({
   const statusIdx = item.status ? statusOptions.indexOf(item.status) : -1;
   const statusColor = statusIdx >= 0 ? STATUS_BADGE_COLORS[statusIdx % STATUS_BADGE_COLORS.length] : null;
 
+  const handleStatusPointerDown = () => {
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      setStatusMenuOpen(true);
+    }, 500);
+  };
+  const handleStatusPointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+      cycleStatus();
+    }
+  };
+  const handleStatusPointerLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const isFlagged = item.flagged ?? false;
+
   const saveText = () => {
     const trimmed = editText.trim();
     if (trimmed && trimmed !== item.text) onUpdate(item.id, { text: trimmed });
-    else if (!trimmed && !item.text) onDelete(item.id); // cancelled new item with no text
+    else if (!trimmed && !item.text) onDelete(item.id);
     setEditing(false);
   };
 
@@ -2666,7 +2783,16 @@ function PriorityCard({
   };
 
   return (
-    <Card ref={cardRef} className="group border border-border/50 hover:border-border transition-colors">
+    <Card ref={cardRef} className={cn(
+      'group relative border border-border/50 hover:border-border transition-colors',
+      isFlagged && 'border-l-[5px] border-l-red-500',
+    )}>
+      {/* Left-border flag toggle hit target */}
+      <button
+        aria-label={isFlagged ? 'Remove red-hot flag' : 'Flag as red hot'}
+        onClick={() => onToggleFlagged?.(item.id, !isFlagged)}
+        className="absolute inset-y-0 left-0 w-3 cursor-pointer rounded-l-md z-10"
+      />
       <CardContent className="p-3">
         <div className="flex items-center gap-1.5">
           {/* Drag handle — hidden on mobile so the left edge stays scrollable */}
@@ -2771,13 +2897,15 @@ function PriorityCard({
           </div>
 
           {/* Right controls — status stacked above chevron */}
-          <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+          <div className="flex flex-col items-center gap-0.5 flex-shrink-0 relative">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={cycleStatus}
+                  onPointerDown={handleStatusPointerDown}
+                  onPointerUp={handleStatusPointerUp}
+                  onPointerLeave={handleStatusPointerLeave}
                   className={cn(
-                    'text-[10px] font-medium px-1.5 py-px rounded border transition-colors truncate text-center leading-tight',
+                    'text-[10px] font-medium px-1.5 py-px rounded border transition-colors truncate text-center leading-tight select-none',
                     statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
                   )}
                 >
@@ -2786,9 +2914,47 @@ function PriorityCard({
               </TooltipTrigger>
               <TooltipContent side="left">
                 <p className="font-medium text-xs">{item.status ? STATUS_LABEL_MAP[item.status] ?? item.status : 'No status'}</p>
-                <p className="text-xs text-muted-foreground">Click to advance</p>
+                <p className="text-xs text-muted-foreground">Click to advance · hold for options</p>
               </TooltipContent>
             </Tooltip>
+            {statusMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setStatusMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-md border bg-popover p-1 shadow-md">
+                  {statusOptions.map((opt, i) => (
+                    <button
+                      key={opt}
+                      onClick={() => { onUpdate(item.id, { status: opt }); setStatusMenuOpen(false); }}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs hover:bg-accent',
+                        item.status === opt && 'font-semibold',
+                      )}
+                    >
+                      <span className={cn('h-2 w-2 rounded-full', STATUS_BADGE_COLORS[i % STATUS_BADGE_COLORS.length].split(' ')[0])} />
+                      {opt}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => { onUpdate(item.id, { status: null }); setStatusMenuOpen(false); }}
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                    Clear status
+                  </button>
+                  <div className="my-1 border-t border-border" />
+                  <button
+                    onClick={() => { onToggleFlagged?.(item.id, !isFlagged); setStatusMenuOpen(false); }}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-xs hover:bg-accent',
+                      isFlagged ? 'text-red-600 font-semibold' : 'text-red-500',
+                    )}
+                  >
+                    <span className={cn('h-2 w-2 rounded-full', isFlagged ? 'bg-red-500' : 'bg-red-300')} />
+                    {isFlagged ? 'Remove red hot' : 'Flag as red hot'}
+                  </button>
+                </div>
+              </>
+            )}
             <button
               onClick={() => setExpanded(!expanded)}
               className="p-1 text-muted-foreground hover:text-foreground"
@@ -2805,158 +2971,66 @@ function PriorityCard({
 
 // ── DCI History ───────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS: { value: DciItemStatus; label: string; color: string }[] = [
-  { value: 'done',        label: '✅ Done',        color: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400' },
-  { value: 'in_progress', label: '🔄 In Progress', color: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400' },
-  { value: 'blocked',     label: '🚫 Blocked',     color: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-400' },
-  { value: 'deferred',    label: '⏭️ Deferred',   color: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-400' },
-];
+const DCI_STATUS_CYCLE: (DciItemStatus | null)[] = [null, 'done', 'in_progress', 'blocked', 'deferred'];
 
-function DciLogItem({
-  index, text, status, comment, onStatusChange, onCommentChange,
-}: {
-  index: number;
-  text: string;
-  status: DciItemStatus | null;
-  comment: string | null;
-  onStatusChange: (s: DciItemStatus | null) => void;
-  onCommentChange: (c: string) => void;
-}) {
-  const [localComment, setLocalComment] = useState(comment ?? '');
+const DCI_CELL_STATUS: Record<DciItemStatus, { label: string; pill: string; border: string }> = {
+  done:        { label: 'Done',        pill: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', border: 'border-l-green-500' },
+  in_progress: { label: 'In progress', pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',   border: 'border-l-blue-500' },
+  blocked:     { label: 'Blocked',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',       border: 'border-l-red-500' },
+  deferred:    { label: 'Deferred',    pill: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',      border: 'border-l-gray-400' },
+};
 
+function DciStatusPill({ status, onCycle }: { status: DciItemStatus | null; onCycle: () => void }) {
+  if (!status) {
+    return (
+      <button
+        onClick={onCycle}
+        className="text-[9px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+      >
+        + status
+      </button>
+    );
+  }
+  const cfg = DCI_CELL_STATUS[status];
   return (
-    <div className="space-y-2">
-      <div className="flex items-start gap-2">
-        <span className="flex-shrink-0 w-5 text-xs text-muted-foreground mt-0.5">{index}.</span>
-        <div className="flex-1 min-w-0 space-y-2">
-          <p className={cn('text-sm font-medium leading-snug', status === 'done' && 'line-through text-muted-foreground')}>
-            {text}
-          </p>
-          {/* Status picker */}
-          <div className="flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => onStatusChange(status === opt.value ? null : opt.value)}
-                className={cn(
-                  'text-sm px-3 py-2 rounded-full border transition-all touch-manipulation',
-                  status === opt.value
-                    ? opt.color
-                    : 'bg-transparent text-muted-foreground border-border hover:border-foreground/40',
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {/* Comment field — shown when status set or comment exists */}
-          {(status || localComment) && (
-            <Textarea
-              value={localComment}
-              onChange={e => setLocalComment(e.target.value)}
-              onBlur={() => onCommentChange(localComment)}
-              placeholder="Add a note..."
-              rows={2}
-              className="text-sm resize-none"
-            />
-          )}
-        </div>
-      </div>
-    </div>
+    <button
+      onClick={onCycle}
+      className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full transition-colors', cfg.pill)}
+    >
+      {cfg.label}
+    </button>
   );
 }
 
-function DciLogCard({ log, onUpdate, onRerun, defaultExpanded = false }: {
-  log: CosDciLog;
-  onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: (log: CosDciLog) => void;
-  defaultExpanded?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const items = [
-    { text: log.priority_1, statusKey: 'priority_1_status' as const, commentKey: 'priority_1_comment' as const, status: log.priority_1_status, comment: log.priority_1_comment },
-    { text: log.priority_2, statusKey: 'priority_2_status' as const, commentKey: 'priority_2_comment' as const, status: log.priority_2_status, comment: log.priority_2_comment },
-    { text: log.priority_3, statusKey: 'priority_3_status' as const, commentKey: 'priority_3_comment' as const, status: log.priority_3_status, comment: log.priority_3_comment },
-  ].filter(i => i.text);
-
-  const doneCount = items.filter(i => i.status === 'done').length;
-  const hasAnyStatus = items.some(i => i.status);
-
-  return (
-    <Card className={cn('transition-colors', hasAnyStatus && 'border-primary/20')}>
-      <CardContent className="p-4">
-        {/* Header row */}
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold">
-              {format(new Date(log.date + 'T12:00:00'), 'EEEE, MMM d yyyy')}
-            </p>
-            {hasAnyStatus && (
-              <Badge variant="secondary" className="text-xs">
-                {doneCount}/{items.length} done
-              </Badge>
-            )}
-          </div>
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label={expanded ? 'Collapse' : 'Expand'}
-          >
-            <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
-          </button>
-        </div>
-
-        {/* Priority items */}
-        <div className="space-y-3">
-          {items.map((item, i) => (
-            <DciLogItem
-              key={i}
-              index={i + 1}
-              text={item.text!}
-              status={item.status}
-              comment={item.comment}
-              onStatusChange={s => onUpdate(log.id, { [item.statusKey]: s })}
-              onCommentChange={c => onUpdate(log.id, { [item.commentKey]: c || null })}
-            />
-          ))}
-        </div>
-
-        {log.topic_raised && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <span className="text-xs text-muted-foreground">Topic raised: </span>
-            <span className="text-sm">{log.topic_raised}</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="mt-4 pt-3 border-t border-border/50">
-          <Button
-            variant="outline"
-            className="h-10 text-sm w-full sm:w-auto"
-            onClick={() => onRerun(log)}
-          >
-            🔄 Rerun Daily Check-in
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DciHistory({ logs, onUpdate, onRerun }: {
+function DciHistory({ logs, onUpdate }: {
   logs: CosDciLog[];
   onUpdate: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: (log: CosDciLog) => void;
 }) {
-  const totalDone = logs.reduce((acc, log) => {
-    return acc + [log.priority_1_status, log.priority_2_status, log.priority_3_status].filter(s => s === 'done').length;
-  }, 0);
+  const [showAll, setShowAll] = useState(false);
+  const weeks = React.useMemo(() => {
+    const map = new Map<string, { monday: Date; logs: Map<string, CosDciLog> }>();
+    for (const log of logs) {
+      const d = new Date(log.date + 'T12:00:00');
+      const mon = startOfWeek(d, { weekStartsOn: 1 });
+      const key = format(mon, 'yyyy-MM-dd');
+      if (!map.has(key)) map.set(key, { monday: mon, logs: new Map() });
+      map.get(key)!.logs.set(log.date, log);
+    }
+    return Array.from(map.values()).sort((a, b) => b.monday.getTime() - a.monday.getTime());
+  }, [logs]);
+
+  const cycleStatus = (current: DciItemStatus | null): DciItemStatus | null => {
+    const idx = DCI_STATUS_CYCLE.indexOf(current);
+    return DCI_STATUS_CYCLE[(idx + 1) % DCI_STATUS_CYCLE.length];
+  };
+
+  const visibleWeeks = showAll ? weeks : weeks.slice(0, 3);
+  const hiddenCount = weeks.length - 3;
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Daily Check-in History</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">{logs.length} brief{logs.length !== 1 ? 's' : ''} logged</p>
       </div>
 
       {logs.length === 0 ? (
@@ -2966,35 +3040,158 @@ function DciHistory({ logs, onUpdate, onRerun }: {
           </CardContent>
         </Card>
       ) : (
-        <>
-          {logs.length >= 2 && (
-            <Card className="bg-muted/40 border-dashed">
-              <CardContent className="p-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick stats</p>
-                <div className="flex gap-6 text-sm">
-                  <div>
-                    <span className="font-semibold">{logs.length}</span>
-                    <span className="text-muted-foreground ml-1">briefs</span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">{totalDone}</span>
-                    <span className="text-muted-foreground ml-1">items marked done</span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">{logs.filter(l => l.topic_raised).length}</span>
-                    <span className="text-muted-foreground ml-1">had topics raised</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        <div className="space-y-4">
+          {visibleWeeks.map(({ monday, logs: weekLogs }) => {
+            const fri = addDays(monday, 4);
+            const weekDates = Array.from({ length: 5 }, (_, i) => format(addDays(monday, i), 'yyyy-MM-dd'));
+            const weeklyObjLog = weekDates
+              .map(d => weekLogs.get(d))
+              .find((l): l is CosDciLog => !!l && !!(l.weekly_obj_1 || l.weekly_obj_2 || l.weekly_obj_3));
+            const weeklyObjs = weeklyObjLog
+              ? [
+                  { text: weeklyObjLog.weekly_obj_1, statusKey: 'weekly_obj_1_status' as const, status: weeklyObjLog.weekly_obj_1_status, activities: weeklyObjLog.weekly_obj_1_activities },
+                  { text: weeklyObjLog.weekly_obj_2, statusKey: 'weekly_obj_2_status' as const, status: weeklyObjLog.weekly_obj_2_status, activities: weeklyObjLog.weekly_obj_2_activities },
+                  { text: weeklyObjLog.weekly_obj_3, statusKey: 'weekly_obj_3_status' as const, status: weeklyObjLog.weekly_obj_3_status, activities: weeklyObjLog.weekly_obj_3_activities },
+                ].filter(o => o.text)
+              : [];
 
-          <div className="space-y-3">
-            {logs.map((log, i) => (
-              <DciLogCard key={log.id} log={log} onUpdate={onUpdate} onRerun={onRerun} defaultExpanded={i === 0} />
-            ))}
-          </div>
-        </>
+            return (
+              <div key={format(monday, 'yyyy-MM-dd')}>
+                <p className="text-sm text-muted-foreground mb-1.5">
+                  Week of {format(monday, 'MMM d')} – {format(fri, 'MMM d')}
+                </p>
+                <div className="grid grid-cols-[2fr_5fr] gap-3">
+                  {/* Left card — Weekly Objectives */}
+                  <Card>
+                    <CardContent className="p-0">
+                      <div className="min-h-[200px] flex flex-col">
+                        <div className="px-3 py-2.5 border-b border-border bg-primary/10">
+                          <div className="text-center">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Weekly</p>
+                            <p className="text-[9px] mt-0.5 text-primary/70">Objectives</p>
+                          </div>
+                        </div>
+                        <div className="flex-1 flex flex-col divide-y divide-border/50">
+                          {weeklyObjs.length === 0 ? (
+                            <div className="flex-1 flex items-center justify-center">
+                              <span className="text-[10px] text-muted-foreground/40">No objectives set</span>
+                            </div>
+                          ) : weeklyObjs.map((obj, rowIdx) => {
+                            const statusCfg = obj.status ? DCI_CELL_STATUS[obj.status] : null;
+                            return (
+                              <div
+                                key={rowIdx}
+                                className={cn(
+                                  'flex-1 px-3 py-2.5 flex items-start gap-2 border-l-2',
+                                  statusCfg ? statusCfg.border : 'border-l-transparent',
+                                )}
+                              >
+                                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                  {rowIdx + 1}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <span className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
+                                  {obj.activities && (obj.activities as string[]).length > 0 && (
+                                    <ul className="mt-0.5">
+                                      {(obj.activities as string[]).map((a, j) => (
+                                        <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
+                                          <span className="mt-0.5">•</span><span>{a}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  <div className="mt-1">
+                                    <DciStatusPill
+                                      status={obj.status}
+                                      onCycle={() => weeklyObjLog && onUpdate(weeklyObjLog.id, { [obj.statusKey]: cycleStatus(obj.status) })}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Right card — Mon–Fri daily columns */}
+                  <Card>
+                    <CardContent className="p-0">
+                      <div className="grid grid-cols-5 divide-x divide-border">
+                        {weekDates.map((dateStr, dayIdx) => {
+                          const log = weekLogs.get(dateStr);
+                          const priorityKeys = ['priority_1', 'priority_2', 'priority_3'] as const;
+                          const statusKeys = ['priority_1_status', 'priority_2_status', 'priority_3_status'] as const;
+                          const priorities = log
+                            ? priorityKeys.map((k, i) => ({ text: log[k], status: log[statusKeys[i]], statusKey: statusKeys[i] }))
+                            : [{ text: null, status: null, statusKey: statusKeys[0] }, { text: null, status: null, statusKey: statusKeys[1] }, { text: null, status: null, statusKey: statusKeys[2] }];
+
+                          return (
+                            <div key={dateStr} className="min-h-[200px] flex flex-col">
+                              <div className="px-3 py-2.5 border-b border-border text-center">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  {DAY_LABELS_SHORT[dayIdx]}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  {format(addDays(monday, dayIdx), 'MMM d')}
+                                </p>
+                              </div>
+
+                              <div className="flex-1 flex flex-col divide-y divide-border/50">
+                                {priorities.map((p, rowIdx) => {
+                                  const statusCfg = p.status ? DCI_CELL_STATUS[p.status] : null;
+                                  return (
+                                    <div
+                                      key={rowIdx}
+                                      className={cn(
+                                        'flex-1 px-3 py-2.5 border-l-2',
+                                        statusCfg ? statusCfg.border : 'border-l-transparent',
+                                        !p.text && 'flex items-center justify-center',
+                                      )}
+                                    >
+                                      {p.text ? (
+                                        <div className="flex items-start gap-2">
+                                          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-copper/10 text-copper text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                            {rowIdx + 1}
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <span className={cn('text-xs leading-snug font-medium', p.status === 'done' && 'line-through text-muted-foreground')}>{p.text}</span>
+                                            <div className="mt-1">
+                                              <DciStatusPill
+                                                status={p.status}
+                                                onCycle={() => log && onUpdate(log.id, { [p.statusKey]: cycleStatus(p.status) })}
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[10px] text-muted-foreground/30">—</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            );
+          })}
+
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowAll(prev => !prev)}
+              className="w-full text-center text-sm text-muted-foreground hover:text-foreground py-2 transition-colors"
+            >
+              {showAll ? 'Show less' : `Show ${hiddenCount} older week${hiddenCount !== 1 ? 's' : ''}`}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
