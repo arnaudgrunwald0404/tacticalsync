@@ -111,8 +111,8 @@ serve(async (req) => {
       }
 
       const result = await resp.json()
-      console.log('StackOne /accounts raw response:', JSON.stringify(result).slice(0, 2000))
-      return json({ status: 'ok', accounts: result.data ?? [] })
+      const accounts = Array.isArray(result) ? result : (result.data ?? [])
+      return json({ status: 'ok', accounts })
     }
 
     // ── create_session: Create a StackOne Connect session for Hub embed ─────
@@ -143,30 +143,10 @@ serve(async (req) => {
       }
 
       const result = await resp.json()
-      console.log('StackOne create_session response:', JSON.stringify(result).slice(0, 2000))
       return json({ status: 'ok', session: result.data ?? result })
     }
 
-    // ── debug_sessions: List connect sessions to diagnose Hub issues ───────
-    if (action === 'debug_sessions') {
-      const apiKey = await getStoredKey()
-      if (!apiKey) return json({ error: 'not_configured' }, 400)
-
-      const resp = await fetch(`${STACKONE_API}/connect_sessions`, {
-        headers: stackoneHeaders(apiKey),
-        signal: AbortSignal.timeout(10_000),
-      })
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        return json({ status: 'error', error: `HTTP ${resp.status}: ${text.slice(0, 500)}` })
-      }
-
-      const result = await resp.json()
-      return json({ status: 'ok', sessions: result.data ?? result })
-    }
-
-    // ── disconnect: Clear stored API key ────────────────────────────────────
+// ── disconnect: Clear stored API key ────────────────────────────────────
     if (action === 'disconnect') {
       await supabase
         .from('cos_mcp_integrations')

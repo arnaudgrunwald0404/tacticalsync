@@ -74,6 +74,7 @@ interface OneOnOnesViewProps {
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
   toolbarPortalId?: string;
+  viewToggle?: React.ReactNode;
 }
 
 interface MyTodo {
@@ -111,7 +112,7 @@ const REL_STYLE: Partial<Record<MemberRelationshipType, RelStyle>> = {
   skip_level:    { label: 'Skip-level',    short: 'Skip',     rail: 'bg-violet-500', chipBg: 'bg-violet-50', chipFg: 'text-violet-700', avatarBg: 'bg-gradient-to-br from-violet-500 to-violet-700', dotColor: 'bg-violet-500' },
   collaborator:  { label: 'Collaborator',  short: 'Collab',   rail: 'bg-teal-600',  chipBg: 'bg-teal-50',   chipFg: 'text-teal-700',  avatarBg: 'bg-gradient-to-br from-teal-500 to-teal-700',   dotColor: 'bg-teal-600' },
   peer:          { label: 'Peer',          short: 'Peer',     rail: 'bg-gray-400',  chipBg: 'bg-gray-100',  chipFg: 'text-gray-600',  avatarBg: 'bg-gradient-to-br from-gray-400 to-gray-600',   dotColor: 'bg-gray-400' },
-  stakeholder:   { label: 'Stakeholder',   short: 'Stake',    rail: 'bg-slate-400', chipBg: 'bg-slate-50',  chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600', dotColor: 'bg-slate-400' },
+  stakeholder:   { label: 'Stakeholder',   short: 'Stakeholder',    rail: 'bg-slate-400', chipBg: 'bg-slate-50',  chipFg: 'text-slate-700', avatarBg: 'bg-gradient-to-br from-slate-400 to-slate-600', dotColor: 'bg-slate-400' },
   external:      { label: 'External',      short: 'External', rail: 'bg-stone-400', chipBg: 'bg-stone-50',  chipFg: 'text-stone-700', avatarBg: 'bg-gradient-to-br from-stone-400 to-stone-600', dotColor: 'bg-stone-400' },
 };
 
@@ -267,6 +268,7 @@ export function OneOnOnesView({
   onIncludeInPrep,
   onExcludeFromCalendar,
   toolbarPortalId,
+  viewToggle,
 }: OneOnOnesViewProps) {
   const [search, setSearch] = useState('');
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
@@ -429,8 +431,9 @@ export function OneOnOnesView({
   const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
 
   const toolbar = (
-    <div className="flex items-center w-full">
-      {/* Search — far left */}
+    <div className="flex items-center gap-3 w-full">
+      {/* View toggle + Search — left side */}
+      {viewToggle}
       <div className="relative w-56">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         <Input

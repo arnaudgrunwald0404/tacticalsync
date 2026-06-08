@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { format, startOfWeek, addDays, isToday as isDateToday } from 'date-fns';
+import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, FolderOpen,
+  Sparkles, Pencil, AlertCircle, Info, FolderOpen, Radar, CalendarPlus,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -37,8 +38,15 @@ import {
   sectionToCategoryKey, totalWidthPct, adjustColumnCount, migrateOldSettings,
 } from '@/types/cos';
 import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
+import { CoverageMap } from '@/components/cos/CoverageMap';
 import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
+import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
+import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
+import { useOnboardingState } from '@/hooks/useOnboardingState';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import CosSettingsPanel from '@/components/cos/CosSettingsPanel';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +140,9 @@ export default function ChiefOfStaff() {
   const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('priorities');
+  const { onboarding, loading: onboardingLoading, markComplete } = useOnboardingState();
+  const [showWelcomeCarousel, setShowWelcomeCarousel] = useState(false);
+  const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -168,6 +179,29 @@ export default function ChiefOfStaff() {
     }
     load();
   }, []);
+
+  // ── Welcome carousel trigger ──
+  useEffect(() => {
+    if (onboardingLoading || loading) return;
+    const isEmpty = priorities.length === 0 && teamMembers.length === 0
+      && accountabilities.length === 0 && personTopics.length === 0;
+    if (isEmpty && !onboarding.welcome) {
+      setShowWelcomeCarousel(true);
+    }
+  }, [onboardingLoading, loading, priorities, teamMembers, accountabilities, personTopics, onboarding.welcome]);
+
+  const handleCarouselClose = useCallback(() => {
+    setShowWelcomeCarousel(false);
+    markComplete('welcome');
+  }, [markComplete]);
+
+  const reloadSettings = useCallback(async () => {
+    if (!userId) return;
+    const db = supabase as any;
+    const { data } = await db.from('cos_settings').select('*').eq('user_id', userId).maybeSingle();
+    if (data?.status_options) setStatusOptions(data.status_options as string[]);
+    if (data?.layout_config) setLayoutConfig(data.layout_config as CosLayoutConfig);
+  }, [userId]);
 
   const copyToClipboard = useCallback(async (text: string, label = 'Copied — paste into Cowork') => {
     try {
@@ -521,6 +555,26 @@ export default function ChiefOfStaff() {
 
   return (
     <div className="container mx-auto px-6 py-6 max-w-7xl">
+      <WelcomeCarouselModal open={showWelcomeCarousel} onClose={handleCarouselClose} />
+
+      <Sheet open={configDrawerOpen} onOpenChange={setConfigDrawerOpen}>
+        <SheetContent side="right" className="sm:max-w-2xl w-full overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Configure My Lists</SheetTitle>
+            <SheetDescription>
+              Set up your columns and sections before adding items.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            <CosSettingsPanel onSaved={() => {
+              setConfigDrawerOpen(false);
+              markComplete('lists');
+              reloadSettings();
+            }} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-6">
           <h1 className="text-xl font-semibold mr-2">Chief of Staff</h1>
@@ -557,16 +611,25 @@ export default function ChiefOfStaff() {
               </div>
 
               <h3 className="font-heading text-xl sm:text-2xl font-bold text-cast-iron mb-2 text-center">
-                Your workspace is ready
+                Set up your workspace
               </h3>
               <p className="font-body text-sm sm:text-base text-titanium max-w-md text-center mb-6 leading-relaxed">
-                This is where you'll track priorities, commitments, and people topics. Add your first item to any column to get started.
+                Your workspace is organized into columns, each with sections like
+                "This Week", "Next Month", or custom categories.
+                We recommend configuring your layout first, then adding items.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 items-center">
                 <Button
+                  onClick={() => setConfigDrawerOpen(true)}
+                  className="bg-copper hover:bg-copper-hover text-white font-body h-10 px-6"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Configure columns & sections
+                </Button>
+
+                <button
                   onClick={() => {
-                    // Add a priority to the first enabled section
                     const firstSection = layoutConfig.columns
                       .flatMap(c => c.sections)
                       .find(s => s.enabled && s.type !== 'direct_reports');
@@ -574,19 +637,10 @@ export default function ChiefOfStaff() {
                       addPriority(sectionToCategoryKey(firstSection));
                     }
                   }}
-                  className="bg-copper hover:bg-copper-hover text-white font-body h-10 px-6"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add your first item
-                </Button>
-
-                <Link
-                  to="/settings?section=configure-my-lists"
                   className="inline-flex items-center gap-1.5 font-body text-sm text-titanium hover:text-cast-iron transition-colors underline underline-offset-2 decoration-titanium/30 hover:decoration-cast-iron/50"
                 >
-                  <Settings className="h-3.5 w-3.5" />
-                  Configure columns & sections
-                </Link>
+                  Skip, create my first item
+                </button>
               </div>
             </div>
           ) : (
@@ -846,15 +900,22 @@ function DciTabContent({
             </Button>
           )}
           {!hasBrief && !isLoading && !error && (
-            <Button
-              size="sm"
-              onClick={loadBrief}
-              disabled={isLoading}
-              className="bg-copper hover:bg-copper-hover text-white"
-            >
-              <FolderOpen className="h-4 w-4 mr-1.5" />
-              Load brief
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  onClick={loadBrief}
+                  disabled={isLoading}
+                  className="bg-copper hover:bg-copper-hover text-white"
+                >
+                  <FolderOpen className="h-4 w-4 mr-1.5" />
+                  Load brief
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[240px] text-center">
+                <p className="text-xs">AI reviews your calendar, email, and Slack to suggest today's priorities</p>
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -2531,7 +2592,12 @@ function PrioritiesSection({
   );
 }
 
-// Colours cycle through these in order, looping back if there are more options than colours
+const STATUS_LABEL_MAP: Record<string, string> = {
+  WIP: 'Work in Progress',
+  WOS: 'Waiting on Someone',
+  Done: 'Done',
+};
+
 const STATUS_BADGE_COLORS = [
   'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200',
   'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200',
@@ -2706,16 +2772,23 @@ function PriorityCard({
 
           {/* Right controls — status stacked above chevron */}
           <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-            <button
-              onClick={cycleStatus}
-              title={item.status ? `Status: ${item.status} — click to advance` : 'Click to set status'}
-              className={cn(
-                'text-[10px] font-medium px-1.5 py-px rounded border transition-colors truncate text-center leading-tight',
-                statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
-              )}
-            >
-              {item.status ?? <span className="text-muted-foreground/30">···</span>}
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={cycleStatus}
+                  className={cn(
+                    'text-[10px] font-medium px-1.5 py-px rounded border transition-colors truncate text-center leading-tight',
+                    statusColor ?? 'bg-muted/40 text-muted-foreground border-border/40 hover:bg-muted',
+                  )}
+                >
+                  {item.status ?? <span className="text-muted-foreground/30">···</span>}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="font-medium text-xs">{item.status ? STATUS_LABEL_MAP[item.status] ?? item.status : 'No status'}</p>
+                <p className="text-xs text-muted-foreground">Click to advance</p>
+              </TooltipContent>
+            </Tooltip>
             <button
               onClick={() => setExpanded(!expanded)}
               className="p-1 text-muted-foreground hover:text-foreground"
@@ -3215,6 +3288,8 @@ function formatGeneratedAt(iso: string): string {
 
 function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; toolbarPortalId?: string }) {
   const { toast } = useToast();
+  const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
+  const [calendarJustConnected, setCalendarJustConnected] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{
@@ -3234,6 +3309,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
+  const [teamView, setTeamView] = useState<'calendar' | 'map'>('calendar');
 
   const loadCalendarState = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -3442,6 +3518,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       didOAuthRef.current = true;
       window.history.replaceState(null, '', window.location.pathname);
       setActiveTab('team');
+      setCalendarJustConnected(true);
       void kickOffSync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3644,22 +3721,92 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   }, [toast]);
 
+  const showOneOnOneOnboarding = !loadingInitial
+    && !calendarConnected
+    && !teamOnboarding.oneOnOnes
+    && members.length === 0;
+
+  if (showOneOnOneOnboarding || calendarJustConnected) {
+    return (
+      <OneOnOneOnboarding
+        onConnectCalendar={handleSyncCalendar}
+        calendarJustConnected={calendarJustConnected}
+        onDismiss={() => {
+          setCalendarJustConnected(false);
+          teamMarkComplete('oneOnOnes');
+        }}
+      />
+    );
+  }
+
+  const viewToggle = (
+    <div className="inline-flex items-center rounded-lg border bg-muted p-0.5 h-8">
+      <button
+        onClick={() => setTeamView('calendar')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'calendar'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <CalendarPlus className="h-3.5 w-3.5" />
+        Calendar
+      </button>
+      <button
+        onClick={() => setTeamView('map')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'map'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Radar className="h-3.5 w-3.5" />
+        Coverage
+      </button>
+    </div>
+  );
+
+  const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
+
   return (
     <>
-      <OneOnOnesView
-        members={members}
-        loadingPrep={loadingPrep}
-        loadingInitial={loadingInitial}
-        onViewPrep={openPrepFile}
-        upcomingEvents={upcomingEvents}
-        calendarConnected={calendarConnected}
-        lastSyncAt={lastSyncAt}
-        syncing={syncing}
-        onSyncCalendar={handleSyncCalendar}
-        onIncludeInPrep={handleIncludeInPrep}
-        onExcludeFromCalendar={handleExcludeFromCalendar}
-        toolbarPortalId={toolbarPortalId}
-      />
+      {teamView === 'calendar' ? (
+        <OneOnOnesView
+          members={members}
+          loadingPrep={loadingPrep}
+          loadingInitial={loadingInitial}
+          onViewPrep={openPrepFile}
+          upcomingEvents={upcomingEvents}
+          calendarConnected={calendarConnected}
+          lastSyncAt={lastSyncAt}
+          syncing={syncing}
+          onSyncCalendar={handleSyncCalendar}
+          onIncludeInPrep={handleIncludeInPrep}
+          onExcludeFromCalendar={handleExcludeFromCalendar}
+          toolbarPortalId={toolbarPortalId}
+          viewToggle={viewToggle}
+        />
+      ) : (
+        <>
+          {portalTarget ? createPortal(
+            <div className="flex items-center gap-3 w-full">
+              {viewToggle}
+            </div>,
+            portalTarget,
+          ) : (
+            <div className="flex items-center gap-3 w-full mb-6">
+              {viewToggle}
+            </div>
+          )}
+          <CoverageMap
+            members={members}
+            upcomingEvents={upcomingEvents}
+            onViewPrep={openPrepFile}
+          />
+        </>
+      )}
 
       <OneOnOnePrepDrawer
         open={!!prepSheet}

@@ -70,7 +70,7 @@ const REL_TONE: Record<string, RelTone> = {
   boss:          { label: 'Manager',       short: 'Manager', bg: 'bg-[#e8eef7]', fg: 'text-[#04356c]', rail: 'bg-[#254677]', dotColor: 'bg-[#254677]' },
   skip_level:    { label: 'Skip-level',    short: 'Skip',    bg: 'bg-violet-50', fg: 'text-violet-700', rail: 'bg-violet-500', dotColor: 'bg-violet-500' },
   peer:          { label: 'Peer',          short: 'Peer',    bg: 'bg-gray-100',  fg: 'text-gray-600',  rail: 'bg-gray-400',  dotColor: 'bg-gray-400' },
-  stakeholder:   { label: 'Stakeholder',   short: 'Stake',   bg: 'bg-slate-50',  fg: 'text-slate-700', rail: 'bg-slate-400', dotColor: 'bg-slate-400' },
+  stakeholder:   { label: 'Stakeholder',   short: 'Stakeholder', bg: 'bg-slate-50',  fg: 'text-slate-700', rail: 'bg-slate-400', dotColor: 'bg-slate-400' },
   external:      { label: 'External',      short: 'External', bg: 'bg-stone-50', fg: 'text-stone-700', rail: 'bg-stone-400', dotColor: 'bg-stone-400' },
 };
 
@@ -820,13 +820,13 @@ export function OneOnOnePrepDrawer({
                   <header className="flex items-center justify-between mb-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
                       <Target className="h-3.5 w-3.5" />
-                      {firstName}&apos;s priorities
+                      {firstName}&apos;s quarterly priorities
                     </h3>
                     {quarter && (
                       <span className="text-[10px] text-muted-foreground">{quarter.label}</span>
                     )}
                   </header>
-                  <p className="text-[10px] text-muted-foreground mb-2 italic">{firstName}&apos;s priorities — for reference during the conversation</p>
+                  <p className="text-[10px] text-muted-foreground mb-2 italic">{firstName}&apos;s quarterly priorities — for reference during the conversation</p>
                   <ol className="space-y-1.5">
                     {priorities.map(p => (
                       <li key={p.id} className="text-xs leading-snug flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border">

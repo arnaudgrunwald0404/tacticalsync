@@ -285,7 +285,8 @@ export async function getStackOneConfig(
     })
     if (!resp.ok) return null
     const json = await resp.json()
-    return { apiKey: row.auth_value, accounts: json.data ?? [] }
+    const accounts = Array.isArray(json) ? json : (json.data ?? [])
+    return { apiKey: row.auth_value, accounts }
   } catch {
     return null
   }

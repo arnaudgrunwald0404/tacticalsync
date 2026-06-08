@@ -811,7 +811,7 @@ const DashboardMain = () => {
         {/* Your Teams Section */}
         <div>
           <div className="mb-6">
-            <h2 className="font-heading text-2xl sm:text-3xl font-bold mb-3 text-[#2C2C2C]">My Cadenced Meetings</h2>
+            <h2 className="font-heading text-2xl sm:text-3xl font-bold mb-3 text-[#2C2C2C]">My Recurring Meetings</h2>
             
             <p className="font-body text-sm sm:text-base text-[#4A5D5F] leading-relaxed">
               Run your recurring meetings with discipline that makes all the difference.

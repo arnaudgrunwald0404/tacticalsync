@@ -365,66 +365,75 @@ const Settings = () => {
       if (profilesError) throw profilesError;
       if (!profiles) return;
 
-      // For each user, fetch their team memberships and login info
+      // Batch-fetch team memberships and login info (avoids N+1 queries)
       type ProfileRow = { id: string; email?: string | null; full_name?: string | null; manager_email?: string | null; is_admin?: boolean | null; is_super_admin?: boolean | null; is_rcdo_admin?: boolean | null; role_tags?: string[] | null; created_at?: string | null; updated_at?: string | null };
-      const usersWithTeams = await Promise.all(
-        profiles.map(async (profile: ProfileRow) => {
-          const { data: memberships } = await supabase
-            .from("team_members")
-            .select(`
-              team_id,
-              role,
-              teams:team_id (
-                id,
-                name
-              )
-            `)
-            .eq("user_id", profile.id);
+      const userIds = profiles.map((p: ProfileRow) => p.id);
 
-          const teams = (memberships || []).map((m) => ({
-            team_id: m.team_id,
-            team_name: (m.teams as { name?: string } | null)?.name || "Unknown Team",
-            role: m.role,
-          }));
+      // 1) Fetch ALL team memberships in one query
+      const { data: allMemberships } = await supabase
+        .from("team_members")
+        .select(`
+          user_id,
+          team_id,
+          role,
+          teams:team_id (
+            id,
+            name
+          )
+        `)
+        .in("user_id", userIds);
 
-          // Try to get login info from database function, fallback to profile timestamps
-          let hasLoggedIn = false;
-          let lastActive: string | null = null;
+      // Index memberships by user_id for O(1) lookup
+      const membershipsByUser = new Map<string, typeof allMemberships>();
+      (allMemberships || []).forEach((m) => {
+        const uid = (m as { user_id: string }).user_id;
+        if (!membershipsByUser.has(uid)) membershipsByUser.set(uid, []);
+        membershipsByUser.get(uid)!.push(m);
+      });
 
-          try {
-            const { data: loginInfo, error: rpcError } = await supabase
-              .rpc('get_user_login_info' as never, { user_id: profile.id } as never);
+      // 2) Fetch ALL login info in one batch RPC call
+      type LoginInfoRow = { user_id: string; has_logged_in?: boolean; last_active?: string | null };
+      const loginInfoByUser = new Map<string, LoginInfoRow>();
+      try {
+        const { data: loginInfoBatch, error: rpcError } = await supabase
+          .rpc('get_users_login_info_batch' as never, { user_ids: userIds } as never);
 
-            if (!rpcError && loginInfo && (loginInfo as Array<{ has_logged_in?: boolean; last_active?: string | null }>).length > 0) {
-              const info = (loginInfo as Array<{ has_logged_in?: boolean; last_active?: string | null }>)[0];
-              hasLoggedIn = Boolean(info.has_logged_in);
-              lastActive = info.last_active || null;
-            } else {
-              // Fallback: use profile timestamps
-              hasLoggedIn = Boolean(profile.created_at);
-              lastActive = profile.updated_at || profile.created_at || null;
-            }
-          } catch (e) {
-            // Function might not exist yet, use fallback
-            hasLoggedIn = Boolean(profile.created_at);
-            lastActive = profile.updated_at || profile.created_at || null;
-          }
+        if (!rpcError && loginInfoBatch) {
+          (loginInfoBatch as LoginInfoRow[]).forEach((info) => {
+            loginInfoByUser.set(info.user_id, info);
+          });
+        }
+      } catch (e) {
+        // Function might not exist yet — fallback handled per-user below
+      }
 
-          return {
-            id: profile.id,
-            email: profile.email || "",
-            full_name: profile.full_name || undefined,
-            manager_email: profile.manager_email ?? null,
-            is_admin: Boolean(profile.is_admin),
-            is_super_admin: Boolean(profile.is_super_admin),
-            is_rcdo_admin: Boolean(profile.is_rcdo_admin),
-            role_tags: (profile.role_tags ?? []) as string[],
-            has_logged_in: hasLoggedIn,
-            last_active: lastActive,
-            teams,
-          };
-        })
-      );
+      // 3) Assemble results (pure mapping, no async)
+      const usersWithTeams = profiles.map((profile: ProfileRow) => {
+        const memberships = membershipsByUser.get(profile.id) || [];
+        const teams = memberships.map((m) => ({
+          team_id: (m as { team_id: string }).team_id,
+          team_name: ((m as { teams?: { name?: string } | null }).teams as { name?: string } | null)?.name || "Unknown Team",
+          role: (m as { role: string }).role,
+        }));
+
+        const loginInfo = loginInfoByUser.get(profile.id);
+        const hasLoggedIn = loginInfo ? Boolean(loginInfo.has_logged_in) : Boolean(profile.created_at);
+        const lastActive = loginInfo ? (loginInfo.last_active || null) : (profile.updated_at || profile.created_at || null);
+
+        return {
+          id: profile.id,
+          email: profile.email || "",
+          full_name: profile.full_name || undefined,
+          manager_email: profile.manager_email ?? null,
+          is_admin: Boolean(profile.is_admin),
+          is_super_admin: Boolean(profile.is_super_admin),
+          is_rcdo_admin: Boolean(profile.is_rcdo_admin),
+          role_tags: (profile.role_tags ?? []) as string[],
+          has_logged_in: hasLoggedIn,
+          last_active: lastActive,
+          teams,
+        };
+      });
 
       // Fetch pending invitations
       const { data: pendingInvitations, error: invitationsError } = await supabase

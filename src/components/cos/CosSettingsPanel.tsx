@@ -165,7 +165,7 @@ function SortableColumnCard({
 
 // ── CosSettingsPanel (main export) ───────────────────────────────────────────
 
-export default function CosSettingsPanel() {
+export default function CosSettingsPanel({ onSaved }: { onSaved?: () => void } = {}) {
   const { toast } = useToast();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -328,6 +328,7 @@ export default function CosSettingsPanel() {
     );
     setSavingLayout(false);
     toast({ title: 'Layout settings saved' });
+    onSaved?.();
   };
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;

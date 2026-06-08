@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, Calendar, Unlink, RefreshCw, Check, ChevronsUpDown, X } from 'lucide-react';
+import { Loader2, Save, Calendar, Unlink, RefreshCw, Check, ChevronsUpDown, X, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +17,12 @@ import {
   DEFAULT_SYNC_RULES,
 } from '@/lib/calendar/matchEventToMember';
 
+function utcHourToLocalLabel(utcHour: number): string {
+  const d = new Date();
+  d.setUTCHours(utcHour, 0, 0, 0);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 export default function CosCalendarSyncPanel() {
   const { toast } = useToast();
   const [userId, setUserId] = useState<string | null>(null);
@@ -25,9 +32,13 @@ export default function CosCalendarSyncPanel() {
     scope: string | null;
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
+    autoSyncEnabled: boolean;
+    autoSyncMorningHourUtc: number;
+    autoSyncMiddayHourUtc: number;
   } | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [savingAutoSync, setSavingAutoSync] = useState(false);
   const [draftRules, setDraftRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
   const [savingRules, setSavingRules] = useState(false);
   const [knownAttendees, setKnownAttendees] = useState<{ email: string; name: string | null }[]>([]);
@@ -54,9 +65,15 @@ export default function CosCalendarSyncPanel() {
           scope: credsRes.data.scope ?? null,
           lastSyncAt: credsRes.data.last_sync_at ?? null,
           lastSyncStatus: credsRes.data.last_sync_status ?? null,
+          autoSyncEnabled: credsRes.data.auto_sync_enabled ?? true,
+          autoSyncMorningHourUtc: credsRes.data.auto_sync_morning_hour_utc ?? 11,
+          autoSyncMiddayHourUtc: credsRes.data.auto_sync_midday_hour_utc ?? 18,
         });
       } else {
-        setConnection({ connected: false, scope: null, lastSyncAt: null, lastSyncStatus: null });
+        setConnection({
+          connected: false, scope: null, lastSyncAt: null, lastSyncStatus: null,
+          autoSyncEnabled: true, autoSyncMorningHourUtc: 11, autoSyncMiddayHourUtc: 18,
+        });
       }
       if (settingsRes.data?.calendar_sync_rules) {
         setDraftRules({
@@ -125,6 +142,28 @@ export default function CosCalendarSyncPanel() {
       toast({ title: 'Sync failed', description: String(err), variant: 'destructive' });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const saveAutoSync = async () => {
+    if (!userId || !connection) return;
+    setSavingAutoSync(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('user_calendar_credentials')
+        .update({
+          auto_sync_enabled: connection.autoSyncEnabled,
+          auto_sync_morning_hour_utc: connection.autoSyncMorningHourUtc,
+          auto_sync_midday_hour_utc: connection.autoSyncMiddayHourUtc,
+        })
+        .eq('user_id', userId);
+      if (error) throw error;
+      toast({ title: 'Auto-sync schedule saved' });
+    } catch (err) {
+      toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingAutoSync(false);
     }
   };
 
@@ -199,6 +238,76 @@ export default function CosCalendarSyncPanel() {
           )}
         </CardContent>
       </Card>
+
+      {connection?.connected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Clock className="h-4 w-4" /> Auto-sync schedule
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center gap-3">
+              <Switch
+                checked={connection.autoSyncEnabled}
+                onCheckedChange={v => setConnection(c => c ? { ...c, autoSyncEnabled: v } : c)}
+              />
+              <div>
+                <span className="text-sm font-medium">Sync automatically twice a day</span>
+                <p className="text-[11px] text-muted-foreground">
+                  New meetings will appear as cards without needing to sync manually.
+                </p>
+              </div>
+            </label>
+
+            {connection.autoSyncEnabled && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Morning sync</label>
+                  <Select
+                    value={String(connection.autoSyncMorningHourUtc)}
+                    onValueChange={v => setConnection(c => c ? { ...c, autoSyncMorningHourUtc: parseInt(v) } : c)}
+                  >
+                    <SelectTrigger className="w-full h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <SelectItem key={i} value={String(i)}>
+                          {utcHourToLocalLabel(i)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Midday sync</label>
+                  <Select
+                    value={String(connection.autoSyncMiddayHourUtc)}
+                    onValueChange={v => setConnection(c => c ? { ...c, autoSyncMiddayHourUtc: parseInt(v) } : c)}
+                  >
+                    <SelectTrigger className="w-full h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <SelectItem key={i} value={String(i)}>
+                          {utcHourToLocalLabel(i)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <Button size="sm" onClick={saveAutoSync} disabled={savingAutoSync} className="gap-1.5">
+              {savingAutoSync ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Save schedule
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

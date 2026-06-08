@@ -139,7 +139,7 @@ export default function Commitments() {
     return (
       <div className="mx-auto max-w-6xl p-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Commitments</h1>
+          <h1 className="text-xl font-semibold">Priorities & Commitments</h1>
           {isAdmin && (
             <QuarterSelector
               quarters={quarters}
@@ -162,13 +162,14 @@ export default function Commitments() {
   const hasPeers = !!managerId;
   const hasDirectReports = directReportIds.length > 0;
   const hasOrgReports = allReportIds.length > 0;
+  const showTabs = hasPeers || hasDirectReports;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Commitments</h1>
+          <h1 className="text-xl font-semibold">Priorities & Commitments</h1>
           <p className="text-sm text-muted-foreground">{quarter.label}</p>
         </div>
         <QuarterSelector
@@ -182,14 +183,16 @@ export default function Commitments() {
 
       {/* Tabs */}
       <Tabs defaultValue="mine">
-        <TabsList>
-          <TabsTrigger value="mine">Me</TabsTrigger>
-          {hasPeers && <TabsTrigger value="peers">My Peers</TabsTrigger>}
-          {hasDirectReports && <TabsTrigger value="team">My Directs</TabsTrigger>}
-          {hasOrgReports && hasDirectReports && allReportIds.length > directReportIds.length && (
-            <TabsTrigger value="org">My Org</TabsTrigger>
-          )}
-        </TabsList>
+        {showTabs && (
+          <TabsList>
+            <TabsTrigger value="mine">Me</TabsTrigger>
+            {hasPeers && <TabsTrigger value="peers">My Peers</TabsTrigger>}
+            {hasDirectReports && <TabsTrigger value="team">My Directs</TabsTrigger>}
+            {hasOrgReports && hasDirectReports && allReportIds.length > directReportIds.length && (
+              <TabsTrigger value="org">My Org</TabsTrigger>
+            )}
+          </TabsList>
+        )}
 
         <TabsContent value="mine" className="mt-6">
           {myLoading ? (

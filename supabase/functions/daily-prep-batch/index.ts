@@ -91,6 +91,9 @@ serve(async (req) => {
       let meetingsQualified = 0
       let prepsGenerated = 0
       let prepsCached = 0
+      let calendarSynced = false
+      let calendarCreated: number | null = null
+      let calendarUpdated: number | null = null
       let zoomSynced = false
       let zoomRecordings: number | null = null
       let slackSynced = false
@@ -110,6 +113,38 @@ serve(async (req) => {
         const slackChannels: string[] = (schedule?.slack_channels ?? []) as string[]
 
         // ── Step 1: Sync integrations ─────────────────────────────────────
+
+        // Calendar sync — always attempt when credentials exist so prep
+        // generation works with the freshest event list.
+        const { data: calCreds } = await supabase
+          .from('user_calendar_credentials')
+          .select('refresh_token')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (calCreds?.refresh_token) {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/google-calendar-sync`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'Content-Type': 'application/json',
+                'x-supabase-user-id': userId,
+              },
+              body: JSON.stringify({}),
+            })
+            if (res.ok) {
+              const data = await res.json() as { created?: number; updated?: number }
+              calendarSynced = true
+              calendarCreated = data.created ?? 0
+              calendarUpdated = data.updated ?? 0
+            } else {
+              errors.push({ error: `calendar_sync: ${res.status}` })
+            }
+          } catch (err) {
+            errors.push({ error: `calendar_sync: ${(err as Error).message}` })
+          }
+        }
 
         if (syncZoom) {
           const { data: zoomCreds } = await supabase
@@ -293,6 +328,7 @@ serve(async (req) => {
         const summaryParts: string[] = []
         if (prepsGenerated > 0) summaryParts.push(`${prepsGenerated} prep(s) generated`)
         if (prepsCached > 0) summaryParts.push(`${prepsCached} cached`)
+        if (calendarSynced) summaryParts.push(`Calendar: ${calendarCreated} new, ${calendarUpdated} updated`)
         if (zoomSynced) summaryParts.push(`Zoom: ${zoomRecordings} recordings`)
         if (slackSynced) summaryParts.push(`Slack: ${slackMessages} messages`)
         if (meetingsFound === 0) summaryParts.push('No meetings today')
