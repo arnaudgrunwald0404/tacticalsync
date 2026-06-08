@@ -14,8 +14,10 @@ COMMENT ON COLUMN user_calendar_credentials.auto_sync_morning_hour_utc IS
 COMMENT ON COLUMN user_calendar_credentials.auto_sync_midday_hour_utc IS
   'UTC hour for the second daily auto-sync. Default 18 = ~11am PT / 2pm ET.';
 
--- Recreate the public view to include the new columns.
-CREATE OR REPLACE VIEW user_calendar_credentials_public
+-- DROP + CREATE: CREATE OR REPLACE VIEW cannot add columns before existing
+-- ones (Postgres treats it as a column rename and rejects it).
+DROP VIEW IF EXISTS user_calendar_credentials_public;
+CREATE VIEW user_calendar_credentials_public
 WITH (security_invoker = false, security_barrier = true) AS
   SELECT
     user_id,
