@@ -41,7 +41,7 @@ export default function McpIntegrationPanel({ preset }: McpIntegrationPanelProps
   const [authValue, setAuthValue] = useState('');
   const [testing, setTesting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [showEndpoints, setShowEndpoints] = useState(false);
+  const [showEndpoints, setShowEndpoints] = useState(true);
 
   // ── Load existing connection state ─────────────────────────────────────────
 

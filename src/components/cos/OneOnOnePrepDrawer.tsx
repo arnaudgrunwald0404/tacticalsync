@@ -3,7 +3,8 @@ import { format } from 'date-fns';
 import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
   CheckSquare, ClipboardList, NotebookText, ArrowRight, AlertCircle, ExternalLink,
-  Play, MoreHorizontal, Repeat, Clock, Video,
+  Play, MoreHorizontal, Repeat, Clock, Video, Brain, AlertTriangle, Check,
+  TrendingUp,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
@@ -16,6 +17,10 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
+import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
+import type { TopicStatus, TopicCategory } from '@/hooks/useRelationshipTopics';
+import { RelationshipQueryDialog } from '@/components/cos/RelationshipQueryDialog';
+import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter,
 } from '@/types/commitments';
@@ -174,6 +179,9 @@ export function OneOnOnePrepDrawer({
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [newAgendaItem, setNewAgendaItem] = useState('');
+  const [actionDueDate, setActionDueDate] = useState('');
+  const [queryDialogOpen, setQueryDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'prep' | 'timeline'>('prep');
 
   const [quarter, setQuarter] = useState<CommitmentQuarter | null>(null);
   const [priorities, setPriorities] = useState<QuarterlyPriority[]>([]);
@@ -184,12 +192,17 @@ export function OneOnOnePrepDrawer({
     duration_minutes: number | null; has_transcript: boolean;
   }>>([]);
 
+  // Relationship Memory hooks
+  const { topics: relTopics, loading: loadingTopics, updateTopicStatus } = useRelationshipTopics(member?.id ?? null);
+  const { commitments: forgottenItems, loading: loadingForgotten } = useForgottenCommitments(member?.id ?? null);
+
   useEffect(() => {
     if (!open || !member) return;
     setActionDraftForThem('');
     setTodoDraftForMe('');
     setNewAgendaItem('');
     setContextDraft(member.context_notes ?? '');
+    setActiveTab('prep');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -294,11 +307,17 @@ export function OneOnOnePrepDrawer({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       const lines = actionDraftForThem.split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
-      const rows = lines.map(text => ({ user_id: user.id, member_id: member.id, text }));
+      const rows = lines.map(text => ({
+        user_id: user.id,
+        member_id: member.id,
+        text,
+        ...(actionDueDate ? { due_date: actionDueDate } : {}),
+      }));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).from('cos_meeting_actions').insert(rows);
       if (error) throw error;
       setActionDraftForThem('');
+      setActionDueDate('');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: refreshed } = await (supabase as any).from('cos_meeting_actions')
         .select('id, text, created_at')
@@ -460,6 +479,10 @@ export function OneOnOnePrepDrawer({
                 </span>
                 {/* Refresh + AI Generate + Share — small, right-aligned */}
                 <span className="flex-1" />
+                <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" onClick={() => setQueryDialogOpen(true)}>
+                  <Brain className="h-3 w-3" />
+                  Ask
+                </Button>
                 <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" disabled={refreshing} onClick={onRefresh}>
                   {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                   {refreshing ? 'Refreshing' : 'Refresh'}
@@ -482,10 +505,44 @@ export function OneOnOnePrepDrawer({
           </div>
         </header>
 
+        {/* Tab bar */}
+        <div className="flex-shrink-0 border-b border-border px-5">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('prep')}
+              className={cn(
+                'text-xs font-semibold py-2 border-b-2 transition-colors',
+                activeTab === 'prep'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Prep
+            </button>
+            <button
+              onClick={() => setActiveTab('timeline')}
+              className={cn(
+                'text-xs font-semibold py-2 border-b-2 transition-colors flex items-center gap-1',
+                activeTab === 'timeline'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Clock className="h-3 w-3" />
+              Timeline
+            </button>
+          </div>
+        </div>
+
         {/* Body — main + reference panel */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
           {/* Main scrollable content */}
           <main className="overflow-y-auto px-5 py-5 space-y-6">
+
+          {activeTab === 'timeline' ? (
+            <RelationshipTimeline memberId={member.id} memberName={member.name} />
+          ) : (
+            <>
 
             {/* Carry-forward action items */}
             {openItems.length > 0 && (
@@ -504,6 +561,47 @@ export function OneOnOnePrepDrawer({
                         <span className="text-[10px] text-muted-foreground mt-0.5 block">
                           From {format(new Date(a.created_at), 'MMM d')}
                         </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Forgotten commitments callout */}
+            {forgottenItems.length > 0 && (
+              <section>
+                <SecHdr icon={AlertTriangle} label={`Forgotten items (${forgottenItems.length})`} />
+                <div className="flex flex-col gap-1.5">
+                  {forgottenItems.map(fc => (
+                    <div
+                      key={fc.id}
+                      className={cn(
+                        'flex items-start gap-2.5 px-3 py-2 rounded-md border',
+                        fc.urgency === 'critical'
+                          ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'
+                          : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
+                      )}
+                    >
+                      <AlertTriangle className={cn(
+                        'h-3.5 w-3.5 mt-0.5 flex-shrink-0',
+                        fc.urgency === 'critical' ? 'text-red-500' : 'text-amber-500',
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm leading-snug">{fc.text}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={cn(
+                            'text-[10px] font-medium',
+                            fc.urgency === 'critical' ? 'text-red-600' : 'text-amber-600',
+                          )}>
+                            {fc.days_pending} days pending
+                          </span>
+                          {fc.due_date && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Due {fc.due_date}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -631,10 +729,30 @@ export function OneOnOnePrepDrawer({
                   rows={3}
                   className="text-sm resize-none"
                 />
-                <Button size="sm" onClick={saveActionsForThem} disabled={savingForThem || !actionDraftForThem.trim()}>
-                  {savingForThem ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                  Queue for {firstName}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={saveActionsForThem} disabled={savingForThem || !actionDraftForThem.trim()}>
+                    {savingForThem ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                    Queue for {firstName}
+                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-3 w-3 text-muted-foreground" />
+                    <input
+                      type="date"
+                      value={actionDueDate}
+                      onChange={e => setActionDueDate(e.target.value)}
+                      className="h-7 text-xs border border-border rounded-md px-2 bg-background text-foreground"
+                      placeholder="Due date"
+                    />
+                    {actionDueDate && (
+                      <button
+                        onClick={() => setActionDueDate('')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-lg border border-primary/30 bg-primary/[0.03] p-4 space-y-3">
@@ -689,6 +807,8 @@ export function OneOnOnePrepDrawer({
                 <span className="text-[10px] text-muted-foreground">Applied to every prep</span>
               </div>
             </section>
+            </>
+          )}
           </main>
 
           {/* Reference panel */}
@@ -758,6 +878,90 @@ export function OneOnOnePrepDrawer({
                 </section>
               )}
 
+              {/* Relationship Topics (Memory) */}
+              {relTopics.length > 0 && (
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
+                    <Brain className="h-3.5 w-3.5" />
+                    Relationship memory
+                  </h3>
+                  <ul className="space-y-1.5">
+                    {relTopics.slice(0, 10).map(topic => {
+                      const catColors: Record<string, string> = {
+                        blocker: 'bg-red-500',
+                        escalation: 'bg-orange-500',
+                        project: 'bg-blue-500',
+                        goal: 'bg-emerald-500',
+                        feedback: 'bg-violet-500',
+                        development: 'bg-indigo-500',
+                        personal: 'bg-pink-500',
+                        general: 'bg-gray-400',
+                      };
+                      const isResolved = topic.status === 'resolved';
+                      const isStale = topic.status === 'stale';
+                      const lastDate = parseLocalDate(topic.last_mentioned_at);
+                      const daysAgo = lastDate
+                        ? Math.floor((Date.now() - lastDate.getTime()) / 86_400_000)
+                        : null;
+
+                      return (
+                        <li
+                          key={topic.id}
+                          className={cn(
+                            'text-xs leading-snug flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border group',
+                            isResolved && 'opacity-50',
+                            isStale && 'opacity-70',
+                          )}
+                        >
+                          <span className={cn(
+                            'w-2 h-2 rounded-full mt-1 flex-shrink-0',
+                            catColors[topic.category] ?? 'bg-gray-400',
+                            isResolved && 'opacity-50',
+                          )} />
+                          <div className="flex-1 min-w-0">
+                            <p className={cn(
+                              'font-medium text-foreground leading-snug',
+                              isResolved && 'line-through text-muted-foreground',
+                            )}>
+                              {topic.topic}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {topic.mention_count > 1 && (
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                                  <TrendingUp className="h-2.5 w-2.5" />
+                                  {topic.mention_count}x
+                                </span>
+                              )}
+                              {daysAgo !== null && (
+                                <span className="text-[9px] text-muted-foreground">
+                                  {daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`}
+                                </span>
+                              )}
+                              {isStale && (
+                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-200 text-amber-600">
+                                  stale
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          {/* Toggle resolved */}
+                          <button
+                            onClick={() => updateTopicStatus(
+                              topic.id,
+                              isResolved ? 'active' : 'resolved',
+                            )}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5"
+                            title={isResolved ? 'Mark active' : 'Mark resolved'}
+                          >
+                            <Check className={cn('h-3 w-3', isResolved && 'text-emerald-500')} />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
               {/* Recent Zoom calls */}
               {zoomRecordings.length > 0 && (
                 <section>
@@ -816,6 +1020,16 @@ export function OneOnOnePrepDrawer({
           </aside>
         </div>
       </SheetContent>
+
+      {/* Relationship Query Dialog */}
+      {member && (
+        <RelationshipQueryDialog
+          open={queryDialogOpen}
+          onClose={() => setQueryDialogOpen(false)}
+          memberId={member.id}
+          memberName={member.name}
+        />
+      )}
     </Sheet>
   );
 }

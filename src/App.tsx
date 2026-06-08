@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,34 +9,35 @@ import { RoleOverrideProvider } from "@/contexts/RoleOverrideContext";
 import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
 import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
 import { AppLayout } from "@/components/AppLayout";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 // Lazy load all page components for code splitting
-const Index = lazy(() => import("./pages/Index"));
-const Auth = lazy(() => import("./pages/Auth"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const DashboardWithTabs = lazy(() => import("./pages/DashboardWithTabs"));
-const DashboardMain = lazy(() => import("./pages/DashboardMain"));
-const CreateTeam = lazy(() => import("./pages/CreateTeam"));
-const TeamMeeting = lazy(() => import("./pages/TeamMeeting"));
-const TeamInvite = lazy(() => import("./pages/TeamInvite"));
-const TeamMeetingSetup = lazy(() => import("./pages/TeamMeetingSetup"));
-const MeetingSettings = lazy(() => import("./pages/MeetingSettings"));
-const JoinTeam = lazy(() => import("./pages/JoinTeam"));
-const Profile = lazy(() => import("./pages/Profile"));
-const Settings = lazy(() => import("./pages/Settings"));
-const BrandingShowcase = lazy(() => import("./pages/BrandingShowcase"));
-const ColorPaletteShowcase = lazy(() => import("./pages/ColorPaletteShowcase"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+const Index = lazyWithRetry(() => import("./pages/Index"));
+const Auth = lazyWithRetry(() => import("./pages/Auth"));
+const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
+const DashboardWithTabs = lazyWithRetry(() => import("./pages/DashboardWithTabs"));
+const DashboardMain = lazyWithRetry(() => import("./pages/DashboardMain"));
+const CreateTeam = lazyWithRetry(() => import("./pages/CreateTeam"));
+const TeamMeeting = lazyWithRetry(() => import("./pages/TeamMeeting"));
+const TeamInvite = lazyWithRetry(() => import("./pages/TeamInvite"));
+const TeamMeetingSetup = lazyWithRetry(() => import("./pages/TeamMeetingSetup"));
+const MeetingSettings = lazyWithRetry(() => import("./pages/MeetingSettings"));
+const JoinTeam = lazyWithRetry(() => import("./pages/JoinTeam"));
+const Profile = lazyWithRetry(() => import("./pages/Profile"));
+const Settings = lazyWithRetry(() => import("./pages/Settings"));
+const BrandingShowcase = lazyWithRetry(() => import("./pages/BrandingShowcase"));
+const ColorPaletteShowcase = lazyWithRetry(() => import("./pages/ColorPaletteShowcase"));
+const ResetPassword = lazyWithRetry(() => import("./pages/ResetPassword"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 // Chief of Staff
-const ChiefOfStaff = lazy(() => import("./pages/ChiefOfStaff"));
+const ChiefOfStaff = lazyWithRetry(() => import("./pages/ChiefOfStaff"));
 // RCDO Module
-const StrategyHome = lazy(() => import("./pages/StrategyHome"));
-const DODetail = lazy(() => import("./pages/DODetail"));
-const SIDetail = lazy(() => import("./pages/SIDetail"));
-const TasksFeed = lazy(() => import("./pages/TasksFeed"));
-const StrategyCanvas = lazy(() => import("./pages/StrategyCanvas"));
-const RCDOAllHands = lazy(() => import("./pages/RCDOAllHands"));
+const StrategyHome = lazyWithRetry(() => import("./pages/StrategyHome"));
+const DODetail = lazyWithRetry(() => import("./pages/DODetail"));
+const SIDetail = lazyWithRetry(() => import("./pages/SIDetail"));
+const TasksFeed = lazyWithRetry(() => import("./pages/TasksFeed"));
+const StrategyCanvas = lazyWithRetry(() => import("./pages/StrategyCanvas"));
+const RCDOAllHands = lazyWithRetry(() => import("./pages/RCDOAllHands"));
 
 const queryClient = new QueryClient();
 

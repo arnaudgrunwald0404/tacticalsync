@@ -47,5 +47,11 @@ verify_jwt = true
 [functions.daily-prep-batch]
 verify_jwt = false
 
+[functions.agent-tick]
+verify_jwt = false
+
+[functions.query-relationship-history]
+verify_jwt = true
+
 [functions.generate-weekend-banner]
 verify_jwt = true

@@ -1,0 +1,738 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { detectEscalations } from "../agent-escalation/index.ts"
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
+interface AgentConfig {
+  enabled: boolean
+  nudge_actions: boolean
+  pre_stage_prep: boolean
+  escalate_patterns: boolean
+  recommend_format: boolean
+  nudge_timing_hours: number
+  quiet_hours_start: number // 0-23
+  quiet_hours_end: number   // 0-23
+  timezone: string
+  slack_notifications: boolean
+}
+
+const DEFAULT_AGENT_CONFIG: AgentConfig = {
+  enabled: false,
+  nudge_actions: true,
+  pre_stage_prep: true,
+  escalate_patterns: false,
+  recommend_format: false,
+  nudge_timing_hours: 24,
+  quiet_hours_start: 18,
+  quiet_hours_end: 9,
+  timezone: 'America/New_York',
+  slack_notifications: true,
+}
+
+/**
+ * Check if the current time is within quiet hours for the given timezone.
+ */
+function isInQuietHours(config: AgentConfig): boolean {
+  try {
+    const now = new Date()
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: config.timezone,
+      hour: 'numeric',
+      hour12: false,
+    })
+    const currentHour = parseInt(formatter.format(now), 10)
+
+    const start = config.quiet_hours_start
+    const end = config.quiet_hours_end
+
+    if (start > end) {
+      // Quiet hours span midnight (e.g., 18-9 = 18:00 to 09:00)
+      return currentHour >= start || currentHour < end
+    } else {
+      return currentHour >= start && currentHour < end
+    }
+  } catch {
+    // If timezone is invalid, default to not in quiet hours
+    return false
+  }
+}
+
+/**
+ * Send a Slack DM to a user using their stored Slack credentials.
+ * Returns true if the message was sent successfully.
+ */
+async function sendSlackDM(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  text: string,
+  blocks?: unknown[],
+): Promise<boolean> {
+  // Get user's Slack credentials
+  const { data: slackCreds } = await supabase
+    .from('user_slack_credentials')
+    .select('access_token, slack_user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!slackCreds?.access_token || !slackCreds?.slack_user_id) {
+    return false
+  }
+
+  // Open DM conversation
+  const openRes = await fetch('https://slack.com/api/conversations.open', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${slackCreds.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ users: slackCreds.slack_user_id }),
+  })
+
+  const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
+  if (!openData.ok || !openData.channel?.id) {
+    return false
+  }
+
+  // Send message
+  const msgBody: Record<string, unknown> = {
+    channel: openData.channel.id,
+    text,
+  }
+  if (blocks) {
+    msgBody.blocks = blocks
+  }
+
+  const msgRes = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${slackCreds.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(msgBody),
+  })
+
+  const msgData = await msgRes.json() as { ok: boolean }
+  return msgData.ok
+}
+
+/**
+ * Agent Tick: The central loop for agentic follow-through.
+ *
+ * Called by pg_cron every 30 minutes. For each user with agent enabled:
+ * 1. Check quiet hours → skip if in quiet hours
+ * 2. Phase 2+: Nudge on overdue action items
+ * 3. Phase 3+: Pre-stage meeting prep
+ * 4. Phase 4+: Escalation patterns
+ * 5. Phase 5+: Format recommendations
+ *
+ * Auth: service-role only (verify_jwt = false in config.toml).
+ */
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'method_not_allowed' }, 405)
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+    // Validate service-role auth
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (token !== serviceRoleKey) {
+      return jsonResponse({ error: 'unauthorized' }, 401)
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+
+    // Fetch all users with agent enabled
+    const { data: settingsRows, error: settingsErr } = await supabase
+      .from('cos_settings')
+      .select('user_id, agent_config')
+
+    if (settingsErr) {
+      return jsonResponse({ error: 'settings_fetch_failed', detail: settingsErr.message }, 500)
+    }
+
+    const enabledUsers = (settingsRows ?? []).filter((row: { agent_config: unknown }) => {
+      const config = row.agent_config as Partial<AgentConfig> | null
+      return config?.enabled === true
+    })
+
+    if (enabledUsers.length === 0) {
+      return jsonResponse({ message: 'no_enabled_users', processed: 0 }, 200)
+    }
+
+    const results: Array<{
+      user_id: string
+      skipped_reason?: string
+      actions_nudged?: number
+      preps_staged?: number
+      escalations?: number
+    }> = []
+
+    for (const row of enabledUsers) {
+      const userId = (row as { user_id: string }).user_id
+      const rawConfig = (row as { agent_config: unknown }).agent_config
+      const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...(rawConfig as Partial<AgentConfig>) }
+
+      // Check quiet hours
+      if (isInQuietHours(config)) {
+        results.push({ user_id: userId, skipped_reason: 'quiet_hours' })
+        continue
+      }
+
+      let actionsNudged = 0
+      let prepsStaged = 0
+      let escalations = 0
+
+      // ── Nudge overdue action items ────────────────────────────────────
+      if (config.nudge_actions) {
+        try {
+          actionsNudged = await nudgeActionItems(supabase, userId, config)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'nudge_actions',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // ── Pre-stage meeting prep ────────────────────────────────────────
+      if (config.pre_stage_prep) {
+        try {
+          prepsStaged = await prestagePreps(supabase, supabaseUrl, serviceRoleKey, userId, config)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'pre_stage_prep',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // ── Escalation detection ───────────────────────────────────────
+      if (config.escalate_patterns) {
+        try {
+          const patterns = await detectEscalations(supabase, userId)
+
+          for (const pattern of patterns) {
+            const severityEmoji = pattern.severity === 'critical' ? ':rotating_light:' : ':warning:'
+            const typeLabels: Record<string, string> = {
+              chronic_overdue: 'Chronic Overdue',
+              missing_meetings: 'Missing Meetings',
+              commitment_drift: 'Commitment Drift',
+              stalled_topics: 'Stalled Topics',
+            }
+
+            if (config.slack_notifications) {
+              await sendSlackDM(supabase, userId,
+                `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
+                [{
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: `${severityEmoji} *${typeLabels[pattern.type]}*${pattern.member_name ? ` — ${pattern.member_name}` : ''}\n\n${pattern.details}`,
+                  },
+                }],
+              )
+            }
+
+            await supabase.from('cos_agent_log').insert({
+              user_id: userId,
+              event_type: 'escalation_flagged',
+              member_id: pattern.member_id ?? null,
+              payload: {
+                type: pattern.type,
+                member_id: pattern.member_id,
+                severity: pattern.severity,
+                details: pattern.details,
+              },
+            })
+
+            escalations++
+          }
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'escalate_patterns',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // ── Format recommendations ─────────────────────────────────────
+      if (config.recommend_format) {
+        try {
+          await computeFormatRecommendations(supabase, userId, config)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'recommend_format',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // Log tick completion
+      await logAgentEvent(supabase, userId, 'tick_completed', {
+        actions_nudged: actionsNudged,
+        preps_staged: prepsStaged,
+        escalations,
+      })
+
+      results.push({
+        user_id: userId,
+        actions_nudged: actionsNudged,
+        preps_staged: prepsStaged,
+        escalations,
+      })
+    }
+
+    return jsonResponse({
+      processed: results.length,
+      results,
+    }, 200)
+
+  } catch (error) {
+    return jsonResponse({ error: (error as Error).message }, 500)
+  }
+})
+
+// ── Action item nudging ─────────────────────────────────────────────────────
+
+async function nudgeActionItems(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10)
+  const nudgeWindowMs = config.nudge_timing_hours * 3600 * 1000
+  const nudgeDate = new Date(Date.now() + nudgeWindowMs).toISOString().slice(0, 10)
+
+  // Find actions approaching or past due date
+  const { data: dueActions } = await supabase
+    .from('cos_meeting_actions')
+    .select('id, text, due_date, member_id, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .not('due_date', 'is', null)
+    .lte('due_date', nudgeDate)
+
+  // Also find age-based actions (no due date, pending > 14 days)
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 86_400_000).toISOString()
+  const { data: agedActions } = await supabase
+    .from('cos_meeting_actions')
+    .select('id, text, due_date, member_id, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .is('due_date', null)
+    .lte('created_at', fourteenDaysAgo)
+
+  const allActions = [...(dueActions ?? []), ...(agedActions ?? [])]
+  if (allActions.length === 0) return 0
+
+  // Check which actions were already nudged today
+  const { data: recentNudges } = await supabase
+    .from('cos_agent_log')
+    .select('action_id')
+    .eq('user_id', userId)
+    .eq('event_type', 'nudge_sent')
+    .gte('created_at', today + 'T00:00:00Z')
+
+  const nudgedToday = new Set(
+    (recentNudges ?? []).map((n: { action_id: string | null }) => n.action_id)
+  )
+
+  const toNudge = allActions.filter(
+    (a: { id: string }) => !nudgedToday.has(a.id)
+  )
+
+  if (toNudge.length === 0) return 0
+
+  // Get member names for the message
+  const memberIds = [...new Set(
+    toNudge.map((a: { member_id: string }) => a.member_id)
+  )]
+
+  const { data: members } = await supabase
+    .from('cos_team_members')
+    .select('id, name')
+    .in('id', memberIds)
+
+  const memberMap = new Map(
+    (members ?? []).map((m: { id: string; name: string }) => [m.id, m.name])
+  )
+
+  // Group by member for a consolidated message
+  const byMember: Record<string, Array<{ id: string; text: string; due_date: string | null; created_at: string }>> = {}
+  for (const action of toNudge as Array<{ id: string; text: string; due_date: string | null; member_id: string; created_at: string }>) {
+    const memberName = memberMap.get(action.member_id) ?? 'Team member'
+    if (!byMember[memberName]) byMember[memberName] = []
+    byMember[memberName].push(action)
+  }
+
+  // Build Slack message
+  if (config.slack_notifications) {
+    const blocks: unknown[] = [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `:bell: *Action Items Need Attention*\n\nYou have ${toNudge.length} item(s) approaching or past their due date:`,
+        },
+      },
+    ]
+
+    for (const [memberName, actions] of Object.entries(byMember)) {
+      const items = actions.map(a => {
+        const dueLabel = a.due_date
+          ? `due ${a.due_date}`
+          : `pending ${Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86_400_000)} days`
+        return `  - ${a.text} _(${dueLabel})_`
+      }).join('\n')
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*${memberName}:*\n${items}`,
+        },
+      })
+    }
+
+    await sendSlackDM(
+      supabase,
+      userId,
+      `You have ${toNudge.length} action item(s) approaching or past their due date`,
+      blocks,
+    )
+  }
+
+  // Log each nudge
+  for (const action of toNudge as Array<{ id: string; text: string; due_date: string | null; member_id: string }>) {
+    await supabase.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'nudge_sent',
+      action_id: action.id,
+      member_id: action.member_id,
+      payload: { due_date: action.due_date, text: action.text },
+    })
+  }
+
+  return toNudge.length
+}
+
+// ── Pre-stage meeting prep ──────────────────────────────────────────────────
+
+async function prestagePreps(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userId: string,
+  config: AgentConfig,
+): Promise<number> {
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
+  const todayDate = now.toISOString().slice(0, 10)
+
+  // Find meetings in the next 24 hours with a team_member_id
+  const { data: events } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, title, start_time')
+    .eq('user_id', userId)
+    .eq('status', 'confirmed')
+    .not('team_member_id', 'is', null)
+    .gte('start_time', now.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  let staged = 0
+
+  for (const event of (events ?? []) as Array<{
+    id: string; team_member_id: string; title: string | null; start_time: string
+  }>) {
+    // Check if we already staged prep for this event today
+    const { count: alreadyStaged } = await supabase
+      .from('cos_agent_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('event_type', 'prep_staged')
+      .eq('event_id', event.id)
+      .gte('created_at', todayDate + 'T00:00:00Z')
+
+    if ((alreadyStaged ?? 0) > 0) continue
+
+    // Check if prep already exists for this member today
+    const { data: existingPrep } = await supabase
+      .from('cos_one_on_one_prep')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('team_member_id', event.team_member_id)
+      .eq('prep_date', todayDate)
+      .eq('source', 'ai_generated')
+      .eq('status', 'ready')
+      .maybeSingle()
+
+    if (existingPrep) continue
+
+    // Call generate-1on1-prep with service-role auth
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-1on1-prep`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          team_member_id: event.team_member_id,
+          event_id: event.id,
+          force_regenerate: false,
+          _batch_user_id: userId,
+        }),
+      })
+
+      if (res.ok) {
+        staged++
+
+        // Get member name for notification
+        const { data: member } = await supabase
+          .from('cos_team_members')
+          .select('name')
+          .eq('id', event.team_member_id)
+          .single()
+
+        const memberName = member?.name ?? 'your team member'
+
+        // Format meeting time in user's timezone
+        let meetingTime = event.start_time
+        try {
+          meetingTime = new Date(event.start_time).toLocaleTimeString('en-US', {
+            timeZone: config.timezone,
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          })
+        } catch { /* use raw if timezone fails */ }
+
+        // Notify via Slack
+        if (config.slack_notifications) {
+          await sendSlackDM(supabase, userId, `Your 1:1 prep for ${memberName} is ready (meeting at ${meetingTime})`, [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `:sparkles: *1:1 Prep Ready*\n\nYour meeting with *${memberName}* is at *${meetingTime}*. I've prepared your briefing.`,
+              },
+            },
+          ])
+        }
+
+        // Log
+        await supabase.from('cos_agent_log').insert({
+          user_id: userId,
+          event_type: 'prep_staged',
+          event_id: event.id,
+          member_id: event.team_member_id,
+          payload: { member_name: memberName, meeting_time: event.start_time },
+        })
+      }
+    } catch (err) {
+      console.warn(`Prep staging failed for event ${event.id}:`, (err as Error).message)
+    }
+  }
+
+  return staged
+}
+
+// ── Format recommendations ──────────────────────────────────────────────────
+
+const CADENCE_DAYS: Record<string, number> = {
+  direct_report: 7, collaborator: 14, boss: 14,
+  peer: 14, skip_level: 30, stakeholder: 30, external: 30,
+}
+
+async function computeFormatRecommendations(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<void> {
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
+  const todayDate = now.toISOString().slice(0, 10)
+
+  // Find meetings in the next 24 hours
+  const { data: events } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, title, start_time')
+    .eq('user_id', userId)
+    .eq('status', 'confirmed')
+    .not('team_member_id', 'is', null)
+    .gte('start_time', now.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  for (const event of (events ?? []) as Array<{
+    id: string; team_member_id: string; title: string | null; start_time: string
+  }>) {
+    // Check if we already recommended for this event today
+    const { count: alreadyDone } = await supabase
+      .from('cos_agent_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('event_type', 'format_recommended')
+      .eq('event_id', event.id)
+      .gte('created_at', todayDate + 'T00:00:00Z')
+
+    if ((alreadyDone ?? 0) > 0) continue
+
+    // Gather signals for scoring
+    const [actionsRes, topicsRes, memberRes, flaggedRes] = await Promise.all([
+      supabase
+        .from('cos_meeting_actions')
+        .select('id, due_date', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('member_id', event.team_member_id)
+        .eq('status', 'pending'),
+      supabase
+        .from('cos_person_topics')
+        .select('id', { count: 'exact' })
+        .eq('member_id', event.team_member_id),
+      supabase
+        .from('cos_team_members')
+        .select('relationship_type, last_1on1_date')
+        .eq('id', event.team_member_id)
+        .single(),
+      supabase
+        .from('quarterly_priorities')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('flagged', true),
+    ])
+
+    const pendingCount = actionsRes.count ?? 0
+    const topicCount = topicsRes.count ?? 0
+    const member = memberRes.data as { relationship_type: string; last_1on1_date: string | null } | null
+    const flaggedCount = flaggedRes.count ?? 0
+
+    // Count overdue items
+    const overdueActions = ((actionsRes.data ?? []) as Array<{ due_date: string | null }>)
+      .filter(a => a.due_date && a.due_date < todayDate)
+    const overdueCount = overdueActions.length
+
+    // Compute cadence gap
+    let cadenceExceeded = false
+    if (member?.last_1on1_date) {
+      const cadence = CADENCE_DAYS[member.relationship_type] ?? 14
+      const daysSince = Math.floor(
+        (Date.now() - new Date(member.last_1on1_date + 'T00:00:00').getTime()) / 86_400_000
+      )
+      cadenceExceeded = daysSince > cadence
+    }
+
+    // Score
+    const score =
+      (pendingCount * 2) +
+      (topicCount * 1) +
+      (overdueCount * 3) +
+      (cadenceExceeded ? 5 : 0) +
+      (flaggedCount > 0 ? 4 : 0)
+
+    let format: string
+    let emoji: string
+    const reasons: string[] = []
+
+    if (score === 0) {
+      format = 'Skip or async check-in'
+      emoji = ':fast_forward:'
+      reasons.push('No pending items or topics')
+    } else if (score <= 3) {
+      format = 'Quick sync (15 min)'
+      emoji = ':zap:'
+      if (pendingCount > 0) reasons.push(`${pendingCount} pending action(s)`)
+      if (topicCount > 0) reasons.push(`${topicCount} standing topic(s)`)
+    } else if (score <= 8) {
+      format = 'Standard (30 min)'
+      emoji = ':speech_balloon:'
+      if (pendingCount > 0) reasons.push(`${pendingCount} pending action(s)`)
+      if (overdueCount > 0) reasons.push(`${overdueCount} overdue`)
+      if (cadenceExceeded) reasons.push('Overdue for catch-up')
+    } else {
+      format = 'Extended (45-60 min)'
+      emoji = ':calendar:'
+      if (overdueCount > 0) reasons.push(`${overdueCount} overdue action(s)`)
+      if (flaggedCount > 0) reasons.push(`${flaggedCount} flagged priority`)
+      if (cadenceExceeded) reasons.push('Overdue for catch-up')
+      if (pendingCount >= 5) reasons.push(`${pendingCount} pending items`)
+    }
+
+    // Get member name
+    const { data: memberData } = await supabase
+      .from('cos_team_members')
+      .select('name')
+      .eq('id', event.team_member_id)
+      .single()
+
+    const memberName = memberData?.name ?? 'Team member'
+
+    // Send notification (only if score suggests something non-standard)
+    if (score === 0 || score > 8) {
+      if (config.slack_notifications) {
+        await sendSlackDM(supabase, userId,
+          `Meeting format suggestion for ${memberName}: ${format}`,
+          [{
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `${emoji} *Suggested format for ${memberName}:* ${format}\n\n${reasons.map(r => `• ${r}`).join('\n')}`,
+            },
+          }],
+        )
+      }
+    }
+
+    // Log
+    await supabase.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'format_recommended',
+      event_id: event.id,
+      member_id: event.team_member_id,
+      payload: {
+        format,
+        score,
+        reasons,
+        member_name: memberName,
+      },
+    })
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+async function logAgentEvent(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  eventType: string,
+  payload: Record<string, unknown>,
+  extras?: { member_id?: string; event_id?: string; action_id?: string },
+) {
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: eventType,
+    payload,
+    ...(extras ?? {}),
+  })
+}

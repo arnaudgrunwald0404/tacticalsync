@@ -1,12 +1,13 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import GridBackground from "@/components/ui/grid-background";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
-const StrategyHome = lazy(() => import("./StrategyHome"));
-const LazyCommitmentsPage = lazy(() => import("./Commitments"));
-const LazyInsightsPage = lazy(() => import("./Insights"));
-const LazyChiefOfStaffPage = lazy(() => import("./ChiefOfStaff"));
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
+const StrategyHome = lazyWithRetry(() => import("./StrategyHome"));
+const LazyCommitmentsPage = lazyWithRetry(() => import("./Commitments"));
+const LazyInsightsPage = lazyWithRetry(() => import("./Insights"));
+const LazyChiefOfStaffPage = lazyWithRetry(() => import("./ChiefOfStaff"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { useIsMobile } from "@/hooks/use-mobile";

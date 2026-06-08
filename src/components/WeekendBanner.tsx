@@ -18,10 +18,11 @@ interface WeekendVibes {
   monday_reflection: string | null;
 }
 
-function getWeekendContext(): { isFriday: boolean; isMonday: boolean; weekOf: string } {
+function getWeekendContext(): { isFriday: boolean; isMonday: boolean; isWeekend: boolean; weekOf: string } {
   const now = new Date();
   const day = now.getDay();
   const isFriday = day === 5;
+  const isWeekend = day === 0 || day === 6;
   const isMonday = day === 1;
   let mondayDate: Date;
   if (isFriday) {
@@ -33,7 +34,7 @@ function getWeekendContext(): { isFriday: boolean; isMonday: boolean; weekOf: st
     mondayDate = addDays(now, daysUntilMonday);
   }
   const weekOf = format(startOfDay(mondayDate), 'yyyy-MM-dd');
-  return { isFriday, isMonday, weekOf };
+  return { isFriday, isMonday, isWeekend, weekOf };
 }
 
 export function WeekendBanner() {
@@ -42,7 +43,7 @@ export function WeekendBanner() {
     return params.get('banner_day') as 'friday' | 'monday' | null;
   }, []);
   const realCtx = useMemo(getWeekendContext, []);
-  const isFriday = forceDay === 'friday' || (!forceDay && realCtx.isFriday);
+  const isFriday = forceDay === 'friday' || (!forceDay && (realCtx.isFriday || realCtx.isWeekend));
   const isMonday = forceDay === 'monday' || (!forceDay && realCtx.isMonday);
   const weekOf = realCtx.weekOf;
 

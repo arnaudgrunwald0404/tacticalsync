@@ -42,7 +42,9 @@ serve(async (req) => {
       return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
     }
 
-    // Auth
+    // Auth — supports two modes:
+    // 1. User JWT (normal client calls)
+    // 2. Service-role key (batch/agent server-to-server calls with _batch_user_id)
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
     if (!jwt) {
@@ -53,18 +55,26 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-    if (userErr || !userData?.user) {
-      return jsonResponse({ error: 'invalid_token' }, 401)
-    }
-    const userId = userData.user.id
-
-    // Parse request
-    let body: GeneratePrepRequest
+    // Parse request body first (needed for _batch_user_id check)
+    let body: GeneratePrepRequest & { _batch_user_id?: string }
     try {
       body = await req.json()
     } catch {
       return jsonResponse({ error: 'invalid_body' }, 400)
+    }
+
+    let userId: string
+
+    if (jwt === serviceRoleKey && body._batch_user_id) {
+      // Service-role call from daily-prep-batch or agent-tick
+      userId = body._batch_user_id
+    } else {
+      // Normal user JWT flow
+      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+      if (userErr || !userData?.user) {
+        return jsonResponse({ error: 'invalid_token' }, 401)
+      }
+      userId = userData.user.id
     }
 
     const { team_member_id, event_id, force_regenerate } = body
@@ -126,6 +136,9 @@ serve(async (req) => {
       quarterRes,
       zoomRecordingsRes,
       slackMessagesRes,
+      // Relationship Memory queries
+      relTopicsRes,
+      forgottenRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -142,7 +155,7 @@ serve(async (req) => {
         .order('tier_order'),
       supabase
         .from('cos_meeting_actions')
-        .select('text, status, created_at')
+        .select('text, status, created_at, due_date')
         .eq('user_id', userId)
         .eq('member_id', team_member_id)
         .eq('status', 'pending')
@@ -191,6 +204,21 @@ serve(async (req) => {
         .gte('message_date', new Date(Date.now() - 14 * 86_400_000).toISOString())
         .order('message_date', { ascending: false })
         .limit(15),
+      // Relationship topics: recurring themes + stale topics
+      supabase
+        .from('cos_relationship_topics')
+        .select('topic, category, sentiment, mention_count, last_mentioned_at, status')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .order('mention_count', { ascending: false })
+        .limit(15),
+      // Forgotten commitments: overdue/aged action items
+      supabase
+        .from('cos_forgotten_commitments')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('member_id', team_member_id)
+        .order('days_pending', { ascending: false }),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -231,13 +259,24 @@ serve(async (req) => {
     }
 
     const priorities = (prioritiesRes.data ?? []) as Array<{ text: string; category: string; notes: string | null }>
-    const pendingActions = (actionsRes.data ?? []) as Array<{ text: string; created_at: string }>
+    const pendingActions = (actionsRes.data ?? []) as Array<{ text: string; created_at: string; due_date: string | null }>
     const accountabilities = (accountabilitiesRes.data ?? []) as Array<{ text: string }>
     const topics = (topicsRes.data ?? []) as Array<{ text: string }>
     const pastPreps = (pastPrepsRes.data ?? []) as Array<{ content: string; source: string; generated_at: string; prep_date: string }>
     const prepInstructions = (prepSettingsRes.data as { prep_instructions: string } | null)?.prep_instructions ?? ''
 
+    // Relationship Memory data
+    const relTopics = (relTopicsRes.data ?? []) as Array<{
+      topic: string; category: string; sentiment: string;
+      mention_count: number; last_mentioned_at: string; status: string;
+    }>
+    const forgottenItems = (forgottenRes.data ?? []) as Array<{
+      text: string; due_date: string | null; days_pending: number; urgency: string;
+    }>
+
     const dataSources = ['priorities', 'commitments', 'actions', 'context']
+    if (relTopics.length > 0) dataSources.push('relationship_memory')
+    if (forgottenItems.length > 0) dataSources.push('forgotten_commitments')
 
     // ── Build prompt ───────────────────────────────────────────────────────
 
@@ -263,7 +302,31 @@ serve(async (req) => {
 
     if (pendingActions.length > 0) {
       contextParts.push(`\nPending action items from previous 1:1s:`)
-      pendingActions.forEach(a => contextParts.push(`  - ${a.text}`))
+      pendingActions.forEach(a => {
+        const dueLabel = a.due_date ? ` [due ${a.due_date}]` : ''
+        contextParts.push(`  - ${a.text}${dueLabel}`)
+      })
+    }
+
+    // ── Relationship Memory context ───────────────────────────────────────
+    if (forgottenItems.length > 0) {
+      contextParts.push(`\n⚠ FORGOTTEN COMMITMENTS — these action items have been pending for a long time and were never resolved:`)
+      for (const item of forgottenItems) {
+        const dueLabel = item.due_date ? `, due ${item.due_date}` : ''
+        contextParts.push(`  - [${item.urgency.toUpperCase()}] ${item.text} (${item.days_pending} days pending${dueLabel})`)
+      }
+    }
+
+    const staleTopics = relTopics.filter(t => t.status === 'stale')
+    if (staleTopics.length > 0) {
+      contextParts.push(`\n⚠ STALE TOPICS — discussed before but dropped off recently:`)
+      staleTopics.forEach(t => contextParts.push(`  - "${t.topic}" (last discussed ${t.last_mentioned_at}, mentioned ${t.mention_count}x total)`))
+    }
+
+    const recurringTopics = relTopics.filter(t => t.status === 'active' && t.mention_count >= 3)
+    if (recurringTopics.length > 0) {
+      contextParts.push(`\nRecurring themes in this relationship (topics that come up often):`)
+      recurringTopics.forEach(t => contextParts.push(`  - "${t.topic}" (${t.mention_count}x, sentiment: ${t.sentiment})`))
     }
 
     const categoryBuckets: Record<string, string[]> = {}
@@ -399,6 +462,9 @@ Output structure:
 - Reference specific priorities, commitments, or actions by name
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
+- If there are FORGOTTEN COMMITMENTS (marked with ⚠), always include a dedicated "Stale commitments" section near the top — these are trust-eroding items that need explicit follow-up. Suggest a specific question to address each one.
+- If there are STALE TOPICS (marked with ⚠), consider whether to raise them ("We haven't discussed X in a while — is it resolved or still relevant?")
+- If recurring themes are provided, use them to add depth — these are the threads that define this relationship
 - If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
 - If Slack messages are provided, note any recent topics, requests, or decisions from those conversations
 - If external system data is provided (HRIS, tickets, CRM), weave relevant context naturally — mention upcoming PTO, blocked tickets, or deal activity where it helps prepare talking points
@@ -463,6 +529,183 @@ ${contextParts.join('\n')}`
       duration_ms: Date.now() - startMs,
       data_sources_used: dataSources,
     })
+
+    // ── Update surfacing tracking on actions included in the prompt ──────
+    if (pendingActions.length > 0) {
+      await supabase
+        .from('cos_meeting_actions')
+        .update({ last_surfaced_at: todayDate })
+        .eq('user_id', userId)
+        .eq('member_id', team_member_id)
+        .eq('status', 'pending')
+    }
+
+    // ── Topic extraction (Relationship Memory) ────────────────────────────
+    // Extract structured topics from the generated prep using Haiku (fast, cheap).
+    // This builds the per-person topic timeline over time.
+    if (upserted?.id) {
+      try {
+        const extractionResponse = await anthropic.messages.create({
+          model: 'claude-haiku-4-20250414',
+          max_tokens: 600,
+          system: `Extract 3-8 discussion topics from the 1:1 prep brief below.
+
+Return a JSON array where each element has:
+- "topic": a short normalized label (e.g. "Q3 hiring plan", "platform rewrite timeline"). Normalize similar topics to the same label.
+- "category": one of "blocker", "escalation", "project", "goal", "feedback", "development", "personal", "general"
+- "sentiment": one of "positive", "negative", "neutral", "mixed"
+- "snippet": a 1-sentence excerpt from the brief that mentions this topic
+
+Return ONLY the JSON array, no markdown fences or other text.`,
+          messages: [{ role: 'user', content: generatedContent }],
+        })
+
+        const extractionText = extractionResponse.content
+          .filter((b: { type: string }) => b.type === 'text')
+          .map((b: { type: string; text: string }) => b.text)
+          .join('')
+
+        let extractedTopics: Array<{
+          topic: string; category: string; sentiment: string; snippet: string
+        }> = []
+
+        try {
+          // Strip markdown fences if present
+          const cleaned = extractionText.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
+          extractedTopics = JSON.parse(cleaned)
+        } catch {
+          console.warn('Topic extraction JSON parse failed:', extractionText.slice(0, 200))
+        }
+
+        const validCategories = new Set([
+          'blocker', 'escalation', 'project', 'goal',
+          'feedback', 'development', 'personal', 'general',
+        ])
+        const validSentiments = new Set(['positive', 'negative', 'neutral', 'mixed'])
+
+        for (const t of extractedTopics) {
+          if (!t.topic || typeof t.topic !== 'string') continue
+
+          const category = validCategories.has(t.category) ? t.category : 'general'
+          const sentiment = validSentiments.has(t.sentiment) ? t.sentiment : 'neutral'
+          const topicLabel = t.topic.trim().toLowerCase().slice(0, 200)
+
+          // Check if this topic already exists for this member
+          const { data: existing } = await supabase
+            .from('cos_relationship_topics')
+            .select('id, mention_count')
+            .eq('user_id', userId)
+            .eq('team_member_id', team_member_id)
+            .ilike('topic', topicLabel)
+            .maybeSingle()
+
+          let topicId: string
+
+          if (existing) {
+            // Update existing topic
+            await supabase
+              .from('cos_relationship_topics')
+              .update({
+                last_mentioned_at: todayDate,
+                mention_count: existing.mention_count + 1,
+                sentiment,
+                context_snippet: (t.snippet ?? '').slice(0, 500),
+                status: 'active', // Re-activate if it was stale
+                prep_id: upserted.id,
+              })
+              .eq('id', existing.id)
+
+            topicId = existing.id
+          } else {
+            // Insert new topic
+            const { data: inserted } = await supabase
+              .from('cos_relationship_topics')
+              .insert({
+                user_id: userId,
+                team_member_id: team_member_id,
+                prep_id: upserted.id,
+                topic: topicLabel,
+                category,
+                sentiment,
+                first_mentioned_at: todayDate,
+                last_mentioned_at: todayDate,
+                mention_count: 1,
+                status: 'active',
+                context_snippet: (t.snippet ?? '').slice(0, 500),
+              })
+              .select('id')
+              .single()
+
+            topicId = inserted?.id ?? ''
+          }
+
+          // Link prep to topic
+          if (topicId) {
+            await supabase
+              .from('cos_prep_topic_mentions')
+              .upsert({
+                prep_id: upserted.id,
+                topic_id: topicId,
+                snippet: (t.snippet ?? '').slice(0, 500),
+              }, { onConflict: 'prep_id,topic_id' })
+          }
+        }
+
+        // Mark topics as stale if not mentioned in the last 3 preps for this member
+        const { data: recentPrepIds } = await supabase
+          .from('cos_one_on_one_prep')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('team_member_id', team_member_id)
+          .eq('status', 'ready')
+          .order('prep_date', { ascending: false })
+          .limit(3)
+
+        if (recentPrepIds && recentPrepIds.length >= 3) {
+          const recentIds = recentPrepIds.map((p: { id: string }) => p.id)
+
+          // Find active topics not mentioned in ANY of the last 3 preps
+          const { data: activeTopics } = await supabase
+            .from('cos_relationship_topics')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('team_member_id', team_member_id)
+            .eq('status', 'active')
+
+          for (const topic of activeTopics ?? []) {
+            const { count } = await supabase
+              .from('cos_prep_topic_mentions')
+              .select('id', { count: 'exact', head: true })
+              .eq('topic_id', topic.id)
+              .in('prep_id', recentIds)
+
+            if ((count ?? 0) === 0) {
+              await supabase
+                .from('cos_relationship_topics')
+                .update({ status: 'stale' })
+                .eq('id', topic.id)
+            }
+          }
+        }
+
+        // Log extraction token usage
+        const extractInputTokens = extractionResponse.usage?.input_tokens ?? 0
+        const extractOutputTokens = extractionResponse.usage?.output_tokens ?? 0
+        await supabase.from('prep_generation_log').insert({
+          user_id: userId,
+          team_member_id: team_member_id,
+          prep_id: upserted.id,
+          input_tokens: extractInputTokens,
+          output_tokens: extractOutputTokens,
+          model: 'claude-haiku-4-20250414',
+          duration_ms: 0, // Not tracked separately
+          data_sources_used: ['topic_extraction'],
+        })
+      } catch (extractErr) {
+        // Topic extraction is non-fatal — log and continue
+        console.warn('Topic extraction failed (non-fatal):', (extractErr as Error).message)
+      }
+    }
 
     return jsonResponse({
       prep_id: upserted?.id,
