@@ -282,16 +282,17 @@ export function WeekendBanner() {
 
   const handleQuickReflection = async (text: string) => {
     setSaving(true);
+    setDismissed(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
+      const { error } = await (supabase as any)
         .from('cos_weekend_vibes')
         .update({ monday_reflection: text, updated_at: new Date().toISOString() })
         .eq('user_id', user.id)
         .eq('week_of', weekOf);
-      setDismissed(true);
+      if (error) console.error('Reflection save failed:', error.message);
     } catch (err) {
       console.error('Reflection save failed:', err);
     } finally {
@@ -299,7 +300,7 @@ export function WeekendBanner() {
     }
   };
 
-  if (isMonday && vibes?.image_url) {
+  if (isMonday && vibes?.image_url && !vibes.monday_reflection) {
     return (
       <div className="container mx-auto px-6 max-w-7xl pt-6">
         <section className="rounded-2xl overflow-hidden">
@@ -318,7 +319,7 @@ export function WeekendBanner() {
               <X className="h-4 w-4" />
             </button>
             <div className="absolute bottom-0 left-0 right-0 p-5 px-6">
-              <p className="text-white/70 text-sm font-medium drop-shadow mb-1">
+              <p className="text-white/85 italic font-heading font-bold text-2xl tracking-tight drop-shadow-lg mb-1">
                 {vibes.friday_prompt}
               </p>
               <p className="text-white font-heading font-extrabold text-2xl tracking-tight drop-shadow-lg mb-3">
