@@ -57,11 +57,12 @@ serve(async (req) => {
       triggerType = 'manual'
     } else {
       const currentHourUtc = new Date().getUTCHours()
+      // Include users with either 1:1 prep or DCI brief enabled at this hour
       const { data: schedules } = await supabase
         .from('cos_prep_schedule')
-        .select('user_id')
-        .eq('enabled', true)
+        .select('user_id, enabled, dci_enabled')
         .eq('run_hour_utc', currentHourUtc)
+        .or('enabled.eq.true,dci_enabled.eq.true')
 
       targetUserIds = (schedules ?? []).map((s: { user_id: string }) => s.user_id)
       triggerType = 'cron'
@@ -71,7 +72,17 @@ serve(async (req) => {
       return jsonResponse({ message: 'no_users_to_process', processed: 0 }, 200)
     }
 
-    const allResults: Array<{ user_id: string; log_id: string; preps_generated: number }> = []
+    // Load schedule flags per user to know which features are enabled
+    const { data: userSchedules } = await supabase
+      .from('cos_prep_schedule')
+      .select('user_id, enabled, dci_enabled')
+      .in('user_id', targetUserIds)
+    const scheduleByUser = new Map(
+      ((userSchedules ?? []) as Array<{ user_id: string; enabled: boolean; dci_enabled: boolean }>)
+        .map(s => [s.user_id, s])
+    )
+
+    const allResults: Array<{ user_id: string; log_id: string; preps_generated: number; dci_generated?: boolean }> = []
 
     for (const userId of targetUserIds) {
       // ── Create batch log entry ────────────────────────────────────────
@@ -98,7 +109,12 @@ serve(async (req) => {
       let zoomRecordings: number | null = null
       let slackSynced = false
       let slackMessages: number | null = null
+      let dciGenerated = false
       const errors: Array<{ member_id?: string; member_name?: string; error: string }> = []
+
+      const userFlags = scheduleByUser.get(userId)
+      const prepEnabled = userFlags?.enabled ?? true
+      const dciEnabled = userFlags?.dci_enabled ?? false
 
       try {
         const { data: schedule } = await supabase
@@ -209,6 +225,9 @@ serve(async (req) => {
         }
 
         // ── Step 2: Find today's qualifying 1-on-1s ───────────────────────
+        // Skip 1:1 prep generation if only DCI is enabled for this user.
+
+        if (prepEnabled) {
 
         const todayStart = new Date()
         todayStart.setHours(0, 0, 0, 0)
@@ -319,19 +338,45 @@ serve(async (req) => {
           }
         }
 
+        } // end if (prepEnabled)
+
+        // ── Step 3: Generate DCI brief (if enabled) ──────────────────────
+
+        if (dciEnabled) {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/generate-dci-brief`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ _batch_user_id: userId }),
+            })
+            if (res.ok) {
+              dciGenerated = true
+            } else {
+              const errText = await res.text()
+              errors.push({ error: `dci_brief: ${errText.slice(0, 200)}` })
+            }
+          } catch (err) {
+            errors.push({ error: `dci_brief: ${(err as Error).message}` })
+          }
+        }
+
         // ── Finalize log ──────────────────────────────────────────────────
 
         const status = errors.length > 0
-          ? (prepsGenerated > 0 ? 'partial' : 'failed')
+          ? (prepsGenerated > 0 || dciGenerated ? 'partial' : 'failed')
           : 'ok'
 
         const summaryParts: string[] = []
         if (prepsGenerated > 0) summaryParts.push(`${prepsGenerated} prep(s) generated`)
         if (prepsCached > 0) summaryParts.push(`${prepsCached} cached`)
+        if (dciGenerated) summaryParts.push('DCI brief generated')
         if (calendarSynced) summaryParts.push(`Calendar: ${calendarCreated} new, ${calendarUpdated} updated`)
         if (zoomSynced) summaryParts.push(`Zoom: ${zoomRecordings} recordings`)
         if (slackSynced) summaryParts.push(`Slack: ${slackMessages} messages`)
-        if (meetingsFound === 0) summaryParts.push('No meetings today')
+        if (meetingsFound === 0 && prepEnabled) summaryParts.push('No meetings today')
         if (errors.length > 0) summaryParts.push(`${errors.length} error(s)`)
 
         if (logId) {
@@ -357,7 +402,7 @@ serve(async (req) => {
           last_run_preps_generated: prepsGenerated,
         }).eq('user_id', userId)
 
-        allResults.push({ user_id: userId, log_id: logId ?? '', preps_generated: prepsGenerated })
+        allResults.push({ user_id: userId, log_id: logId ?? '', preps_generated: prepsGenerated, dci_generated: dciGenerated })
 
       } catch (err) {
         if (logId) {
@@ -373,9 +418,11 @@ serve(async (req) => {
     }
 
     const totalPreps = allResults.reduce((sum, r) => sum + r.preps_generated, 0)
+    const totalDci = allResults.filter(r => r.dci_generated).length
     return jsonResponse({
       processed: allResults.length,
       total_preps_generated: totalPreps,
+      total_dci_generated: totalDci,
       results: allResults,
     }, 200)
 
