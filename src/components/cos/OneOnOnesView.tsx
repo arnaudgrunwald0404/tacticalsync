@@ -36,6 +36,8 @@ export interface OneOnOneMember {
   context_notes: string | null;
   last_1on1_date: string | null;
   reports_to_id: string | null;
+  meeting_cadence: string | null;       // 'Weekly', 'Biweekly', etc. — set by calendar sync
+  meeting_cadence_days: number | null;  // average days between meetings — set by calendar sync
 }
 
 export interface UpcomingOneOnOneEvent {

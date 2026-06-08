@@ -25,6 +25,37 @@ interface SyncRequest {
 interface GoogleEvent extends MinimalEvent {
   start?: { dateTime?: string | null; date?: string | null } | null;
   end?: { dateTime?: string | null; date?: string | null } | null;
+  recurringEventId?: string | null;
+  recurrence?: string[] | null;
+}
+
+/** Convert average days between meetings to a human-friendly label. */
+function toCadenceLabel(avgDays: number): string {
+  if (avgDays >= 1 && avgDays <= 2) return 'Daily';
+  if (avgDays >= 5 && avgDays <= 9) return 'Weekly';
+  if (avgDays >= 10 && avgDays <= 18) return 'Biweekly';
+  if (avgDays >= 19 && avgDays <= 24) return 'Every 3 weeks';
+  if (avgDays >= 25 && avgDays <= 38) return 'Monthly';
+  if (avgDays >= 39 && avgDays <= 52) return 'Every 6 weeks';
+  if (avgDays >= 53 && avgDays <= 75) return 'Every 2 months';
+  if (avgDays >= 76 && avgDays <= 105) return 'Quarterly';
+  return `~${avgDays}d`;
+}
+
+/** Try to parse RRULE frequency directly from Google Calendar recurrence rules. */
+function cadenceFromRRule(recurrence: string[]): { label: string; days: number } | null {
+  for (const rule of recurrence) {
+    if (!rule.startsWith('RRULE:')) continue;
+    const parts = Object.fromEntries(
+      rule.slice(6).split(';').map(p => p.split('=') as [string, string])
+    );
+    const freq = parts['FREQ'];
+    const interval = parseInt(parts['INTERVAL'] ?? '1', 10);
+    if (freq === 'DAILY')   return { label: toCadenceLabel(interval), days: interval };
+    if (freq === 'WEEKLY')  return { label: toCadenceLabel(7 * interval), days: 7 * interval };
+    if (freq === 'MONTHLY') return { label: toCadenceLabel(30 * interval), days: 30 * interval };
+  }
+  return null;
 }
 
 interface GoogleEventsResponse {
@@ -259,6 +290,9 @@ serve(async (req) => {
     const seenEventIds = new Set<string>()
     const unmatchedEvents: UnmatchedEvent[] = []
 
+    // Track per-member events for cadence computation at the end.
+    const memberEvents = new Map<string, { times: string[]; recurringIds: Set<string>; recurrenceRules: string[] }>()
+
     for (const event of allEvents) {
       if (!event.start?.dateTime) {
         // All-day or malformed event — skip.
@@ -320,6 +354,7 @@ serve(async (req) => {
         user_id: userId,
         team_member_id: match?.member.id ?? null,
         google_event_id: event.id,
+        recurring_event_id: event.recurringEventId ?? null,
         calendar_id: 'primary',
         title: event.summary ?? null,
         start_time: event.start.dateTime,
@@ -346,6 +381,15 @@ serve(async (req) => {
       } else {
         created++
       }
+
+      // Accumulate for cadence computation.
+      if (match && event.start?.dateTime && status === 'confirmed') {
+        const entry = memberEvents.get(match.member.id) ?? { times: [], recurringIds: new Set(), recurrenceRules: [] }
+        entry.times.push(event.start.dateTime)
+        if (event.recurringEventId) entry.recurringIds.add(event.recurringEventId)
+        if (event.recurrence) entry.recurrenceRules.push(...event.recurrence)
+        memberEvents.set(match.member.id, entry)
+      }
     }
 
     // Soft-cancel: existing non-cancelled rows in window not seen this run.
@@ -363,6 +407,84 @@ serve(async (req) => {
         .in('id', toCancelIds)
       if (!cancelErr) {
         cancelled = count ?? toCancelIds.length
+      }
+    }
+
+    // ── Compute and store meeting cadence per member ──────────────────────────
+    // For recurring meetings: fetch the master event from Google Calendar API to
+    // read the RRULE directly — this is the authoritative source of frequency.
+    // For non-recurring meetings: fall back to interval inference from past events.
+
+    // 1. Collect all unique recurringEventIds we need to look up.
+    const recurringIdToMembers = new Map<string, string[]>()
+    for (const [memberId, entry] of memberEvents.entries()) {
+      for (const rid of entry.recurringIds) {
+        const list = recurringIdToMembers.get(rid) ?? []
+        list.push(memberId)
+        recurringIdToMembers.set(rid, list)
+      }
+    }
+
+    // 2. Fetch master events from Google Calendar to get their RRULE.
+    //    Each recurring series has one master event; we batch with a cap to avoid
+    //    hammering the API (most users have < 20 distinct recurring 1:1 series).
+    const rruleCache = new Map<string, { label: string; days: number }>()
+    const recurringIds = [...recurringIdToMembers.keys()].slice(0, 30)
+
+    for (const rid of recurringIds) {
+      try {
+        const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(rid)}`
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (!res.ok) continue
+        const master = await res.json() as { recurrence?: string[] }
+        if (master.recurrence) {
+          const parsed = cadenceFromRRule(master.recurrence)
+          if (parsed) rruleCache.set(rid, parsed)
+        }
+      } catch {
+        // Non-critical — we'll fall back to interval inference.
+      }
+    }
+
+    // 3. Resolve cadence per member: RRULE first, then interval inference.
+    for (const [memberId, entry] of memberEvents.entries()) {
+      let cadenceLabel: string | null = null
+      let cadenceDays: number | null = null
+
+      // Try RRULE from any of this member's recurring series.
+      for (const rid of entry.recurringIds) {
+        const parsed = rruleCache.get(rid)
+        if (parsed) {
+          cadenceLabel = parsed.label
+          cadenceDays = parsed.days
+          break
+        }
+      }
+
+      // Fall back to interval inference for non-recurring meetings.
+      if (!cadenceLabel && entry.times.length >= 2) {
+        const sorted = entry.times
+          .map(t => new Date(t).getTime())
+          .sort((a, b) => a - b)
+
+        let totalGap = 0
+        for (let i = 1; i < sorted.length; i++) {
+          totalGap += sorted[i] - sorted[i - 1]
+        }
+        const avgMs = totalGap / (sorted.length - 1)
+        cadenceDays = Math.round(avgMs / 86_400_000)
+        if (cadenceDays > 0) {
+          cadenceLabel = toCadenceLabel(cadenceDays)
+        }
+      }
+
+      if (cadenceLabel) {
+        await supabase
+          .from('cos_team_members')
+          .update({ meeting_cadence: cadenceLabel, meeting_cadence_days: cadenceDays })
+          .eq('id', memberId)
       }
     }
 
