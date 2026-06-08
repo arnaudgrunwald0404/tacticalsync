@@ -2973,11 +2973,11 @@ function PriorityCard({
 
 const DCI_STATUS_CYCLE: (DciItemStatus | null)[] = [null, 'done', 'in_progress', 'blocked', 'deferred'];
 
-const DCI_CELL_STATUS: Record<DciItemStatus, { label: string; pill: string; border: string }> = {
-  done:        { label: 'Done',        pill: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', border: 'border-l-green-500' },
-  in_progress: { label: 'In progress', pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',   border: 'border-l-blue-500' },
-  blocked:     { label: 'Blocked',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',       border: 'border-l-red-500' },
-  deferred:    { label: 'Deferred',    pill: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',      border: 'border-l-gray-400' },
+const DCI_CELL_STATUS: Record<DciItemStatus, { label: string; pill: string; borderColor: string }> = {
+  done:        { label: 'Done',        pill: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', borderColor: '#22c55e' },
+  in_progress: { label: 'In progress', pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',   borderColor: '#3b82f6' },
+  blocked:     { label: 'Blocked',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',       borderColor: '#ef4444' },
+  deferred:    { label: 'Deferred',    pill: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',      borderColor: '#9ca3af' },
 };
 
 function DciStatusPill({ status, onCycle }: { status: DciItemStatus | null; onCycle: () => void }) {
@@ -3081,10 +3081,8 @@ function DciHistory({ logs, onUpdate }: {
                             return (
                               <div
                                 key={rowIdx}
-                                className={cn(
-                                  'flex-1 px-3 py-2.5 flex items-start gap-2 border-l-2',
-                                  statusCfg ? statusCfg.border : 'border-l-transparent',
-                                )}
+                                className="flex-1 px-3 py-2.5 flex items-start gap-2 border-l-4"
+                                style={{ borderLeftColor: statusCfg ? statusCfg.borderColor : 'transparent' }}
                               >
                                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
                                   {rowIdx + 1}
@@ -3144,11 +3142,8 @@ function DciHistory({ logs, onUpdate }: {
                                   return (
                                     <div
                                       key={rowIdx}
-                                      className={cn(
-                                        'flex-1 px-3 py-2.5 border-l-2',
-                                        statusCfg ? statusCfg.border : 'border-l-transparent',
-                                        !p.text && 'flex items-center justify-center',
-                                      )}
+                                      className={cn('flex-1 px-3 py-2.5 border-l-4', !p.text && 'flex items-center justify-center')}
+                                      style={{ borderLeftColor: statusCfg ? statusCfg.borderColor : 'transparent' }}
                                     >
                                       {p.text ? (
                                         <div className="flex items-start gap-2">
