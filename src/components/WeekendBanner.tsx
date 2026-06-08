@@ -18,33 +18,46 @@ interface WeekendVibes {
   monday_reflection: string | null;
 }
 
-function getWeekendContext(): { isFriday: boolean; isMonday: boolean; isWeekend: boolean; weekOf: string } {
+type BannerMode = 'friday' | 'saturday' | 'sunday' | 'monday' | 'none';
+
+const DAY_HEADINGS: Record<BannerMode, string> = {
+  friday: 'Happy Friday!',
+  saturday: 'Happy Saturday!',
+  sunday: 'Happy Sunday!',
+  monday: '',
+  none: '',
+};
+
+function getWeekendContext(): { mode: BannerMode; weekOf: string } {
   const now = new Date();
   const day = now.getDay();
-  const isFriday = day === 5;
-  const isWeekend = day === 0 || day === 6;
-  const isMonday = day === 1;
+  let mode: BannerMode;
+  if (day === 5) mode = 'friday';
+  else if (day === 6) mode = 'saturday';
+  else if (day === 0) mode = 'sunday';
+  else if (day === 1) mode = 'monday';
+  else mode = 'none';
+
   let mondayDate: Date;
-  if (isFriday) {
-    mondayDate = addDays(now, 3);
-  } else if (isMonday) {
-    mondayDate = now;
-  } else {
+  if (day === 5) mondayDate = addDays(now, 3);
+  else if (day === 1) mondayDate = now;
+  else {
     const daysUntilMonday = ((8 - day) % 7) || 7;
     mondayDate = addDays(now, daysUntilMonday);
   }
   const weekOf = format(startOfDay(mondayDate), 'yyyy-MM-dd');
-  return { isFriday, isMonday, isWeekend, weekOf };
+  return { mode, weekOf };
 }
 
 export function WeekendBanner() {
   const forceDay = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('banner_day') as 'friday' | 'monday' | null;
+    return params.get('banner_day') as BannerMode | null;
   }, []);
   const realCtx = useMemo(getWeekendContext, []);
-  const isFriday = forceDay === 'friday' || (!forceDay && (realCtx.isFriday || realCtx.isWeekend));
-  const isMonday = forceDay === 'monday' || (!forceDay && realCtx.isMonday);
+  const mode: BannerMode = forceDay ?? realCtx.mode;
+  const isWeekendish = mode === 'friday' || mode === 'saturday' || mode === 'sunday';
+  const isMonday = mode === 'monday';
   const weekOf = realCtx.weekOf;
 
   const [vibes, setVibes] = useState<WeekendVibes | null>(null);
@@ -57,20 +70,18 @@ export function WeekendBanner() {
   useEffect(() => {
     console.log('[WeekendBanner]', {
       today: format(new Date(), 'EEEE yyyy-MM-dd'),
-      realIsFriday: realCtx.isFriday,
-      realIsMonday: realCtx.isMonday,
+      realMode: realCtx.mode,
       forceDay,
-      effectiveIsFriday: isFriday,
-      effectiveIsMonday: isMonday,
+      effectiveMode: mode,
       weekOf,
-      hint: !isFriday && !isMonday
-        ? 'Banner hidden — add ?banner_day=friday or ?banner_day=monday to URL to force-show'
-        : 'Banner will render',
+      hint: mode === 'none'
+        ? 'Banner hidden — add ?banner_day=friday|saturday|sunday|monday to URL to force-show'
+        : `Banner will render in ${mode} mode`,
     });
-  }, [realCtx, forceDay, isFriday, isMonday, weekOf]);
+  }, [realCtx, forceDay, mode, weekOf]);
 
   useEffect(() => {
-    if (!isFriday && !isMonday) { setLoaded(true); return; }
+    if (!isWeekendish && !isMonday) { setLoaded(true); return; }
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
@@ -163,9 +174,11 @@ export function WeekendBanner() {
     }
   };
 
-  if (!loaded || dismissed || (!isFriday && !isMonday)) return null;
+  if (!loaded || dismissed || (!isWeekendish && !isMonday)) return null;
 
-  if (isFriday) {
+  const heading = DAY_HEADINGS[mode];
+
+  if (isWeekendish) {
     return (
       <div className="container mx-auto px-6 max-w-7xl pt-6">
         <section className="rounded-2xl overflow-hidden">
@@ -186,7 +199,7 @@ export function WeekendBanner() {
               </button>
               <div className="absolute bottom-5 left-6 right-6">
                 <h2 className="font-heading font-extrabold text-3xl tracking-tight text-white drop-shadow-lg">
-                  Happy Friday!
+                  {heading}
                 </h2>
                 <p className="text-white/85 text-base font-medium mt-1 drop-shadow">
                   {vibes.friday_prompt}
@@ -227,7 +240,7 @@ export function WeekendBanner() {
               <div className="relative">
                 <div className="flex items-center gap-3 mb-2">
                   <PartyPopper className="h-6 w-6" />
-                  <h2 className="font-heading font-extrabold text-2xl tracking-tight">Happy Friday!</h2>
+                  <h2 className="font-heading font-extrabold text-2xl tracking-tight">{heading}</h2>
                 </div>
                 <p className="text-white/80 text-sm mb-4">
                   What are you up to this weekend?
@@ -267,8 +280,26 @@ export function WeekendBanner() {
     );
   }
 
+  const handleQuickReflection = async (text: string) => {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from('cos_weekend_vibes')
+        .update({ monday_reflection: text, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('week_of', weekOf);
+      setDismissed(true);
+    } catch (err) {
+      console.error('Reflection save failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (isMonday && vibes?.image_url) {
-    const hasReflection = !!vibes.monday_reflection;
     return (
       <div className="container mx-auto px-6 max-w-7xl pt-6">
         <section className="rounded-2xl overflow-hidden">
@@ -287,38 +318,30 @@ export function WeekendBanner() {
               <X className="h-4 w-4" />
             </button>
             <div className="absolute bottom-0 left-0 right-0 p-5 px-6">
-              {hasReflection ? (
-                <div>
-                  <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-1">Weekend reflection</p>
-                  <p className="text-white text-base font-medium drop-shadow">{vibes.monday_reflection}</p>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <Sun className="h-6 w-6 text-amber-300" />
-                    <p className="text-white font-heading font-extrabold text-2xl tracking-tight drop-shadow-lg">
-                      How was your weekend?
-                    </p>
-                  </div>
-                  <div className="relative max-w-lg">
-                    <Input
-                      value={input}
-                      onChange={e => setInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleReflection(); }}
-                      placeholder="It was great! I..."
-                      disabled={saving}
-                      className="bg-white/30 border-white/40 text-white font-medium placeholder:text-white/60 pr-10 h-11 text-base focus-visible:ring-white/40"
-                    />
-                    <button
-                      onClick={handleReflection}
-                      disabled={saving || !input.trim()}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white disabled:opacity-40 transition-colors"
-                    >
-                      {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <p className="text-white/70 text-sm font-medium drop-shadow mb-1">
+                {vibes.friday_prompt}
+              </p>
+              <p className="text-white font-heading font-extrabold text-2xl tracking-tight drop-shadow-lg mb-3">
+                How was it?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { emoji: '🤩', label: 'Amazing' },
+                  { emoji: '😌', label: 'So, so very good' },
+                  { emoji: '🔁', label: "Can't wait to do it again" },
+                  { emoji: '🫠', label: "Didn't happen" },
+                ].map(opt => (
+                  <button
+                    key={opt.label}
+                    onClick={() => handleQuickReflection(opt.label)}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40 backdrop-blur-sm text-white text-sm font-semibold transition-all disabled:opacity-50"
+                  >
+                    <span>{opt.emoji}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </section>
