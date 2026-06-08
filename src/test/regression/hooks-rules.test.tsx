@@ -117,7 +117,7 @@ describe('Regression: React Rules of Hooks', () => {
     it('should render the Commitments heading even when no active quarter', async () => {
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('Commitments')).toBeInTheDocument();
+        expect(screen.getByText('Priorities & Commitments')).toBeInTheDocument();
       });
     });
 

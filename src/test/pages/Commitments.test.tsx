@@ -182,10 +182,10 @@ describe('Commitments page', () => {
       });
     });
 
-    it('should show "Commitments" title', async () => {
+    it('should show "Priorities & Commitments" title', async () => {
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('Commitments')).toBeInTheDocument();
+        expect(screen.getByText('Priorities & Commitments')).toBeInTheDocument();
       });
     });
 
@@ -204,10 +204,10 @@ describe('Commitments page', () => {
   });
 
   describe('with active quarter', () => {
-    it('should render the page title "Commitments"', async () => {
+    it('should render the page title "Priorities & Commitments"', async () => {
       render(<Commitments />);
       await waitFor(() => {
-        expect(screen.getByText('Commitments')).toBeInTheDocument();
+        expect(screen.getByText('Priorities & Commitments')).toBeInTheDocument();
       });
     });
 
@@ -226,7 +226,16 @@ describe('Commitments page', () => {
       });
     });
 
-    it('should render "Me" tab (formerly "My Quarter")', async () => {
+    it('should render "Me" tab when user has peers', async () => {
+      mockUseReportingLines.mockReturnValue({
+        lines: [{ id: 'rl-1', team_id: 't-1', manager_id: 'u-mgr', report_id: 'u-1', created_at: '2026-01-01T00:00:00Z' }],
+        loading: false,
+        refetch: vi.fn(),
+        addLine: vi.fn(),
+        removeLine: vi.fn(),
+        getDirectReportIds: vi.fn().mockReturnValue([]),
+        getAllReportIds: vi.fn().mockReturnValue([]),
+      });
       render(<Commitments />);
       await waitFor(() => {
         expect(screen.getByText('Me')).toBeInTheDocument();
