@@ -1193,7 +1193,7 @@ function DciTabContent({
 
       {/* History */}
       <div className="border-t pt-8">
-        <DciHistory logs={dciLogs} onUpdate={updateDciLog} />
+        <DciHistory logs={dciLogs} onUpdate={onUpdateLog} />
       </div>
     </div>
   );
