@@ -99,7 +99,7 @@ export function WeekendBanner() {
       setLoaded(true);
     }
     load();
-  }, [isFriday, isMonday, weekOf]);
+  }, [isWeekendish, isMonday, weekOf]);
 
   const [genError, setGenError] = useState<string | null>(null);
 
