@@ -44,6 +44,7 @@ import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
 import PrepSetupWizard from '@/components/cos/PrepSetupWizard';
+import DciBriefSetupBanner from '@/components/cos/DciBriefSetupBanner';
 import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -884,6 +885,9 @@ function DciTabContent({
 
   return (
     <div className="space-y-6">
+      {/* DCI Brief Automation Banner */}
+      <DciBriefSetupBanner />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

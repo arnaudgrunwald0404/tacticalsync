@@ -22,8 +22,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS cos_dci_logs_user_date_uniq
 ALTER TABLE cos_prep_schedule
   ADD COLUMN IF NOT EXISTS dci_enabled         boolean     NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS dci_slack_dm         boolean     NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS dci_sources         text[]      NOT NULL DEFAULT '{my_lists,rcdo,calendar,slack,zoom,commitments}',
+  ADD COLUMN IF NOT EXISTS dci_instructions    text,
   ADD COLUMN IF NOT EXISTS dci_last_run_at      timestamptz,
   ADD COLUMN IF NOT EXISTS dci_last_run_status  text;
+
+COMMENT ON COLUMN cos_prep_schedule.dci_sources IS
+  'Which data sources to include in the DCI brief. Valid values: my_lists, rcdo, calendar, slack, zoom, commitments';
+COMMENT ON COLUMN cos_prep_schedule.dci_instructions IS
+  'Free-form user guidance appended to the AI prompt, e.g. "Focus on launch readiness and engineering blockers"';
 
 -- ---------------------------------------------------------------------------
 -- 3. Brief storage columns on cos_dci_logs

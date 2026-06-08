@@ -171,6 +171,18 @@ serve(async (req) => {
       userId = userData.user.id
     }
 
+    // ── Load user DCI settings ──────────────────────────────────────────
+    const { data: dciSettings } = await supabase
+      .from('cos_prep_schedule')
+      .select('dci_sources, dci_instructions')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    const enabledSources = new Set<string>(
+      (dciSettings?.dci_sources as string[] | null) ?? ['my_lists', 'rcdo', 'calendar', 'slack', 'zoom', 'commitments']
+    )
+    const userInstructions: string = (dciSettings?.dci_instructions as string | null) ?? ''
+
     // ── Date context ──────────────────────────────────────────────────────
     const pt = getPtDate()
     const dataSources: string[] = []
@@ -180,6 +192,9 @@ serve(async (req) => {
 
     const todayDate = pt.dateStr
 
+    // Helper: return an empty-result promise when a source is disabled
+    const emptyResult = () => Promise.resolve({ data: null, error: null })
+
     const [
       prioritiesRes,
       dciLogsRes,
@@ -188,16 +203,18 @@ serve(async (req) => {
       slackMessagesRes,
       zoomRecordingsRes,
     ] = await Promise.all([
-      // 1. My Lists
-      supabase
-        .from('cos_priorities')
-        .select('text, category, tier_order, notes, status, flagged, created_at, updated_at')
-        .eq('user_id', userId)
-        .is('done_at', null)
-        .is('archived_at', null)
-        .order('category')
-        .order('tier_order'),
-      // 2. Past DCI logs (7 days)
+      // 1. My Lists (always fetched — core source)
+      enabledSources.has('my_lists')
+        ? supabase
+            .from('cos_priorities')
+            .select('text, category, tier_order, notes, status, flagged, created_at, updated_at')
+            .eq('user_id', userId)
+            .is('done_at', null)
+            .is('archived_at', null)
+            .order('category')
+            .order('tier_order')
+        : emptyResult(),
+      // 2. Past DCI logs (always fetched — needed for continuity)
       supabase
         .from('cos_dci_logs')
         .select('date, priority_1, priority_2, priority_3, topic_raised, weekly_obj_1, weekly_obj_2, weekly_obj_3, weekly_obj_1_activities, weekly_obj_2_activities, weekly_obj_3_activities, weekly_obj_1_status, weekly_obj_2_status, weekly_obj_3_status, notes')
@@ -209,30 +226,36 @@ serve(async (req) => {
         .from('cos_team_members')
         .select('id, name, role, relationship_type')
         .eq('user_id', userId),
-      // 4. Current quarter
-      supabase
-        .from('commitment_quarters')
-        .select('id, label, start_date, end_date')
-        .lte('start_date', todayDate)
-        .gte('end_date', todayDate)
-        .limit(1)
-        .maybeSingle(),
-      // 5. Slack messages (last 2 days, all members)
-      supabase
-        .from('cos_slack_messages')
-        .select('content, sender_name, channel_name, is_dm, message_date')
-        .eq('user_id', userId)
-        .gte('message_date', new Date(Date.now() - 2 * 86_400_000).toISOString())
-        .order('message_date', { ascending: false })
-        .limit(30),
-      // 6. Zoom recordings (last 3 days, all members)
-      supabase
-        .from('cos_zoom_recordings')
-        .select('id, topic, start_time, duration_minutes, has_transcript, ai_summary')
-        .eq('user_id', userId)
-        .gte('start_time', new Date(Date.now() - 3 * 86_400_000).toISOString())
-        .order('start_time', { ascending: false })
-        .limit(10),
+      // 4. Current quarter (gated by 'commitments' source)
+      enabledSources.has('commitments')
+        ? supabase
+            .from('commitment_quarters')
+            .select('id, label, start_date, end_date')
+            .lte('start_date', todayDate)
+            .gte('end_date', todayDate)
+            .limit(1)
+            .maybeSingle()
+        : emptyResult(),
+      // 5. Slack messages (gated by 'slack' source)
+      enabledSources.has('slack')
+        ? supabase
+            .from('cos_slack_messages')
+            .select('content, sender_name, channel_name, is_dm, message_date')
+            .eq('user_id', userId)
+            .gte('message_date', new Date(Date.now() - 2 * 86_400_000).toISOString())
+            .order('message_date', { ascending: false })
+            .limit(30)
+        : emptyResult(),
+      // 6. Zoom recordings (gated by 'zoom' source)
+      enabledSources.has('zoom')
+        ? supabase
+            .from('cos_zoom_recordings')
+            .select('id, topic, start_time, duration_minutes, has_transcript, ai_summary')
+            .eq('user_id', userId)
+            .gte('start_time', new Date(Date.now() - 3 * 86_400_000).toISOString())
+            .order('start_time', { ascending: false })
+            .limit(10)
+        : emptyResult(),
     ])
 
     // ── Process: My Lists ─────────────────────────────────────────────────
@@ -248,7 +271,7 @@ serve(async (req) => {
     // ── Process: RCDO ─────────────────────────────────────────────────────
 
     let rcdoContext = ''
-    try {
+    if (enabledSources.has('rcdo')) try {
       // Get user's teams
       const { data: teamRows } = await supabase
         .from('team_members')
@@ -329,6 +352,7 @@ serve(async (req) => {
     // ── Process: Google Calendar (ALL today's events) ──────────────────────
 
     let calendarContext = ''
+    if (enabledSources.has('calendar'))
     try {
       const { data: creds } = await supabase
         .from('user_calendar_credentials')
@@ -551,6 +575,11 @@ Activities:
 ## Suggested DCI Topic
 **[Topic].** [Why raise this in standup.]`
 
+    // Append user-defined instructions to the system prompt
+    const finalSystemPrompt = userInstructions
+      ? `${systemPrompt}\n\nSTANDING INSTRUCTIONS FROM THE USER (always follow these):\n${userInstructions}`
+      : systemPrompt
+
     // Build user prompt sections
     const userPromptParts: string[] = []
 
@@ -650,7 +679,7 @@ Activities:
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
-      system: systemPrompt,
+      system: finalSystemPrompt,
       messages: [{ role: 'user', content: userPromptParts.join('\n') }],
     })
 
