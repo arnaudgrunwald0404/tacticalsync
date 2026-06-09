@@ -38,6 +38,7 @@ export interface OneOnOneMember {
   reports_to_id: string | null;
   meeting_cadence: string | null;       // 'Weekly', 'Biweekly', etc. — set by calendar sync
   meeting_cadence_days: number | null;  // average days between meetings — set by calendar sync
+  relationship_health_score: number | null;
 }
 
 export interface UpcomingOneOnOneEvent {
@@ -812,6 +813,16 @@ function UpNextHero({
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-200">
               <AlertTriangle className="h-3.5 w-3.5" />
               {pendingForThem} action item{pendingForThem !== 1 ? 's' : ''}
+            </span>
+          )}
+          {member.relationship_health_score != null && (
+            <span className={cn(
+              'inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+              member.relationship_health_score >= 7 ? 'bg-emerald-500/20 text-emerald-200'
+                : member.relationship_health_score >= 4 ? 'bg-amber-500/20 text-amber-200'
+                : 'bg-red-500/20 text-red-200',
+            )}>
+              {member.relationship_health_score}/10
             </span>
           )}
           <span className="text-xs text-white/40 ml-auto inline-flex items-center gap-1.5">

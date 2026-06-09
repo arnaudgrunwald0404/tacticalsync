@@ -546,7 +546,7 @@ ${contextParts.join('\n')}`
     if (upserted?.id) {
       try {
         const extractionResponse = await anthropic.messages.create({
-          model: 'claude-haiku-4-20250414',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 600,
           system: `Extract 3-8 discussion topics from the 1:1 prep brief below.
 
@@ -697,7 +697,7 @@ Return ONLY the JSON array, no markdown fences or other text.`,
           prep_id: upserted.id,
           input_tokens: extractInputTokens,
           output_tokens: extractOutputTokens,
-          model: 'claude-haiku-4-20250414',
+          model: 'claude-haiku-4-5-20251001',
           duration_ms: 0, // Not tracked separately
           data_sources_used: ['topic_extraction'],
         })
@@ -705,6 +705,84 @@ Return ONLY the JSON array, no markdown fences or other text.`,
         // Topic extraction is non-fatal — log and continue
         console.warn('Topic extraction failed (non-fatal):', (extractErr as Error).message)
       }
+    }
+
+    // ── Relationship health score computation ─────────────────────────────
+    // Score 0-10 based on: cadence consistency, topic resolution, forgotten items, sentiment.
+    try {
+      const CADENCE_DAYS: Record<string, number> = {
+        direct_report: 7, collaborator: 14, boss: 14,
+        peer: 14, skip_level: 30, stakeholder: 30, external: 30,
+      }
+      const expectedCadence = CADENCE_DAYS[member.relationship_type] ?? 14
+
+      // Cadence score (0-3): how well does the meeting frequency match cadence?
+      let cadenceScore = 3
+      if (member.last_1on1_date) {
+        const daysSinceLast = Math.floor(
+          (Date.now() - new Date(member.last_1on1_date + 'T00:00:00').getTime()) / 86_400_000
+        )
+        const ratio = daysSinceLast / expectedCadence
+        if (ratio > 3) cadenceScore = 0
+        else if (ratio > 2) cadenceScore = 1
+        else if (ratio > 1.3) cadenceScore = 2
+        else cadenceScore = 3
+      }
+
+      // Resolution score (0-3): ratio of resolved to total topics
+      const { data: allRelTopics } = await supabase
+        .from('cos_relationship_topics')
+        .select('status')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+
+      let resolutionScore = 3
+      if (allRelTopics && allRelTopics.length > 0) {
+        const resolved = allRelTopics.filter((t: { status: string }) => t.status === 'resolved').length
+        const stale = allRelTopics.filter((t: { status: string }) => t.status === 'stale').length
+        const total = allRelTopics.length
+        const resolvedRatio = resolved / total
+        const staleRatio = stale / total
+
+        if (staleRatio > 0.5) resolutionScore = 0
+        else if (staleRatio > 0.3) resolutionScore = 1
+        else if (resolvedRatio > 0.3) resolutionScore = 3
+        else resolutionScore = 2
+      }
+
+      // Forgotten items score (0-2): penalize for old unresolved actions
+      let forgottenScore = 2
+      if (forgottenItems.length > 0) {
+        const criticalCount = forgottenItems.filter(f => f.urgency === 'critical').length
+        if (criticalCount >= 2) forgottenScore = 0
+        else if (forgottenItems.length >= 3) forgottenScore = 0
+        else if (forgottenItems.length >= 1) forgottenScore = 1
+      }
+
+      // Sentiment score (0-2): average sentiment from recent topics
+      let sentimentScore = 1
+      const recentTopics = relTopics.filter(t => t.status === 'active').slice(0, 5)
+      if (recentTopics.length > 0) {
+        const sentimentValues: Record<string, number> = { positive: 2, neutral: 1, mixed: 0.5, negative: 0 }
+        const avg = recentTopics.reduce((sum, t) => sum + (sentimentValues[t.sentiment] ?? 1), 0) / recentTopics.length
+        sentimentScore = Math.round(avg)
+      }
+
+      const healthScore = Math.min(10, Math.max(0,
+        cadenceScore + resolutionScore + forgottenScore + sentimentScore
+      ))
+
+      await supabase
+        .from('cos_team_members')
+        .update({
+          relationship_health_score: healthScore,
+          health_score_updated_at: new Date().toISOString(),
+        })
+        .eq('id', team_member_id)
+        .eq('user_id', userId)
+
+    } catch (healthErr) {
+      console.warn('Health score computation failed (non-fatal):', (healthErr as Error).message)
     }
 
     return jsonResponse({

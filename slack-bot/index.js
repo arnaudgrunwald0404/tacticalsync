@@ -294,6 +294,165 @@ app.message(async ({ message, client }) => {
   });
 });
 
+// ── Agent interactive button handlers ────────────────────────────────────────
+// Handles buttons/overflow menus sent by the agent-tick nudge and escalation messages.
+// Socket Mode delivers these payloads here, so no Request URL is needed.
+
+// Overflow menu on action items (mark done / snooze)
+app.action(/^action_overflow:/, async ({ ack, action, body, client }) => {
+  await ack();
+  if (!supabase) return;
+
+  const selectedValue = action.selected_option?.value ?? '';
+  const slackUserId = body.user.id;
+
+  // Resolve Supabase user from slack_user_id stored in user_slack_credentials
+  const { data: creds } = await supabase
+    .from('user_slack_credentials')
+    .select('user_id')
+    .eq('slack_user_id', slackUserId)
+    .maybeSingle();
+  if (!creds?.user_id) return;
+  const userId = creds.user_id;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (selectedValue.startsWith('mark_done:')) {
+    const actionId = selectedValue.replace('mark_done:', '');
+    await supabase
+      .from('cos_meeting_actions')
+      .update({ status: 'done' })
+      .eq('id', actionId)
+      .eq('user_id', userId);
+
+    await client.chat.postEphemeral({
+      channel: body.channel?.id ?? body.container?.channel_id,
+      user: slackUserId,
+      text: ':white_check_mark: Marked as done.',
+    });
+  } else if (selectedValue.startsWith('snooze:')) {
+    const parts = selectedValue.split(':');
+    const actionId = parts[1];
+    const days = parseInt(parts[2] ?? '2', 10);
+
+    const { data: existing } = await supabase
+      .from('cos_meeting_actions')
+      .select('due_date')
+      .eq('id', actionId)
+      .eq('user_id', userId)
+      .single();
+
+    const baseDate = existing?.due_date
+      ? new Date(existing.due_date + 'T00:00:00')
+      : new Date();
+    const newDate = new Date(baseDate.getTime() + days * 86_400_000);
+    const newDateStr = newDate.toISOString().slice(0, 10);
+
+    await supabase
+      .from('cos_meeting_actions')
+      .update({ due_date: newDateStr })
+      .eq('id', actionId)
+      .eq('user_id', userId);
+
+    await client.chat.postEphemeral({
+      channel: body.channel?.id ?? body.container?.channel_id,
+      user: slackUserId,
+      text: `:clock3: Snoozed to ${newDateStr}.`,
+    });
+  }
+});
+
+// Feedback buttons on nudge messages
+app.action(/^feedback:/, async ({ ack, action, body, client }) => {
+  await ack();
+  if (!supabase) return;
+
+  const slackUserId = body.user.id;
+  const parts = action.action_id.split(':');
+  // format: feedback:<log_id_or_type>:<feedback_type>
+  // For nudge-level feedback we don't have a specific log_id, just record the type
+  const feedbackType = parts[parts.length - 1];
+
+  const validTypes = ['helpful', 'not_helpful', 'too_early', 'too_late', 'wrong_format'];
+  if (!validTypes.includes(feedbackType)) return;
+
+  const { data: creds } = await supabase
+    .from('user_slack_credentials')
+    .select('user_id')
+    .eq('slack_user_id', slackUserId)
+    .maybeSingle();
+  if (!creds?.user_id) return;
+  const userId = creds.user_id;
+
+  // Find the most recent nudge log for this user to link feedback to
+  const { data: recentLog } = await supabase
+    .from('cos_agent_log')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('event_type', 'nudge_sent')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (recentLog?.id) {
+    await supabase.from('cos_agent_feedback').insert({
+      user_id: userId,
+      log_id: recentLog.id,
+      feedback_type: feedbackType,
+    });
+  }
+
+  const labels = {
+    helpful: ':thumbsup: Thanks — noted!',
+    not_helpful: ':thumbsdown: Noted — will adjust.',
+    too_early: ':clock1: Got it — will nudge later next time.',
+    too_late: ':alarm_clock: Got it — will nudge earlier next time.',
+    wrong_format: ':bar_chart: Noted — will recalibrate.',
+  };
+
+  await client.chat.postEphemeral({
+    channel: body.channel?.id ?? body.container?.channel_id,
+    user: slackUserId,
+    text: labels[feedbackType] ?? ':thumbsup: Feedback recorded.',
+  });
+});
+
+// Dismiss escalation button
+app.action(/^dismiss_escalation:/, async ({ ack, action, body, client }) => {
+  await ack();
+  if (!supabase) return;
+
+  const slackUserId = body.user.id;
+  const logId = action.action_id.replace('dismiss_escalation:', '');
+
+  const { data: creds } = await supabase
+    .from('user_slack_credentials')
+    .select('user_id')
+    .eq('slack_user_id', slackUserId)
+    .maybeSingle();
+  if (!creds?.user_id) return;
+  const userId = creds.user_id;
+
+  const { data: logEntry } = await supabase
+    .from('cos_agent_log')
+    .select('payload')
+    .eq('id', logId)
+    .eq('user_id', userId)
+    .single();
+
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'escalation_dismissed',
+    payload: logEntry?.payload ?? { log_id: logId },
+  });
+
+  await client.chat.postEphemeral({
+    channel: body.channel?.id ?? body.container?.channel_id,
+    user: slackUserId,
+    text: ':mute: Escalation dismissed for 30 days.',
+  });
+});
+
 // Optional: simple scheduler using cron (server-local). For production, consider external scheduler or queue.
 const cronExpr = process.env.SLACK_SCHEDULE_CRON; // e.g., "0 9 * * 1-5" for 09:00 Mon-Fri
 if (cronExpr) {

@@ -4,7 +4,7 @@ import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
   CheckSquare, ClipboardList, NotebookText, ArrowRight, AlertCircle, ExternalLink,
   Play, MoreHorizontal, Repeat, Clock, Video, Brain, AlertTriangle, Check,
-  TrendingUp,
+  TrendingUp, Bot,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
@@ -1012,6 +1012,9 @@ export function OneOnOnePrepDrawer({
                 </a>
               </section>
 
+              {/* Per-person agent overrides */}
+              <AgentOverridesSection memberId={member.id} memberName={firstName} />
+
               {/* Generated info */}
               <p className="text-[10px] text-muted-foreground text-center pt-2 border-t border-border">
                 Generated {generatedLabel} · {source === 'ai_generated' ? 'AI' : source === 'cleargo' ? 'ClearGO' : 'Static'}
@@ -1031,6 +1034,80 @@ export function OneOnOnePrepDrawer({
         />
       )}
     </Sheet>
+  );
+}
+
+function AgentOverridesSection({ memberId, memberName }: { memberId: string; memberName: string }) {
+  const [overrides, setOverrides] = React.useState<Record<string, unknown>>({});
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any)
+        .from('cos_team_members')
+        .select('agent_overrides')
+        .eq('id', memberId)
+        .single();
+      setOverrides((data?.agent_overrides ?? {}) as Record<string, unknown>);
+      setLoaded(true);
+    })();
+  }, [memberId]);
+
+  const update = React.useCallback(async (patch: Record<string, unknown>) => {
+    const next = { ...overrides, ...patch };
+    setOverrides(next);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from('cos_team_members')
+      .update({ agent_overrides: next })
+      .eq('id', memberId);
+  }, [memberId, overrides]);
+
+  if (!loaded) return null;
+
+  // Only show if at least one override is set, or on hover to discover
+  return (
+    <section className="group">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
+        <Bot className="h-3.5 w-3.5" />
+        Agent for {memberName}
+      </h3>
+      <div className="space-y-1.5">
+        <OverrideToggle
+          label="Auto-generate prep"
+          checked={overrides.auto_prep !== false}
+          onChange={v => update({ auto_prep: v })}
+        />
+        <OverrideToggle
+          label="Nudge on actions"
+          checked={overrides.nudge_actions !== false}
+          onChange={v => update({ nudge_actions: v })}
+        />
+      </div>
+    </section>
+  );
+}
+
+function OverrideToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-background border border-border">
+      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <button
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
+          checked ? 'bg-primary' : 'bg-muted-foreground/30',
+        )}
+      >
+        <span
+          className={cn(
+            'inline-block h-3 w-3 rounded-full bg-white transition-transform',
+            checked ? 'translate-x-3.5' : 'translate-x-0.5',
+          )}
+        />
+      </button>
+    </div>
   );
 }
 

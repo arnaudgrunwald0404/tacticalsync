@@ -204,6 +204,35 @@ serve(async (req) => {
       let prepsStaged = 0
       let escalations = 0
 
+      // ── Adaptive behavior: adjust config based on feedback ────────────
+      try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString()
+
+        const { data: recentFeedback } = await supabase
+          .from('cos_agent_feedback')
+          .select('feedback_type')
+          .eq('user_id', userId)
+          .gte('created_at', thirtyDaysAgo)
+
+        if (recentFeedback && recentFeedback.length >= 3) {
+          const counts: Record<string, number> = {}
+          for (const f of recentFeedback as Array<{ feedback_type: string }>) {
+            counts[f.feedback_type] = (counts[f.feedback_type] ?? 0) + 1
+          }
+
+          // Too-early feedback: increase nudge timing (up to 48h)
+          if ((counts.too_early ?? 0) >= 3 && config.nudge_timing_hours < 48) {
+            config.nudge_timing_hours = Math.min(48, config.nudge_timing_hours + 6)
+          }
+          // Too-late feedback: decrease nudge timing (down to 6h)
+          if ((counts.too_late ?? 0) >= 3 && config.nudge_timing_hours > 6) {
+            config.nudge_timing_hours = Math.max(6, config.nudge_timing_hours - 6)
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+
       // ── Nudge overdue action items ────────────────────────────────────
       if (config.nudge_actions) {
         try {
@@ -359,21 +388,34 @@ async function nudgeActionItems(
     (recentNudges ?? []).map((n: { action_id: string | null }) => n.action_id)
   )
 
-  const toNudge = allActions.filter(
+  const toNudgeRaw = allActions.filter(
     (a: { id: string }) => !nudgedToday.has(a.id)
   )
 
-  if (toNudge.length === 0) return 0
+  if (toNudgeRaw.length === 0) return 0
 
-  // Get member names for the message
+  // Get member info including agent overrides
   const memberIds = [...new Set(
-    toNudge.map((a: { member_id: string }) => a.member_id)
+    toNudgeRaw.map((a: { member_id: string }) => a.member_id)
   )]
 
   const { data: members } = await supabase
     .from('cos_team_members')
-    .select('id, name')
+    .select('id, name, agent_overrides')
     .in('id', memberIds)
+
+  // Filter out members with nudge_actions disabled in their overrides
+  const suppressedMembers = new Set(
+    ((members ?? []) as Array<{ id: string; agent_overrides: Record<string, unknown> }>)
+      .filter(m => m.agent_overrides?.nudge_actions === false)
+      .map(m => m.id)
+  )
+
+  const toNudge = toNudgeRaw.filter(
+    (a: { member_id: string }) => !suppressedMembers.has(a.member_id)
+  )
+
+  if (toNudge.length === 0) return 0
 
   const memberMap = new Map(
     (members ?? []).map((m: { id: string; name: string }) => [m.id, m.name])
@@ -387,7 +429,7 @@ async function nudgeActionItems(
     byMember[memberName].push(action)
   }
 
-  // Build Slack message
+  // Build Slack message with interactive buttons
   if (config.slack_notifications) {
     const blocks: unknown[] = [
       {
@@ -400,21 +442,72 @@ async function nudgeActionItems(
     ]
 
     for (const [memberName, actions] of Object.entries(byMember)) {
-      const items = actions.map(a => {
-        const dueLabel = a.due_date
-          ? `due ${a.due_date}`
-          : `pending ${Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86_400_000)} days`
-        return `  - ${a.text} _(${dueLabel})_`
-      }).join('\n')
-
+      // Section header per member
       blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*${memberName}:*\n${items}`,
+          text: `*${memberName}:*`,
         },
       })
+
+      // Each action with its own buttons
+      for (const a of actions) {
+        const dueLabel = a.due_date
+          ? `due ${a.due_date}`
+          : `pending ${Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86_400_000)} days`
+
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `• ${a.text} _(${dueLabel})_`,
+          },
+          accessory: {
+            type: 'overflow',
+            action_id: `action_overflow:${a.id}`,
+            options: [
+              {
+                text: { type: 'plain_text', text: ':white_check_mark: Mark done' },
+                value: `mark_done:${a.id}`,
+              },
+              {
+                text: { type: 'plain_text', text: ':clock3: Snooze 2 days' },
+                value: `snooze:${a.id}:2`,
+              },
+              {
+                text: { type: 'plain_text', text: ':clock4: Snooze 7 days' },
+                value: `snooze:${a.id}:7`,
+              },
+            ],
+          },
+        })
+      }
     }
+
+    // Feedback buttons at the bottom
+    blocks.push({ type: 'divider' })
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: ':thumbsup: Helpful' },
+          action_id: 'feedback:nudge:helpful',
+          style: 'primary',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: ':clock1: Too early' },
+          action_id: 'feedback:nudge:too_early',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: ':thumbsdown: Not helpful' },
+          action_id: 'feedback:nudge:not_helpful',
+        },
+      ],
+    })
 
     await sendSlackDM(
       supabase,
@@ -424,7 +517,7 @@ async function nudgeActionItems(
     )
   }
 
-  // Log each nudge
+  // Log each nudge and collect log IDs for feedback linkage
   for (const action of toNudge as Array<{ id: string; text: string; due_date: string | null; member_id: string }>) {
     await supabase.from('cos_agent_log').insert({
       user_id: userId,
@@ -466,6 +559,15 @@ async function prestagePreps(
   for (const event of (events ?? []) as Array<{
     id: string; team_member_id: string; title: string | null; start_time: string
   }>) {
+    // Check per-person override
+    const { data: memberOverrides } = await supabase
+      .from('cos_team_members')
+      .select('agent_overrides')
+      .eq('id', event.team_member_id)
+      .single()
+
+    if ((memberOverrides?.agent_overrides as Record<string, unknown>)?.auto_prep === false) continue
+
     // Check if we already staged prep for this event today
     const { count: alreadyStaged } = await supabase
       .from('cos_agent_log')

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, FolderOpen, Radar, CalendarPlus,
+  Sparkles, Pencil, AlertCircle, Info, FolderOpen, Radar, CalendarPlus, Bot,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -49,6 +49,7 @@ import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import CosSettingsPanel from '@/components/cos/CosSettingsPanel';
+import { AgentActivityFeed } from '@/components/cos/AgentActivityFeed';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -3622,7 +3623,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
-  const [teamView, setTeamView] = useState<'calendar' | 'map'>('calendar');
+  const [teamView, setTeamView] = useState<'calendar' | 'map' | 'activity'>('calendar');
   const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
   const [showSetupWizard, setShowSetupWizard] = useState(false);
 
@@ -4090,6 +4091,18 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         <Radar className="h-3.5 w-3.5" />
         Coverage
       </button>
+      <button
+        onClick={() => setTeamView('activity')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'activity'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Bot className="h-3.5 w-3.5" />
+        Agent
+      </button>
     </div>
   );
 
@@ -4106,6 +4119,20 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             loadCalendarState();
           }}
         />
+      ) : teamView === 'activity' ? (
+        <>
+          {portalTarget ? createPortal(
+            <div className="flex items-center gap-3 w-full">
+              {viewToggle}
+            </div>,
+            portalTarget,
+          ) : (
+            <div className="flex items-center gap-3 w-full mb-6">
+              {viewToggle}
+            </div>
+          )}
+          <AgentActivityFeed />
+        </>
       ) : teamView === 'calendar' ? (
         <OneOnOnesView
           members={members}
