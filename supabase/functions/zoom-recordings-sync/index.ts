@@ -450,56 +450,89 @@ serve(async (req) => {
             const errBody = await recRes.text().catch(() => '')
             console.warn(`Calendar discovery: recordings API returned ${recRes.status} for meeting ${zoomId}: ${errBody}`)
 
-            // Fallback: try the meeting summary endpoint (accessible to participants).
+            // Fallback: resolve meeting number → instance UUIDs, then try meeting summary.
+            // The meeting summary endpoint needs a specific instance UUID, not the
+            // recurring meeting number. We get UUIDs via the past_meetings/instances API.
             try {
-              const summaryUrl = `https://api.zoom.us/v2/meetings/${zoomId}/meeting_summary`
-              const summaryRes = await fetch(summaryUrl, {
+              const instancesUrl = `https://api.zoom.us/v2/past_meetings/${zoomId}/instances`
+              const instancesRes = await fetch(instancesUrl, {
                 headers: { 'Authorization': `Bearer ${accessToken}` },
               })
-              if (summaryRes.ok) {
-                const summaryData = await summaryRes.json() as {
-                  meeting_id?: number
-                  meeting_uuid?: string
-                  meeting_topic?: string
-                  meeting_start_time?: string
-                  summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
-                }
 
-                // Store as a recording row with the AI summary.
-                const summaryText = (summaryData.summary_details ?? [])
-                  .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
-                  .join('\n\n')
-
-                if (summaryText) {
-                  const row = {
-                    user_id: userId,
-                    team_member_id: (calEvent.team_member_id as string) ?? null,
-                    zoom_meeting_id: zoomId,
-                    zoom_meeting_uuid: summaryData.meeting_uuid ?? zoomId,
-                    topic: summaryData.meeting_topic ?? (calEvent.title as string) ?? null,
-                    start_time: summaryData.meeting_start_time ?? (calEvent.start_time as string),
-                    duration_minutes: null,
-                    participant_emails: [] as string[],
-                    participant_names: [] as string[],
-                    has_transcript: false,
-                    recording_files: [] as unknown[],
-                    ai_summary: summaryText,
-                    last_synced_at: new Date().toISOString(),
-                  }
-                  const { error: upsertErr } = await supabase
-                    .from('cos_zoom_recordings')
-                    .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
-                  if (!upsertErr) {
-                    calendarDiscovered++
-                    synced++
-                    console.log(`Calendar discovery: stored meeting summary for ${zoomId} via fallback`)
-                  }
-                }
+              if (!instancesRes.ok) {
+                console.warn(`Calendar discovery: past_meetings/instances returned ${instancesRes.status} for ${zoomId}`)
               } else {
-                console.warn(`Calendar discovery: meeting summary API returned ${summaryRes.status} for meeting ${zoomId}`)
+                const instancesData = await instancesRes.json() as {
+                  meetings?: Array<{ uuid: string; start_time?: string }>
+                }
+
+                // Match instance to calendar event by date proximity.
+                const eventTime = new Date(calEvent.start_time as string).getTime()
+                const instances = (instancesData.meetings ?? [])
+                  .map(m => ({
+                    uuid: m.uuid,
+                    startTime: m.start_time,
+                    diff: m.start_time ? Math.abs(new Date(m.start_time).getTime() - eventTime) : Infinity,
+                  }))
+                  .sort((a, b) => a.diff - b.diff)
+
+                // Try the closest instance first (within 24h of the calendar event).
+                const matchedInstance = instances.find(i => i.diff < 86_400_000)
+
+                if (matchedInstance) {
+                  const encodedUuid = encodeURIComponent(encodeURIComponent(matchedInstance.uuid))
+                  const summaryUrl = `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`
+                  const summaryRes = await fetch(summaryUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                  })
+
+                  if (summaryRes.ok) {
+                    const summaryData = await summaryRes.json() as {
+                      meeting_id?: number
+                      meeting_uuid?: string
+                      meeting_topic?: string
+                      meeting_start_time?: string
+                      summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
+                    }
+
+                    const summaryText = (summaryData.summary_details ?? [])
+                      .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
+                      .join('\n\n')
+
+                    if (summaryText) {
+                      const row = {
+                        user_id: userId,
+                        team_member_id: (calEvent.team_member_id as string) ?? null,
+                        zoom_meeting_id: zoomId,
+                        zoom_meeting_uuid: matchedInstance.uuid,
+                        topic: summaryData.meeting_topic ?? (calEvent.title as string) ?? null,
+                        start_time: summaryData.meeting_start_time ?? matchedInstance.startTime ?? (calEvent.start_time as string),
+                        duration_minutes: null,
+                        participant_emails: [] as string[],
+                        participant_names: [] as string[],
+                        has_transcript: false,
+                        recording_files: [] as unknown[],
+                        ai_summary: summaryText,
+                        last_synced_at: new Date().toISOString(),
+                      }
+                      const { error: upsertErr } = await supabase
+                        .from('cos_zoom_recordings')
+                        .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+                      if (!upsertErr) {
+                        calendarDiscovered++
+                        synced++
+                        console.log(`Calendar discovery: stored meeting summary for ${zoomId} (instance ${matchedInstance.uuid})`)
+                      }
+                    }
+                  } else {
+                    console.warn(`Calendar discovery: meeting summary returned ${summaryRes.status} for instance ${matchedInstance.uuid}`)
+                  }
+                } else {
+                  console.warn(`Calendar discovery: no matching instance found for meeting ${zoomId} near ${calEvent.start_time}`)
+                }
               }
             } catch (summaryErr) {
-              console.warn(`Calendar discovery: meeting summary fallback failed for ${zoomId}:`, (summaryErr as Error).message)
+              console.warn(`Calendar discovery: summary fallback failed for ${zoomId}:`, (summaryErr as Error).message)
             }
             continue
           }

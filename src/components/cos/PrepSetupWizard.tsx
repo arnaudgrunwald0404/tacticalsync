@@ -279,7 +279,7 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
     setConnectingZoom(true);
     const clientId = import.meta.env.VITE_ZOOM_CLIENT_ID;
     const redirectUri = `${window.location.origin}/chief-of-staff?zoom=connected`;
-    const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary';
+    const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary meeting:read:list_past_instances';
     const zoomAuthUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
     window.location.href = zoomAuthUrl;
   };

@@ -17,6 +17,7 @@ export default function CosZoomSyncPanel() {
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
   } | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -86,7 +87,7 @@ export default function CosZoomSyncPanel() {
       return;
     }
     const redirectUri = `${window.location.origin}/settings?section=zoom-sync&zoom=connected`;
-    const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary';
+    const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary meeting:read:list_past_instances';
     const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(ZOOM_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
     window.location.href = url;
   };
