@@ -86,7 +86,8 @@ export default function CosZoomSyncPanel() {
       return;
     }
     const redirectUri = `${window.location.origin}/settings?section=zoom-sync&zoom=connected`;
-    const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(ZOOM_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary';
+    const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(ZOOM_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
     window.location.href = url;
   };
 

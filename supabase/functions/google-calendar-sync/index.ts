@@ -27,6 +27,25 @@ interface GoogleEvent extends MinimalEvent {
   end?: { dateTime?: string | null; date?: string | null } | null;
   recurringEventId?: string | null;
   recurrence?: string[] | null;
+  location?: string | null;
+  description?: string | null;
+}
+
+/**
+ * Extract a Zoom numeric meeting ID from a URL or text string.
+ * Handles formats like:
+ *   https://clearcompany.zoom.us/j/96115707659
+ *   https://zoom.us/j/96115707659?pwd=...
+ *   Meeting ID: 961 1570 7659
+ */
+function extractZoomMeetingId(text: string): string | null {
+  // URL format: /j/{meetingId}
+  const urlMatch = text.match(/zoom\.us\/j\/(\d+)/)
+  if (urlMatch) return urlMatch[1]
+  // Text format: "Meeting ID: 961 1570 7659"
+  const textMatch = text.match(/Meeting\s+ID[:\s]+(\d[\d\s]+\d)/)
+  if (textMatch) return textMatch[1].replace(/\s+/g, '')
+  return null
 }
 
 /** Convert average days between meetings to a human-friendly label. */
@@ -350,6 +369,13 @@ serve(async (req) => {
         .map((a: { email?: string | null }) => a.email)
         .filter((e: string | null | undefined): e is string => !!e)
 
+      // Extract Zoom meeting ID from location or description.
+      const eventLocation = event.location ?? null
+      const eventDescription = event.description ?? null
+      const zoomMeetingId =
+        (eventLocation ? extractZoomMeetingId(eventLocation) : null) ??
+        (eventDescription ? extractZoomMeetingId(eventDescription) : null)
+
       const row = {
         user_id: userId,
         team_member_id: match?.member.id ?? null,
@@ -364,6 +390,9 @@ serve(async (req) => {
         attendee_email: attendeeEmail,
         inferred_category: category,
         status,
+        location: eventLocation,
+        description: eventDescription,
+        zoom_meeting_id: zoomMeetingId,
         last_synced_at: new Date().toISOString(),
       }
 
