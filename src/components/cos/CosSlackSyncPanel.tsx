@@ -31,6 +31,7 @@ export default function CosSlackSyncPanel() {
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
   } | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -64,8 +65,8 @@ export default function CosSlackSyncPanel() {
     const slackCallback = params.get('slack');
     if (code && slackCallback === 'connected') {
       window.history.replaceState(null, '', `${window.location.pathname}?section=slack-sync`);
+      setConnecting(true);
       (async () => {
-        setSyncing(true);
         try {
           const tokenRes = await supabase.functions.invoke('exchange-slack-token', {
             body: { code },
@@ -84,7 +85,7 @@ export default function CosSlackSyncPanel() {
         } catch (err) {
           toast({ title: 'Slack connection failed', description: String(err), variant: 'destructive' });
         } finally {
-          setSyncing(false);
+          setConnecting(false);
         }
       })();
     }
@@ -134,6 +135,22 @@ export default function CosSlackSyncPanel() {
   };
 
   if (loading) return null;
+
+  if (connecting) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageSquare className="h-4 w-4" /> Connection
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Connecting Slack…
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

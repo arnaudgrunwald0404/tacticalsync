@@ -50,9 +50,9 @@ export default function CosZoomSyncPanel() {
     const code = params.get('code');
     const zoomCallback = params.get('zoom');
     if (code && zoomCallback === 'connected') {
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', `${window.location.pathname}?section=zoom-sync`);
+      setConnecting(true);
       (async () => {
-        setSyncing(true);
         try {
           const tokenRes = await supabase.functions.invoke('exchange-zoom-token', {
             body: { code },
@@ -74,7 +74,7 @@ export default function CosZoomSyncPanel() {
         } catch (err) {
           toast({ title: 'Zoom connection failed', description: String(err), variant: 'destructive' });
         } finally {
-          setSyncing(false);
+          setConnecting(false);
         }
       })();
     }
@@ -148,6 +148,22 @@ export default function CosZoomSyncPanel() {
   };
 
   if (loading) return null;
+
+  if (connecting) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Video className="h-4 w-4" /> Connection
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Connecting Zoom…
+        </CardContent>
+      </Card>
+    );
+  }
 
   const needsReauth = connection?.lastSyncStatus === 'error: reauth_required';
 
