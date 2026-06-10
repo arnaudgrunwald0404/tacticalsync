@@ -42,6 +42,9 @@ const ALL_SOURCES = [
   { key: 'commitments', label: 'Commitments', description: 'Quarterly priorities and monthly goals', icon: TrendingUp },
 ] as const;
 
+const INTERNAL_SOURCE_KEYS = ['my_lists', 'rcdo', 'commitments'];
+const EXTERNAL_SOURCE_KEYS = ['calendar', 'slack', 'zoom'];
+
 const DEFAULT_SOURCES = ALL_SOURCES.map(s => s.key);
 
 // ---------------------------------------------------------------------------
@@ -245,49 +248,53 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
 
   // ── Shared: Source picker + Instructions ────────────────────────────────
 
-  const SourcesAndInstructions = ({ compact }: { compact?: boolean }) => (
+  const SourcesAndInstructions = ({ compact }: { compact?: boolean }) => {
+    const renderSourceGroup = (keys: string[]) =>
+      ALL_SOURCES.filter(s => keys.includes(s.key)).map(src => {
+        const Icon = src.icon;
+        const checked = sources.includes(src.key);
+        const isAlwaysOn = 'alwaysOn' in src && src.alwaysOn;
+        return (
+          <label
+            key={src.key}
+            className={cn(
+              'flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors',
+              checked
+                ? 'border-primary/30 bg-primary/[0.03]'
+                : 'border-transparent bg-muted/30 hover:bg-muted/50',
+              isAlwaysOn && 'opacity-70 cursor-default',
+            )}
+          >
+            <Checkbox
+              checked={checked}
+              onCheckedChange={() => !isAlwaysOn && toggleSource(src.key)}
+              disabled={isAlwaysOn}
+              className="shrink-0"
+            />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium">{src.label}</span>
+            </div>
+          </label>
+        );
+      });
+
+    return (
     <div className={cn('space-y-4', compact && 'space-y-3')}>
       {/* Source checkboxes */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Data sources
         </p>
-        <div className={cn('grid gap-1.5', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3')}>
-          {ALL_SOURCES.map(src => {
-            const Icon = src.icon;
-            const checked = sources.includes(src.key);
-            const isAlwaysOn = 'alwaysOn' in src && src.alwaysOn;
-            return (
-              <label
-                key={src.key}
-                className={cn(
-                  'flex items-start gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
-                  checked
-                    ? 'border-primary/30 bg-primary/[0.03]'
-                    : 'border-transparent bg-muted/30 hover:bg-muted/50',
-                  isAlwaysOn && 'opacity-70 cursor-default',
-                )}
-              >
-                <Checkbox
-                  checked={checked}
-                  onCheckedChange={() => !isAlwaysOn && toggleSource(src.key)}
-                  disabled={isAlwaysOn}
-                  className="mt-0.5 shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="text-xs font-medium">{src.label}</span>
-                  </div>
-                  {!compact && (
-                    <p className="text-[10px] text-muted-foreground/70 leading-snug mt-0.5">
-                      {src.description}
-                    </p>
-                  )}
-                </div>
-              </label>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0">
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">In TacticalSync</p>
+            <div className="space-y-1">{renderSourceGroup(INTERNAL_SOURCE_KEYS)}</div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">External</p>
+            <div className="space-y-1">{renderSourceGroup(EXTERNAL_SOURCE_KEYS)}</div>
+          </div>
         </div>
       </div>
 
@@ -308,7 +315,8 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
         </p>
       </div>
     </div>
-  );
+    );
+  };
 
   // ── Render: Loading / Dismissed ─────────────────────────────────────────
 
