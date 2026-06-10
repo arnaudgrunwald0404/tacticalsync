@@ -835,16 +835,18 @@ Activities:
 
     // ── Log generation for cost tracking ──────────────────────────────────
 
-    await supabase.from('prep_generation_log').insert({
-      user_id: userId,
-      team_member_id: null,
-      prep_id: null,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      model: 'claude-sonnet-4-20250514',
-      duration_ms: Date.now() - startMs,
-      data_sources_used: ['dci_brief', ...dataSources],
-    }).catch(() => {}) // non-fatal
+    try {
+      await supabase.from('prep_generation_log').insert({
+        user_id: userId,
+        team_member_id: null,
+        prep_id: null,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        model: 'claude-sonnet-4-20250514',
+        duration_ms: Date.now() - startMs,
+        data_sources_used: ['dci_brief', ...dataSources],
+      })
+    } catch { /* non-fatal */ }
 
     return jsonResponse({
       brief_generated: true,
