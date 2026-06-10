@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { format, startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -28,17 +28,14 @@ export interface DciBriefData {
   emailSection: string | null;
   slackSection: string | null;
   generatedAt: string;
-  source: 'local' | 'api' | 'none';
+  source: 'api' | 'none';
 }
 
 interface UseDciBriefReturn {
   brief: DciBriefData | null;
   isLoading: boolean;
   error: string | null;
-  loadBrief: () => Promise<void>;
   refreshBrief: () => Promise<void>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dirHandleRef: React.MutableRefObject<any>;
 }
 
 // ── Markdown parser ─────────────────────────────────────────────────────────
@@ -146,52 +143,6 @@ function parseBriefMarkdown(md: string): Omit<DciBriefData, 'source'> {
   };
 }
 
-// ── File reading helpers ────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tryReadFile(dirHandle: any, filename: string): Promise<{ content: string; lastModified: number } | null> {
-  try {
-    const fileHandle = await dirHandle.getFileHandle(filename);
-    const file = await fileHandle.getFile();
-    const content = await file.text();
-    return { content, lastModified: file.lastModified };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Find a brief file for a given date (YYYY-MM-DD).
- * Tries exact match first (e.g. "2026-06-01.md"), then searches
- * the directory for any .md file containing the date string
- * (e.g. "DCI_Brief_2026-06-01.md").
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function findFileByDate(dirHandle: any, dateStr: string): Promise<{ content: string; lastModified: number } | null> {
-  // 1. Try exact match (backward compatible)
-  const exact = await tryReadFile(dirHandle, `${dateStr}.md`);
-  if (exact) return exact;
-
-  // 2. Search for any .md file containing the date
-  try {
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind !== 'file') continue;
-      if (name.endsWith('.md') && name.includes(dateStr)) {
-        const file = await handle.getFile();
-        const content = await file.text();
-        return { content, lastModified: file.lastModified };
-      }
-    }
-  } catch {
-    // iteration not supported or permission denied
-  }
-
-  return null;
-}
-
-/**
- * Get the Monday date string for the current week.
- */
 function getMondayOfWeek(): string {
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
   return format(monday, 'yyyy-MM-dd');
@@ -203,8 +154,6 @@ export function useDciBrief(): UseDciBriefReturn {
   const [brief, setBrief] = useState<DciBriefData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dirHandleRef = useRef<any>(null);
 
   // ── Load from Supabase (cos_dci_logs.brief_markdown) ──────────────────
   const loadFromSupabase = useCallback(async (): Promise<DciBriefData | null> => {
@@ -273,110 +222,24 @@ export function useDciBrief(): UseDciBriefReturn {
     return () => { cancelled = true; };
   }, [loadFromSupabase]);
 
-  const loadFromLocalFiles = useCallback(async (): Promise<DciBriefData | null> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fsApi = (window as any).showDirectoryPicker;
-    if (!fsApi) return null;
-
-    if (!dirHandleRef.current) {
-      try {
-        dirHandleRef.current = await fsApi({ id: 'dci-briefs', mode: 'read' });
-      } catch {
-        return null;
-      }
-    }
-
-    if (!dirHandleRef.current) return null;
-
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const mondayDate = getMondayOfWeek();
-    const isMonday = today === mondayDate;
-
-    // 1. Read today's brief (supports both "2026-06-01.md" and "DCI_Brief_2026-06-01.md")
-    const todayFile = await findFileByDate(dirHandleRef.current, today);
-
-    if (!todayFile) {
-      dirHandleRef.current = null;
-      return null;
-    }
-
-    const parsed = parseBriefMarkdown(todayFile.content);
-    parsed.generatedAt = new Date(todayFile.lastModified).toISOString();
-    parsed.weeklySourceDate = today;
-
-    // 2. On non-Monday days, if today's file has no weekly section,
-    //    fall back to Monday's file for the weekly priorities
-    if (!isMonday && parsed.weeklyPriorities.length === 0) {
-      const mondayFile = await findFileByDate(dirHandleRef.current, mondayDate);
-      if (mondayFile) {
-        const mondayParsed = parseBriefMarkdown(mondayFile.content);
-        if (mondayParsed.weeklyPriorities.length > 0) {
-          parsed.weeklyPriorities = mondayParsed.weeklyPriorities;
-          parsed.weeklySourceDate = mondayDate;
-        }
-      }
-    }
-
-    return { ...parsed, source: 'local' };
-  }, []);
-
-  const loadBrief = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Try Supabase first (automated brief)
-      const sbBrief = await loadFromSupabase();
-      if (sbBrief) {
-        setBrief(sbBrief);
-        return;
-      }
-
-      // Fall back to local files
-      const localBrief = await loadFromLocalFiles();
-      if (localBrief) {
-        setBrief(localBrief);
-        return;
-      }
-
-      setError('No DCI brief found for today. Enable automated briefs or generate one with Claude Code.');
-      setBrief(null);
-    } catch (err) {
-      console.error('DCI brief load error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load DCI brief');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadFromLocalFiles, loadFromSupabase]);
-
   const refreshBrief = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Try Supabase first
       const sbBrief = await loadFromSupabase();
       if (sbBrief) { setBrief(sbBrief); setIsLoading(false); return; }
-
-      // Try local files
-      if (dirHandleRef.current) {
-        const refreshed = await loadFromLocalFiles();
-        if (refreshed) { setBrief(refreshed); setIsLoading(false); return; }
-      }
-
       setError('No updated brief found.');
     } catch {
       setError('Failed to refresh brief.');
     } finally {
       setIsLoading(false);
     }
-  }, [loadFromLocalFiles, loadFromSupabase]);
+  }, [loadFromSupabase]);
 
   return {
     brief,
     isLoading,
     error,
-    loadBrief,
     refreshBrief,
-    dirHandleRef,
   };
 }

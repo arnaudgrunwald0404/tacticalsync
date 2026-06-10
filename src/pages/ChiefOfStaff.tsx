@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, FolderOpen, Radar, CalendarPlus, Bot,
+  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -797,7 +797,7 @@ function DciTabContent({
   onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
   onRerun: (log: CosDciLog) => void;
 }) {
-  const { brief, isLoading, error, loadBrief, refreshBrief } = useDciBrief();
+  const { brief, isLoading, error, refreshBrief } = useDciBrief();
 
   // ── Commitment data for the carousel (quarterly → monthly → weekly) ──
   type CarouselTier = 'weekly' | 'monthly' | 'quarterly';
@@ -975,24 +975,6 @@ function DciTabContent({
               <RefreshCw className={cn('h-4 w-4 mr-1.5', isLoading && 'animate-spin')} />
               Refresh
             </Button>
-          )}
-          {!hasBrief && !isLoading && !error && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  onClick={loadBrief}
-                  disabled={isLoading}
-                  className="bg-copper hover:bg-copper-hover text-white"
-                >
-                  <FolderOpen className="h-4 w-4 mr-1.5" />
-                  Load brief
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[240px] text-center">
-                <p className="text-xs">AI reviews your calendar, email, and Slack to suggest today's priorities</p>
-              </TooltipContent>
-            </Tooltip>
           )}
         </div>
       </div>
@@ -2923,9 +2905,16 @@ function PriorityCard({
             ) : (
               <div className="flex items-start gap-2 flex-wrap">
                 {isTagged && (
-                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20">
-                    W
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary border border-primary/20 cursor-default">
+                        Weekly Priority
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px] text-center">
+                      This item is one of your top 3 priorities for this week (from your Monday DCI log)
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 <button
                   onClick={() => setEditing(true)}
