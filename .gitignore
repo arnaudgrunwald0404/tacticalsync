@@ -46,6 +46,12 @@ potential_backup.sql
 .claude/worktrees/
 .claude/settings.local.json
 
+# Netlify local state
+.netlify/
+
+# Supabase local link state
+supabase/.temp/
+
 # Dev-only test-user credentials (provisioned via scripts/provision-claude-test-user.mjs).
 # Holds hardcoded email + password; must never be committed.
 /src/dev/test-user.ts
