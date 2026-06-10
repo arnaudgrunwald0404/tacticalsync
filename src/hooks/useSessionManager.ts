@@ -85,10 +85,18 @@ export function useSessionManager() {
 
   useEffect(() => {
     // Set up activity listeners
-    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    const events = ['mousedown', 'mousemove', 'click', 'keydown', 'touchstart', 'scroll'];
     events.forEach(event => {
       window.addEventListener(event, updateLastActivity);
     });
+
+    // Reset idle timer when user returns to this tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        updateLastActivity();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Check if there's an access_token in hash or if we're on reset password page
     const hash = window.location.hash;
@@ -113,10 +121,10 @@ export function useSessionManager() {
     }
 
     return () => {
-      // Cleanup
       events.forEach(event => {
         window.removeEventListener(event, updateLastActivity);
       });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (checkInterval.current) {
         clearInterval(checkInterval.current);
       }
