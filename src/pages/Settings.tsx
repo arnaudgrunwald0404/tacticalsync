@@ -215,11 +215,13 @@ const Settings = () => {
         return;
       }
 
-      // Set default section based on permissions
-      if (Boolean(dbIsSuperAdmin) || isSuperAdmin) {
-        setActiveSection("user-management-users");
-      } else {
-        setActiveSection("agenda-templates");
+      // Set default section based on permissions, but don't override an explicit ?section= from the URL
+      if (!searchParams.get("section")) {
+        if (Boolean(dbIsSuperAdmin) || isSuperAdmin) {
+          setActiveSection("user-management-users");
+        } else {
+          setActiveSection("agenda-templates");
+        }
       }
       
       await fetchTemplates();
