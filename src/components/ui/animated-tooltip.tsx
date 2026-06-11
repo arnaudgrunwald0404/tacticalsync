@@ -19,7 +19,7 @@ export const AnimatedTooltip = ({ items }: AnimatedTooltipProps) => {
   const [activeItem, setActiveItem] = React.useState<number | null>(null);
 
   return (
-    <div className="flex flex-row items-center space-x-2">
+    <div className="flex flex-row flex-wrap items-center gap-2">
       {items.map((item) => (
         <div
           key={item.id}
