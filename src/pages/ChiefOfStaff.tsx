@@ -584,9 +584,9 @@ export default function ChiefOfStaff() {
       </Sheet>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-semibold mr-2">Chief of Staff</h1>
-          <TabsList className="grid max-w-sm grid-cols-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
+          <h1 className="text-xl font-semibold">Chief of Staff</h1>
+          <TabsList className="grid w-full sm:max-w-sm grid-cols-3">
             <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
             <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
             <TabsTrigger value="team">1:1s</TabsTrigger>
