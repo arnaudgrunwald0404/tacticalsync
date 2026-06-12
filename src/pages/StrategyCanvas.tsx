@@ -200,7 +200,7 @@ const createDoNode = (
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white`}>Defining Objective</span>
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#F5F3F0] text-[#4A5D5F]`}>{status === "final" ? "locked" : "draft"}</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${status === "final" ? "bg-[#5B6E7A] text-white" : "bg-[#F5F3F0] text-[#4A5D5F]"}`}>{status === "final" ? "locked" : "draft"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
               <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-[#4A5D5F]`}>
@@ -452,8 +452,8 @@ function RallyNode({ data }: { data: NodeData }) {
             : "bg-[#B89A6B] text-white"
         }`}>Rallying Cry</span>
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-          finalized 
-            ? "bg-[#F5F3F0] text-[#4A5D5F]" 
+          finalized
+            ? "bg-[#5B6E7A] text-white"
             : "bg-[#F8F6F2] text-[#B89A6B]"
         }`}>
           {finalized ? "locked" : "draft"}
