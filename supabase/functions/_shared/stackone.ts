@@ -28,6 +28,7 @@ function headers(apiKey: string, accountId: string): Record<string, string> {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function safeFetch(url: string, hdrs: Record<string, string>): Promise<any | null> {
   try {
     const resp = await fetch(url, { headers: hdrs, signal: AbortSignal.timeout(8_000) })
@@ -89,6 +90,7 @@ async function fetchHrisData(
       hdrs,
     )
     if (Array.isArray(timeOff) && timeOff.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const upcoming = timeOff.filter((t: any) => {
         const start = new Date(t.start_date ?? t.start)
         return start >= new Date(Date.now() - 7 * 86_400_000)
@@ -262,6 +264,7 @@ export async function fetchStackOneEnrichment(
 }
 
 export async function getStackOneConfig(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   userId: string,
 ): Promise<{ apiKey: string; accounts: StackOneAccount[] } | null> {

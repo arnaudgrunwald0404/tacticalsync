@@ -144,12 +144,15 @@ serve(async (req) => {
     }
 
     // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parts = (geminiData as any)?.candidates?.[0]?.content?.parts ?? []
     // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const imagePart = parts.find((p: any) => p.inline_data?.data || p.inlineData?.data)
     if (!imagePart) {
       console.error('No image part in response. Keys:', JSON.stringify(Object.keys(geminiData)))
       // deno-lint-ignore no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const textPart = parts.find((p: any) => p.text)
       return jsonResponse({
         error: 'no_image_returned',
