@@ -36,6 +36,7 @@ export default function StackOnePanel() {
   const [creatingSession, setCreatingSession] = useState(false);
 
   const loadState = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase as any)
       .from('cos_mcp_integrations')
       .select('is_connected')
@@ -379,6 +380,7 @@ function StackOneHubEmbed({
   onSuccess: (account: { id: string; provider: string }) => void;
   onClose: () => void;
 }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [HubComponent, setHubComponent] = useState<React.FC<any> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
