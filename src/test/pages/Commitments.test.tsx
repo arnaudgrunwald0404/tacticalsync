@@ -6,6 +6,8 @@ interface MockBuilder {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
+  gte: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -22,6 +24,8 @@ vi.mock('@/integrations/supabase/client', () => {
       select: vi.fn(() => builder),
       eq: vi.fn(() => builder),
       in: vi.fn(() => builder),
+      gte: vi.fn(() => builder),
+      lte: vi.fn(() => builder),
       limit: vi.fn(() => builder),
       order: vi.fn(() => builder),
       single: vi.fn(() => Promise.resolve({ data: returnData, error })),
