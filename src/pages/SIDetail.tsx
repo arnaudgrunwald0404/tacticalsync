@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,9 +9,9 @@ import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
+import { useToast } from '@/hooks/use-toast';
 import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
 import { CheckinCard } from '@/components/rcdo/CheckinCard';
-import { TaskRow } from '@/components/rcdo/TaskRow';
 import { TaskDialog } from '@/components/rcdo/TaskDialog';
 import { TaskGanttChart } from '@/components/rcdo/TaskGanttChart';
 import { SITaskTable } from '@/components/rcdo/SITaskTable';
@@ -19,7 +19,6 @@ import { SISubTree } from '@/components/rcdo/SISubTree';
 import { useSubSIs } from '@/hooks/useSubSIs';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,15 +29,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCycle } from '@/hooks/useRCDO';
-import { DetailPageLayout } from '@/components/rcdo/DetailPageLayout';
-import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
+import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
+import { useRCDODetail } from '@/contexts/RCDODetailContext';
 
 
 export default function SIDetail() {
@@ -53,8 +51,9 @@ export default function SIDetail() {
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
+  const { setNavState } = useRCDODetail();
+  const { toast } = useToast();
   const [showSubSIConvertDialog, setShowSubSIConvertDialog] = useState(false);
   const [convertingMode, setConvertingMode] = useState(false);
 
@@ -62,14 +61,49 @@ export default function SIDetail() {
   const [siDetails, setSiDetails] = useState<Record<string, unknown> | null>(null);
   const [siLoading, setSiLoading] = useState(true);
 
-  // Preserve nav context across SI navigations to avoid sidebar remount
-  const lastNavContext = useRef<{ rallyingCryId: string; doId: string }>({ rallyingCryId: '', doId: '' });
-  if (siDetails?.defining_objective) {
-    const rc = (siDetails.defining_objective as Record<string, unknown>).rallying_cry_id as string;
-    const doId = (siDetails.defining_objective as Record<string, unknown>).id as string;
-    if (rc) lastNavContext.current.rallyingCryId = rc;
-    if (doId) lastNavContext.current.doId = doId;
-  }
+  // Profiles for owner picker
+  const [profiles, setProfiles] = useState<Array<{ id: string; full_name?: string | null; avatar_name?: string | null; avatar_url?: string | null }>>([]);
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('id, full_name, avatar_name, avatar_url')
+      .order('full_name', { ascending: true })
+      .then(({ data, error }) => { if (!error && data) setProfiles(data); });
+  }, []);
+
+  // Publish nav state to the persistent layout
+  useEffect(() => {
+    // Immediately mark this SI as active so the sidebar reflects the new page right away
+    setNavState({ currentSIId: siId, currentDOId: undefined, currentTaskId: taskIdFromUrl || undefined });
+  }, [siId, taskIdFromUrl]);
+
+  // Fetch cycle for Gantt chart — prefer URL param so draft cycles work
+  const { cycle: activeCycle } = useActiveCycle();
+  const cycleIdFromUrl = searchParams.get('cycle');
+
+  // Derive cycle from SI's parent chain so it works even without ?cycle= param
+  const [derivedCycleId, setDerivedCycleId] = useState<string | null>(null);
+  const siRallyingCryId = (siDetails?.defining_objective as Record<string, unknown> | undefined)?.rallying_cry_id as string | undefined;
+  useEffect(() => {
+    if (cycleIdFromUrl || !siRallyingCryId) return;
+    supabase.from('rc_rallying_cries').select('cycle_id').eq('id', siRallyingCryId).single()
+      .then(({ data }) => { if (data) setDerivedCycleId(data.cycle_id); });
+  }, [siRallyingCryId, cycleIdFromUrl]);
+  const cycleId = cycleIdFromUrl || derivedCycleId || activeCycle?.id;
+
+  useEffect(() => {
+    const defObj = siDetails?.defining_objective as Record<string, unknown> | undefined;
+    const doId = defObj?.id as string | undefined;
+    const rcId = defObj?.rallying_cry_id as string | undefined;
+    if (!rcId || !doId) return;
+    setNavState({
+      rallyingCryId: rcId,
+      cycleId: cycleId || undefined,
+      currentDOId: doId,
+      currentSIId: siId,
+      currentTaskId: taskIdFromUrl || undefined,
+    });
+  }, [siDetails, siId, taskIdFromUrl, cycleId]);
 
   // Fetch tasks
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasksBySI(siId);
@@ -140,20 +174,6 @@ export default function SIDetail() {
 
   // Fetch check-ins
   const { checkins, loading: checkinsLoading, refetch: refetchCheckins } = useCheckins('initiative', siId);
-
-  // Fetch cycle for Gantt chart — prefer URL param so draft cycles work
-  const { cycle: activeCycle } = useActiveCycle();
-  const cycleIdFromUrl = searchParams.get('cycle');
-
-  // Derive cycle from SI's parent chain so it works even without ?cycle= param
-  const [derivedCycleId, setDerivedCycleId] = useState<string | null>(null);
-  const siRallyingCryId = (siDetails?.defining_objective as Record<string, unknown> | undefined)?.rallying_cry_id as string | undefined;
-  useEffect(() => {
-    if (cycleIdFromUrl || !siRallyingCryId) return;
-    supabase.from('rc_rallying_cries').select('cycle_id').eq('id', siRallyingCryId).single()
-      .then(({ data }) => { if (data) setDerivedCycleId(data.cycle_id); });
-  }, [siRallyingCryId, cycleIdFromUrl]);
-  const cycleId = cycleIdFromUrl || derivedCycleId || activeCycle?.id;
 
   // Permissions - must be called before any early returns
   const { canEditInitiative, canCreateTask, canEditTask, canDeleteTask, canLockDO } = useRCDOPermissions();
@@ -301,16 +321,10 @@ export default function SIDetail() {
 
   if (loading || !siDetails) {
     return (
-      <DetailPageLayout
-        rallyingCryId={lastNavContext.current.rallyingCryId}
-        currentSIId={siId}
-        currentDOId={lastNavContext.current.doId}
-        mobileNavOpen={mobileNavOpen}
-        onMobileNavOpenChange={setMobileNavOpen}
-      >
+      <>
         <Skeleton className="h-12 w-full mb-8" />
         <Skeleton className="h-96 w-full" />
-      </DetailPageLayout>
+      </>
     );
   }
 
@@ -368,6 +382,49 @@ export default function SIDetail() {
       await refetchSI();
     } catch (e) {
       console.warn('Failed to unlock SI', e);
+    }
+  };
+
+  const handleLock = async () => {
+    if (!siDetails) return;
+
+    const missing: string[] = [];
+    const descText = siDetails.description
+      ? String(siDetails.description).replace(/<[^>]*>/g, '').trim()
+      : '';
+    if (!descText) missing.push('Description');
+    if (!siDetails.start_date) missing.push('Start date');
+    if (!siDetails.end_date) missing.push('End date');
+
+    if (missing.length > 0) {
+      toast({
+        title: "Can't finalize yet",
+        description: `Please fill in the following before locking:\n• ${missing.join('\n• ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const updates: Record<string, unknown> = {
+        locked_at: new Date().toISOString(),
+        locked_by: user?.id || null,
+        status: 'final',
+      };
+      const { error } = await supabase
+        .from('rc_strategic_initiatives')
+        .update(updates)
+        .eq('id', siDetails.id);
+      if (error) throw error;
+      await refetchSI();
+    } catch (e) {
+      console.warn('Failed to lock SI', e);
+      toast({
+        title: 'Failed to lock',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -489,24 +546,18 @@ export default function SIDetail() {
     : (siDetails.end_date ? parseLocalDate(siDetails.end_date) : new Date(new Date().getFullYear(), 11, 31));
 
   return (
-    <DetailPageLayout
-      rallyingCryId={siDetails.defining_objective?.rallying_cry_id || ''}
-      cycleId={cycleId}
-      currentSIId={siId}
-      currentDOId={siDetails.defining_objective?.id}
-      currentTaskId={taskIdFromUrl || undefined}
-      mobileNavOpen={mobileNavOpen}
-      onMobileNavOpenChange={setMobileNavOpen}
-    >
+    <>
       <DetailPageHeader
-        title={siNumbering ? `${siNumbering} ${siDetails.title}` : siDetails.title}
-        description={siDetails.description}
-        owner={siDetails.owner}
+        title={siNumbering ? `${siNumbering} ${siDetails.title}` : siDetails.title as string}
+        editableTitle={siDetails.title as string}
+        description={siDetails.description as string | null}
+        owner={siDetails.owner as DetailPageHeaderProps['owner']}
         isLocked={isLocked}
         isOwner={isOwner}
         currentUserId={currentUserId}
         type="si"
-        status={siDetails.status}
+        status={siDetails.status as string}
+        onLock={handleLock}
         onUnlock={handleUnlock}
         onCheckIn={() => setShowCheckInDialog(true)}
         canLock={canLockDO}
@@ -522,6 +573,25 @@ export default function SIDetail() {
         acceptsSubSis={acceptsSubSis}
         subSiCount={subSIs.length}
         additionalContent={additionalContent}
+        onTitleChange={async (val) => {
+          await supabase.from('rc_strategic_initiatives').update({ title: val }).eq('id', siDetails.id);
+          await refetchSI();
+        }}
+        onDescriptionChange={async (val) => {
+          await supabase.from('rc_strategic_initiatives').update({ description: val || null }).eq('id', siDetails.id);
+          await refetchSI();
+        }}
+        onOwnerChange={async (val) => {
+          await supabase.from('rc_strategic_initiatives').update({ owner_user_id: val }).eq('id', siDetails.id);
+          await refetchSI();
+        }}
+        profiles={profiles}
+        startDate={siDetails.start_date as string | null}
+        endDate={siDetails.end_date as string | null}
+        onStartDateChange={async (val) => handleDateChange('start_date', val)}
+        onEndDateChange={async (val) => handleDateChange('end_date', val)}
+        dateError={dateError}
+        onBreakIntoSubSIs={!isSubSI && !acceptsSubSis ? () => handleToggleSubSiMode(true) : undefined}
       />
 
           {/* Tabs */}
@@ -591,155 +661,6 @@ export default function SIDetail() {
               </Card>
             </TabsContent>
 
-            {/* Details Tab */}
-            <TabsContent value="details">
-              <Card className="p-6">
-                <div className="space-y-6">
-                  {/* Title */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Name
-                    </h3>
-                    {isLocked ? (
-                      <p className="text-lg text-gray-900 dark:text-gray-100">
-                        {siDetails.title as string}
-                      </p>
-                    ) : (
-                      <input
-                        type="text"
-                        value={(siDetails.title as string) || ''}
-                        onChange={async (e) => {
-                          const { error } = await supabase
-                            .from('rc_strategic_initiatives')
-                            .update({ title: e.target.value })
-                            .eq('id', siDetails.id);
-                          if (!error) {
-                            await refetchSI();
-                          }
-                        }}
-                        className="w-full px-3 py-2 border rounded-md text-lg"
-                        disabled={!canEdit}
-                      />
-                    )}
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Description
-                    </h3>
-                    {isLocked ? (
-                      <p className="text-gray-700 dark:text-gray-300">
-                        {(siDetails.description as string | null) || 'No description provided.'}
-                      </p>
-                    ) : (
-                      <textarea
-                        value={(siDetails.description as string | null) || ''}
-                        onChange={async (e) => {
-                          const next = e.target.value;
-                          const { error } = await supabase
-                            .from('rc_strategic_initiatives')
-                            .update({ description: next || null })
-                            .eq('id', siDetails.id);
-                          if (!error) {
-                            await refetchSI();
-                          }
-                        }}
-                        className="w-full px-3 py-2 border rounded-md min-h-[100px]"
-                        disabled={!canEdit}
-                        placeholder="Describe what this initiative entails..."
-                      />
-                    )}
-                  </div>
-
-                  {/* Sub-initiatives mode toggle (top-level SIs only) */}
-                  {!isSubSI && (
-                    <div className="flex items-start justify-between gap-4 py-3 border-y border-gray-200 dark:border-gray-700">
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400">
-                          Break this initiative into sub-initiatives
-                        </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          When enabled, the "Tasks" tab becomes "Sub-initiatives" and each sub-initiative carries its own tasks. Disable to manage tasks directly.
-                        </p>
-                      </div>
-                      {acceptsSubSis && subSIs.length > 0 ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>
-                              <Switch checked disabled />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Delete all sub-initiatives before switching back to direct tasks.
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <Switch
-                          checked={acceptsSubSis}
-                          disabled={!canEdit || isLocked || convertingMode || subSIsLoading}
-                          onCheckedChange={handleToggleSubSiMode}
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Timeline */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Timeline
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label htmlFor="si-start-date" className="text-xs text-gray-500">
-                          Start Date
-                        </label>
-                        {isLocked ? (
-                          <p className="text-sm text-gray-900 dark:text-gray-100">
-                            {siDetails.start_date
-                              ? new Date(siDetails.start_date as string).toLocaleDateString()
-                              : '—'}
-                          </p>
-                        ) : (
-                          <input
-                            id="si-start-date"
-                            type="date"
-                            value={(siDetails.start_date as string | null) || ''}
-                            onChange={(e) => handleDateChange('start_date', e.target.value)}
-                            className="w-full h-11 px-3 py-2 border rounded-md text-base"
-                            disabled={!canEdit}
-                          />
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <label htmlFor="si-end-date" className="text-xs text-gray-500">
-                          End Date
-                        </label>
-                        {isLocked ? (
-                          <p className="text-sm text-gray-900 dark:text-gray-100">
-                            {siDetails.end_date
-                              ? new Date(siDetails.end_date as string).toLocaleDateString()
-                              : '—'}
-                          </p>
-                        ) : (
-                          <input
-                            id="si-end-date"
-                            type="date"
-                            value={(siDetails.end_date as string | null) || ''}
-                            onChange={(e) => handleDateChange('end_date', e.target.value)}
-                            className="w-full h-11 px-3 py-2 border rounded-md text-base"
-                            disabled={!canEdit}
-                          />
-                        )}
-                      </div>
-                    </div>
-                    {dateError && (
-                      <p className="mt-2 text-sm text-red-600">{dateError}</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            </TabsContent>
           </Tabs>
 
       {/* Dialogs */}
@@ -786,7 +707,7 @@ export default function SIDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DetailPageLayout>
+    </>
   );
 }
 

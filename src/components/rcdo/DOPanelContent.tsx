@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock, Pencil } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { OwnerCombobox } from '@/components/ui/owner-combobox';
@@ -87,6 +86,8 @@ export function DOPanelContent({
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(selectedNode.data.title || '');
   
   // Check if DO is locked
   const doStatus = doLockedStatus.get(selectedNode.id);
@@ -144,20 +145,37 @@ export function DOPanelContent({
 
   const panelContent = (
     <>
-      <div className="mb-3">
-        <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white">Defining Objective</span>
-      </div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-base font-semibold">{selectedNode.data.title || "Untitled DO"}</h3>
-          {isLocked && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border">locked</span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-slate-600 text-white">Defining Objective</span>
+          {dbId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap border transition-colors focus:outline-none ${isLocked ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600' : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800'}`}>
+                  {isLocked ? 'Locked' : 'Draft'}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {!isLocked && onLockDO && (
+                  <DropdownMenuItem onClick={onLockDO}>
+                    <Lock className="h-3.5 w-3.5 mr-2" />
+                    Lock this DO
+                  </DropdownMenuItem>
+                )}
+                {isLocked && canLock && onUnlockDO && (
+                  <DropdownMenuItem onClick={onUnlockDO}>
+                    <Unlock className="h-3.5 w-3.5 mr-2" />
+                    Unlock this DO
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         <div className="flex items-center gap-1">
           {dbId && (
             <button
-              className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
+              className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent"
               aria-label="Open in full page"
               onClick={() => {
                 navigateHook(`/rcdo/detail/do/${dbId}${cycleParam ? `?cycle=${cycleParam}` : ''}`);
@@ -170,7 +188,7 @@ export function DOPanelContent({
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="More actions">
+              <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
@@ -179,56 +197,58 @@ export function DOPanelContent({
               <DropdownMenuItem className="text-red-600" onClick={deleteSelectedDo}>Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="Close" onClick={closePanel}>
+          <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="Close" onClick={closePanel}>
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
-      <div className="space-y-3">
-        {/* 1. Title */}
-        <div>
-          <label className={`text-sm font-medium ${!selectedNode.data.title || selectedNode.data.title.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Name</label>
-          <input 
-            className="w-full rounded border px-2 py-1 text-sm bg-background mt-1" 
-            value={selectedNode.data.title || ""} 
-            onChange={(e) => { if (isLocked) return; handleUpdate({ title: e.target.value }); }} 
-            disabled={isLocked}
-            placeholder="Name this DO"
-          />
-        </div>
-        
-        {/* 2. Definition & Hypothesis */}
-        <div>
-          <label className={`text-sm font-medium ${!selectedNode.data.hypothesis || selectedNode.data.hypothesis.trim().replace(/<[^>]*>/g, '').trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Definition & Hypothesis</label>
-          <div className="mt-1">
-            <RichTextEditor
-              content={selectedNode.data.hypothesis || ""}
-              onChange={(content) => { if (isLocked) return; handleUpdate({ hypothesis: content }); }}
-              placeholder="If we do X, then Y will happen because Z..."
-              minHeight="96px"
-            />
-          </div>
-        </div>
-        
-        {/* 3. Primary Success Metric */}
-        <div>
-          <label className={`text-sm font-medium ${!selectedNode.data.primarySuccessMetric || selectedNode.data.primarySuccessMetric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
-          <textarea 
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none" 
-            rows={3}
-            placeholder="e.g., OpEx management and achievement of SI-level metrics" 
-            value={selectedNode.data.primarySuccessMetric || ""} 
-            onChange={(e) => { if (isLocked) return; handleUpdate({ primarySuccessMetric: e.target.value }); }}
-            disabled={isLocked}
-            style={{ 
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
-              whiteSpace: 'pre-wrap'
+      <div className="flex items-center gap-2 mb-4 group/title">
+        {editingTitle ? (
+          <input
+            ref={titleInputRef}
+            autoFocus
+            className="text-base font-semibold bg-transparent border-b-2 border-blue-500 focus:outline-none flex-1 min-w-0"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              if (titleDraft.trim() && titleDraft !== selectedNode.data.title) {
+                handleUpdate({ title: titleDraft.trim() });
+              } else {
+                setTitleDraft(selectedNode.data.title || '');
+              }
+              setEditingTitle(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (titleDraft.trim() && titleDraft !== selectedNode.data.title) handleUpdate({ title: titleDraft.trim() });
+                setEditingTitle(false);
+              }
+              if (e.key === 'Escape') {
+                setTitleDraft(selectedNode.data.title || '');
+                setEditingTitle(false);
+              }
             }}
           />
-        </div>
-        
-        {/* 4. Owner */}
+        ) : (
+          <>
+            <h3 className="text-base font-semibold">{selectedNode.data.title || 'Untitled DO'}</h3>
+            {isLocked && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border">locked</span>
+            )}
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={() => { setTitleDraft(selectedNode.data.title || ''); setEditingTitle(true); }}
+                className="opacity-0 group-hover/title:opacity-100 p-1 rounded hover:bg-accent text-muted-foreground transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      <div className="space-y-3">
+        {/* 1. Owner */}
         <div>
           {(() => {
             const owner = selectedNode.data.ownerId ? profilesMap[selectedNode.data.ownerId] : null;
@@ -248,21 +268,46 @@ export function DOPanelContent({
             />
           </div>
         </div>
+
+        {/* 2. Definition & Hypothesis */}
+        <div>
+          <label className={`text-sm font-medium ${!selectedNode.data.hypothesis || selectedNode.data.hypothesis.trim().replace(/<[^>]*>/g, '').trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Definition & Hypothesis</label>
+          <div className="mt-1">
+            <RichTextEditor
+              content={selectedNode.data.hypothesis || ""}
+              onChange={(content) => { if (isLocked) return; handleUpdate({ hypothesis: content }); }}
+              placeholder="If we do X, then Y will happen because Z..."
+              minHeight="96px"
+            />
+          </div>
+        </div>
+
+        {/* 3. Primary Success Metric */}
+        <div>
+          <label className={`text-sm font-medium ${!selectedNode.data.primarySuccessMetric || selectedNode.data.primarySuccessMetric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            rows={3}
+            placeholder="e.g., OpEx management and achievement of SI-level metrics"
+            value={selectedNode.data.primarySuccessMetric || ""}
+            onChange={(e) => { if (isLocked) return; handleUpdate({ primarySuccessMetric: e.target.value }); }}
+            disabled={isLocked}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+          />
+        </div>
         
         {/* 5. Strategic Initiatives */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium">Strategic Initiatives</label>
             {!isLocked && (
-              <Button
-                size="sm"
-                variant="outline"
+              <button
                 onClick={addSaiToSelectedDo}
-                className="h-7 text-xs"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
               >
-                <Plus className="h-3 w-3 mr-1" />
+                <Plus className="h-3 w-3" />
                 Add
-              </Button>
+              </button>
             )}
           </div>
           <div className="space-y-2">
@@ -286,38 +331,6 @@ export function DOPanelContent({
           </div>
         </div>
 
-        {/* Finalize button */}
-        {!isLocked && onLockDO && (
-          <div className="pt-4 border-t mt-4">
-            <Button
-              size="sm"
-              onClick={onLockDO}
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <Lock className="h-3.5 w-3.5" />
-              Lock this DO
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              Locking will lock this DO and its SIs
-            </p>
-          </div>
-        )}
-        {isLocked && (
-          <div className="pt-4 border-t mt-4">
-            <p className="text-xs text-muted-foreground text-center">This DO has been finalized.</p>
-            {canLock && onUnlockDO && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onUnlockDO}
-                className="w-full mt-2 flex items-center justify-center gap-2"
-              >
-                <Unlock className="h-3.5 w-3.5" />
-                Unlock this DO
-              </Button>
-            )}
-          </div>
-        )}
       </div>
     </>
   );

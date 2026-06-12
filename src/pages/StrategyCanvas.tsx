@@ -1595,6 +1595,51 @@ const duplicateSelectedDo = useCallback(() => {
     }
   }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
+  const lockSingleSI = useCallback(async (siId: string, siDbId: string) => {
+    const missing: string[] = [];
+    const doNode = nodesRef.current.find(n => (n.data.saiItems || []).some(s => s.id === siId));
+    const si = doNode?.data.saiItems?.find(s => s.id === siId);
+    if (!si?.ownerId) missing.push('Owner');
+    if (!si?.metric?.trim()) missing.push('Primary Success Metric');
+    if (missing.length > 0) {
+      toast({ title: 'Cannot lock — incomplete SI', description: `Missing: ${missing.join(', ')}`, variant: 'destructive' });
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('rc_strategic_initiatives')
+      .update({ locked_at: new Date().toISOString(), locked_by: user?.id ?? null } as Record<string, unknown>)
+      .eq('id', siDbId);
+    if (error) {
+      toast({ title: 'Lock failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setSiProgressMap(prev => {
+      const next = new Map(prev);
+      const existing = next.get(siId);
+      if (existing) next.set(siId, { ...existing, isLocked: true });
+      return next;
+    });
+    toast({ title: 'SI locked', description: `"${si?.title}" has been locked.` });
+  }, [toast, setSiProgressMap]);
+
+  const unlockSingleSI = useCallback(async (siId: string, siDbId: string) => {
+    const { error } = await supabase
+      .from('rc_strategic_initiatives')
+      .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
+      .eq('id', siDbId);
+    if (error) {
+      toast({ title: 'Unlock failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setSiProgressMap(prev => {
+      const next = new Map(prev);
+      const existing = next.get(siId);
+      if (existing) next.set(siId, { ...existing, isLocked: false });
+      return next;
+    });
+  }, [toast, setSiProgressMap]);
+
   const openImportFromFile = useCallback(() => {
     setShowImportDialog(true);
     setImportProgress([]);
@@ -2451,7 +2496,7 @@ const duplicateSelectedDo = useCallback(() => {
           ) : (
             <div className="fixed inset-0 z-50">
               <div className="absolute inset-0 bg-black/40" onClick={closePanel} />
-              <div className="absolute right-0 top-0 h-full w-[380px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col">
+              <div className="absolute right-0 top-0 h-full w-[380px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col overflow-y-auto">
                 <DOPanelContent
                   selectedNode={selectedNode}
                   doLockedStatus={doLockedStatus}
@@ -2516,16 +2561,18 @@ const duplicateSelectedDo = useCallback(() => {
             onOpenSubSI={(subSiId) => setFocusedSubSI({ subSiId, parentSiTitle: si.title || 'Strategic initiative' })}
             selectedSubSiId={focusedSubSI?.subSiId || null}
             subSiListRefreshKey={subSiListRefreshKey}
+            onLockSI={si.dbId ? () => lockSingleSI(si.id, si.dbId!) : undefined}
+            onUnlockSI={si.dbId ? () => unlockSingleSI(si.id, si.dbId!) : undefined}
           />
           {/* Tertiary panel — sub-initiative details, docked to the left of the SI
               panel. Right offset composes with the DO panel state:
-                DO + SI open → SI sits at right=380, so its left edge is at 800px.
-                SI only      → SI sits at right=0,   so its left edge is at 420px. */}
+                DO + SI open → SI sits at right=380, so its left edge is at 760px.
+                SI only      → SI sits at right=0,   so its left edge is at 380px. */}
           {focusedSubSI && (
             <SubSIPanelContent
               key={focusedSubSI.subSiId}
               subSiId={focusedSubSI.subSiId}
-              rightOffsetPx={selectedNode?.type === 'do' ? 800 : 420}
+              rightOffsetPx={selectedNode?.type === 'do' ? 760 : 380}
               parentSiTitle={focusedSubSI.parentSiTitle}
               profiles={profiles}
               onClose={() => setFocusedSubSI(null)}

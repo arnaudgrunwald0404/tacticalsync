@@ -177,7 +177,7 @@ export function DetailPageNavigation({
             id: doItem.id,
             title: `${doNum}.0 ${doItem.title}`,
             type: 'do' as const,
-            isActive: doItem.id === currentDOId,
+            isActive: doItem.id === currentDOId && !currentSIId,
             isExpanded: doItem.id === currentDOId || siItems.some(si => si.id === currentSIId),
             children: siItems.length > 0 ? siItems : undefined,
           };
@@ -230,8 +230,8 @@ export function DetailPageNavigation({
     prevActiveRef.current = { currentDOId, currentSIId, currentTaskId };
 
     const updateActiveStates = (node: NavigationItem): NavigationItem => {
-      const newIsActive = 
-        (node.type === 'do' && node.id === currentDOId) ||
+      const newIsActive =
+        (node.type === 'do' && node.id === currentDOId && !currentSIId) ||
         (node.type === 'si' && node.id === currentSIId) ||
         (node.type === 'task' && node.id === currentTaskId);
 
@@ -289,9 +289,7 @@ export function DetailPageNavigation({
   }, [currentDOId, currentSIId, currentTaskId]);
 
   const toggleExpand = useCallback((item: NavigationItem) => {
-    // Don't allow toggling RC level
     if (item.type === 'rce') return;
-    
     const updateItem = (node: NavigationItem | null): NavigationItem | null => {
       if (!node) return null;
       if (node.id === item.id) {
@@ -306,6 +304,26 @@ export function DetailPageNavigation({
       return node;
     };
     setNavTree(prev => updateItem(prev));
+  }, []);
+
+  const ensureExpanded = useCallback((item: NavigationItem) => {
+    if (item.type === 'rce') return;
+    setNavTree(prev => {
+      const updateItem = (node: NavigationItem | null): NavigationItem | null => {
+        if (!node) return null;
+        if (node.id === item.id) {
+          return node.isExpanded ? node : { ...node, isExpanded: true };
+        }
+        if (node.children) {
+          const updatedChildren = node.children.map(updateItem).filter(Boolean) as NavigationItem[];
+          const changed = updatedChildren.some((c, i) => c !== node.children![i]);
+          return changed ? { ...node, children: updatedChildren } : node;
+        }
+        return node;
+      };
+      const updated = updateItem(prev);
+      return updated !== prev ? updated : prev;
+    });
   }, []);
 
   const handleNavigate = useCallback((item: NavigationItem) => {
@@ -398,13 +416,18 @@ export function DetailPageNavigation({
     const isDO = item.type === 'do';
     const showChevron = hasChildren && !isRC; // Don't show chevron for RC level
 
+    // RC node is active when we're on the all-hands page (no DO/SI/task selected)
+    const isItemActive = isRC
+      ? !currentDOId && !currentSIId && !currentTaskId
+      : (item.isActive ?? false);
+
     return (
       <div key={item.id}>
         <div
           className={cn(
             'flex items-start gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors',
             'hover:bg-accent min-h-[44px]',
-            item.isActive && 'bg-slate-700 hover:bg-slate-600 text-white rounded-lg',
+            isItemActive && 'bg-slate-700 hover:bg-slate-600 text-white rounded-lg',
             (isRC || isDO) && 'font-bold',
             level > 0 && 'ml-4'
           )}
@@ -417,8 +440,12 @@ export function DetailPageNavigation({
                 setMobileOpen(false);
               }
             } else if (hasChildren) {
-              // Items with children toggle expand on click
-              toggleExpand(item);
+              // Navigate to item and ensure its children are visible
+              handleNavigate(item);
+              ensureExpanded(item);
+              if (isMobile) {
+                setMobileOpen(false);
+              }
             } else {
               // Items without children navigate
               handleNavigate(item);
@@ -444,12 +471,12 @@ export function DetailPageNavigation({
             </button>
           )}
           {!showChevron && !isRC && <div className="h-4 w-4 flex-shrink-0" />}
-          {isRC && <BarChart3 className={cn("h-5 w-5 flex-shrink-0 mt-0.5", item.isActive ? "text-white" : "text-slate-600")} />}
+          {isRC && <BarChart3 className={cn("h-5 w-5 flex-shrink-0 mt-0.5", isItemActive ? "text-white" : "text-slate-600")} />}
           <div className="flex-1 min-w-0">
             <span
               className={cn(
                 'break-words',
-                item.isActive ? 'text-white font-semibold' : isRC ? 'text-base font-bold' : isDO ? 'text-base font-bold' : 'text-sm'
+                isItemActive ? 'text-white font-semibold' : isRC ? 'text-base font-bold' : isDO ? 'text-base font-bold' : 'text-sm'
               )}
             >
               {item.title}
@@ -463,7 +490,7 @@ export function DetailPageNavigation({
         )}
       </div>
     );
-  }, [toggleExpand, handleNavigate, isMobile, setMobileOpen]);
+  }, [toggleExpand, ensureExpanded, handleNavigate, isMobile, setMobileOpen, currentDOId, currentSIId, currentTaskId]);
 
   const sidebarContent = (
     <>

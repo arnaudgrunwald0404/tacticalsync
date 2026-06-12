@@ -2,18 +2,12 @@ import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
-const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 const REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes before expiry
 const CHECK_INTERVAL = 60 * 1000; // Check every minute
 
 export function useSessionManager() {
   const navigate = useNavigate();
-  const lastActivity = useRef(Date.now());
   const checkInterval = useRef<number>();
-
-  const updateLastActivity = useCallback(() => {
-    lastActivity.current = Date.now();
-  }, []);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -62,18 +56,8 @@ export function useSessionManager() {
       return;
     }
 
-    const now = Date.now();
-    const idleTime = now - lastActivity.current;
-
-    // Check if user has been idle
-    if (idleTime >= IDLE_TIMEOUT) {
-      console.log('Session expired due to inactivity');
-      await supabase.auth.signOut();
-      navigate('/auth');
-      return;
-    }
-
     // Get expiry time of the access token
+    const now = Date.now();
     const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
     const timeUntilExpiry = expiresAt - now;
 
@@ -84,20 +68,6 @@ export function useSessionManager() {
   }, [navigate, refreshSession]);
 
   useEffect(() => {
-    // Set up activity listeners
-    const events = ['mousedown', 'mousemove', 'click', 'keydown', 'touchstart', 'scroll'];
-    events.forEach(event => {
-      window.addEventListener(event, updateLastActivity);
-    });
-
-    // Reset idle timer when user returns to this tab
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        updateLastActivity();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     // Check if there's an access_token in hash or if we're on reset password page
     const hash = window.location.hash;
     const hasAccessToken = hash.includes('access_token=');
@@ -121,13 +91,9 @@ export function useSessionManager() {
     }
 
     return () => {
-      events.forEach(event => {
-        window.removeEventListener(event, updateLastActivity);
-      });
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (checkInterval.current) {
         clearInterval(checkInterval.current);
       }
     };
-  }, [checkSession, updateLastActivity]);
+  }, [checkSession]);
 }

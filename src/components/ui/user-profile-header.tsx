@@ -58,7 +58,7 @@ export function UserProfileHeader() {
   };
 
   return (
-    <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center">
+    <div className="ml-auto flex-shrink-0 flex items-center">
       {profileLoading ? (
         <div className="flex items-center gap-3">
           <Skeleton className="h-7 w-7 rounded-full" />

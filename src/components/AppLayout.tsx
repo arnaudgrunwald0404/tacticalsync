@@ -44,10 +44,12 @@ export function AppLayout() {
     return <PageSkeleton />;
   }
 
+  const isChiefOfStaff = location.pathname.startsWith("/chief-of-staff");
+
   return (
     <div className="min-h-screen flex flex-col">
       <AppNavbar />
-      <WeekendBanner />
+      {isChiefOfStaff && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
         <Outlet />
       </Suspense>
