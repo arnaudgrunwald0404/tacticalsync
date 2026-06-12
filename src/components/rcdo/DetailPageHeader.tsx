@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, TrendingDown, Plus, Table2, BarChart3, Pencil, Calendar } from 'lucide-react';
+import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, TrendingDown, Table2, BarChart3, Pencil, Calendar } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
@@ -50,8 +50,6 @@ export interface DetailPageHeaderProps {
   // SI-specific actions
   viewMode?: 'table' | 'gantt';
   onViewModeChange?: (mode: 'table' | 'gantt') => void;
-  onAddTask?: () => void;
-  canCreateTask?: boolean;
   activeTab?: string;
   onTabChange?: (value: string) => void;
   tasksCount?: number;
@@ -98,8 +96,6 @@ export function DetailPageHeader({
   canEdit = false,
   viewMode,
   onViewModeChange,
-  onAddTask,
-  canCreateTask = false,
   activeTab,
   onTabChange,
   tasksCount = 0,
@@ -210,88 +206,6 @@ export function DetailPageHeader({
               </button>
             )}
           </>
-        )}
-      </div>
-
-      {/* Action buttons + status badge row */}
-      <div className="flex items-center gap-2 mb-4">
-        {/* SI-specific: Add Task button */}
-        {type === 'si' && !isLocked && canCreateTask && onAddTask && (
-          <Button onClick={onAddTask} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Task
-          </Button>
-        )}
-        {isOwner && !isLocked && onCheckIn && (
-          <Button variant="outline" size="sm" onClick={onCheckIn}>
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Check-In
-          </Button>
-        )}
-        {canLock && !isLocked && onLock && (
-          <Button variant="outline" size="sm" onClick={onLock}>
-            <Lock className="h-4 w-4 mr-2" />
-            Lock
-          </Button>
-        )}
-        {isLocked && canLock && onUnlock && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onUnlock}>
-                <Unlock className="h-4 w-4 mr-2" />
-                Unlock
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {type === 'si' && !isLocked && canEdit && !acceptsSubSis && onBreakIntoSubSIs && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                Break into sub-initiatives
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {type === 'do' && (
-          <Badge
-            className={
-              isDefaultState
-                ? 'bg-[#5B6E7A]'
-                : healthResult.health === 'on_track'
-                ? 'bg-[#6B9A8F]'
-                : healthResult.health === 'at_risk'
-                ? 'bg-[#B89A6B]'
-                : healthResult.health === 'off_track'
-                ? 'bg-[#8B6F47]'
-                : 'bg-[#6B9A8F]'
-            }
-          >
-            <HealthIcon className="h-3 w-3 mr-1" />
-            {healthResult.health.replace('_', ' ').toUpperCase()}
-          </Badge>
-        )}
-        {type === 'si' && status && (
-          <Badge className={
-            status === 'draft' ? 'bg-[#5B6E7A]' :
-            status === 'initialized' ? 'bg-cyan-500' :
-            status === 'on_track' ? 'bg-green-500' :
-            status === 'delayed' ? 'bg-yellow-500' :
-            status === 'cancelled' ? 'bg-red-500' :
-            'bg-gray-500'
-          }>
-            {status.replace('_', ' ').toUpperCase()}
-          </Badge>
         )}
       </div>
 
@@ -447,6 +361,86 @@ export function DetailPageHeader({
         )}
       </div>
 
+      {/* Action buttons + status badge row — below owner */}
+      <div className="flex items-center gap-2 mt-3">
+        {isOwner && !isLocked && onCheckIn && (
+          <Button variant="outline" size="sm" onClick={onCheckIn}>
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Check-In
+          </Button>
+        )}
+        {canLock && !isLocked && onLock && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={onLock}
+            onKeyDown={(e) => e.key === 'Enter' && onLock()}
+            className="inline-flex items-center border border-transparent rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-[#5B6E7A] text-white cursor-pointer hover:bg-[#4A5D68] transition-colors"
+          >
+            LOCK
+          </span>
+        )}
+        {type === 'do' && (
+          <Badge
+            className={
+              isDefaultState
+                ? 'bg-[#5B6E7A]'
+                : healthResult.health === 'on_track'
+                ? 'bg-[#6B9A8F]'
+                : healthResult.health === 'at_risk'
+                ? 'bg-[#B89A6B]'
+                : healthResult.health === 'off_track'
+                ? 'bg-[#8B6F47]'
+                : 'bg-[#6B9A8F]'
+            }
+          >
+            <HealthIcon className="h-3 w-3 mr-1" />
+            {healthResult.health.replace('_', ' ').toUpperCase()}
+          </Badge>
+        )}
+        {type === 'si' && status && (
+          <Badge className={
+            status === 'draft' ? 'bg-[#5B6E7A]' :
+            status === 'initialized' ? 'bg-cyan-500' :
+            status === 'on_track' ? 'bg-green-500' :
+            status === 'delayed' ? 'bg-yellow-500' :
+            status === 'cancelled' ? 'bg-red-500' :
+            'bg-gray-500'
+          }>
+            {status.replace('_', ' ').toUpperCase()}
+          </Badge>
+        )}
+        {isLocked && canLock && onUnlock && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onUnlock}>
+                <Unlock className="h-4 w-4 mr-2" />
+                Unlock
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onBreakIntoSubSIs}>
+                Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
       {/* Additional content (e.g., selected initiative or task details) */}
       {additionalContent && (
         <div className="mt-4 pt-4 border-t">
@@ -468,23 +462,31 @@ export function DetailPageHeader({
             </TabsList>
           </Tabs>
           {viewMode && onViewModeChange && activeTab === 'tasks' && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'outline'}
-                size="sm"
+            <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
                 onClick={() => onViewModeChange('table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#5B6E7A] text-white'
+                    : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
               >
-                <Table2 className="h-4 w-4 mr-2" />
+                <Table2 className="h-3.5 w-3.5" />
                 Table
-              </Button>
-              <Button
-                variant={viewMode === 'gantt' ? 'default' : 'outline'}
-                size="sm"
+              </button>
+              <button
+                type="button"
                 onClick={() => onViewModeChange('gantt')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-200 dark:border-gray-700 ${
+                  viewMode === 'gantt'
+                    ? 'bg-[#5B6E7A] text-white'
+                    : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
               >
-                <BarChart3 className="h-4 w-4 mr-2" />
+                <BarChart3 className="h-3.5 w-3.5" />
                 Gantt
-              </Button>
+              </button>
             </div>
           )}
         </div>

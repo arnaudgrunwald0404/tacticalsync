@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Plus } from 'lucide-react';
 import { useCheckins } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
 import type { TaskWithRelations } from '@/types/rcdo';
@@ -564,8 +564,6 @@ export default function SIDetail() {
         canEdit={canEdit}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onAddTask={() => setShowTaskDialog(true)}
-        canCreateTask={!isLocked && canCreateTask && !acceptsSubSis}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         tasksCount={tasks.length}
@@ -591,7 +589,7 @@ export default function SIDetail() {
         onStartDateChange={async (val) => handleDateChange('start_date', val)}
         onEndDateChange={async (val) => handleDateChange('end_date', val)}
         dateError={dateError}
-        onBreakIntoSubSIs={!isSubSI && !acceptsSubSis ? () => handleToggleSubSiMode(true) : undefined}
+        onBreakIntoSubSIs={!isSubSI && (!acceptsSubSis || subSIs.length === 0) ? () => handleToggleSubSiMode(!acceptsSubSis) : undefined}
       />
 
           {/* Tabs */}
@@ -614,6 +612,8 @@ export default function SIDetail() {
                     loading={tasksLoading}
                     onEditTask={handleEditTask}
                     onRefetch={refetchTasks}
+                    onAddTask={() => setShowTaskDialog(true)}
+                    canAddTask={!isLocked && canCreateTask}
                   />
                 ) : (
                   <div className="overflow-x-auto">
@@ -722,12 +722,16 @@ function FlatTaskTable({
   loading,
   onEditTask,
   onRefetch,
+  onAddTask,
+  canAddTask,
 }: {
   siId: string;
   tasks: TaskWithRelations[];
   loading: boolean;
   onEditTask: (taskId: string) => void;
   onRefetch: () => void | Promise<void>;
+  onAddTask?: () => void;
+  canAddTask?: boolean;
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const taskIds = tasks.map((t) => t.id);
@@ -755,16 +759,26 @@ function FlatTaskTable({
   };
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <SITaskTable
-        tasks={tasks}
-        loading={loading}
-        onEditTask={onEditTask}
-        onRefetch={onRefetch}
-        draggableContainerId={siId}
-        onReorderTasks={reorderTasks}
-      />
-    </DndContext>
+    <>
+      {canAddTask && onAddTask && (
+        <div className="flex justify-end mb-3">
+          <Button onClick={onAddTask} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Task
+          </Button>
+        </div>
+      )}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <SITaskTable
+          tasks={tasks}
+          loading={loading}
+          onEditTask={onEditTask}
+          onRefetch={onRefetch}
+          draggableContainerId={siId}
+          onReorderTasks={reorderTasks}
+        />
+      </DndContext>
+    </>
   );
 }
 
