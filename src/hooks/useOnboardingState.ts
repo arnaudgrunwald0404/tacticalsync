@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface OnboardingState {
   welcome: boolean;
@@ -20,7 +21,7 @@ export function useOnboardingState() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      const db = supabase as any;
+      const db = supabase as unknown as SupabaseClient;
       const { data } = await db
         .from('cos_settings')
         .select('onboarding_completed')
@@ -39,7 +40,7 @@ export function useOnboardingState() {
     const next = { ...onboarding, [key]: true };
     setOnboarding(next);
     if (!userId) return;
-    const db = supabase as any;
+    const db = supabase as unknown as SupabaseClient;
     await db.from('cos_settings').upsert(
       { user_id: userId, onboarding_completed: next, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' },

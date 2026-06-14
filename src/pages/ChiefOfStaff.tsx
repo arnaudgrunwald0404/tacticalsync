@@ -205,6 +205,7 @@ export default function ChiefOfStaff() {
 
   const reloadSettings = useCallback(async () => {
     if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data } = await db.from('cos_settings').select('*').eq('user_id', userId).maybeSingle();
     if (data?.status_options) setStatusOptions(data.status_options as string[]);

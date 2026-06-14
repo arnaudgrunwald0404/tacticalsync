@@ -119,7 +119,7 @@ export function WeekendBanner() {
       if (res.error) {
         let detail = '';
         try {
-          const ctx = (res.error as any).context;
+          const ctx = (res.error as { context?: { json?: () => Promise<unknown>; text?: () => Promise<string> } }).context;
           if (ctx?.json) detail = JSON.stringify(await ctx.json());
           else if (ctx?.text) detail = await ctx.text();
         } catch { /* ignore */ }
