@@ -119,6 +119,7 @@ export function WeekendBanner() {
       if (res.error) {
         let detail = '';
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ctx = (res.error as any).context;
           if (ctx?.json) detail = JSON.stringify(await ctx.json());
           else if (ctx?.text) detail = await ctx.text();
