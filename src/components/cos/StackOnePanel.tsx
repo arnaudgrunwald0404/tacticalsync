@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { cn } from '@/lib/utils';
 
 interface StackOneAccount {
@@ -36,8 +37,7 @@ export default function StackOnePanel() {
   const [creatingSession, setCreatingSession] = useState(false);
 
   const loadState = useCallback(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const { data } = await (supabase as unknown as SupabaseClient)
       .from('cos_mcp_integrations')
       .select('is_connected')
       .eq('integration_key', 'stackone')
@@ -380,8 +380,13 @@ function StackOneHubEmbed({
   onSuccess: (account: { id: string; provider: string }) => void;
   onClose: () => void;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [HubComponent, setHubComponent] = useState<React.FC<any> | null>(null);
+  const [HubComponent, setHubComponent] = useState<React.FC<{
+    token: string;
+    theme?: string;
+    height?: string;
+    onSuccess: (account: { id: string; provider: string }) => void;
+    onClose: () => void;
+  }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {

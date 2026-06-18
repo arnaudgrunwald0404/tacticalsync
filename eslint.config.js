@@ -5,7 +5,10 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // `supabase/functions` are Deno edge functions, linted by Deno (they use
+  // Deno globals and carry their own `deno-lint-ignore` directives), so they
+  // should not be checked by this browser-targeted ESLint config.
+  { ignores: ["dist", "supabase/functions"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

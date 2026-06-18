@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { cn } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -82,8 +83,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
         const { data: userData } = await supabase.auth.getUser();
         if (!userData.user) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: settings } = await (supabase as any)
+        const { data: settings } = await (supabase as unknown as SupabaseClient)
           .from('cos_settings')
           .select('agent_config')
           .eq('user_id', userData.user.id)
@@ -94,8 +94,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
         }
 
         // Check Slack connection
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: slackCreds } = await (supabase as any)
+        const { data: slackCreds } = await (supabase as unknown as SupabaseClient)
           .from('user_slack_credentials_public')
           .select('connected, slack_email')
           .maybeSingle();
@@ -116,8 +115,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
+      await (supabase as unknown as SupabaseClient)
         .from('cos_settings')
         .upsert({
           user_id: userData.user.id,
