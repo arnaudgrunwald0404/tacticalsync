@@ -119,6 +119,7 @@ export function WeekendBanner() {
       if (res.error) {
         let detail = '';
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ctx = (res.error as any).context;
           if (ctx?.json) detail = JSON.stringify(await ctx.json());
           else if (ctx?.text) detail = await ctx.text();
@@ -226,10 +227,17 @@ export function WeekendBanner() {
             </div>
           ) : (
             <div
-              className="relative p-6 rounded-2xl text-white"
-              style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 50%, #ef4444 100%)' }}
+              className="relative p-6 rounded-2xl text-white overflow-hidden"
+              style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}
             >
-              <div className="absolute inset-0 pointer-events-none rounded-2xl" style={{ background: 'radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15), transparent 50%)' }} />
+              <img
+                src="/friday-banner-default.png"
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-black/10 rounded-2xl" />
               <button
                 onClick={() => setDismissed(true)}
                 className="absolute top-3 right-3 p-1 text-white/50 hover:text-white transition-colors"
@@ -245,21 +253,22 @@ export function WeekendBanner() {
                 <p className="text-white/80 text-sm mb-4">
                   What are you up to this weekend?
                 </p>
-                <div className="relative">
+                <div className="flex items-center gap-2 w-2/3">
                   <Input
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleGenerate(); }}
-                    placeholder="Beach day, hiking, catching up on reading..."
+                    placeholder="Beach day, hiking..."
                     disabled={generating}
-                    className="bg-white/30 border-white/40 text-white font-medium placeholder:text-white/60 pr-10 h-10 focus-visible:ring-white/40"
+                    className="bg-white/30 border-white/40 text-white font-medium placeholder:text-white/60 h-10 focus-visible:ring-white/40"
                   />
                   <button
                     onClick={() => handleGenerate()}
                     disabled={generating || !input.trim()}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white disabled:opacity-40 transition-colors"
+                    style={{ backgroundColor: '#ffffff', color: '#111827', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', height: '40px', borderRadius: '6px', fontWeight: 600, fontSize: '14px', border: 'none', cursor: 'pointer', opacity: (generating || !input.trim()) ? 0.4 : 1 }}
                   >
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {generating ? 'Generating…' : 'Generate'}
                   </button>
                 </div>
                 {generating && (

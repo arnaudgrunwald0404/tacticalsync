@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useChe
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
+import { useToast } from '@/hooks/use-toast';
 import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
 import { MetricDialog } from '@/components/rcdo/MetricDialog';
 import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
@@ -17,26 +18,29 @@ import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import { DetailPageLayout } from '@/components/rcdo/DetailPageLayout';
 import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
+import { useRCDODetail } from '@/contexts/RCDODetailContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useCycleAllSIs } from '@/hooks/useCycleAllSIs';
+import { ProgressBadge, PercentCell, DeltaCell } from '@/components/rcdo/SIProgressCells';
 
 export default function DODetail() {
   const { doId } = useParams<{ doId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initiativeIdFromUrl = searchParams.get('initiative');
-  const [activeTab, setActiveTab] = useState('performance');
+  const [activeTab, setActiveTab] = useState('tracking');
   const [showMetricDialog, setShowMetricDialog] = useState(false);
   const [showInitiativeDialog, setShowInitiativeDialog] = useState(false);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
+  const { setNavState } = useRCDODetail();
+  const { toast } = useToast();
   const [siDateError, setSiDateError] = useState<string | null>(null);
 
   const { cycle: activeCycle } = useActiveCycle();
@@ -54,11 +58,22 @@ export default function DODetail() {
   }, [doDetails?.rallying_cry_id, cycleIdFromUrl]);
   const cycleId = cycleIdFromUrl || derivedCycleId || activeCycle?.id;
 
-  // Preserve nav context across DO navigations to avoid sidebar remount
-  const lastRallyingCryId = useRef('');
-  if (doDetails?.rallying_cry_id) {
-    lastRallyingCryId.current = doDetails.rallying_cry_id as string;
-  }
+  // Publish nav state to the persistent layout
+  useEffect(() => {
+    // Immediately clear SI selection so the sidebar reflects this DO page right away
+    setNavState({ currentDOId: doId, currentSIId: undefined, currentTaskId: undefined });
+  }, [doId]);
+
+  useEffect(() => {
+    if (!doDetails?.rallying_cry_id) return;
+    setNavState({
+      rallyingCryId: doDetails.rallying_cry_id as string,
+      cycleId: cycleId || undefined,
+      currentDOId: doId,
+      currentSIId: undefined,
+      currentTaskId: undefined,
+    });
+  }, [doDetails?.rallying_cry_id, doId, cycleId]);
 
   // Compute numbering (e.g. "2.0") for this DO within the rallying cry
   const [doNumbering, setDoNumbering] = useState('');
@@ -99,6 +114,13 @@ export default function DODetail() {
 
   // Permissions
   const { canEditDO, canLockDO, canEditInitiative } = useRCDOPermissions();
+
+  // Check-in progress data for tracking table (filtered to this DO client-side)
+  const { rows: allSIRows, loading: siProgressLoading } = useCycleAllSIs(doDetails?.rallying_cry_id);
+  const siProgressMap = useMemo(
+    () => new Map(allSIRows.filter(r => r.doId === doId).map(r => [r.siId, r])),
+    [allSIRows, doId]
+  );
 
   const handleMetricSuccess = () => {
     refetchMetrics();
@@ -149,19 +171,13 @@ export default function DODetail() {
   type ProfileEntry = { id: string; full_name?: string | null; avatar_name?: string | null; avatar_url?: string | null };
   // Profiles for owner selection - load on mount
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
-  const [profilesLoading, setProfilesLoading] = useState(true);
 
   useEffect(() => {
-    const loadProfiles = async () => {
-      setProfilesLoading(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_name, avatar_url')
-        .order('full_name', { ascending: true });
-      if (!error && data) setProfiles(data as ProfileEntry[]);
-      setProfilesLoading(false);
-    };
-    loadProfiles();
+    supabase
+      .from('profiles')
+      .select('id, full_name, avatar_name, avatar_url')
+      .order('full_name', { ascending: true })
+      .then(({ data, error }) => { if (!error && data) setProfiles(data as ProfileEntry[]); });
   }, []);
 
   // Fetch any missing profiles explicitly referenced by this DO or its initiatives
@@ -221,15 +237,10 @@ export default function DODetail() {
 
   if (loading || !doDetails) {
     return (
-      <DetailPageLayout
-        rallyingCryId={lastRallyingCryId.current}
-        currentDOId={doId}
-        mobileNavOpen={mobileNavOpen}
-        onMobileNavOpenChange={setMobileNavOpen}
-      >
+      <>
         <Skeleton className="h-12 w-full mb-8" />
         <Skeleton className="h-96 w-full" />
-      </DetailPageLayout>
+      </>
     );
   }
 
@@ -244,6 +255,26 @@ export default function DODetail() {
 
   const handleLock = async () => {
     if (!doDetails) return;
+
+    const missing: string[] = [];
+    const hypothesisText = doDetails.hypothesis
+      ? String(doDetails.hypothesis).replace(/<[^>]*>/g, '').trim()
+      : '';
+    if (!hypothesisText) missing.push('Hypothesis / description');
+    const hasNamedSuccessMetric = metrics.some(
+      m => m.type === 'lagging' && String(m.name ?? '').trim()
+    );
+    if (!hasNamedSuccessMetric) missing.push('Success metric (lagging indicator)');
+
+    if (missing.length > 0) {
+      toast({
+        title: "Can't finalize yet",
+        description: `Please fill in the following before locking:\n• ${missing.join('\n• ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const updates: Record<string, unknown> = {
@@ -259,6 +290,11 @@ export default function DODetail() {
       await Promise.all([refetchDO(), refetchInitiatives()]);
     } catch (e) {
       console.warn('Failed to lock DO', e);
+      toast({
+        title: 'Failed to lock',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -321,13 +357,7 @@ export default function DODetail() {
   ) : undefined;
 
   return (
-    <DetailPageLayout
-      rallyingCryId={doDetails.rallying_cry_id}
-      cycleId={cycleId}
-      currentDOId={doId}
-      mobileNavOpen={mobileNavOpen}
-      onMobileNavOpenChange={setMobileNavOpen}
-    >
+    <>
       <DetailPageHeader
         title={doNumbering ? `${doNumbering} ${doDetails.title}` : doDetails.title}
         description={doDetails.hypothesis}
@@ -358,267 +388,46 @@ export default function DODetail() {
         canLock={canLockDO}
         canEdit={canEdit}
         additionalContent={additionalContent}
+        editableTitle={doDetails.title}
+        onTitleChange={async (val) => {
+          const { error } = await supabase
+            .from('rc_defining_objectives')
+            .update({ title: val })
+            .eq('id', doDetails.id);
+          if (!error) refetchDO();
+        }}
+        onDescriptionChange={async (val) => {
+          const { error } = await supabase
+            .from('rc_defining_objectives')
+            .update({ hypothesis: val })
+            .eq('id', doDetails.id);
+          if (!error) refetchDO();
+        }}
+        onOwnerChange={async (val) => {
+          const { error } = await supabase
+            .from('rc_defining_objectives')
+            .update({ owner_user_id: val })
+            .eq('id', doDetails.id);
+          if (!error) refetchDO();
+        }}
+        profiles={profiles}
       />
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-6">
-              <TabsTrigger value="performance">
-                Performance
-              </TabsTrigger>
-              <TabsTrigger value="definition">
-                Definition
+              <TabsTrigger value="tracking">
+                Tracking
               </TabsTrigger>
               <TabsTrigger value="checkins">
                 Check-ins ({checkins.length})
               </TabsTrigger>
-              <TabsTrigger value="details">
-                Details
-              </TabsTrigger>
             </TabsList>
 
-            {/* Performance Tab */}
-            <TabsContent value="performance">
+            {/* Tracking Tab */}
+            <TabsContent value="tracking">
               <Card className="p-6">
                 <div className="space-y-6">
-                  {/* Strategic Initiatives Table */}
-                  <div>
-                    {initiatives.length === 0 ? (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        No strategic initiatives yet.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse">
-                          <thead>
-                            <tr className="border-b border-gray-200 dark:border-gray-700">
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                                Description
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                                XLT Project Owner
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                                Est. Completion Date
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                                Rate of Completion
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                                Pace
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {initiatives.map((initiative, index) => {
-                              const initiativeOwnerName = getFullNameForAvatar(
-                                initiative.owner?.first_name,
-                                initiative.owner?.last_name,
-                                initiative.owner?.full_name
-                              );
-                              const completionDate = initiative.end_date
-                                ? parseLocalDate(initiative.end_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-                                : 'N/A';
-                              
-                              // Calculate completion rate (placeholder - could be from tasks or check-ins)
-                              const completionRate = '0%'; // TODO: Calculate from tasks
-                              
-                              // Map status to pace
-                              const getPaceStatus = (status: string) => {
-                                switch (status) {
-                                  case 'on_track':
-                                  case 'initialized':
-                                    return { text: 'On Track', color: 'text-green-600 dark:text-green-400' };
-                                  case 'at_risk':
-                                  case 'delayed':
-                                    return { text: 'At Risk', color: 'text-yellow-600 dark:text-yellow-400' };
-                                  case 'off_track':
-                                  case 'cancelled':
-                                    return { text: 'Off Track', color: 'text-red-600 dark:text-red-400' };
-                                  case 'done':
-                                  case 'completed':
-                                    return { text: 'Done', color: 'text-purple-600 dark:text-purple-400' };
-                                  default:
-                                    return { text: 'Not Started', color: 'text-gray-600 dark:text-gray-400' };
-                                }
-                              };
-                              const pace = getPaceStatus(initiative.status || 'draft');
-
-                              return (
-                                <tr 
-                                  key={initiative.id}
-                                  className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
-                                  onClick={() => {
-                                    setSearchParams({ initiative: initiative.id });
-                                  }}
-                                >
-                                  <td className="py-3 px-4 text-sm text-gray-900 dark:text-gray-100">
-                                    {initiative.title}
-                                  </td>
-                                  <td className="py-3 px-4 text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <FancyAvatar
-                                        name={initiative.owner?.avatar_name || initiativeOwnerName}
-                                        displayName={initiativeOwnerName}
-                                        avatarUrl={initiative.owner?.avatar_url}
-                                        size="sm"
-                                      />
-                                      <span className="text-gray-700 dark:text-gray-300">{initiativeOwnerName}</span>
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                    {completionDate}
-                                  </td>
-                                  <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                    {completionRate}
-                                  </td>
-                                  <td className="py-3 px-4 text-sm">
-                                    <span className={pace.color}>{pace.text}</span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            </TabsContent>
-
-            {/* Details Tab */}
-            <TabsContent value="details">
-              <Card className="p-6">
-                <div className="space-y-6">
-                  {/* Name - Read-only when locked */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Name
-                    </h3>
-                    {isLocked ? (
-                      <p className="text-lg text-gray-900 dark:text-gray-100">
-                        {doDetails.title}
-                      </p>
-                    ) : (
-                      <input
-                        type="text"
-                        value={doDetails.title}
-                        onChange={async (e) => {
-                          const { error } = await supabase
-                            .from('rc_defining_objectives')
-                            .update({ title: e.target.value })
-                            .eq('id', doDetails.id);
-                          if (!error) {
-                            refetchDO();
-                          }
-                        }}
-                        className="w-full px-3 py-2 border rounded-md text-lg"
-                        disabled={!canEdit}
-                      />
-                    )}
-                  </div>
-
-                  {/* Definition & Hypothesis - Read-only when locked */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Definition & Hypothesis
-                    </h3>
-                    {isLocked ? (
-                      <div 
-                        className="text-gray-700 dark:text-gray-300 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ __html: doDetails.hypothesis || 'No definition provided.' }}
-                      />
-                    ) : (
-                      <textarea
-                        value={doDetails.hypothesis || ''}
-                        onChange={async (e) => {
-                          const { error } = await supabase
-                            .from('rc_defining_objectives')
-                            .update({ hypothesis: e.target.value })
-                            .eq('id', doDetails.id);
-                          if (!error) {
-                            refetchDO();
-                          }
-                        }}
-                        className="w-full px-3 py-2 border rounded-md min-h-[100px]"
-                        disabled={!canEdit}
-                        placeholder="Enter definition and hypothesis..."
-                      />
-                    )}
-                  </div>
-
-                  {/* Owner - Read-only when locked */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                      Owner
-                    </h3>
-                    {isLocked ? (
-                      <div className="flex items-center gap-2">
-                        <FancyAvatar
-                          name={doDetails.owner?.avatar_name || ownerName}
-                          displayName={ownerName}
-                          avatarUrl={doDetails.owner?.avatar_url}
-                          size="sm"
-                        />
-                        <span className="text-sm">{ownerName}</span>
-                      </div>
-                    ) : (
-                      <Select
-                        disabled={profilesLoading}
-                        value={doDetails.owner_user_id}
-                        onValueChange={async (val) => {
-                          const { error } = await supabase
-                            .from('rc_defining_objectives')
-                            .update({ owner_user_id: val })
-                            .eq('id', doDetails.id);
-                          if (!error) {
-                            refetchDO();
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-9 w-[240px]">
-                          <SelectValue placeholder="Select owner">
-                            {doDetails.owner_user_id && (
-                              <div className="flex items-center gap-2">
-                                <FancyAvatar
-                                  name={doDetails.owner?.avatar_name || ownerName}
-                                  displayName={ownerName}
-                                  avatarUrl={doDetails.owner?.avatar_url}
-                                  size="sm"
-                                />
-                                <span className="text-sm">{ownerName}</span>
-                              </div>
-                            )}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {profiles.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              <div className="flex items-center gap-2">
-                                <FancyAvatar 
-                                  name={p.avatar_name || p.full_name} 
-                                  displayName={p.full_name}
-                                  avatarUrl={p.avatar_url}
-                                  size="sm" 
-                                />
-                                <span>{p.full_name}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            </TabsContent>
-
-            {/* Definition Tab */}
-            <TabsContent value="definition">
-              <Card className="p-6">
-                <div className="space-y-6">
-                  {/* Strategic Initiatives - Read-only when locked, can't add new */}
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400">
@@ -635,23 +444,76 @@ export default function DODetail() {
                         </Button>
                       )}
                     </div>
-                    {initiatives.length === 0 ? (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        No strategic initiatives yet.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {initiatives.map((initiative) => (
-                          <InitiativeCard 
-                            key={initiative.id} 
-                            initiative={initiative}
-                            onClick={() => {
-                              setSearchParams({ initiative: initiative.id });
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-[#2C3E50] hover:bg-[#2C3E50]">
+                            <TableHead className="text-white font-semibold w-[180px]">Owner</TableHead>
+                            <TableHead className="text-white font-semibold">Strategic Initiative</TableHead>
+                            <TableHead className="text-white font-semibold w-[140px]">Progress</TableHead>
+                            <TableHead className="text-white font-semibold w-[180px]">% Complete</TableHead>
+                            <TableHead className="text-white font-semibold w-[180px]">Trend</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {siProgressLoading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                              <TableRow key={`skeleton-${i}`}>
+                                <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-full max-w-md" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                <TableCell><Skeleton className="h-2 w-full" /></TableCell>
+                                <TableCell><Skeleton className="h-3 w-24" /></TableCell>
+                              </TableRow>
+                            ))
+                          ) : initiatives.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-12 text-sm text-muted-foreground">
+                                No strategic initiatives yet.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            initiatives.map((initiative) => {
+                              const progress = siProgressMap.get(initiative.id);
+                              const siOwnerName = getFullNameForAvatar(
+                                initiative.owner?.first_name,
+                                initiative.owner?.last_name,
+                                initiative.owner?.full_name
+                              );
+                              return (
+                                <TableRow key={initiative.id} className="align-top">
+                                  <TableCell className="py-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <FancyAvatar
+                                        name={initiative.owner?.avatar_name || siOwnerName}
+                                        displayName={siOwnerName}
+                                        avatarUrl={initiative.owner?.avatar_url}
+                                        size="sm"
+                                      />
+                                      <span className="text-sm font-medium truncate">{siOwnerName}</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-3 text-sm">{initiative.title}</TableCell>
+                                  <TableCell className="py-3">
+                                    <ProgressBadge status={progress?.status ?? 'unknown'} />
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <PercentCell value={progress?.latestPercent ?? null} />
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <DeltaCell
+                                      latestPercent={progress?.latestPercent ?? null}
+                                      priorPercent={progress?.priorPercent ?? null}
+                                      priorCheckinDate={progress?.priorCheckinDate ?? null}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -880,7 +742,7 @@ export default function DODetail() {
           )}
         </SheetContent>
       </Sheet>
-    </DetailPageLayout>
+    </>
   );
 }
 

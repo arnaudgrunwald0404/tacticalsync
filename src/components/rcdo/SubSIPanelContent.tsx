@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, Pencil } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -87,6 +87,8 @@ export function SubSIPanelContent({
 
   const [row, setRow] = useState<SubSIRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -124,25 +126,22 @@ export function SubSIPanelContent({
 
   const content = (
     <>
-      <div className="mb-3 flex items-center gap-2">
-        <span className="font-body text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white">
-          Sub-initiative
-        </span>
-        {parentSiTitle && (
-          <span className="text-xs text-muted-foreground truncate" title={parentSiTitle}>
-            of {parentSiTitle}
+      {/* Pill + breadcrumb + icons row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-body text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white">
+            Sub-initiative
           </span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold truncate">
-          {row?.title || (loading ? 'Loading…' : 'Untitled sub-initiative')}
-        </h3>
-        <div className="flex items-center gap-1">
+          {parentSiTitle && (
+            <span className="text-xs text-muted-foreground truncate" title={parentSiTitle}>
+              of {parentSiTitle}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
           {row && (
             <button
-              className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
+              className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent"
               aria-label="Open in full page"
               title="Open in full page"
               onClick={() => {
@@ -154,7 +153,7 @@ export function SubSIPanelContent({
             </button>
           )}
           <button
-            className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
+            className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent"
             aria-label="Close"
             onClick={onClose}
           >
@@ -163,10 +162,50 @@ export function SubSIPanelContent({
         </div>
       </div>
 
+      {/* Inline-editable title */}
+      <div className="flex items-center gap-2 mb-3 group/title">
+        {editingTitle && row ? (
+          <input
+            autoFocus
+            className="text-base font-semibold bg-transparent border-b-2 border-blue-500 focus:outline-none flex-1 min-w-0"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              if (titleDraft.trim() && titleDraft !== row.title) void updateField({ title: titleDraft.trim() });
+              else setTitleDraft(row.title);
+              setEditingTitle(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (titleDraft.trim() && titleDraft !== row.title) void updateField({ title: titleDraft.trim() });
+                setEditingTitle(false);
+              }
+              if (e.key === 'Escape') { if (row) setTitleDraft(row.title); setEditingTitle(false); }
+            }}
+          />
+        ) : (
+          <>
+            <h3 className="text-base font-semibold">
+              {row?.title || (loading ? 'Loading…' : 'Untitled sub-initiative')}
+            </h3>
+            {row && (
+              <button
+                type="button"
+                onClick={() => { setTitleDraft(row.title); setEditingTitle(true); }}
+                className="opacity-0 group-hover/title:opacity-100 p-1 rounded hover:bg-accent text-muted-foreground transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
       {row && (
         <div className="space-y-3">
+          {/* Status */}
           <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium">Status</Label>
+            <Label className="text-sm font-medium shrink-0">Status</Label>
             <Select
               value={normalizeStatus(row.status)}
               onValueChange={(v: InitiativeStatus) => updateField({ status: v })}
@@ -182,17 +221,17 @@ export function SubSIPanelContent({
             </Select>
           </div>
 
+          {/* Owner — moved above Description */}
           <div>
-            <label className="text-sm font-medium">Name</label>
-            <input
-              className="w-full rounded border px-2 py-1 text-sm bg-background"
-              value={row.title}
-              onChange={(e) => setRow({ ...row, title: e.target.value })}
-              onBlur={() => {
-                if (row.title.trim().length === 0) return;
-                void updateField({ title: row.title.trim() });
-              }}
-            />
+            <label className="text-sm font-medium">Owner</label>
+            <div className="mt-1">
+              <OwnerCombobox
+                profiles={profiles}
+                selectedId={row.owner_user_id || undefined}
+                placeholder="Select owner"
+                onSelectionChange={(val) => void updateField({ owner_user_id: val || null })}
+              />
+            </div>
           </div>
 
           <div>
@@ -234,18 +273,6 @@ export function SubSIPanelContent({
                   if (value && row.start_date && value < row.start_date) return;
                   void updateField({ end_date: value || null });
                 }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Owner</label>
-            <div className="mt-1">
-              <OwnerCombobox
-                profiles={profiles}
-                selectedId={row.owner_user_id || undefined}
-                placeholder="Select owner"
-                onSelectionChange={(val) => void updateField({ owner_user_id: val || null })}
               />
             </div>
           </div>

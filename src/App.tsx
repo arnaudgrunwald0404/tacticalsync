@@ -10,6 +10,8 @@ import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
 import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
 import { AppLayout } from "@/components/AppLayout";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { RCDODetailProvider } from "@/contexts/RCDODetailContext";
+import { RCDODetailLayout } from "@/components/rcdo/RCDODetailLayout";
 
 // Lazy load all page components for code splitting
 const Index = lazyWithRetry(() => import("./pages/Index"));
@@ -86,11 +88,13 @@ const App = () => (
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
             <Route path="/chief-of-staff" element={<DashboardWithTabs />} />
-            <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
-            <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
+            <Route element={<RCDODetailProvider><RCDODetailLayout /></RCDODetailProvider>}>
+              <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
+              <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
+              <Route path="/rcdo/all-hands" element={<RCDOAllHands />} />
+            </Route>
             <Route path="/dashboard/rcdo/tasks-feed" element={<TasksFeed />} />
             <Route path="/rcdo/canvas" element={<StrategyCanvas />} />
-            <Route path="/rcdo/all-hands" element={<RCDOAllHands />} />
             <Route path="/dashboard/rcdo/canvas" element={<StrategyCanvas />} />
             <Route path="/create-team" element={<CreateTeam />} />
             <Route path="/profile" element={<Profile />} />

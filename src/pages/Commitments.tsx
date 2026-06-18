@@ -8,6 +8,7 @@ import { useRoleOverride } from '@/contexts/RoleOverrideContext';
 import { QuarterSelector } from '@/components/commitments/QuarterSelector';
 import { MyCommitmentsPanel } from '@/components/commitments/MyCommitmentsPanel';
 import { TeamRollupView } from '@/components/commitments/TeamRollupView';
+import { DciSuggestionsBanner } from '@/components/cos/DciSuggestionsBanner';
 
 interface Profile {
   id: string;
@@ -195,6 +196,7 @@ export default function Commitments() {
         )}
 
         <TabsContent value="mine" className="mt-6">
+          {userId && <DciSuggestionsBanner userId={userId} />}
           {myLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-20 w-full" />

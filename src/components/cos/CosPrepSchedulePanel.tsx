@@ -1,13 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare } from 'lucide-react';
+import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
+
+const DCI_SOURCES = [
+  { id: 'calendar',    label: 'Calendar' },
+  { id: 'zoom',        label: 'Zoom calls' },
+  { id: 'slack',       label: 'Slack' },
+  { id: 'email',       label: 'Email' },
+  { id: 'my_lists',    label: 'My Lists' },
+  { id: 'rcdo',        label: 'Strategy (RCDO)' },
+  { id: 'commitments', label: 'Commitments' },
+];
 
 interface PrepSchedule {
   enabled: boolean;
@@ -21,6 +33,12 @@ interface PrepSchedule {
   last_run_at: string | null;
   last_run_status: string | null;
   last_run_preps_generated: number | null;
+  dci_enabled: boolean;
+  dci_sources: string[];
+  dci_instructions: string | null;
+  dci_slack_dm: boolean;
+  slack_user_id: string | null;
+  timezone: string;
 }
 
 const DEFAULT_SCHEDULE: PrepSchedule = {
@@ -35,6 +53,12 @@ const DEFAULT_SCHEDULE: PrepSchedule = {
   last_run_at: null,
   last_run_status: null,
   last_run_preps_generated: null,
+  dci_enabled: false,
+  dci_sources: ['calendar', 'zoom', 'slack'],
+  dci_instructions: null,
+  dci_slack_dm: true,
+  slack_user_id: null,
+  timezone: 'UTC',
 };
 
 // Convert UTC hour to a readable local time label.
@@ -113,6 +137,12 @@ export default function CosPrepSchedulePanel() {
           last_run_at: data.last_run_at ?? null,
           last_run_status: data.last_run_status ?? null,
           last_run_preps_generated: data.last_run_preps_generated ?? null,
+          dci_enabled: data.dci_enabled ?? false,
+          dci_sources: data.dci_sources ?? ['calendar', 'zoom', 'slack'],
+          dci_instructions: data.dci_instructions ?? null,
+          dci_slack_dm: data.dci_slack_dm ?? true,
+          slack_user_id: data.slack_user_id ?? null,
+          timezone: data.timezone ?? 'UTC',
         });
       }
       setLoading(false);
@@ -136,6 +166,12 @@ export default function CosPrepSchedulePanel() {
         sync_slack_before: draft.sync_slack_before,
         enrich_stackone: draft.enrich_stackone,
         slack_channels: draft.slack_channels,
+        dci_enabled: draft.dci_enabled,
+        dci_sources: draft.dci_sources,
+        dci_instructions: draft.dci_instructions || null,
+        dci_slack_dm: draft.dci_slack_dm,
+        slack_user_id: draft.slack_user_id || null,
+        timezone: draft.timezone || 'UTC',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
       if (error) throw error;
@@ -200,6 +236,15 @@ export default function CosPrepSchedulePanel() {
 
   const removeChannel = (ch: string) => {
     setDraft(d => ({ ...d, slack_channels: d.slack_channels.filter(c => c !== ch) }));
+  };
+
+  const toggleDciSource = (id: string) => {
+    setDraft(d => ({
+      ...d,
+      dci_sources: d.dci_sources.includes(id)
+        ? d.dci_sources.filter(s => s !== id)
+        : [...d.dci_sources, id],
+    }));
   };
 
   if (loading) return null;
@@ -379,6 +424,103 @@ export default function CosPrepSchedulePanel() {
               </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Brain className="h-4 w-4" /> Daily Check-In (DCI)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center gap-3">
+            <Switch
+              checked={draft.dci_enabled}
+              onCheckedChange={v => setDraft(d => ({ ...d, dci_enabled: v }))}
+            />
+            <div>
+              <span className="text-sm font-medium">Enable daily action-item discovery</span>
+              <p className="text-[11px] text-muted-foreground">
+                Automatically extract action items from your meetings, email, and Slack throughout the day.
+              </p>
+            </div>
+          </label>
+
+          {draft.dci_enabled && (
+            <>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Data sources</label>
+                <div className="flex flex-wrap gap-2">
+                  {DCI_SOURCES.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleDciSource(s.id)}
+                      className={cn(
+                        'px-3 py-1 rounded-full text-xs border transition-colors',
+                        draft.dci_sources.includes(s.id)
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Focus instructions (optional)</label>
+                <Textarea
+                  value={draft.dci_instructions ?? ''}
+                  onChange={e => setDraft(d => ({ ...d, dci_instructions: e.target.value || null }))}
+                  placeholder="e.g. Focus on product launch blockers and customer-facing commitments"
+                  className="text-sm resize-none"
+                  rows={3}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Describe what you care about. The agent will prioritize matching items.
+                </p>
+              </div>
+
+              <div className="space-y-2 border-t pt-3">
+                <label className="text-xs font-medium">Timezone</label>
+                <Input
+                  value={draft.timezone}
+                  onChange={e => setDraft(d => ({ ...d, timezone: e.target.value }))}
+                  placeholder="e.g. America/Los_Angeles"
+                  className="h-9 text-sm font-mono w-56"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  IANA timezone used for calendar scanning and meeting boundaries.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-3 border-t pt-3">
+                <Switch
+                  checked={draft.dci_slack_dm}
+                  onCheckedChange={v => setDraft(d => ({ ...d, dci_slack_dm: v }))}
+                />
+                <span className="text-sm">Send end-of-day brief to Slack DM</span>
+              </label>
+
+              {draft.dci_sources.includes('slack') && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Your Slack member ID (optional)</label>
+                  <Input
+                    value={draft.slack_user_id ?? ''}
+                    onChange={e => setDraft(d => ({ ...d, slack_user_id: e.target.value || null }))}
+                    placeholder="e.g. U01234ABCDE"
+                    className="h-9 text-sm font-mono w-48"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Find it in Slack: click your name → Copy member ID. Used to filter messages directed at you.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

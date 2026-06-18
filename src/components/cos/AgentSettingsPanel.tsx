@@ -82,6 +82,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
         const { data: userData } = await supabase.auth.getUser();
         if (!userData.user) return;
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: settings } = await (supabase as any)
           .from('cos_settings')
           .select('agent_config')
@@ -93,6 +94,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
         }
 
         // Check Slack connection
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: slackCreds } = await (supabase as any)
           .from('user_slack_credentials_public')
           .select('connected, slack_email')
@@ -114,6 +116,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
         .from('cos_settings')
         .upsert({

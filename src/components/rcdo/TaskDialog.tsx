@@ -297,9 +297,15 @@ export function TaskDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>{taskId ? 'Edit Task' : 'Create Task'}</DialogTitle>
+          <DialogTitle>
+            {taskId
+              ? 'Edit Task'
+              : strategicInitiativeId && strategicInitiatives.find(si => si.id === strategicInitiativeId)
+                ? `Create Task — ${strategicInitiatives.find(si => si.id === strategicInitiativeId)!.title}`
+                : 'Create Task'}
+          </DialogTitle>
           <DialogDescription>
-            {taskId ? 'Update task details' : 'Add a task to track work for this strategic initiative.'}
+            {taskId ? 'Update task details.' : 'Add a task to track work for this strategic initiative.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -339,91 +345,96 @@ export function TaskDialog({
               />
             </div>
 
-            {/* Strategic Initiative */}
-            <div className="space-y-2">
-              <Label htmlFor="strategic_initiative">
-                Strategic Initiative <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={formData.strategic_initiative_id}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, strategic_initiative_id: value })
-                }
-                disabled={loading || loadingSIs || !!strategicInitiativeId}
-                required
-              >
-                <SelectTrigger id="strategic_initiative" className="h-11 text-base">
-                  <SelectValue placeholder="Select a strategic initiative..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {loadingSIs ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    </div>
-                  ) : (
-                    strategicInitiatives.map((si) => (
-                      <SelectItem key={si.id} value={si.id}>
-                        {si.title}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Strategic Initiative — only shown when not pre-filled from context */}
+            {!strategicInitiativeId && (
+              <div className="space-y-2">
+                <Label htmlFor="strategic_initiative">
+                  Strategic Initiative <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.strategic_initiative_id}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, strategic_initiative_id: value })
+                  }
+                  disabled={loading || loadingSIs}
+                  required
+                >
+                  <SelectTrigger id="strategic_initiative" className="h-11 text-base">
+                    <SelectValue placeholder="Select a strategic initiative..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingSIs ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </div>
+                    ) : (
+                      strategicInitiatives.map((si) => (
+                        <SelectItem key={si.id} value={si.id}>
+                          {si.title}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-            {/* Owner */}
-            <div className="space-y-2">
-              <Label htmlFor="owner">
-                Task Owner <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={formData.owner_user_id}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, owner_user_id: value })
-                }
-                disabled={loading || loadingUsers}
-                required
-              >
-                <SelectTrigger id="owner" className="h-11 text-base">
-                  <SelectValue placeholder="Select an owner..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {loadingUsers ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    </div>
-                  ) : (
-                    users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {getUserDisplayName(user)}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Owner + Status on the same row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="owner">
+                  Task Owner <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.owner_user_id}
+                  onValueChange={(value) => {
+                    const newStatus =
+                      value && formData.status === 'not_assigned' ? 'assigned' : formData.status;
+                    setFormData({ ...formData, owner_user_id: value, status: newStatus });
+                  }}
+                  disabled={loading || loadingUsers}
+                  required
+                >
+                  <SelectTrigger id="owner" className="h-11 text-base">
+                    <SelectValue placeholder="Select an owner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingUsers ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </div>
+                    ) : (
+                      users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {getUserDisplayName(user)}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Status */}
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: TaskStatus) =>
-                  setFormData({ ...formData, status: value })
-                }
-                disabled={loading}
-              >
-                <SelectTrigger id="status" className="h-11 text-base">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: TaskStatus) =>
+                    setFormData({ ...formData, status: value })
+                  }
+                  disabled={loading}
+                >
+                  <SelectTrigger id="status" className="h-11 text-base">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Dates */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, MoreVertical, ExternalLink, ChevronRight, FileText } from 'lucide-react';
+import { X, MoreVertical, ExternalLink, ChevronRight, FileText, Pencil, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -67,15 +67,11 @@ interface SIPanelContentProps {
   onDelete: () => void;
   onClose: () => void;
   isDoPanelOpen: boolean;
-  // Optional: when provided, the panel renders a "Sub-initiatives" list at the
-  // bottom (for SIs that have children). Clicking a row calls onOpenSubSI so
-  // the parent canvas can open the tertiary panel.
   onOpenSubSI?: (subSiId: string) => void;
-  // Active sub-SI id — surfaced so the matching row can highlight itself.
   selectedSubSiId?: string | null;
-  // Bumps when a child component reports an update; lets the parent ask this
-  // panel to re-fetch its sub-SI list without unmounting.
   subSiListRefreshKey?: number;
+  onLockSI?: () => void;
+  onUnlockSI?: () => void;
 }
 
 export function SIPanelContent({
@@ -92,6 +88,8 @@ export function SIPanelContent({
   onOpenSubSI,
   selectedSubSiId,
   subSiListRefreshKey,
+  onLockSI,
+  onUnlockSI,
 }: SIPanelContentProps) {
   const navigate = useNavigate();
   const [panelSearchParams] = useSearchParams();
@@ -100,6 +98,8 @@ export function SIPanelContent({
   const { isAdmin, isSuperAdmin, isRCDOAdmin } = useRoles();
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(si.title || '');
   
   // Fetch SI data with progress if we have a database ID
   const siDbId = si.dbId;
@@ -197,20 +197,38 @@ export function SIPanelContent({
 
   const panelContent = (
     <>
-      <div className="mb-3">
-        <span className="font-body text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#5B6E7A] text-white">Strategic Initiative</span>
-      </div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-base font-semibold">{si.title || "Untitled Initiative"}</h3>
-          {isLocked && (
-            <span className="font-body text-[10px] px-2 py-0.5 rounded-full bg-[#F5F3F0] text-[#4A5D5F] border border-[#6B9A8F]/30">locked</span>
+      {/* Pill + icons row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-body text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#5B6E7A] text-white">Strategic Initiative</span>
+          {si.dbId && !isDOLocked && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap border transition-colors focus:outline-none ${isSILocked ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600' : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800'}`}>
+                  {isSILocked ? 'Locked' : 'Draft'}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {!isSILocked && onLockSI && (
+                  <DropdownMenuItem onClick={onLockSI}>
+                    <Lock className="h-3.5 w-3.5 mr-2" />
+                    Lock this SI
+                  </DropdownMenuItem>
+                )}
+                {isSILocked && onUnlockSI && (
+                  <DropdownMenuItem onClick={onUnlockSI}>
+                    <Unlock className="h-3.5 w-3.5 mr-2" />
+                    Unlock this SI
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         <div className="flex items-center gap-1">
           {si.dbId && (
             <button
-              className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]"
+              className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent"
               aria-label="Open in full page"
               onClick={() => {
                 navigate(`/rcdo/detail/si/${si.dbId}${cycleParam ? `?cycle=${cycleParam}` : ''}`);
@@ -223,77 +241,129 @@ export function SIPanelContent({
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="More actions">
+              <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+              {si.dbId && !isLocked && (() => {
+                const acceptsSubSis = siWithProgress?.accepts_sub_sis ?? false;
+                const hasSubSIs = subSIs.length > 0;
+                if (!acceptsSubSis) {
+                  return (
+                    <DropdownMenuItem onClick={async () => {
+                      await supabase.from('rc_strategic_initiatives').update({ accepts_sub_sis: true }).eq('id', si.dbId!);
+                      await refetchSI();
+                    }}>
+                      Allow sub-SIs
+                    </DropdownMenuItem>
+                  );
+                }
+                return (
+                  <DropdownMenuItem
+                    disabled={hasSubSIs}
+                    onClick={async () => {
+                      if (hasSubSIs) return;
+                      await supabase.from('rc_strategic_initiatives').update({ accepts_sub_sis: false }).eq('id', si.dbId!);
+                      await refetchSI();
+                    }}
+                    title={hasSubSIs ? 'Delete all sub-initiatives first' : undefined}
+                  >
+                    Remove sub-SIs
+                  </DropdownMenuItem>
+                );
+              })()}
               <DropdownMenuItem className="text-red-600" onClick={onDelete}>Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button className="h-10 w-10 inline-flex items-center justify-center rounded hover:bg-accent min-h-[44px] min-w-[44px]" aria-label="Close" onClick={onClose}>
+          <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
-      <div className="space-y-3">
-        {/* 1. Name */}
-        <div>
-          
 
-          <div className="flex items-center gap-2 mt-1 mb-2">
-            <Label className="text-sm font-medium">Status</Label>
-            <Select
-              value={currentStatus}
-              disabled={!canEditStatus}
-              onValueChange={async (value: InitiativeStatus) => {
-                if (!canEditStatus) return;
-                
-                // Persist to DB if SI is linked to a DB row
+      {/* Inline-editable title */}
+      <div className="flex items-center gap-2 mb-3 group/title">
+        {editingTitle ? (
+          <input
+            autoFocus
+            className="text-base font-semibold bg-transparent border-b-2 border-blue-500 focus:outline-none flex-1 min-w-0"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              if (titleDraft.trim() && titleDraft !== si.title) onUpdate({ title: titleDraft.trim() });
+              else setTitleDraft(si.title || '');
+              setEditingTitle(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (titleDraft.trim() && titleDraft !== si.title) onUpdate({ title: titleDraft.trim() });
+                setEditingTitle(false);
+              }
+              if (e.key === 'Escape') { setTitleDraft(si.title || ''); setEditingTitle(false); }
+            }}
+          />
+        ) : (
+          <>
+            <h3 className="text-base font-semibold">{si.title || 'Untitled Initiative'}</h3>
+            {isLocked && (
+              <span className="font-body text-[10px] px-2 py-0.5 rounded-full bg-[#F5F3F0] text-[#4A5D5F] border border-[#6B9A8F]/30">locked</span>
+            )}
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={() => { setTitleDraft(si.title || ''); setEditingTitle(true); }}
+                className="opacity-0 group-hover/title:opacity-100 p-1 rounded hover:bg-accent text-muted-foreground transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {/* 1. Owner */}
+        <div>
+          {(() => {
+            const owner = si.ownerId ? profilesMap[si.ownerId] : null;
+            const displayName = owner?.full_name || '';
+            const isUnknown = !si.ownerId || !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
+            return (
+              <label className={`text-sm font-medium ${isUnknown ? 'text-red-600 dark:text-red-400' : ''}`}>Owner</label>
+            );
+          })()}
+          <div className="mt-1">
+            <OwnerCombobox
+              profiles={profiles}
+              selectedId={si.ownerId}
+              disabled={isLocked}
+              placeholder="Select owner"
+              onSelectionChange={async (val) => {
+                if (isLocked) return;
+                onUpdate({ ownerId: val });
                 try {
-                  if (si.dbId) {
+                  if (si.dbId && val) {
                     const { error } = await supabase
                       .from('rc_strategic_initiatives')
-                      .update({ status: value })
+                      .update({ owner_user_id: val })
                       .eq('id', si.dbId);
                     if (error) {
-                      console.warn('[SIPanel] Failed to persist SI status change', error);
-                      toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
-                      return;
+                      toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
                     }
-                    // Refetch to update UI with new status
-                    await refetchSI();
-                    toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
                   }
                 } catch (e) {
-                  console.warn('[SIPanel] Error updating SI status in DB', e);
-                  toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
-                  return;
+                  console.warn('[SIPanel] Error updating SI owner in DB', e);
                 }
               }}
-            >
-              <SelectTrigger className="h-7 text-xs" aria-label="Status">
-                <SelectValue placeholder="Select status">
-                  {statusLabel}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="initialized">Initialized</SelectItem>
-                <SelectItem value="on_track">On Track</SelectItem>
-                <SelectItem value="delayed">Delayed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            />
           </div>
-          <label className={`text-sm font-medium ${!si.title || si.title.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Name</label>
-          <input className="w-full rounded border px-2 py-1 text-sm bg-background" value={si.title} onChange={(e)=>{ if (isLocked) return; onUpdate({ title: e.target.value }); }} disabled={isLocked} />
         </div>
-        
+
         {/* 2. Description */}
         <div>
-          <label className="text-sm font-medium">Description</label>
+          <label className={`text-sm font-medium ${!si.description || si.description.replace(/<[^>]*>/g, '').trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Description</label>
           <div className="mt-1">
             <RichTextEditor
               content={si.description || ""}
@@ -303,8 +373,44 @@ export function SIPanelContent({
             />
           </div>
         </div>
-        
-        {/* 2b. Start Date & Target Delivery Date */}
+
+        {/* 3. Primary Success Metric */}
+        <div>
+          <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            rows={3}
+            placeholder="e.g., % conversion, NPS, etc."
+            value={si.metric || ""}
+            onChange={(e) => { if (isLocked) return; onUpdate({ metric: e.target.value }); }}
+            onBlur={async () => {
+              if (!si.dbId || isLocked) return;
+              await supabase.from('rc_strategic_initiatives').update({ primary_success_metric: si.metric || null } as Record<string, unknown>).eq('id', si.dbId);
+            }}
+            disabled={isLocked}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+          />
+        </div>
+
+        {/* 4. Benchmark */}
+        <div>
+          <label className="text-sm font-medium">Benchmark</label>
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            rows={2}
+            placeholder="e.g., baseline or target comparison"
+            value={si.benchmark || ""}
+            onChange={(e) => { if (isLocked) return; onUpdate({ benchmark: e.target.value }); }}
+            onBlur={async () => {
+              if (!si.dbId || isLocked) return;
+              await supabase.from('rc_strategic_initiatives').update({ benchmark: si.benchmark || null } as Record<string, unknown>).eq('id', si.dbId);
+            }}
+            disabled={isLocked}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+          />
+        </div>
+
+        {/* 5. Start Date & Target Delivery Date */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label htmlFor="si-start-date" className="text-sm font-medium">Start Date</Label>
@@ -350,43 +456,46 @@ export function SIPanelContent({
           </div>
         </div>
 
-        {/* 3. Primary Success Metric */}
-        <div>
-          <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
-          <textarea
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
-            rows={3}
-            placeholder="e.g., % conversion, NPS, etc."
-            value={si.metric || ""}
-            onChange={(e)=>{ if (isLocked) return; onUpdate({ metric: e.target.value }); }}
-            onBlur={async () => {
-              if (!si.dbId || isLocked) return;
-              await supabase.from('rc_strategic_initiatives').update({ primary_success_metric: si.metric || null } as Record<string, unknown>).eq('id', si.dbId);
+        {/* 5. Status */}
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium shrink-0">Status</Label>
+          <Select
+            value={currentStatus}
+            disabled={!canEditStatus}
+            onValueChange={async (value: InitiativeStatus) => {
+              if (!canEditStatus) return;
+              try {
+                if (si.dbId) {
+                  const { error } = await supabase
+                    .from('rc_strategic_initiatives')
+                    .update({ status: value })
+                    .eq('id', si.dbId);
+                  if (error) {
+                    toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
+                    return;
+                  }
+                  await refetchSI();
+                  toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
+                }
+              } catch (e) {
+                toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
+              }
             }}
-            disabled={isLocked}
-            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
-          />
+          >
+            <SelectTrigger className="h-7 text-xs" aria-label="Status">
+              <SelectValue placeholder="Select status">{statusLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="initialized">Initialized</SelectItem>
+              <SelectItem value="on_track">On Track</SelectItem>
+              <SelectItem value="delayed">Delayed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* 3b. Benchmark */}
-        <div>
-          <label className="text-sm font-medium">Benchmark</label>
-          <textarea
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
-            rows={2}
-            placeholder="e.g., baseline or target comparison"
-            value={si.benchmark || ""}
-            onChange={(e) => { if (isLocked) return; onUpdate({ benchmark: e.target.value }); }}
-            onBlur={async () => {
-              if (!si.dbId || isLocked) return;
-              await supabase.from('rc_strategic_initiatives').update({ benchmark: si.benchmark || null } as Record<string, unknown>).eq('id', si.dbId);
-            }}
-            disabled={isLocked}
-            style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
-          />
-        </div>
-
-        {/* % to Goal - Only show when DO and SI are locked */}
+        {/* % to Goal — only when DO and SI are locked */}
         {showPercentToGoal && (
           <div>
             <Label className="text-sm font-medium">% to Goal</Label>
@@ -398,45 +507,6 @@ export function SIPanelContent({
             </div>
           </div>
         )}
-        
-        {/* 4. Owner */}
-        <div>
-          {(() => {
-            const owner = si.ownerId ? profilesMap[si.ownerId] : null;
-            const displayName = owner?.full_name || '';
-            const isUnknown = !si.ownerId || !owner || !displayName || displayName.trim().toLowerCase() === 'unknown';
-            return (
-              <label className={`text-sm font-medium ${isUnknown ? 'text-red-600 dark:text-red-400' : ''}`}>Owner</label>
-            );
-          })()}
-          <div className="mt-1">
-            <OwnerCombobox
-              profiles={profiles}
-              selectedId={si.ownerId}
-              disabled={isLocked}
-              placeholder="Select owner"
-              onSelectionChange={async (val) => {
-                if (isLocked) return;
-                onUpdate({ ownerId: val });
-
-                try {
-                  if (si.dbId && val) {
-                    const { error } = await supabase
-                      .from('rc_strategic_initiatives')
-                      .update({ owner_user_id: val })
-                      .eq('id', si.dbId);
-                    if (error) {
-                      console.warn('[SIPanel] Failed to persist SI owner change', error);
-                      toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
-                    }
-                  }
-                } catch (e) {
-                  console.warn('[SIPanel] Error updating SI owner in DB', e);
-                }
-              }}
-            />
-          </div>
-        </div>
         
         {/* 5. Other Participants */}
         <div>
@@ -516,6 +586,7 @@ export function SIPanelContent({
             </div>
           </div>
         )}
+
       </div>
     </>
   );
@@ -535,7 +606,7 @@ export function SIPanelContent({
   return (
     <div
       className={
-        `fixed top-0 h-full w-[420px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
+        `fixed top-0 h-full w-[380px] bg-[#F5F3F0] border-l shadow-2xl p-4 flex flex-col overflow-y-auto z-[60] ` +
         (isDoPanelOpen ? "right-[380px]" : "right-0")
       }
     >

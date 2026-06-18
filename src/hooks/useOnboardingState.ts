@@ -20,6 +20,7 @@ export function useOnboardingState() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const { data } = await db
         .from('cos_settings')
@@ -39,6 +40,7 @@ export function useOnboardingState() {
     const next = { ...onboarding, [key]: true };
     setOnboarding(next);
     if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await db.from('cos_settings').upsert(
       { user_id: userId, onboarding_completed: next, updated_at: new Date().toISOString() },

@@ -39,9 +39,8 @@ export function AppNavbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-white">
-      <div className="container mx-auto px-4 py-3 sm:py-4 relative">
-        {/* Reserve right-side space for the absolutely-positioned avatar */}
-        <div className="flex items-center gap-4 pr-14 md:pr-[200px]">
+      <div className="container mx-auto px-4 py-3 sm:py-4">
+        <div className="flex items-center gap-4">
           {/* Logo — fixed, never shrinks */}
           <Logo variant="minimal" size="lg" className="flex-shrink-0" />
 
@@ -89,10 +88,10 @@ export function AppNavbar() {
               </nav>
             </div>
           )}
-        </div>
 
-        {/* Avatar — UserProfileHeader handles its own absolute positioning */}
-        <UserProfileHeader />
+          {/* Avatar — right-aligned */}
+          <UserProfileHeader />
+        </div>
       </div>
 
     </header>
