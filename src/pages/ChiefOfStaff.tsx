@@ -585,9 +585,10 @@ export default function ChiefOfStaff() {
       </Sheet>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-semibold mr-2">Chief of Staff</h1>
-          <TabsList className="grid max-w-sm grid-cols-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <h1 className="text-xl font-semibold whitespace-nowrap sm:mr-2">Chief of Staff</h1>
+          <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
+
             <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
             <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
             <TabsTrigger value="team">1:1s</TabsTrigger>
@@ -3734,7 +3735,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     const events: UpcomingOneOnOneEvent[] = ((eventsRes.data ?? []) as Array<{
       id: string;
       google_event_id: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       team_member_id: string | null;
       attendee_name?: string | null;
       attendee_email?: string | null;

@@ -156,6 +156,7 @@ serve(async (req) => {
       }
 
       // deno-lint-ignore no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const geminiData = await geminiRes.json() as any
       const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
