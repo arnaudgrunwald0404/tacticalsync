@@ -4,8 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 /**
  * Slack slash-command handler — "add a suggestion from Slack".
  *
- * Registered as the Request URL for a Slack slash command (e.g. /tacticalsync).
- * When a user types `/tacticalsync follow up with Dan on pricing`, this inserts
+ * Registered as the Request URL for a Slack slash command (e.g. /add-to-my-lists).
+ * When a user types `/add-to-my-lists follow up with Dan on pricing`, this inserts
  * a pending row into dci_suggested_tasks for the matching TacticalSync user.
  * The item then appears in the "Suggested from your meetings" panel, where the
  * user picks a destination list and accepts it into cos_priorities.
@@ -96,7 +96,7 @@ serve(async (req) => {
 
     if (!text) {
       return ephemeral(
-        'Add something to your TacticalSync suggestions, e.g. `/tacticalsync follow up with Dan on pricing`.',
+        'Add something to your TacticalSync suggestions, e.g. `/add-to-my-lists follow up with Dan on pricing`.',
       )
     }
 
@@ -125,7 +125,7 @@ serve(async (req) => {
         source: 'Slack',
         source_type: 'slack',
         status: 'pending',
-        raw_context: `Added from Slack via /tacticalsync`,
+        raw_context: `Added from Slack via /add-to-my-lists`,
       })
 
     if (insertErr) {
@@ -134,7 +134,7 @@ serve(async (req) => {
     }
 
     return ephemeral(
-      `:sparkles: Added to your TacticalSync suggestions: *${text}*\nOpen the app to route it to a list.`,
+      `:sparkles: Added to your TacticalSync suggestions: *${text}*\nOpen <https://tacticalsync.com/chief-of-staff|the TacticalSync app> to route it to a list.`,
     )
   } catch (error) {
     console.error('slack-add-suggestion error:', error)
