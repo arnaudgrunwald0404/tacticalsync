@@ -248,7 +248,7 @@ export function OneOnOnePrepDrawer({
   const [commitments, setCommitments] = useState<MonthlyCommitment[]>([]);
   const [zoomRecordings, setZoomRecordings] = useState<Array<{
     id: string; topic: string | null; start_time: string;
-    duration_minutes: number | null; has_transcript: boolean;
+    duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
   }>>([]);
   const [nextMeetingUrl, setNextMeetingUrl] = useState<string | null>(null);
 
@@ -299,11 +299,11 @@ export function OneOnOnePrepDrawer({
       });
 
     db.from('cos_zoom_recordings')
-      .select('id, topic, start_time, duration_minutes, has_transcript')
+      .select('id, topic, start_time, duration_minutes, has_transcript, ai_summary')
       .eq('team_member_id', member.id)
       .order('start_time', { ascending: false })
       .limit(8)
-      .then(({ data }: { data: Array<{ id: string; topic: string | null; start_time: string; duration_minutes: number | null; has_transcript: boolean }> | null }) => {
+      .then(({ data }: { data: Array<{ id: string; topic: string | null; start_time: string; duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null }> | null }) => {
         setZoomRecordings(data ?? []);
       })
       .catch(() => setZoomRecordings([]));
@@ -1013,7 +1013,7 @@ export function OneOnOnePrepDrawer({
                 <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-card grid place-items-center shadow-sm"><FileText className="h-[18px] w-[18px] text-primary" /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13.5px] font-bold mb-0.5">Summaries from your past 1:1s</div>
-                  <div className="text-[13px] leading-[1.5] text-muted-foreground">Each 1:1 is captured from its Zoom recording. Transcribed calls are summarized into recap, topics, and the commitments each of you made.</div>
+                  <div className="text-[13px] leading-[1.5] text-muted-foreground">Pulled from your Zoom calls. When Zoom&apos;s AI Companion is on, its meeting summary — overview and next steps — shows here automatically.</div>
                 </div>
               </div>
 
@@ -1044,8 +1044,11 @@ export function OneOnOnePrepDrawer({
                             <Badge variant="outline" className="text-[11px] h-6 px-2.5 border-emerald-200 text-emerald-700">Transcript</Badge>
                           )}
                         </div>
+                        {rec.ai_summary && (
+                          <div className="px-[22px] pt-4 text-[13.5px] leading-[1.6] text-foreground whitespace-pre-line">{rec.ai_summary}</div>
+                        )}
                         <div className="flex items-center gap-2.5 px-[22px] py-3.5">
-                          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground"><Sparkles className="h-[13px] w-[13px] text-primary" />{rec.has_transcript ? 'Summarized from Zoom transcript' : 'Recording captured — transcript pending'}</span>
+                          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground"><Sparkles className="h-[13px] w-[13px] text-primary" />{rec.ai_summary ? 'Summarized by Zoom AI Companion' : rec.has_transcript ? 'Transcript captured — summary pending' : 'Recording captured — summary pending'}</span>
                           {rec.has_transcript && (
                             <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer hover:underline"><FileText className="h-[14px] w-[14px]" />View transcript</span>
                           )}
