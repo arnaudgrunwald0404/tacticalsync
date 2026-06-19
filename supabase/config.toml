@@ -56,5 +56,10 @@ verify_jwt = true
 [functions.agent-slack-action]
 verify_jwt = false
 
+# Slack slash-command handler ("/tacticalsync ..."). Public endpoint — Slack
+# authenticates via the request signature, not a Supabase JWT.
+[functions.slack-add-suggestion]
+verify_jwt = false
+
 [functions.generate-weekend-banner]
 verify_jwt = true
