@@ -50,6 +50,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import CosSettingsPanel from '@/components/cos/CosSettingsPanel';
 import { AgentActivityFeed } from '@/components/cos/AgentActivityFeed';
+import { SuggestedFromMeetingsPanel } from '@/components/cos/SuggestedFromMeetingsPanel';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -260,6 +261,22 @@ export default function ChiefOfStaff() {
     if (!error && data) {
       setPriorities(prev => [...prev, data as CosPriority]);
       setNewlyAddedId((data as CosPriority).id);
+    }
+  };
+
+  // Add a fully-formed priority (used by the meeting-suggestions panel) — unlike
+  // addPriority, the text is known up front so we skip the inline auto-edit.
+  const addPriorityWithText = async (category: CategoryKey, text: string) => {
+    if (!userId) return;
+    const catPriorities = priorities.filter(p => p.category === category);
+    const maxOrder = catPriorities.length > 0 ? Math.max(...catPriorities.map(p => p.tier_order)) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from('cos_priorities').insert({
+      user_id: userId, text, category, tier_order: maxOrder + 1,
+    }).select().single();
+    if (!error && data) {
+      setPriorities(prev => [...prev, data as CosPriority]);
+      toast({ title: 'Added to your list' });
     }
   };
 
@@ -597,6 +614,14 @@ export default function ChiefOfStaff() {
         <div id="team-toolbar-slot" className="flex items-center mt-6 mb-8" />
 
         <TabsContent value="priorities">
+          {userId && (
+            <SuggestedFromMeetingsPanel
+              userId={userId}
+              layoutConfig={layoutConfig}
+              members={teamMembers}
+              onAddToList={addPriorityWithText}
+            />
+          )}
           {priorities.length === 0 && teamMembers.length === 0 && accountabilities.length === 0 && personTopics.length === 0 ? (
             /* ── Empty state for brand-new users ── */
             <div className="flex flex-col items-center justify-center py-16 sm:py-24 px-4">

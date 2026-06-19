@@ -136,9 +136,19 @@ export default function CosZoomSyncPanel() {
         processed?: number;
         quotes_added?: number;
       };
+
+      // Mine the same transcripts for action-item suggestions ("Suggested from your 1:1s").
+      let suggestionsAdded = 0;
+      try {
+        const { data: sugData } = await supabase.functions.invoke('generate-meeting-suggestions', { body: {} });
+        suggestionsAdded = ((sugData ?? {}) as { suggestions_added?: number }).suggestions_added ?? 0;
+      } catch {
+        /* non-fatal — quotes still succeeded */
+      }
+
       toast({
-        title: 'Quote extraction complete',
-        description: `${processed} transcript${processed !== 1 ? 's' : ''} processed · ${quotes_added} quote${quotes_added !== 1 ? 's' : ''} added`,
+        title: 'Transcript processing complete',
+        description: `${processed} transcript${processed !== 1 ? 's' : ''} processed · ${quotes_added} quote${quotes_added !== 1 ? 's' : ''} · ${suggestionsAdded} suggestion${suggestionsAdded !== 1 ? 's' : ''} added`,
       });
     } catch (err) {
       toast({ title: 'Quote extraction failed', description: String(err), variant: 'destructive' });
