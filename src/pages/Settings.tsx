@@ -2720,9 +2720,10 @@ const Settings = () => {
         ) : activeSection === "prep-schedule" ? (
           <div className="mb-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Prep schedule</h2>
+              <h2 className="text-2xl font-bold mb-1">Briefs &amp; schedule</h2>
               <p className="text-muted-foreground text-sm">
-                Automatically generate 1:1 prep briefs each morning for today's qualifying meetings.
+                Two daily briefs: Recurring Meeting Prep for today's 1:1s, and My Daily Brief for
+                action-item discovery. Each runs on your schedule and can be triggered on demand.
               </p>
             </div>
             <CosPrepSchedulePanel />

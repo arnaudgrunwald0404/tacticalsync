@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { formatHourLabel, getBrowserTimezone } from '@/hooks/usePrepScheduleConfig';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,20 +37,8 @@ interface IntegrationStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Constants
 // ---------------------------------------------------------------------------
-
-function localHourToUtc(localHour: number): number {
-  const d = new Date();
-  d.setHours(localHour, 0, 0, 0);
-  return d.getUTCHours();
-}
-
-function utcHourToLocal(utcHour: number): number {
-  const d = new Date();
-  d.setUTCHours(utcHour, 0, 0, 0);
-  return d.getHours();
-}
 
 const STEPS = [
   { label: 'Calendar', shortLabel: 'Calendar' },
@@ -315,7 +304,8 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
       await db.from('cos_prep_schedule').upsert({
         user_id: userId,
         enabled: true,
-        run_hour_utc: localHourToUtc(runHourLocal),
+        run_hour_local: runHourLocal,
+        timezone: getBrowserTimezone(),
         always_include: uniqueNames,
         max_others_after_exclude: 1,
         sync_zoom_before: integrations.zoom,
@@ -699,7 +689,7 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
                   <SelectContent>
                     {Array.from({ length: 14 }, (_, i) => i + 5).map(h => (
                       <SelectItem key={h} value={String(h)}>
-                        {h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}
+                        {formatHourLabel(h)}
                       </SelectItem>
                     ))}
                   </SelectContent>

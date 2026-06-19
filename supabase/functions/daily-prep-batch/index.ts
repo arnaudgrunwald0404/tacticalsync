@@ -15,14 +15,33 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 /**
+ * Current hour (0-23) in the given IANA timezone. Falls back to UTC if the
+ * timezone is missing or invalid.
+ */
+function currentHourInTimezone(timeZone: string): number {
+  try {
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: timeZone || 'UTC',
+    }).format(new Date())
+    const hour = parseInt(formatted, 10)
+    return Number.isNaN(hour) ? new Date().getUTCHours() : hour % 24
+  } catch {
+    return new Date().getUTCHours()
+  }
+}
+
+/**
  * Daily prep batch generator.
  *
  * Two invocation modes:
- * 1. **Cron mode** (no Authorization header): runs for ALL users whose
- *    cos_prep_schedule.enabled = true and run_hour_utc matches the current hour.
+ * 1. **Cron mode** (no Authorization header, or the service-role key — how
+ *    pg_cron calls us): runs for ALL users with cos_prep_schedule.enabled or
+ *    dci_enabled whose run_hour_local matches the current hour in their timezone.
  *    Triggered by pg_cron every hour.
- * 2. **User mode** (with Authorization header): runs for the calling user only,
- *    regardless of schedule settings. Used by the "Run now" button in Settings.
+ * 2. **User mode** (with a user's Authorization header): runs for the calling
+ *    user only, regardless of schedule. Used by the "Run now" buttons in Settings.
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -41,14 +60,16 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    // Determine invocation mode.
+    // Determine invocation mode. A user JWT means "Run now"; no token or the
+    // service-role key (how pg_cron authenticates) means the scheduled batch.
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
+    const isUserToken = jwt && jwt !== serviceRoleKey
 
     let targetUserIds: string[] = []
     let triggerType: 'cron' | 'manual' = 'manual'
 
-    if (jwt) {
+    if (isUserToken) {
       const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
       if (userErr || !userData?.user) {
         return jsonResponse({ error: 'invalid_token' }, 401)
@@ -56,15 +77,18 @@ serve(async (req) => {
       targetUserIds = [userData.user.id]
       triggerType = 'manual'
     } else {
-      const currentHourUtc = new Date().getUTCHours()
-      // Include users with either 1:1 prep or DCI brief enabled at this hour
+      // Cron mode: load every enabled schedule, then keep the users whose local
+      // run hour matches the current hour in their own timezone (DST-correct).
       const { data: schedules } = await supabase
         .from('cos_prep_schedule')
-        .select('user_id, enabled, dci_enabled')
-        .eq('run_hour_utc', currentHourUtc)
+        .select('user_id, enabled, dci_enabled, run_hour_local, timezone')
         .or('enabled.eq.true,dci_enabled.eq.true')
 
-      targetUserIds = (schedules ?? []).map((s: { user_id: string }) => s.user_id)
+      targetUserIds = ((schedules ?? []) as Array<{
+        user_id: string; run_hour_local: number | null; timezone: string | null
+      }>)
+        .filter(s => currentHourInTimezone(s.timezone ?? 'UTC') === (s.run_hour_local ?? 8))
+        .map(s => s.user_id)
       triggerType = 'cron'
     }
 
