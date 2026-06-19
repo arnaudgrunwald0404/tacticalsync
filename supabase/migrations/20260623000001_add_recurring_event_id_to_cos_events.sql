@@ -1,0 +1,12 @@
+-- Add the recurring_event_id column that google-calendar-sync writes on every event.
+--
+-- The edge function builds each upsert row with `recurring_event_id: event.recurringEventId ?? null`,
+-- but this column was never present on cos_one_on_one_events. PostgREST rejects an upsert that
+-- references an unknown column, so EVERY event upsert failed. The function swallows the error
+-- (`if (upsertErr) { skipped++; continue }`) and still returns HTTP 200, so last_sync_status read
+-- "ok" while created/updated/cancelled were always 0 — no new calendar events ever synced.
+-- (The soft-cancel UPDATE path doesn't touch this column, so existing rows could still be
+-- cancelled, which is why the meeting list only ever shrank.)
+--
+-- Adding the missing nullable column lets the upsert succeed.
+ALTER TABLE cos_one_on_one_events ADD COLUMN IF NOT EXISTS recurring_event_id text;
