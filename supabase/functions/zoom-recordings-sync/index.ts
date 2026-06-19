@@ -303,10 +303,10 @@ serve(async (req) => {
         })),
       }
 
-      // Relax the rules for Zoom: allow any relationship type and higher attendee cap
+      // Relax the rules for Zoom: match against any relationship type. (Zoom
+      // recordings are matched by participant, not by attendee count.)
       const zoomRules: CalendarSyncRules = {
         ...rules,
-        max_other_attendees: Math.max(rules.max_other_attendees, 10),
         include_relationship_types: [
           'direct_report', 'collaborator', 'boss', 'peer',
           'skip_level', 'stakeholder', 'external',

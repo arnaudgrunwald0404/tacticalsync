@@ -20,13 +20,21 @@ export type EventCategory =
   | 'external';
 
 export interface CalendarSyncRules {
-  max_other_attendees: number;
   include_relationship_types: RelationshipType[];
   include_titles_regex: string | null;
   exclude_titles_regex: string | null;
-  exclude_emails: string[];
   match_strategy: 'email_then_name' | 'email_only' | 'name_only';
 }
+
+const ALL_RELATIONSHIP_TYPES: RelationshipType[] = [
+  'direct_report',
+  'collaborator',
+  'boss',
+  'peer',
+  'skip_level',
+  'stakeholder',
+  'external',
+];
 
 export interface MinimalAttendee {
   email?: string | null;
@@ -41,6 +49,16 @@ export interface MinimalEvent {
   end?: { dateTime?: string | null; date?: string | null } | null;
   status?: 'confirmed' | 'tentative' | 'cancelled' | string | null;
   attendees?: MinimalAttendee[] | null;
+  // Google's recurringEventId, when the event is part of a recurring series.
+  // Used to group instances of the same recurring meeting together.
+  recurringEventId?: string | null;
+}
+
+// One tracked member resolved from a group event's attendee list.
+export interface MemberMatch {
+  member: MinimalMember;
+  matchedAttendee: MinimalAttendee;
+  matchedBy: MatchResult['matchedBy'];
 }
 
 export interface MinimalMember {
@@ -68,11 +86,9 @@ export interface UnmatchedEvent {
 }
 
 export const DEFAULT_SYNC_RULES: CalendarSyncRules = {
-  max_other_attendees: 1,
   include_relationship_types: ['direct_report', 'collaborator'],
   include_titles_regex: null,
   exclude_titles_regex: null,
-  exclude_emails: [],
   match_strategy: 'email_then_name',
 };
 
@@ -111,11 +127,16 @@ export function passesTitleFilters(event: MinimalEvent, rules: CalendarSyncRules
   return true;
 }
 
-// Decide whether the event passes the attendee count cap. We compare against
-// non-self attendees, so a true 1:1 has exactly one other attendee.
-export function passesAttendeeCap(event: MinimalEvent, rules: CalendarSyncRules): boolean {
-  const others = getOtherAttendees(event);
-  return others.length > 0 && others.length <= rules.max_other_attendees;
+// A true 1:1 has exactly one non-self attendee. Group meetings (2+ others) are
+// handled separately via the curated cos_group_meetings flow rather than an
+// attendee-count cap.
+export function isOneOnOne(event: MinimalEvent): boolean {
+  return getOtherAttendees(event).length === 1;
+}
+
+// A multi-person meeting: the user plus two or more other attendees.
+export function isGroupMeeting(event: MinimalEvent): boolean {
+  return getOtherAttendees(event).length >= 2;
 }
 
 // Find a team member matching one of the event's non-self attendees, per the
@@ -236,9 +257,9 @@ export function findMatchingMemberWithDiagnostics(
   const match = findMatchingMember(event, members, rules);
   if (match) return { match, unmatched: null };
 
-  // Only report unmatched when the event passed the cap filter (it looked like a 1:1
-  // but we couldn't identify who it's with).
-  if (!passesAttendeeCap(event, rules)) return { match: null, unmatched: null };
+  // Only report unmatched when the event looks like a 1:1 (exactly one other
+  // attendee) but we couldn't identify who it's with.
+  if (!isOneOnOne(event)) return { match: null, unmatched: null };
 
   const others = getOtherAttendees(event);
   const first = others[0] ?? null;
@@ -252,26 +273,60 @@ export function findMatchingMemberWithDiagnostics(
   };
 }
 
-// Full pipeline: returns a MatchResult when the event should be persisted as a
-// placeholder, otherwise null. Cancelled events are also returned (so callers
-// can flip the row's status) — the edge function decides what to do with the
-// status field afterwards.
-export function passesEmailExclusion(event: MinimalEvent, rules: CalendarSyncRules): boolean {
-  if (!rules.exclude_emails || rules.exclude_emails.length === 0) return true;
-  const excluded = new Set(rules.exclude_emails.map(e => e.trim().toLowerCase()));
-  const others = getOtherAttendees(event);
-  return !others.some(a => excluded.has(normaliseEmail(a.email)));
-}
-
+// Full 1:1 pipeline: returns a MatchResult when the event is a true 1:1 with a
+// tracked member, otherwise null. Group meetings (2+ other attendees) are never
+// returned here — they flow through the cos_group_meetings curation path.
+// Cancelled events are still returned (so callers can flip the row's status) —
+// the edge function decides what to do with the status field afterwards.
 export function matchEventToMember(
   event: MinimalEvent,
   members: MinimalMember[],
   rules: CalendarSyncRules = DEFAULT_SYNC_RULES,
 ): MatchResult | null {
   if (!passesTitleFilters(event, rules)) return null;
-  if (!passesAttendeeCap(event, rules)) return null;
-  if (!passesEmailExclusion(event, rules)) return null;
+  if (!isOneOnOne(event)) return null;
   return findMatchingMember(event, members, rules);
+}
+
+// For a group meeting, resolve every other attendee that maps to a tracked
+// member. Unlike the 1:1 path, this ignores include_relationship_types (anyone
+// in the room who is tracked should appear in the roster) and the 1:1 cap.
+// Returns one entry per distinct matched member.
+export function matchEventToMembers(
+  event: MinimalEvent,
+  members: MinimalMember[],
+  rules: CalendarSyncRules = DEFAULT_SYNC_RULES,
+): MemberMatch[] {
+  const rosterRules: CalendarSyncRules = {
+    ...rules,
+    include_relationship_types: ALL_RELATIONSHIP_TYPES,
+  };
+  const others = getOtherAttendees(event);
+  const matches: MemberMatch[] = [];
+  const seen = new Set<string>();
+  for (const att of others) {
+    // Reuse the single-attendee matcher by matching against one attendee at a time.
+    const synthetic: MinimalEvent = { ...event, attendees: [att] };
+    const r = findMatchingMember(synthetic, members, rosterRules);
+    if (r && !seen.has(r.member.id)) {
+      seen.add(r.member.id);
+      matches.push({ member: r.member, matchedAttendee: att, matchedBy: r.matchedBy });
+    }
+  }
+  return matches;
+}
+
+// Stable key identifying a recurring meeting series. Prefer Google's
+// recurringEventId; fall back to a normalised title so single-instance events
+// that repeat by title still group together.
+export function normaliseTitleKey(summary: string | null | undefined): string {
+  return (summary ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function recurrenceKeyForEvent(event: MinimalEvent): string {
+  const rid = (event.recurringEventId ?? '').trim();
+  if (rid) return `series:${rid}`;
+  return `title:${normaliseTitleKey(event.summary)}`;
 }
 
 // Map a cos_team_members relationship_type to the display category used in the UI.

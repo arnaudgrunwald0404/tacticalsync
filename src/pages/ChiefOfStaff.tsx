@@ -39,7 +39,6 @@ import {
 } from '@/types/cos';
 import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { CoverageMap } from '@/components/cos/CoverageMap';
-import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
@@ -3499,7 +3498,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes, prepScheduleRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, prepScheduleRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3519,7 +3518,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('profiles').select('id, email, manager_email').not('email', 'is', null)
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: [], error: null })),
-      db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
       db.from('cos_prep_schedule').select('enabled').eq('user_id', user.id).maybeSingle()
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: null, error: null })),
@@ -3534,11 +3532,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
-
-    const syncRules = syncSettingsRes?.data?.calendar_sync_rules as { exclude_emails?: string[] } | null;
-    const excludedEmails = new Set(
-      (syncRules?.exclude_emails ?? []).map((e: string) => e.trim().toLowerCase()),
-    );
 
     // Build org-chart–based category lookup from the profiles table.
     // This is the authoritative source — manager_email says who reports to whom.
@@ -3650,8 +3643,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           status: e.status,
           prep_available: member ? prepSet.has(member.id) : false,
         };
-      })
-      .filter(e => !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase()));
+      });
 
     setUpcomingEvents(events);
     setCalendarConnected(Boolean(credsRes.data?.connected));
@@ -3875,30 +3867,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   }, [toast, loadCalendarState]);
 
-  const handleExcludeFromCalendar = useCallback(async (event: UpcomingOneOnOneEvent) => {
-    if (!event.attendee_email) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    const settingsRes = await db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle();
-    const current: CalendarSyncRules = { ...DEFAULT_SYNC_RULES, ...(settingsRes.data?.calendar_sync_rules ?? {}) };
-    const email = event.attendee_email.trim().toLowerCase();
-    if (current.exclude_emails.includes(email)) return;
-    const updated = { ...current, exclude_emails: [...current.exclude_emails, email] };
-    const { error } = await db.from('cos_settings').upsert(
-      { user_id: user.id, calendar_sync_rules: updated, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' },
-    );
-    if (error) {
-      toast({ title: 'Failed to exclude', description: error.message, variant: 'destructive' });
-    } else {
-      const name = event.attendee_name ?? event.attendee_email;
-      toast({ title: `${name} excluded from 1:1s` });
-      setUpcomingEvents(prev => prev.filter(e => e.attendee_email?.toLowerCase() !== email));
-    }
-  }, [toast]);
-
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected
     && !teamOnboarding.oneOnOnes
@@ -3997,7 +3965,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           syncing={syncing}
           onSyncCalendar={handleSyncCalendar}
           onIncludeInPrep={handleIncludeInPrep}
-          onExcludeFromCalendar={handleExcludeFromCalendar}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />

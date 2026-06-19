@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import {
   findMatchingMemberWithDiagnostics,
+  matchEventToMembers,
+  recurrenceKeyForEvent,
   passesTitleFilters,
   inferCategory,
   DEFAULT_SYNC_RULES,
@@ -317,6 +319,18 @@ serve(async (req) => {
     // Track per-member events for cadence computation at the end.
     const memberEvents = new Map<string, { times: string[]; recurringIds: Set<string>; recurrenceRules: string[] }>()
 
+    // Track discovered recurring group meetings (self + 2 or more others), keyed
+    // by recurrence key. These are surfaced for manual inclusion rather than
+    // auto-synced as 1:1 placeholders.
+    interface GroupAcc {
+      title: string | null
+      participants: Map<string, { name: string | null; email: string; team_member_id: string | null }>
+      times: string[]
+      nextStart: string | null
+    }
+    const now = new Date().toISOString()
+    const groupMeetings = new Map<string, GroupAcc>()
+
     for (const event of allEvents) {
       if (!event.start?.dateTime) {
         // All-day or malformed event — skip.
@@ -331,9 +345,45 @@ serve(async (req) => {
         continue
       }
 
-      // Check attendee cap (still respect max_other_attendees).
       const others = (event.attendees ?? []).filter((a: { self?: boolean }) => !a.self)
-      if (others.length === 0 || others.length > rules.max_other_attendees) {
+      if (others.length === 0) {
+        skipped++
+        continue
+      }
+
+      // Group meeting (self + 2 or more others): accumulate it for the curated
+      // cos_group_meetings flow instead of treating it as a 1:1 placeholder.
+      if (others.length >= 2) {
+        const key = recurrenceKeyForEvent(event)
+        const acc = groupMeetings.get(key) ?? {
+          title: event.summary ?? null,
+          participants: new Map<string, { name: string | null; email: string; team_member_id: string | null }>(),
+          times: [],
+          nextStart: null,
+        }
+        const roster = matchEventToMembers(event, members, rules)
+        const memberByEmail = new Map<string, string>()
+        for (const m of roster) {
+          const e = (m.matchedAttendee.email ?? '').trim().toLowerCase()
+          if (e) memberByEmail.set(e, m.member.id)
+        }
+        for (const a of others as Array<{ email?: string | null; displayName?: string | null }>) {
+          const email = (a.email ?? '').trim().toLowerCase()
+          if (!email || acc.participants.has(email)) continue
+          acc.participants.set(email, {
+            name: a.displayName ?? null,
+            email,
+            team_member_id: memberByEmail.get(email) ?? null,
+          })
+        }
+        if (event.status !== 'cancelled' && event.start.dateTime) {
+          acc.times.push(event.start.dateTime)
+          // Track the soonest future start as next_start_at.
+          if (event.start.dateTime >= now && (!acc.nextStart || event.start.dateTime < acc.nextStart)) {
+            acc.nextStart = event.start.dateTime
+          }
+        }
+        groupMeetings.set(key, acc)
         skipped++
         continue
       }
@@ -527,6 +577,88 @@ serve(async (req) => {
       }
     }
 
+    // ── Upsert discovered recurring group meetings ───────────────────────────
+    // We only persist meetings that recur (seen 2+ times in the window) or that
+    // are already tracked, so one-off large invites don't clutter the list. The
+    // user's `included` choice and edited `subject` are always preserved.
+    let groupsDiscovered = 0
+    const groupKeys = [...groupMeetings.keys()]
+    if (groupKeys.length > 0) {
+      const { data: existingGroups } = await supabase
+        .from('cos_group_meetings')
+        .select('id, recurrence_key, included, subject')
+        .eq('user_id', userId)
+        .in('recurrence_key', groupKeys)
+      const existingByKey = new Map<string, { id: string; included: boolean; subject: string | null }>()
+      for (const g of existingGroups ?? []) {
+        existingByKey.set(g.recurrence_key as string, {
+          id: g.id as string,
+          included: !!g.included,
+          subject: (g.subject as string | null) ?? null,
+        })
+      }
+
+      for (const [key, acc] of groupMeetings.entries()) {
+        const existing = existingByKey.get(key)
+        // Skip brand-new meetings seen only once (likely a one-off) unless tracked.
+        if (!existing && acc.times.length < 2) continue
+
+        // Infer cadence from observed start times.
+        let cadence: string | null = null
+        if (acc.times.length >= 2) {
+          const sorted = acc.times.map(t => new Date(t).getTime()).sort((a, b) => a - b)
+          let totalGap = 0
+          for (let i = 1; i < sorted.length; i++) totalGap += sorted[i] - sorted[i - 1]
+          const avgDays = Math.round(totalGap / (sorted.length - 1) / 86_400_000)
+          if (avgDays > 0) cadence = toCadenceLabel(avgDays)
+        }
+
+        let groupId = existing?.id ?? null
+        if (existing) {
+          await supabase
+            .from('cos_group_meetings')
+            .update({
+              title: acc.title,
+              cadence,
+              last_seen_at: now,
+              next_start_at: acc.nextStart,
+            })
+            .eq('id', existing.id)
+        } else {
+          const { data: inserted, error: insErr } = await supabase
+            .from('cos_group_meetings')
+            .insert({
+              user_id: userId,
+              recurrence_key: key,
+              title: acc.title,
+              subject: acc.title,
+              included: false,
+              cadence,
+              last_seen_at: now,
+              next_start_at: acc.nextStart,
+            })
+            .select('id')
+            .single()
+          if (insErr || !inserted) continue
+          groupId = inserted.id as string
+          groupsDiscovered++
+        }
+
+        if (!groupId) continue
+        const participantRows = [...acc.participants.values()].map(p => ({
+          group_meeting_id: groupId,
+          name: p.name,
+          email: p.email,
+          team_member_id: p.team_member_id,
+        }))
+        if (participantRows.length > 0) {
+          await supabase
+            .from('cos_group_meeting_participants')
+            .upsert(participantRows, { onConflict: 'group_meeting_id,email' })
+        }
+      }
+    }
+
     // Record outcome. Surface write failures instead of always reporting "ok"
     // so silent schema drift (e.g. a missing column rejecting every upsert) is
     // visible in last_sync_status instead of looking like a healthy sync.
@@ -539,7 +671,7 @@ serve(async (req) => {
       .update({ last_sync_at: new Date().toISOString(), last_sync_status: lastSyncStatus })
       .eq('user_id', userId)
 
-    return jsonResponse({ created, updated, cancelled, skipped, writeErrors, lastSyncStatus, unmatched: unmatchedEvents }, 200)
+    return jsonResponse({ created, updated, cancelled, skipped, groupsDiscovered, writeErrors, lastSyncStatus, unmatched: unmatchedEvents }, 200)
   } catch (error) {
     return jsonResponse({ error: (error as Error).message }, 500)
   }
