@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare, Brain } from 'lucide-react';
+import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare, Brain, CalendarClock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import {
+  usePrepScheduleConfig,
+  formatHourLabel,
+  getBrowserTimezone,
+  isValidTimezone,
+  type PrepScheduleConfig,
+} from '@/hooks/usePrepScheduleConfig';
 
 const DCI_SOURCES = [
   { id: 'calendar',    label: 'Calendar' },
@@ -21,247 +28,103 @@ const DCI_SOURCES = [
   { id: 'commitments', label: 'Commitments' },
 ];
 
-interface PrepSchedule {
-  enabled: boolean;
-  run_hour_utc: number;
-  always_include: string[];
-  max_others_after_exclude: number;
-  sync_zoom_before: boolean;
-  sync_slack_before: boolean;
-  enrich_stackone: boolean;
-  slack_channels: string[];
-  last_run_at: string | null;
-  last_run_status: string | null;
-  last_run_preps_generated: number | null;
-  dci_enabled: boolean;
-  dci_sources: string[];
-  dci_instructions: string | null;
-  dci_slack_dm: boolean;
-  slack_user_id: string | null;
-  timezone: string;
+const COMMON_TIMEZONES = [
+  'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
+  'America/Sao_Paulo', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney', 'UTC',
+];
+
+interface BatchLog {
+  id: string;
+  trigger_type: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  meetings_found: number;
+  meetings_qualified: number;
+  preps_generated: number;
+  preps_cached: number;
+  zoom_synced: boolean;
+  zoom_recordings: number | null;
+  slack_synced: boolean;
+  slack_messages: number | null;
+  errors: Array<{ member_name?: string; error: string }>;
+  summary: string | null;
 }
 
-const DEFAULT_SCHEDULE: PrepSchedule = {
-  enabled: false,
-  run_hour_utc: 11, // 4am PT
-  always_include: [],
-  max_others_after_exclude: 1,
-  sync_zoom_before: true,
-  sync_slack_before: true,
-  enrich_stackone: false,
-  slack_channels: [],
-  last_run_at: null,
-  last_run_status: null,
-  last_run_preps_generated: null,
-  dci_enabled: false,
-  dci_sources: ['calendar', 'zoom', 'slack'],
-  dci_instructions: null,
-  dci_slack_dm: true,
-  slack_user_id: null,
-  timezone: 'UTC',
-};
+type Patch = (patch: Partial<PrepScheduleConfig>) => void;
 
-// Convert UTC hour to a readable local time label.
-function utcHourToLocalLabel(utcHour: number): string {
-  const d = new Date();
-  d.setUTCHours(utcHour, 0, 0, 0);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// ── Shared "last run" line ───────────────────────────────────────────────────
+
+function LastRunLine({ at, status, detail }: { at: string | null; status: string | null; detail?: string }) {
+  if (!at) {
+    return <p className="text-[11px] text-muted-foreground">Not run yet.</p>;
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      Last run: {new Date(at).toLocaleString()}
+      {status && ` · ${status}`}
+      {detail && ` · ${detail}`}
+    </p>
+  );
 }
 
-export default function CosPrepSchedulePanel() {
-  const { toast } = useToast();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [draft, setDraft] = useState<PrepSchedule>(DEFAULT_SCHEDULE);
+// ── Product A — Recurring Meeting Prep ───────────────────────────────────────
+
+function RecurringMeetingPrepSection({
+  draft, update, running, onRunNow, logs,
+}: {
+  draft: PrepScheduleConfig;
+  update: Patch;
+  running: boolean;
+  onRunNow: () => void;
+  logs: BatchLog[];
+}) {
   const [newIncludeName, setNewIncludeName] = useState('');
   const [newChannel, setNewChannel] = useState('');
-  const [logs, setLogs] = useState<Array<{
-    id: string;
-    trigger_type: string;
-    started_at: string;
-    finished_at: string | null;
-    status: string;
-    meetings_found: number;
-    meetings_qualified: number;
-    preps_generated: number;
-    preps_cached: number;
-    zoom_synced: boolean;
-    zoom_recordings: number | null;
-    slack_synced: boolean;
-    slack_messages: number | null;
-    errors: Array<{ member_name?: string; error: string }>;
-    summary: string | null;
-  }>>([]);
-
-  const loadLogs = useCallback(async (uid: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
-      .from('cos_prep_batch_log')
-      .select('*')
-      .eq('user_id', uid)
-      .order('started_at', { ascending: false })
-      .limit(20);
-    if (data) {
-      setLogs(data.map((row: Record<string, unknown>) => ({
-        ...row,
-        errors: typeof row.errors === 'string' ? JSON.parse(row.errors as string) : (row.errors ?? []),
-      })));
-    }
-  }, []);
-
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserId(user.id);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase as any)
-        .from('cos_prep_schedule')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (data) {
-        setDraft({
-          enabled: data.enabled ?? false,
-          run_hour_utc: data.run_hour_utc ?? 11,
-          always_include: data.always_include ?? [],
-          max_others_after_exclude: data.max_others_after_exclude ?? 1,
-          sync_zoom_before: data.sync_zoom_before ?? true,
-          sync_slack_before: data.sync_slack_before ?? true,
-          enrich_stackone: data.enrich_stackone ?? false,
-          slack_channels: data.slack_channels ?? [],
-          last_run_at: data.last_run_at ?? null,
-          last_run_status: data.last_run_status ?? null,
-          last_run_preps_generated: data.last_run_preps_generated ?? null,
-          dci_enabled: data.dci_enabled ?? false,
-          dci_sources: data.dci_sources ?? ['calendar', 'zoom', 'slack'],
-          dci_instructions: data.dci_instructions ?? null,
-          dci_slack_dm: data.dci_slack_dm ?? true,
-          slack_user_id: data.slack_user_id ?? null,
-          timezone: data.timezone ?? 'UTC',
-        });
-      }
-      setLoading(false);
-      loadLogs(user.id);
-    }
-    load();
-  }, [loadLogs]);
-
-  const save = async () => {
-    if (!userId) return;
-    setSaving(true);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from('cos_prep_schedule').upsert({
-        user_id: userId,
-        enabled: draft.enabled,
-        run_hour_utc: draft.run_hour_utc,
-        always_include: draft.always_include,
-        max_others_after_exclude: draft.max_others_after_exclude,
-        sync_zoom_before: draft.sync_zoom_before,
-        sync_slack_before: draft.sync_slack_before,
-        enrich_stackone: draft.enrich_stackone,
-        slack_channels: draft.slack_channels,
-        dci_enabled: draft.dci_enabled,
-        dci_sources: draft.dci_sources,
-        dci_instructions: draft.dci_instructions || null,
-        dci_slack_dm: draft.dci_slack_dm,
-        slack_user_id: draft.slack_user_id || null,
-        timezone: draft.timezone || 'UTC',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
-      if (error) throw error;
-      toast({ title: 'Schedule saved' });
-    } catch (err) {
-      toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const runNow = async () => {
-    setRunning(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('daily-prep-batch', { body: {} });
-      if (error) throw error;
-      const totalPreps = (data as { total_preps_generated?: number })?.total_preps_generated ?? 0;
-      toast({
-        title: 'Batch prep complete',
-        description: `${totalPreps} prep${totalPreps !== 1 ? 's' : ''} generated`,
-      });
-      // Reload to show updated last_run info.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: updated } = await (supabase as any)
-        .from('cos_prep_schedule')
-        .select('last_run_at, last_run_status, last_run_preps_generated')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (updated) {
-        setDraft(d => ({
-          ...d,
-          last_run_at: updated.last_run_at,
-          last_run_status: updated.last_run_status,
-          last_run_preps_generated: updated.last_run_preps_generated,
-        }));
-      }
-      if (userId) loadLogs(userId);
-    } catch (err) {
-      toast({ title: 'Batch prep failed', description: String(err), variant: 'destructive' });
-    } finally {
-      setRunning(false);
-    }
-  };
 
   const addIncludeName = () => {
     const name = newIncludeName.trim();
     if (!name || draft.always_include.includes(name)) return;
-    setDraft(d => ({ ...d, always_include: [...d.always_include, name] }));
+    update({ always_include: [...draft.always_include, name] });
     setNewIncludeName('');
   };
-
-  const removeIncludeName = (name: string) => {
-    setDraft(d => ({ ...d, always_include: d.always_include.filter(n => n !== name) }));
-  };
+  const removeIncludeName = (name: string) =>
+    update({ always_include: draft.always_include.filter(n => n !== name) });
 
   const addChannel = () => {
     const ch = newChannel.trim().replace(/^#/, '');
     if (!ch || draft.slack_channels.includes(ch)) return;
-    setDraft(d => ({ ...d, slack_channels: [...d.slack_channels, ch] }));
+    update({ slack_channels: [...draft.slack_channels, ch] });
     setNewChannel('');
   };
+  const removeChannel = (ch: string) =>
+    update({ slack_channels: draft.slack_channels.filter(c => c !== ch) });
 
-  const removeChannel = (ch: string) => {
-    setDraft(d => ({ ...d, slack_channels: d.slack_channels.filter(c => c !== ch) }));
-  };
-
-  const toggleDciSource = (id: string) => {
-    setDraft(d => ({
-      ...d,
-      dci_sources: d.dci_sources.includes(id)
-        ? d.dci_sources.filter(s => s !== id)
-        : [...d.dci_sources, id],
-    }));
-  };
-
-  if (loading) return null;
+  const tzOptions = Array.from(new Set([getBrowserTimezone(), draft.timezone, ...COMMON_TIMEZONES]));
 
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
+      <div>
+        <h3 className="flex items-center gap-2 text-base font-semibold">
+          <CalendarClock className="h-4 w-4" /> Recurring Meeting Prep
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Generate a prep brief each morning for today's qualifying 1:1 meetings.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="h-4 w-4" /> Auto-generate schedule
+            <Clock className="h-4 w-4" /> Schedule
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="flex items-center gap-3">
             <Switch
               checked={draft.enabled}
-              onCheckedChange={v => setDraft(d => ({ ...d, enabled: v }))}
+              onCheckedChange={v => update({ enabled: v })}
             />
             <div>
               <span className="text-sm font-medium">Enable daily auto-generation</span>
@@ -271,32 +134,62 @@ export default function CosPrepSchedulePanel() {
             </div>
           </label>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Run at (local time)</label>
-            <Select
-              value={String(draft.run_hour_utc)}
-              onValueChange={v => setDraft(d => ({ ...d, run_hour_utc: parseInt(v) }))}
-            >
-              <SelectTrigger className="w-40 h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 24 }, (_, i) => (
-                  <SelectItem key={i} value={String(i)}>
-                    {utcHourToLocalLabel(i)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Run at</label>
+              <Select
+                value={String(draft.run_hour_local)}
+                onValueChange={v => update({ run_hour_local: parseInt(v) })}
+              >
+                <SelectTrigger className="w-40 h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {formatHourLabel(i)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Timezone</label>
+              <Select
+                value={draft.timezone}
+                onValueChange={v => update({ timezone: v })}
+              >
+                <SelectTrigger className="w-56 h-9 text-sm font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tzOptions.map(tz => (
+                    <SelectItem key={tz} value={tz} className="font-mono text-xs">
+                      {tz}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Runs at {formatHourLabel(draft.run_hour_local)} in {draft.timezone}. This schedule is
+            shared with My Daily Brief below.
+          </p>
+
+          <div className="border-t pt-3">
+            <LastRunLine
+              at={draft.last_run_at}
+              status={draft.last_run_status}
+              detail={draft.last_run_preps_generated != null ? `${draft.last_run_preps_generated} prep(s)` : undefined}
+            />
           </div>
 
-          {draft.last_run_at && (
-            <div className="text-xs text-muted-foreground border-t pt-3">
-              Last run: {new Date(draft.last_run_at).toLocaleString()}
-              {draft.last_run_status && ` · ${draft.last_run_status}`}
-              {draft.last_run_preps_generated != null && ` · ${draft.last_run_preps_generated} prep(s)`}
-            </div>
-          )}
+          <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Run prep now
+          </Button>
         </CardContent>
       </Card>
 
@@ -314,10 +207,7 @@ export default function CosPrepSchedulePanel() {
               {draft.always_include.map(name => (
                 <Badge key={name} variant="outline" className="bg-background">
                   <span className="text-xs">{name}</span>
-                  <button
-                    className="ml-1 rounded-full hover:bg-muted"
-                    onClick={() => removeIncludeName(name)}
-                  >
+                  <button className="ml-1 rounded-full hover:bg-muted" onClick={() => removeIncludeName(name)}>
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </button>
                 </Badge>
@@ -345,10 +235,7 @@ export default function CosPrepSchedulePanel() {
               max={5}
               value={draft.max_others_after_exclude}
               onChange={e =>
-                setDraft(d => ({
-                  ...d,
-                  max_others_after_exclude: Math.max(0, Math.min(5, parseInt(e.target.value) || 0)),
-                }))
+                update({ max_others_after_exclude: Math.max(0, Math.min(5, parseInt(e.target.value) || 0)) })
               }
               className="h-9 text-sm w-24"
             />
@@ -365,27 +252,18 @@ export default function CosPrepSchedulePanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="flex items-center gap-3">
-            <Switch
-              checked={draft.sync_zoom_before}
-              onCheckedChange={v => setDraft(d => ({ ...d, sync_zoom_before: v }))}
-            />
+            <Switch checked={draft.sync_zoom_before} onCheckedChange={v => update({ sync_zoom_before: v })} />
             <span className="text-sm">Sync Zoom recordings before generating</span>
           </label>
 
           <label className="flex items-center gap-3">
-            <Switch
-              checked={draft.sync_slack_before}
-              onCheckedChange={v => setDraft(d => ({ ...d, sync_slack_before: v }))}
-            />
+            <Switch checked={draft.sync_slack_before} onCheckedChange={v => update({ sync_slack_before: v })} />
             <span className="text-sm">Sync Slack messages before generating</span>
           </label>
 
           <div className="pt-2 border-t">
             <label className="flex items-center gap-3">
-              <Switch
-                checked={draft.enrich_stackone ?? false}
-                onCheckedChange={v => setDraft(d => ({ ...d, enrich_stackone: v }))}
-              />
+              <Switch checked={draft.enrich_stackone ?? false} onCheckedChange={v => update({ enrich_stackone: v })} />
               <div>
                 <span className="text-sm">Enrich with StackOne data</span>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -402,10 +280,7 @@ export default function CosPrepSchedulePanel() {
               {draft.slack_channels.map(ch => (
                 <Badge key={ch} variant="outline" className="bg-background">
                   <span className="text-xs">#{ch}</span>
-                  <button
-                    className="ml-1 rounded-full hover:bg-muted"
-                    onClick={() => removeChannel(ch)}
-                  >
+                  <button className="ml-1 rounded-full hover:bg-muted" onClick={() => removeChannel(ch)}>
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </button>
                 </Badge>
@@ -429,120 +304,11 @@ export default function CosPrepSchedulePanel() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Brain className="h-4 w-4" /> Daily Check-In (DCI)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <label className="flex items-center gap-3">
-            <Switch
-              checked={draft.dci_enabled}
-              onCheckedChange={v => setDraft(d => ({ ...d, dci_enabled: v }))}
-            />
-            <div>
-              <span className="text-sm font-medium">Enable daily action-item discovery</span>
-              <p className="text-[11px] text-muted-foreground">
-                Automatically extract action items from your meetings, email, and Slack throughout the day.
-              </p>
-            </div>
-          </label>
-
-          {draft.dci_enabled && (
-            <>
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Data sources</label>
-                <div className="flex flex-wrap gap-2">
-                  {DCI_SOURCES.map(s => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => toggleDciSource(s.id)}
-                      className={cn(
-                        'px-3 py-1 rounded-full text-xs border transition-colors',
-                        draft.dci_sources.includes(s.id)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                      )}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Focus instructions (optional)</label>
-                <Textarea
-                  value={draft.dci_instructions ?? ''}
-                  onChange={e => setDraft(d => ({ ...d, dci_instructions: e.target.value || null }))}
-                  placeholder="e.g. Focus on product launch blockers and customer-facing commitments"
-                  className="text-sm resize-none"
-                  rows={3}
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Describe what you care about. The agent will prioritize matching items.
-                </p>
-              </div>
-
-              <div className="space-y-2 border-t pt-3">
-                <label className="text-xs font-medium">Timezone</label>
-                <Input
-                  value={draft.timezone}
-                  onChange={e => setDraft(d => ({ ...d, timezone: e.target.value }))}
-                  placeholder="e.g. America/Los_Angeles"
-                  className="h-9 text-sm font-mono w-56"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  IANA timezone used for calendar scanning and meeting boundaries.
-                </p>
-              </div>
-
-              <label className="flex items-center gap-3 border-t pt-3">
-                <Switch
-                  checked={draft.dci_slack_dm}
-                  onCheckedChange={v => setDraft(d => ({ ...d, dci_slack_dm: v }))}
-                />
-                <span className="text-sm">Send end-of-day brief to Slack DM</span>
-              </label>
-
-              {draft.dci_sources.includes('slack') && (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Your Slack member ID (optional)</label>
-                  <Input
-                    value={draft.slack_user_id ?? ''}
-                    onChange={e => setDraft(d => ({ ...d, slack_user_id: e.target.value || null }))}
-                    placeholder="e.g. U01234ABCDE"
-                    className="h-9 text-sm font-mono w-48"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Find it in Slack: click your name → Copy member ID. Used to filter messages directed at you.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={saving} className="gap-1.5">
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save schedule
-        </Button>
-        <Button variant="outline" onClick={runNow} disabled={running} className="gap-1.5">
-          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          Run now
-        </Button>
-      </div>
-
-      {/* ── Run history ─────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
           <CardTitle className="text-base">Run history</CardTitle>
         </CardHeader>
         <CardContent>
           {logs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No runs yet. Click "Run now" or wait for the scheduled run.</p>
+            <p className="text-sm text-muted-foreground">No runs yet. Click "Run prep now" or wait for the scheduled run.</p>
           ) : (
             <div className="space-y-3">
               {logs.map(log => {
@@ -560,7 +326,6 @@ export default function CosPrepSchedulePanel() {
 
                 return (
                   <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                    {/* Header row */}
                     <div className="flex items-center gap-2">
                       {statusIcon}
                       <span className="text-sm font-medium">
@@ -568,15 +333,12 @@ export default function CosPrepSchedulePanel() {
                         {' '}
                         {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                       </span>
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {log.trigger_type}
-                      </Badge>
+                      <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
                       {duration != null && (
                         <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>
                       )}
                     </div>
 
-                    {/* Stats row */}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>{log.meetings_found} meeting{log.meetings_found !== 1 ? 's' : ''} found</span>
                       <span>{log.meetings_qualified} qualified</span>
@@ -584,7 +346,6 @@ export default function CosPrepSchedulePanel() {
                       {log.preps_cached > 0 && <span>{log.preps_cached} cached</span>}
                     </div>
 
-                    {/* Integration badges */}
                     {(log.zoom_synced || log.slack_synced) && (
                       <div className="flex gap-2">
                         {log.zoom_synced && (
@@ -600,7 +361,6 @@ export default function CosPrepSchedulePanel() {
                       </div>
                     )}
 
-                    {/* Errors */}
                     {log.errors.length > 0 && (
                       <div className="bg-red-50 rounded p-2 space-y-1">
                         {log.errors.map((err, i) => (
@@ -618,6 +378,267 @@ export default function CosPrepSchedulePanel() {
           )}
         </CardContent>
       </Card>
+    </section>
+  );
+}
+
+// ── Product B — My Daily Brief (DCI) ─────────────────────────────────────────
+
+function MyDailyBriefSection({
+  draft, update, running, onRunNow,
+}: {
+  draft: PrepScheduleConfig;
+  update: Patch;
+  running: boolean;
+  onRunNow: () => void;
+}) {
+  const toggleDciSource = (id: string) =>
+    update({
+      dci_sources: draft.dci_sources.includes(id)
+        ? draft.dci_sources.filter(s => s !== id)
+        : [...draft.dci_sources, id],
+    });
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h3 className="flex items-center gap-2 text-base font-semibold">
+          <Brain className="h-4 w-4" /> My Daily Brief
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Discover action items across your meetings, email, and Slack throughout the day.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="h-4 w-4" /> Schedule
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center gap-3">
+            <Switch checked={draft.dci_enabled} onCheckedChange={v => update({ dci_enabled: v })} />
+            <div>
+              <span className="text-sm font-medium">Enable daily action-item discovery</span>
+              <p className="text-[11px] text-muted-foreground">
+                Automatically extract action items from your meetings, email, and Slack throughout the day.
+              </p>
+            </div>
+          </label>
+
+          <p className="text-[11px] text-muted-foreground">
+            Runs on your daily schedule at {formatHourLabel(draft.run_hour_local)} in {draft.timezone}
+            {' '}(set under Recurring Meeting Prep).
+          </p>
+
+          <div className="border-t pt-3">
+            <LastRunLine at={draft.dci_last_run_at} status={draft.dci_last_run_status} />
+          </div>
+
+          <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Run brief now
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Data sources</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {DCI_SOURCES.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => toggleDciSource(s.id)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs border transition-colors',
+                    draft.dci_sources.includes(s.id)
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Focus instructions (optional)</label>
+            <Textarea
+              value={draft.dci_instructions ?? ''}
+              onChange={e => update({ dci_instructions: e.target.value || null })}
+              placeholder="e.g. Focus on product launch blockers and customer-facing commitments"
+              className="text-sm resize-none"
+              rows={3}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Describe what you care about. The agent will prioritize matching items.
+            </p>
+          </div>
+
+          <label className="flex items-center gap-3 border-t pt-3">
+            <Switch checked={draft.dci_slack_dm} onCheckedChange={v => update({ dci_slack_dm: v })} />
+            <span className="text-sm">Send end-of-day brief to Slack DM</span>
+          </label>
+
+          {draft.dci_sources.includes('slack') && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Your Slack member ID (optional)</label>
+              <Input
+                value={draft.slack_user_id ?? ''}
+                onChange={e => update({ slack_user_id: e.target.value || null })}
+                placeholder="e.g. U01234ABCDE"
+                className="h-9 text-sm font-mono w-48"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Find it in Slack: click your name → Copy member ID. Used to filter messages directed at you.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+
+export default function CosPrepSchedulePanel() {
+  const { toast } = useToast();
+  const { config, userId, loading, refetch, saveConfig } = usePrepScheduleConfig();
+  const [draft, setDraft] = useState<PrepScheduleConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [runningPrep, setRunningPrep] = useState(false);
+  const [runningBrief, setRunningBrief] = useState(false);
+  const [logs, setLogs] = useState<BatchLog[]>([]);
+
+  useEffect(() => {
+    if (config) setDraft(config);
+  }, [config]);
+
+  const loadLogs = useCallback(async (uid: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any)
+      .from('cos_prep_batch_log')
+      .select('*')
+      .eq('user_id', uid)
+      .order('started_at', { ascending: false })
+      .limit(20);
+    if (data) {
+      setLogs(data.map((row: Record<string, unknown>) => ({
+        ...row,
+        errors: typeof row.errors === 'string' ? JSON.parse(row.errors as string) : (row.errors ?? []),
+      })));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userId) loadLogs(userId);
+  }, [userId, loadLogs]);
+
+  const update: Patch = useCallback((patch) => {
+    setDraft(d => (d ? { ...d, ...patch } : d));
+  }, []);
+
+  // Persist all editable fields (read-only last_run_* are owned by the backend).
+  const persistDraft = useCallback(async (d: PrepScheduleConfig): Promise<boolean> => {
+    if (!isValidTimezone(d.timezone)) {
+      toast({ title: 'Invalid timezone', description: `"${d.timezone}" is not a valid IANA timezone.`, variant: 'destructive' });
+      return false;
+    }
+    return saveConfig({
+      enabled: d.enabled,
+      run_hour_local: d.run_hour_local,
+      timezone: d.timezone,
+      always_include: d.always_include,
+      max_others_after_exclude: d.max_others_after_exclude,
+      sync_zoom_before: d.sync_zoom_before,
+      sync_slack_before: d.sync_slack_before,
+      enrich_stackone: d.enrich_stackone,
+      slack_channels: d.slack_channels,
+      dci_enabled: d.dci_enabled,
+      dci_sources: d.dci_sources,
+      dci_instructions: d.dci_instructions || null,
+      dci_slack_dm: d.dci_slack_dm,
+      slack_user_id: d.slack_user_id || null,
+    });
+  }, [saveConfig, toast]);
+
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true);
+    const ok = await persistDraft(draft);
+    if (ok) toast({ title: 'Schedule saved' });
+    setSaving(false);
+  };
+
+  // Product A: save current settings, then run the prep batch only.
+  const runPrepNow = async () => {
+    if (!draft) return;
+    setRunningPrep(true);
+    try {
+      if (!(await persistDraft(draft))) return;
+      const { data, error } = await supabase.functions.invoke('daily-prep-batch', { body: {} });
+      if (error) throw error;
+      const totalPreps = (data as { total_preps_generated?: number })?.total_preps_generated ?? 0;
+      toast({ title: 'Prep complete', description: `${totalPreps} prep${totalPreps !== 1 ? 's' : ''} generated` });
+      await refetch();
+      if (userId) loadLogs(userId);
+    } catch (err) {
+      toast({ title: 'Prep failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setRunningPrep(false);
+    }
+  };
+
+  // Product B: save current settings, then run the DCI brief only.
+  const runBriefNow = async () => {
+    if (!draft) return;
+    setRunningBrief(true);
+    try {
+      if (!(await persistDraft(draft))) return;
+      const { error } = await supabase.functions.invoke('generate-dci-brief', { body: {} });
+      if (error) throw error;
+      toast({ title: 'Daily brief generated' });
+      await refetch();
+    } catch (err) {
+      toast({ title: 'Brief failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setRunningBrief(false);
+    }
+  };
+
+  if (loading || !draft) return null;
+
+  return (
+    <div className="space-y-10">
+      <RecurringMeetingPrepSection
+        draft={draft}
+        update={update}
+        running={runningPrep}
+        onRunNow={runPrepNow}
+        logs={logs}
+      />
+
+      <MyDailyBriefSection
+        draft={draft}
+        update={update}
+        running={runningBrief}
+        onRunNow={runBriefNow}
+      />
+
+      <div className="flex gap-2">
+        <Button onClick={save} disabled={saving} className="gap-1.5">
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save schedule
+        </Button>
+      </div>
     </div>
   );
 }
