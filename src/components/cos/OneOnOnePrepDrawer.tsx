@@ -613,9 +613,16 @@ export function OneOnOnePrepDrawer({
             <section>
               <SecHdr icon={ListChecks} label="Topics" />
               {filteredTopics.length === 0 ? (
-                <div className="text-sm text-muted-foreground italic px-3 py-6 rounded-lg border border-dashed border-border">
-                  No topics yet — hit Refresh to generate a prep brief.
-                </div>
+                (aiGenerating || refreshing) ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-6 rounded-lg border border-dashed border-border">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating your prep brief…
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground italic px-3 py-6 rounded-lg border border-dashed border-border">
+                    No prep yet — hit AI Generate to create a brief.
+                  </div>
+                )
               ) : (
                 <div className="flex flex-col gap-3">
                   {filteredTopics.map((t, i) => {
