@@ -38,6 +38,7 @@ interface PendingAction {
   text: string;
   created_at: string;
   due_date: string | null;
+  owner: 'them' | 'me';
   done: boolean;
 }
 
@@ -284,12 +285,12 @@ export function OneOnOnePrepDrawer({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     db.from('cos_meeting_actions')
-      .select('id, text, created_at, due_date')
+      .select('id, text, created_at, due_date, owner')
       .eq('member_id', member.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-      .then(({ data }: { data: Array<{ id: string; text: string; created_at: string; due_date: string | null }> | null }) =>
-        setPastActions((data ?? []).map(a => ({ ...a, done: false }))));
+      .then(({ data }: { data: Array<{ id: string; text: string; created_at: string; due_date: string | null; owner: 'them' | 'me' | null }> | null }) =>
+        setPastActions((data ?? []).map(a => ({ ...a, owner: a.owner ?? 'them', done: false }))));
 
     db.from('cos_prep_settings')
       .select('prep_instructions')
@@ -433,8 +434,8 @@ export function OneOnOnePrepDrawer({
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).from('cos_meeting_actions')
-        .insert({ user_id: user.id, member_id: member.id, text })
-        .select('id, text, created_at, due_date')
+        .insert({ user_id: user.id, member_id: member.id, text, owner: 'them' })
+        .select('id, text, created_at, due_date, owner')
         .single();
       if (error) throw error;
       setPastActions(prev => [{ ...data, done: false }, ...prev]);
@@ -444,7 +445,7 @@ export function OneOnOnePrepDrawer({
     }
   };
 
-  const addMyTodo = async () => {
+  const addMyCommitment = async () => {
     const text = mineInput.trim();
     if (!text || !member) return;
     setMineInput('');
@@ -452,19 +453,15 @@ export function OneOnOnePrepDrawer({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
-      const { data: existing } = await db.from('cos_priorities')
-        .select('tier_order').eq('user_id', user.id).eq('category', 'this_week')
-        .order('tier_order', { ascending: false }).limit(1);
-      const maxOrder = (existing?.[0]?.tier_order ?? 0) as number;
-      const { error } = await db.from('cos_priorities').insert({
-        user_id: user.id, text, category: 'this_week',
-        tier_order: maxOrder + 1, notes: `From 1:1 with ${member.name}`,
-      });
+      const { data, error } = await (supabase as any).from('cos_meeting_actions')
+        .insert({ user_id: user.id, member_id: member.id, text, owner: 'me' })
+        .select('id, text, created_at, due_date, owner')
+        .single();
       if (error) throw error;
-      toast({ title: 'Added to My Lists', description: 'Find it under This Week.' });
+      setPastActions(prev => [{ ...data, done: false }, ...prev]);
+      toast({ title: 'Added as your commitment' });
     } catch (err) {
-      toast({ title: 'Failed to add to-do', description: String(err), variant: 'destructive' });
+      toast({ title: 'Failed to add commitment', description: String(err), variant: 'destructive' });
     }
   };
 
@@ -769,6 +766,7 @@ export function OneOnOnePrepDrawer({
                   ) : sortedCommitments.map(a => {
                     const db = dueBadge(a.due_date, a.done);
                     const DueIcon = db.icon;
+                    const mine = a.owner === 'me';
                     return (
                       <button key={a.id} onClick={() => toggleAction(a.id)} className="w-full flex gap-3 items-start py-[13px] text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
                         {a.done ? (
@@ -779,9 +777,15 @@ export function OneOnOnePrepDrawer({
                         <div className="flex-1 min-w-0">
                           <div className={cn('text-sm leading-snug', a.done ? 'text-muted-foreground line-through' : 'font-medium text-foreground')}>{a.text}</div>
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full', tone.bg, tone.fg)}>
-                              <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />{firstName}
-                            </span>
+                            {mine ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full bg-blue-50 text-blue-700">
+                                <span className="w-[5px] h-[5px] rounded-full bg-blue-700" />You
+                              </span>
+                            ) : (
+                              <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full', tone.bg, tone.fg)}>
+                                <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />{firstName}
+                              </span>
+                            )}
                             <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-md', db.cls)}>
                               <DueIcon className="h-3 w-3" />{db.label}
                             </span>
@@ -802,7 +806,7 @@ export function OneOnOnePrepDrawer({
                     </div>
                     <div className="flex items-center gap-2 px-[11px] py-[9px] border border-dashed border-input rounded-md">
                       <Plus className="h-[15px] w-[15px] text-muted-foreground flex-shrink-0" />
-                      <input value={mineInput} onChange={e => setMineInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addMyTodo(); }}
+                      <input value={mineInput} onChange={e => setMineInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addMyCommitment(); }}
                         placeholder="Add for me — Enter" className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px]" />
                     </div>
                   </div>
