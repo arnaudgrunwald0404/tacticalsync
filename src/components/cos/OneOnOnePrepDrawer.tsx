@@ -1,28 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
-  CheckSquare, ClipboardList, NotebookText, ArrowRight, AlertCircle, ExternalLink,
-  Play, MoreHorizontal, Repeat, Clock, Video, Brain, AlertTriangle, Check,
-  TrendingUp, Bot,
+  ClipboardList, NotebookText, CornerUpLeft, ExternalLink,
+  Repeat, Clock, Video, Brain, AlertTriangle, Check, Calendar,
+  TrendingUp, Bot, Mail, Rocket, Flag, HelpCircle, History, Settings,
+  ChevronRight, ArrowUp, CircleCheck, UserPlus, Plus, EyeOff,
 } from 'lucide-react';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
-import type { TopicStatus, TopicCategory } from '@/hooks/useRelationshipTopics';
-import { RelationshipQueryDialog } from '@/components/cos/RelationshipQueryDialog';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
-  QuarterlyPriority, MonthlyCommitment, CommitmentQuarter,
+  QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
 } from '@/types/commitments';
 
 export interface PrepDrawerMember {
@@ -39,6 +37,14 @@ interface PendingAction {
   id: string;
   text: string;
   created_at: string;
+  due_date: string | null;
+  done: boolean;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'agent' | 'user';
+  text: string;
 }
 
 interface PrepDrawerProps {
@@ -56,17 +62,10 @@ interface PrepDrawerProps {
   onAiGenerate?: () => void;
 }
 
-const STATUS_DOT: Record<string, string> = {
-  done: 'bg-emerald-500',
-  in_progress: 'bg-amber-400',
-  draft: 'bg-muted-foreground/30',
-  not_done: 'bg-destructive/60',
-};
-
 type RelTone = { label: string; short: string; bg: string; fg: string; rail: string; dotColor: string };
 const REL_TONE: Record<string, RelTone> = {
   direct_report: { label: 'Direct report', short: 'Report',  bg: 'bg-blue-50',   fg: 'text-blue-700',  rail: 'bg-blue-600',  dotColor: 'bg-blue-600' },
-  collaborator:  { label: 'Collaborator',  short: 'Collab',  bg: 'bg-teal-50',   fg: 'text-teal-700',  rail: 'bg-teal-600',  dotColor: 'bg-teal-600' },
+  collaborator:  { label: 'Collaborator',  short: 'Collaborator',  bg: 'bg-teal-50',   fg: 'text-teal-700',  rail: 'bg-teal-600',  dotColor: 'bg-teal-600' },
   boss:          { label: 'Manager',       short: 'Manager', bg: 'bg-[#e8eef7]', fg: 'text-[#04356c]', rail: 'bg-[#254677]', dotColor: 'bg-[#254677]' },
   skip_level:    { label: 'Skip-level',    short: 'Skip',    bg: 'bg-violet-50', fg: 'text-violet-700', rail: 'bg-violet-500', dotColor: 'bg-violet-500' },
   peer:          { label: 'Peer',          short: 'Peer',    bg: 'bg-gray-100',  fg: 'text-gray-600',  rail: 'bg-gray-400',  dotColor: 'bg-gray-400' },
@@ -80,6 +79,13 @@ const DEFAULT_TONE: RelTone = {
 
 const CADENCE_DAYS: Record<string, number> = {
   direct_report: 7, collaborator: 14, boss: 14, peer: 14, skip_level: 30, stakeholder: 30, external: 30,
+};
+
+const STATUS_META: Record<CommitmentStatus, { label: string; cls: string }> = {
+  done:        { label: 'Done',        cls: 'bg-emerald-50 text-emerald-700' },
+  in_progress: { label: 'In progress', cls: 'bg-amber-50 text-amber-700' },
+  not_done:    { label: 'Off track',   cls: 'bg-red-50 text-red-700' },
+  draft:       { label: 'Draft',       cls: 'bg-muted text-muted-foreground' },
 };
 
 // ── Markdown → structured topics ────────────────────────────────────────────
@@ -149,18 +155,50 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+function fmtShort(iso: string): string {
+  const d = parseLocalDate(iso);
+  return d ? `${MONTHS[d.getMonth()]} ${d.getDate()}` : iso;
+}
+
+type DueBadge = { label: string; cls: string; icon: React.ElementType };
+function dueBadge(iso: string | null, done: boolean): DueBadge {
+  if (!iso) return { label: 'No date', cls: 'bg-muted text-muted-foreground', icon: Calendar };
+  const d = parseLocalDate(iso);
+  if (!d) return { label: 'No date', cls: 'bg-muted text-muted-foreground', icon: Calendar };
+  const diff = Math.round((d.getTime() - startOfToday().getTime()) / 86_400_000);
+  if (diff < 0) {
+    return done
+      ? { label: `Was due ${fmtShort(iso)}`, cls: 'bg-muted text-muted-foreground', icon: Calendar }
+      : { label: `Overdue · ${fmtShort(iso)}`, cls: 'bg-red-50 text-red-700', icon: AlertTriangle };
+  }
+  if (diff === 0) return { label: 'Due today', cls: 'bg-orange-50 text-orange-700', icon: Clock };
+  if (diff <= 2) return { label: `Due ${fmtShort(iso)}`, cls: 'bg-orange-50 text-orange-700', icon: Clock };
+  return { label: `Due ${fmtShort(iso)}`, cls: 'bg-muted text-muted-foreground', icon: Calendar };
+}
+
 // Section header used throughout the drawer
 function SecHdr({ icon: Icon, label, right }: { icon: React.ElementType; label: string; right?: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 mb-2.5">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="text-[10px] font-extrabold tracking-[0.08em] uppercase text-muted-foreground flex-1">{label}</span>
+    <div className="flex items-center gap-2">
+      <Icon className="h-[17px] w-[17px] text-muted-foreground" />
+      <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground">{label}</span>
       {right}
     </div>
   );
 }
 
+// Card shell matching the design's surface cards
+function Card({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-lg border border-border bg-card', className)}>{children}</div>
+  );
+}
+
 // ── The drawer ──────────────────────────────────────────────────────────────
+
+type TabKey = 'prep' | 'past' | 'ask' | 'timeline' | 'settings';
 
 export function OneOnOnePrepDrawer({
   open, member, content, source, generatedAt,
@@ -169,49 +207,75 @@ export function OneOnOnePrepDrawer({
 }: PrepDrawerProps) {
   const { toast } = useToast();
 
+  const [activeTab, setActiveTab] = useState<TabKey>('prep');
+
+  // Commitments carried forward (cos_meeting_actions)
   const [pastActions, setPastActions] = useState<PendingAction[]>([]);
-  const [actionDraftForThem, setActionDraftForThem] = useState('');
-  const [todoDraftForMe, setTodoDraftForMe] = useState('');
-  const [savingForThem, setSavingForThem] = useState(false);
-  const [savingForMe, setSavingForMe] = useState(false);
+  const [assignInput, setAssignInput] = useState('');
+  const [mineInput, setMineInput] = useState('');
+
+  // Talking points (derived from the prep brief) + custom additions
+  const [excludedPoints, setExcludedPoints] = useState<Set<number>>(new Set());
+  const [customPoints, setCustomPoints] = useState<Array<{ id: string; text: string; included: boolean }>>([]);
+  const [newPoint, setNewPoint] = useState('');
+
+  // Questions to ask
+  const [pickedQuestions, setPickedQuestions] = useState<Set<number>>(new Set());
+
+  // Settings drafts
   const [contextDraft, setContextDraft] = useState('');
   const [savingContext, setSavingContext] = useState(false);
+  const [savedContext, setSavedContext] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [savingFeedback, setSavingFeedback] = useState(false);
-  const [newAgendaItem, setNewAgendaItem] = useState('');
-  const [actionDueDate, setActionDueDate] = useState('');
-  const [queryDialogOpen, setQueryDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'prep' | 'timeline'>('prep');
+  const [savedFeedback, setSavedFeedback] = useState(false);
 
+  // Reference data
   const [quarter, setQuarter] = useState<CommitmentQuarter | null>(null);
   const [priorities, setPriorities] = useState<QuarterlyPriority[]>([]);
   const [commitments, setCommitments] = useState<MonthlyCommitment[]>([]);
-  const [loadingCommitments, setLoadingCommitments] = useState(false);
   const [zoomRecordings, setZoomRecordings] = useState<Array<{
     id: string; topic: string | null; start_time: string;
     duration_minutes: number | null; has_transcript: boolean;
   }>>([]);
 
-  // Relationship Memory hooks
-  const { topics: relTopics, loading: loadingTopics, updateTopicStatus } = useRelationshipTopics(member?.id ?? null);
-  const { commitments: forgottenItems, loading: loadingForgotten } = useForgottenCommitments(member?.id ?? null);
+  // Ask / agent chat
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [askInput, setAskInput] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  const { topics: relTopics, updateTopicStatus } = useRelationshipTopics(member?.id ?? null);
+  const { commitments: forgottenItems } = useForgottenCommitments(member?.id ?? null);
+
+  const firstName = member?.name.split(' ')[0] ?? '';
+
+  // Reset transient state + load carry-forward / settings on open
   useEffect(() => {
     if (!open || !member) return;
-    setActionDraftForThem('');
-    setTodoDraftForMe('');
-    setNewAgendaItem('');
-    setContextDraft(member.context_notes ?? '');
     setActiveTab('prep');
+    setAssignInput('');
+    setMineInput('');
+    setNewPoint('');
+    setExcludedPoints(new Set());
+    setCustomPoints([]);
+    setPickedQuestions(new Set());
+    setContextDraft(member.context_notes ?? '');
+    setChat([{
+      id: 'greeting',
+      role: 'agent',
+      text: `Hi — I've prepped your 1:1 with ${member.name.split(' ')[0]}. Ask me anything about them, the last meeting, or what's still open. I'm grounded in your saved context and your past 1:1 history.`,
+    }]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     db.from('cos_meeting_actions')
-      .select('id, text, created_at')
+      .select('id, text, created_at, due_date')
       .eq('member_id', member.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-      .then(({ data }: { data: PendingAction[] | null }) => setPastActions(data ?? []));
+      .then(({ data }: { data: Array<{ id: string; text: string; created_at: string; due_date: string | null }> | null }) =>
+        setPastActions((data ?? []).map(a => ({ ...a, done: false }))));
 
     db.from('cos_prep_settings')
       .select('prep_instructions')
@@ -223,24 +287,21 @@ export function OneOnOnePrepDrawer({
     db.from('cos_zoom_recordings')
       .select('id, topic, start_time, duration_minutes, has_transcript')
       .eq('team_member_id', member.id)
-      .gte('start_time', new Date(Date.now() - 30 * 86_400_000).toISOString())
       .order('start_time', { ascending: false })
-      .limit(5)
+      .limit(8)
       .then(({ data }: { data: Array<{ id: string; topic: string | null; start_time: string; duration_minutes: number | null; has_transcript: boolean }> | null }) => {
         setZoomRecordings(data ?? []);
       })
       .catch(() => setZoomRecordings([]));
   }, [open, member]);
 
+  // Load the member's quarterly priorities + monthly commitments for reference
   useEffect(() => {
     if (!open || !member) return;
     let cancelled = false;
     async function load() {
-      setLoadingCommitments(true);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-
-      // Resolve the member's profile user_id from their email
       let memberUserId: string | null = null;
       if (member!.email) {
         const { data: profile } = await db
@@ -250,7 +311,7 @@ export function OneOnOnePrepDrawer({
           .maybeSingle();
         memberUserId = profile?.id ?? null;
       }
-      if (!memberUserId || cancelled) { setPriorities([]); setCommitments([]); setLoadingCommitments(false); return; }
+      if (!memberUserId || cancelled) { setPriorities([]); setCommitments([]); return; }
 
       const today = format(new Date(), 'yyyy-MM-dd');
       const { data: quarters } = await db
@@ -262,10 +323,10 @@ export function OneOnOnePrepDrawer({
       const q = (quarters?.[0] ?? null) as CommitmentQuarter | null;
       if (cancelled) return;
       setQuarter(q);
-      if (!q) { setPriorities([]); setCommitments([]); setLoadingCommitments(false); return; }
+      if (!q) { setPriorities([]); setCommitments([]); return; }
       const qStart = parseLocalDate(q.start_date);
       const nowMonth = new Date().getMonth();
-      const monthNum = Math.min(3, Math.max(1, nowMonth - qStart.getMonth() + 1));
+      const monthNum = qStart ? Math.min(3, Math.max(1, nowMonth - qStart.getMonth() + 1)) : 1;
       const [priRes, comRes] = await Promise.all([
         db.from('quarterly_priorities').select('*')
           .eq('quarter_id', q.id).eq('user_id', memberUserId).order('display_order'),
@@ -275,102 +336,145 @@ export function OneOnOnePrepDrawer({
       if (cancelled) return;
       setPriorities(priRes.data ?? []);
       setCommitments(comRes.data ?? []);
-      setLoadingCommitments(false);
     }
     load();
     return () => { cancelled = true; };
   }, [open, member]);
 
+  // Auto-scroll the chat as messages arrive
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chat]);
+
   const topics = useMemo(() => parsePrepMarkdown(content), [content]);
 
-  const [discussed, setDiscussed] = useState<Set<number>>(new Set());
-  const toggleDiscussed = (i: number) => setDiscussed(prev => {
+  // Filter out noise topics (generic boilerplate, empty-result sections)
+  const NOISE_PATTERNS = [
+    /no\s+(recent\s+)?zoom\s+(call\s+)?recordings?\s+found/i,
+    /no\s+recordings?\s+(were\s+)?found/i,
+    /not\s+worth\s+mentioning/i,
+    /^ClearGO\s+Context$/i,
+    /^ClearGO\s+is\s+the\s+bi-weekly/i,
+  ];
+  const filteredTopics = useMemo(() => {
+    const isNoise = (t: TopicSection) => {
+      const fullText = [t.heading, ...t.paragraphs, ...t.bullets].join(' ');
+      return NOISE_PATTERNS.some(p => p.test(fullText));
+    };
+    // Drop pure section dividers (no body) — talking points need substance.
+    return topics.filter(t => !isNoise(t) && (t.bullets.length || t.paragraphs.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topics]);
+
+  // ── Commitment helpers ──────────────────────────────────────────────────────
+  const sortedCommitments = useMemo(() => {
+    const today = startOfToday().getTime();
+    return [...pastActions].sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const ao = a.due_date ? (parseLocalDate(a.due_date)?.getTime() ?? Infinity) : Infinity;
+      const bo = b.due_date ? (parseLocalDate(b.due_date)?.getTime() ?? Infinity) : Infinity;
+      const aOverdue = !a.done && a.due_date && ao < today;
+      const bOverdue = !b.done && b.due_date && bo < today;
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+      return ao - bo;
+    });
+  }, [pastActions]);
+
+  const overdueCount = useMemo(() => {
+    const today = startOfToday().getTime();
+    return pastActions.filter(a => !a.done && a.due_date && (parseLocalDate(a.due_date)?.getTime() ?? Infinity) < today).length;
+  }, [pastActions]);
+
+  const toggleAction = async (id: string) => {
+    const target = pastActions.find(a => a.id === id);
+    if (!target) return;
+    const nextDone = !target.done;
+    setPastActions(prev => prev.map(a => a.id === id ? { ...a, done: nextDone } : a));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('cos_meeting_actions')
+      .update({ status: nextDone ? 'done' : 'pending' }).eq('id', id);
+  };
+
+  const addAssignAction = async () => {
+    const text = assignInput.trim();
+    if (!text || !member) return;
+    setAssignInput('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).from('cos_meeting_actions')
+        .insert({ user_id: user.id, member_id: member.id, text })
+        .select('id, text, created_at, due_date')
+        .single();
+      if (error) throw error;
+      setPastActions(prev => [{ ...data, done: false }, ...prev]);
+      toast({ title: `Queued for ${firstName}` });
+    } catch (err) {
+      toast({ title: 'Failed to add action', description: String(err), variant: 'destructive' });
+    }
+  };
+
+  const addMyTodo = async () => {
+    const text = mineInput.trim();
+    if (!text || !member) return;
+    setMineInput('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const { data: existing } = await db.from('cos_priorities')
+        .select('tier_order').eq('user_id', user.id).eq('category', 'this_week')
+        .order('tier_order', { ascending: false }).limit(1);
+      const maxOrder = (existing?.[0]?.tier_order ?? 0) as number;
+      const { error } = await db.from('cos_priorities').insert({
+        user_id: user.id, text, category: 'this_week',
+        tier_order: maxOrder + 1, notes: `From 1:1 with ${member.name}`,
+      });
+      if (error) throw error;
+      toast({ title: 'Added to My Lists', description: 'Find it under This Week.' });
+    } catch (err) {
+      toast({ title: 'Failed to add to-do', description: String(err), variant: 'destructive' });
+    }
+  };
+
+  // ── Talking points ──────────────────────────────────────────────────────────
+  const togglePoint = (i: number) => setExcludedPoints(prev => {
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);
     return next;
   });
-  const [topicActions, setTopicActions] = useState<Record<number, string>>({});
-
-  if (!member) return null;
-
-  const tone = REL_TONE[member.relationship_type] ?? DEFAULT_TONE;
-  const lastLabel = member.last_1on1_date
-    ? format(parseLocalDate(member.last_1on1_date), 'MMM d, yyyy')
-    : 'No prior 1:1 logged';
-  const cadenceDays = CADENCE_DAYS[member.relationship_type] ?? 14;
-  const cadenceLabel = cadenceDays <= 7 ? 'Weekly' : cadenceDays <= 14 ? 'Bi-weekly' : 'Monthly';
-
-  const saveActionsForThem = async () => {
-    if (!actionDraftForThem.trim()) return;
-    setSavingForThem(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const lines = actionDraftForThem.split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
-      const rows = lines.map(text => ({
-        user_id: user.id,
-        member_id: member.id,
-        text,
-        ...(actionDueDate ? { due_date: actionDueDate } : {}),
-      }));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from('cos_meeting_actions').insert(rows);
-      if (error) throw error;
-      setActionDraftForThem('');
-      setActionDueDate('');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: refreshed } = await (supabase as any).from('cos_meeting_actions')
-        .select('id, text, created_at')
-        .eq('member_id', member.id).eq('status', 'pending')
-        .order('created_at', { ascending: false });
-      setPastActions((refreshed ?? []) as PendingAction[]);
-      toast({ title: `${rows.length} action${rows.length !== 1 ? 's' : ''} queued for ${member.name.split(' ')[0]}` });
-    } catch (err) {
-      toast({ title: 'Failed to save actions', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingForThem(false);
-    }
+  const addPoint = () => {
+    const text = newPoint.trim();
+    if (!text) return;
+    setCustomPoints(prev => [...prev, { id: 'c' + Date.now(), text, included: true }]);
+    setNewPoint('');
   };
+  const toggleCustomPoint = (id: string) =>
+    setCustomPoints(prev => prev.map(p => p.id === id ? { ...p, included: !p.included } : p));
+  const includedCount =
+    filteredTopics.filter((_, i) => !excludedPoints.has(i)).length +
+    customPoints.filter(p => p.included).length;
 
-  const saveTodosForMe = async () => {
-    if (!todoDraftForMe.trim()) return;
-    setSavingForMe(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const lines = todoDraftForMe.split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
-      const { data: existing } = await db
-        .from('cos_priorities')
-        .select('tier_order')
-        .eq('user_id', user.id)
-        .eq('category', 'this_week')
-        .order('tier_order', { ascending: false })
-        .limit(1);
-      const maxOrder = (existing?.[0]?.tier_order ?? 0) as number;
-      const rows = lines.map((text, i) => ({
-        user_id: user.id,
-        text,
-        category: 'this_week',
-        tier_order: maxOrder + i + 1,
-        notes: `From 1:1 with ${member.name}`,
-      }));
-      const { error } = await db.from('cos_priorities').insert(rows);
-      if (error) throw error;
-      setTodoDraftForMe('');
-      toast({
-        title: `Added ${rows.length} to-do${rows.length !== 1 ? 's' : ''} to My Lists`,
-        description: 'Find them under This Week.',
-      });
-    } catch (err) {
-      toast({ title: 'Failed to save to-dos', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingForMe(false);
-    }
-  };
+  // ── Questions ────────────────────────────────────────────────────────────────
+  const questions = useMemo(() => ([
+    `What's the single biggest blocker on your plate right now?`,
+    `What do you need from me to keep things on track?`,
+    `How are you feeling about your current workload and priorities?`,
+    `Is our current 1:1 cadence working for you?`,
+  ]), []);
+  const toggleQuestion = (i: number) => setPickedQuestions(prev => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
 
+  // ── Settings saves ────────────────────────────────────────────────────────────
   const saveContext = async () => {
+    if (!member) return;
     setSavingContext(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -379,7 +483,8 @@ export function OneOnOnePrepDrawer({
         .update({ context_notes: contextDraft || null })
         .eq('id', member.id);
       if (error) throw error;
-      toast({ title: 'Context saved' });
+      setSavedContext(true);
+      setTimeout(() => setSavedContext(false), 1800);
     } catch (err) {
       toast({ title: 'Failed to save context', description: String(err), variant: 'destructive' });
     } finally {
@@ -397,7 +502,8 @@ export function OneOnOnePrepDrawer({
         .from('cos_prep_settings')
         .upsert({ user_id: user.id, prep_instructions: feedbackDraft }, { onConflict: 'user_id' });
       if (error) throw error;
-      toast({ title: 'Prep instructions saved' });
+      setSavedFeedback(true);
+      setTimeout(() => setSavedFeedback(false), 1800);
     } catch (err) {
       toast({ title: 'Failed to save instructions', description: String(err), variant: 'destructive' });
     } finally {
@@ -405,13 +511,37 @@ export function OneOnOnePrepDrawer({
     }
   };
 
-  const togglePastAction = async (id: string, currentDone: boolean) => {
-    const nextStatus = currentDone ? 'pending' : 'done';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from('cos_meeting_actions').update({ status: nextStatus }).eq('id', id);
-    setPastActions(prev =>
-      nextStatus === 'pending' ? prev : prev.filter(a => a.id !== id)
-    );
+  // ── Ask / agent chat ──────────────────────────────────────────────────────────
+  const sendAsk = async (raw?: string) => {
+    const q = (raw ?? askInput).trim();
+    if (!q || askLoading || !member) return;
+    setAskInput('');
+    setChat(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: q }]);
+    setAskLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/query-relationship-history`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_member_id: member.id, question: q }),
+      });
+      if (!res.ok) {
+        if (res.status === 429) throw new Error('Daily query limit reached (max 10 per day).');
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { answer: string };
+      setChat(prev => [...prev, { id: 'a' + Date.now(), role: 'agent', text: data.answer }]);
+    } catch (err) {
+      setChat(prev => [...prev, {
+        id: 'a' + Date.now(), role: 'agent',
+        text: `Sorry — I couldn't reach your relationship history just now. ${err instanceof Error ? err.message : ''}`.trim(),
+      }]);
+    } finally {
+      setAskLoading(false);
+    }
   };
 
   const generatedLabel = (() => {
@@ -424,631 +554,549 @@ export function OneOnOnePrepDrawer({
     return format(new Date(generatedAt), 'MMM d, h:mm a');
   })();
 
-  const openItems = pastActions;
-  const firstName = member.name.split(' ')[0];
+  // AI coach summary — derived from the real signals we have on hand.
+  const coachSummary = useMemo(() => {
+    const bits: string[] = [];
+    if (overdueCount > 0) bits.push(`${overdueCount} commitment${overdueCount === 1 ? '' : 's'} from past 1:1s ${overdueCount === 1 ? 'is' : 'are'} overdue — clear ${overdueCount === 1 ? 'it' : 'those'} first.`);
+    if (forgottenItems.length > 0) bits.push(`${forgottenItems.length} item${forgottenItems.length === 1 ? ' has' : 's have'} been sitting unresolved for a while.`);
+    if (filteredTopics.length > 0) bits.push(`${filteredTopics.length} talking point${filteredTopics.length === 1 ? '' : 's'} are suggested below, ordered by priority.`);
+    if (bits.length === 0) return `Your prep is ready. Review the talking points and check off anything you've already handled.`;
+    return bits.join(' ');
+  }, [overdueCount, forgottenItems.length, filteredTopics.length]);
 
-  // Filter out noise topics (generic boilerplate, empty-result sections)
-  const NOISE_PATTERNS = [
-    /no\s+(recent\s+)?zoom\s+(call\s+)?recordings?\s+found/i,
-    /no\s+recordings?\s+(were\s+)?found/i,
-    /not\s+worth\s+mentioning/i,
-    /^ClearGO\s+Context$/i,
-    /^ClearGO\s+is\s+the\s+bi-weekly/i,
+  if (!member) return null;
+
+  const tone = REL_TONE[member.relationship_type] ?? DEFAULT_TONE;
+  const lastLabel = member.last_1on1_date
+    ? format(parseLocalDate(member.last_1on1_date) ?? new Date(member.last_1on1_date), 'MMM d')
+    : null;
+  const cadenceDays = CADENCE_DAYS[member.relationship_type] ?? 14;
+  const cadenceLabel = cadenceDays <= 7 ? 'Weekly 1:1' : cadenceDays <= 14 ? 'Bi-weekly 1:1' : 'Monthly 1:1';
+  const pastCount = zoomRecordings.length;
+  const metLabel = pastCount > 0
+    ? `${pastCount} past 1:1${pastCount === 1 ? '' : 's'}${lastLabel ? ` · last met ${lastLabel}` : ''}`
+    : lastLabel ? `Last met ${lastLabel}` : 'No prior 1:1 logged';
+
+  const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType; badge?: number }> = [
+    { key: 'prep', label: 'Prep', icon: ListChecks },
+    { key: 'past', label: 'Past 1:1s', icon: FileText, badge: pastCount || undefined },
+    { key: 'ask', label: 'Ask', icon: HelpCircle },
+    { key: 'timeline', label: 'Timeline', icon: History },
   ];
-  const isNoise = (t: TopicSection) => {
-    const fullText = [t.heading, ...t.paragraphs, ...t.bullets].join(' ');
-    return NOISE_PATTERNS.some(p => p.test(fullText));
-  };
-  const filteredTopics = topics.filter(t => !isNoise(t));
 
   return (
     <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
       <SheetContent
         side="right"
         // Hide the built-in Radix close button via [&>button]:hidden — we have our own
-        className="w-screen sm:max-w-full inset-0 p-0 border-0 flex flex-col gap-0 [&>button]:hidden"
+        className="w-screen sm:max-w-full inset-0 p-0 border-0 flex flex-col gap-0 [&>button]:hidden bg-background"
       >
-        <SheetPrimitive.Title className="sr-only">
-          {member.name} — 1:1 Prep
-        </SheetPrimitive.Title>
+        <SheetPrimitive.Title className="sr-only">{member.name} — 1:1 Prep</SheetPrimitive.Title>
 
-        {/* Header */}
-        <header className="flex-shrink-0 border-b border-border bg-background px-5 py-4">
-          <div className="flex items-start gap-3">
-            <div className={cn('h-11 w-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0', tone.rail)}>
+        {/* ===== HEADER ===== */}
+        <header className="flex-shrink-0 px-7 pt-[18px] border-b border-border/60">
+          <div className="flex items-start gap-4">
+            <div className={cn('h-14 w-14 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0', tone.rail)}>
               {initials(member.name)}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-heading font-extrabold text-[17px] tracking-tight leading-tight">{member.name}</span>
-                <span className={cn(
-                  'inline-flex items-center gap-1 text-[11px] font-bold rounded-full px-2 py-0.5',
-                  tone.bg, tone.fg,
-                )}>
-                  <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />
-                  {tone.short}
+              <div className="flex items-center gap-2.5">
+                <h1 className="font-heading font-bold text-[23px] tracking-[-0.02em] leading-none">{member.name}</h1>
+                <span className={cn('inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-[3px]', tone.bg, tone.fg)}>
+                  <span className={cn('w-1.5 h-1.5 rounded-full', tone.dotColor)} />
+                  {tone.label}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{member.role}</p>
-              <div className="flex items-center gap-3 mt-2">
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Repeat className="h-3 w-3" />{cadenceLabel}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Clock className="h-3 w-3" />Last: {lastLabel}
-                </span>
-                {/* Refresh + AI Generate + Share — small, right-aligned */}
-                <span className="flex-1" />
-                <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" onClick={() => setQueryDialogOpen(true)}>
-                  <Brain className="h-3 w-3" />
-                  Ask
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" disabled={refreshing} onClick={onRefresh}>
-                  {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  {refreshing ? 'Refreshing' : 'Refresh'}
-                </Button>
-                {onAiGenerate && (
-                  <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" disabled={aiGenerating} onClick={onAiGenerate}>
-                    {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    {aiGenerating ? 'Generating...' : 'AI Generate'}
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs px-2" disabled={sharing} onClick={onShare}>
-                  {sharing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                  Share
-                </Button>
+              <div className="flex items-center gap-[18px] mt-[7px] text-[13px] text-muted-foreground flex-wrap">
+                <span className="inline-flex items-center gap-1.5"><Repeat className="h-[15px] w-[15px]" />{cadenceLabel}</span>
+                <span className="inline-flex items-center gap-1.5"><Clock className="h-[15px] w-[15px]" />{metLabel}</span>
+                {member.email && <span className="inline-flex items-center gap-1.5"><Mail className="h-[15px] w-[15px]" />{member.email}</span>}
               </div>
             </div>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground flex-shrink-0 mt-0.5 p-1 rounded-md hover:bg-muted transition-colors">
-              <X className="h-5 w-5" />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => window.open('https://zoom.us/start/videomeeting', '_blank', 'noopener')}>
+                <Video className="h-[17px] w-[17px]" />Start Zoom
+              </Button>
+              <div className="w-px h-6 bg-border mx-0.5" />
+              <Button size="sm" variant="ghost" className="h-9 gap-1.5" disabled={refreshing} onClick={onRefresh}>
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Refresh
+              </Button>
+              {onAiGenerate && (
+                <Button size="sm" variant="secondary" className="h-9 gap-1.5" disabled={aiGenerating} onClick={onAiGenerate}>
+                  {aiGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-primary" />}
+                  {aiGenerating ? 'Generating…' : 'AI generate'}
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" className="h-9 gap-1.5" disabled={sharing} onClick={onShare}>
+                {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Share
+              </Button>
+              <div className="w-px h-6 bg-border mx-0.5" />
+              <button onClick={onClose} aria-label="Close" className="h-[34px] w-[34px] grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* tabs */}
+          <div className="flex gap-1 mt-[18px]">
+            {TABS.map(t => {
+              const active = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={cn(
+                    'flex items-center gap-[7px] py-2.5 px-1 mr-[18px] text-sm border-b-2 transition-colors',
+                    active ? 'font-semibold text-foreground border-primary' : 'font-normal text-muted-foreground border-transparent hover:text-foreground',
+                  )}
+                >
+                  <t.icon className="h-4 w-4" />{t.label}
+                  {t.badge != null && (
+                    <span className="text-[11px] font-semibold px-[7px] py-px rounded-full bg-muted text-muted-foreground">{t.badge}</span>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={cn(
+                'flex items-center gap-[7px] py-2.5 px-1 ml-auto text-sm border-b-2 transition-colors',
+                activeTab === 'settings' ? 'font-semibold text-foreground border-primary' : 'font-normal text-muted-foreground border-transparent hover:text-foreground',
+              )}
+            >
+              <Settings className="h-4 w-4" />Settings
             </button>
           </div>
         </header>
 
-        {/* Tab bar */}
-        <div className="flex-shrink-0 border-b border-border px-5">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setActiveTab('prep')}
-              className={cn(
-                'text-xs font-semibold py-2 border-b-2 transition-colors',
-                activeTab === 'prep'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Prep
-            </button>
-            <button
-              onClick={() => setActiveTab('timeline')}
-              className={cn(
-                'text-xs font-semibold py-2 border-b-2 transition-colors flex items-center gap-1',
-                activeTab === 'timeline'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Clock className="h-3 w-3" />
-              Timeline
-            </button>
-          </div>
-        </div>
+        {/* ===== BODY ===== */}
+        <div className="flex-1 overflow-y-auto">
 
-        {/* Body — main + reference panel */}
-        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
-          {/* Main scrollable content */}
-          <main className="overflow-y-auto px-5 py-5 space-y-6">
+          {/* ---------- PREP TAB ---------- */}
+          {activeTab === 'prep' && (
+            <div className="max-w-[1280px] mx-auto px-7 pt-[22px] pb-10 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_344px] gap-6 items-start">
 
-          {activeTab === 'timeline' ? (
-            <RelationshipTimeline memberId={member.id} memberName={member.name} />
-          ) : (
-            <>
+              {/* LEFT COLUMN */}
+              <div className="flex flex-col gap-4 min-w-0">
 
-            {/* Carry-forward action items */}
-            {openItems.length > 0 && (
-              <section>
-                <SecHdr icon={ArrowRight} label={`Open from last time (${openItems.length})`} />
-                <div className="flex flex-col gap-1.5">
-                  {openItems.map(a => (
-                    <div key={a.id} className="flex items-start gap-2.5 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                      <Checkbox
-                        id={`pa-${a.id}`}
-                        className="mt-0.5"
-                        onCheckedChange={(c) => togglePastAction(a.id, !!c === false)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <label htmlFor={`pa-${a.id}`} className="text-sm leading-snug cursor-pointer block">{a.text}</label>
-                        <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                          From {format(new Date(a.created_at), 'MMM d')}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Forgotten commitments callout */}
-            {forgottenItems.length > 0 && (
-              <section>
-                <SecHdr icon={AlertTriangle} label={`Forgotten items (${forgottenItems.length})`} />
-                <div className="flex flex-col gap-1.5">
-                  {forgottenItems.map(fc => (
-                    <div
-                      key={fc.id}
-                      className={cn(
-                        'flex items-start gap-2.5 px-3 py-2 rounded-md border',
-                        fc.urgency === 'critical'
-                          ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'
-                          : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
-                      )}
-                    >
-                      <AlertTriangle className={cn(
-                        'h-3.5 w-3.5 mt-0.5 flex-shrink-0',
-                        fc.urgency === 'critical' ? 'text-red-500' : 'text-amber-500',
-                      )} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm leading-snug">{fc.text}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={cn(
-                            'text-[10px] font-medium',
-                            fc.urgency === 'critical' ? 'text-red-600' : 'text-amber-600',
-                          )}>
-                            {fc.days_pending} days pending
-                          </span>
-                          {fc.due_date && (
-                            <span className="text-[10px] text-muted-foreground">
-                              Due {fc.due_date}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Topics — each with checkbox + inline action input */}
-            <section>
-              <SecHdr icon={ListChecks} label="Topics" />
-              {filteredTopics.length === 0 ? (
-                (aiGenerating || refreshing) ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-6 rounded-lg border border-dashed border-border">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating your prep brief…
+                {/* AI coach summary */}
+                <div className="flex gap-3.5 px-5 py-[17px] rounded-lg bg-accent/50 border border-border/70">
+                  <span className="w-[34px] h-[34px] flex-shrink-0 rounded-[9px] bg-card grid place-items-center shadow-sm">
+                    <Sparkles className="h-[19px] w-[19px] text-primary" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13.5px] font-bold mb-0.5">Your agent&apos;s read on this 1:1</div>
+                    <div className="text-[13.5px] leading-[1.55] text-foreground">{coachSummary}</div>
                   </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground italic px-3 py-6 rounded-lg border border-dashed border-border">
-                    No prep yet — hit AI Generate to create a brief.
-                  </div>
-                )
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {filteredTopics.map((t, i) => {
-                    const isSectionDivider = t.bullets.length === 0 && t.paragraphs.length === 0;
+                </div>
 
-                    if (isSectionDivider) {
-                      return (
-                        <div
-                          key={i}
-                          className="relative mt-5 first:mt-0 mb-1 rounded-lg px-4 py-2.5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-l-[3px] border-primary"
-                        >
-                          <span className="text-xs font-extrabold tracking-wide text-primary">
-                            {t.heading}
-                          </span>
-                        </div>
-                      );
-                    }
+                {/* OPEN COMMITMENTS */}
+                <Card className="px-[22px] pt-[18px] pb-4">
+                  <SecHdr icon={Flag} label="Open commitments" right={
+                    <span className={cn('ml-auto inline-flex items-center gap-1.5 text-xs font-semibold px-[11px] py-[3px] rounded-full',
+                      overdueCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700')}>
+                      {overdueCount > 0 ? <AlertTriangle className="h-[13px] w-[13px]" /> : <CircleCheck className="h-[13px] w-[13px]" />}
+                      {overdueCount > 0 ? `${overdueCount} overdue` : 'All on track'}
+                    </span>
+                  } />
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-2">What you both committed to in past 1:1s. Overdue first — check off what&apos;s done.</p>
 
-                    const isDone = discussed.has(i);
+                  {sortedCommitments.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground italic py-5 border-t border-border/60">No open commitments carried over.</p>
+                  ) : sortedCommitments.map(a => {
+                    const db = dueBadge(a.due_date, a.done);
+                    const DueIcon = db.icon;
                     return (
-                      <div
-                        key={i}
-                        className={cn(
-                          'rounded-lg border bg-card overflow-hidden transition-opacity',
-                          isDone ? 'border-emerald-200 dark:border-emerald-800 opacity-60' : 'border-border',
+                      <button key={a.id} onClick={() => toggleAction(a.id)} className="w-full flex gap-3 items-start py-[13px] text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                        {a.done ? (
+                          <span className="w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-[13px] w-[13px] text-primary-foreground" /></span>
+                        ) : (
+                          <span className={cn('w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] border-[1.5px] bg-background', overdueCount && a.due_date && !a.done && (parseLocalDate(a.due_date)?.getTime() ?? Infinity) < startOfToday().getTime() ? 'border-red-500' : 'border-input')} />
                         )}
-                      >
-                        {/* Topic header with checkbox */}
-                        <div className="flex items-start gap-2.5 px-3 py-2.5">
-                          <Checkbox
-                            checked={isDone}
-                            onCheckedChange={() => toggleDiscussed(i)}
-                            className="mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className={cn(
-                              'text-sm font-semibold',
-                              isDone ? 'text-muted-foreground line-through' : 'text-foreground',
-                            )}>
-                              {inlineMd(t.heading)}
-                            </p>
-                            {t.bullets.length > 0 && (
-                              <ul className="mt-1 space-y-0.5">
-                                {t.bullets.map((b, j) => (
-                                  <li key={j} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                                    <span className="text-primary mt-0.5 flex-shrink-0">•</span>
-                                    <span>{inlineMd(b)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {t.paragraphs.length > 0 && (
-                              <div className="mt-1 space-y-0.5">
-                                {t.paragraphs.map((p, j) => (
-                                  <p key={j} className="text-xs text-muted-foreground leading-relaxed">{inlineMd(p)}</p>
-                                ))}
-                              </div>
-                            )}
+                        <div className="flex-1 min-w-0">
+                          <div className={cn('text-sm leading-snug', a.done ? 'text-muted-foreground line-through' : 'font-medium text-foreground')}>{a.text}</div>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full', tone.bg, tone.fg)}>
+                              <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />{firstName}
+                            </span>
+                            <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-md', db.cls)}>
+                              <DueIcon className="h-3 w-3" />{db.label}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-[9px] py-0.5 rounded-md bg-muted text-muted-foreground">
+                              <CornerUpLeft className="h-3 w-3" />From {format(new Date(a.created_at), 'MMM d')}
+                            </span>
                           </div>
                         </div>
+                      </button>
+                    );
+                  })}
 
-                        {/* Inline action input */}
-                        <div className="border-t border-border/50 px-3 py-1.5 bg-muted/30">
-                          <input
-                            value={topicActions[i] ?? ''}
-                            onChange={e => setTopicActions(prev => ({ ...prev, [i]: e.target.value }))}
-                            placeholder={`@${firstName} action item...`}
-                            className="w-full text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 py-0.5"
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' && topicActions[i]?.trim()) {
-                                // Queue as action for them
-                                setActionDraftForThem(prev => {
-                                  const line = topicActions[i].trim();
-                                  return prev ? `${prev}\n${line}` : line;
-                                });
-                                setTopicActions(prev => ({ ...prev, [i]: '' }));
-                                toast({ title: `Action added for ${firstName}` });
-                              }
-                            }}
-                          />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3 pt-[13px] border-t border-border/60">
+                    <div className="flex items-center gap-2 px-[11px] py-[9px] border border-dashed border-input rounded-md">
+                      <UserPlus className="h-[15px] w-[15px] text-muted-foreground flex-shrink-0" />
+                      <input value={assignInput} onChange={e => setAssignInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addAssignAction(); }}
+                        placeholder={`Assign to ${firstName} — Enter`} className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px]" />
+                    </div>
+                    <div className="flex items-center gap-2 px-[11px] py-[9px] border border-dashed border-input rounded-md">
+                      <Plus className="h-[15px] w-[15px] text-muted-foreground flex-shrink-0" />
+                      <input value={mineInput} onChange={e => setMineInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addMyTodo(); }}
+                        placeholder="Add for me — Enter" className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px]" />
+                    </div>
+                  </div>
+                </Card>
+
+                {/* TALKING POINTS */}
+                <Card className="px-[22px] pt-[18px] pb-2">
+                  <SecHdr icon={ListChecks} label="Talking points" right={
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-accent text-primary"><Sparkles className="h-3 w-3" />Suggested</span>
+                      <span className="ml-auto text-[12.5px] text-muted-foreground">{includedCount} on the agenda</span>
+                    </>
+                  } />
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-0.5">Ordered by priority. Check the ones to cover — checked points become your agenda.</p>
+
+                  {filteredTopics.length === 0 && customPoints.length === 0 ? (
+                    (aiGenerating || refreshing) ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 border-t border-border/60"><Loader2 className="h-4 w-4 animate-spin" />Generating your prep brief…</div>
+                    ) : (
+                      <p className="text-[13px] text-muted-foreground italic py-6 border-t border-border/60">No talking points yet — hit AI generate to draft a brief.</p>
+                    )
+                  ) : (
+                    <>
+                      {filteredTopics.map((t, i) => {
+                        const included = !excludedPoints.has(i);
+                        const rank = `P${i + 1}`;
+                        const rankCls = i === 0 ? 'bg-orange-50 text-orange-700' : i === 1 ? 'bg-amber-50 text-amber-700' : 'bg-muted text-muted-foreground';
+                        const why = t.paragraphs.length ? t.paragraphs.join(' ') : t.bullets.join(' · ');
+                        return (
+                          <button key={i} onClick={() => togglePoint(i)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                            {included ? (
+                              <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
+                            ) : (
+                              <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2.5">
+                                <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', rankCls)}>{rank}</span>
+                                <span className="text-[14.5px] font-semibold">{inlineMd(t.heading)}</span>
+                              </div>
+                              {why && <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{inlineMd(why)}</div>}
+                              <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><FileText className="h-[13px] w-[13px]" />From prep brief</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {customPoints.map(p => (
+                        <button key={p.id} onClick={() => toggleCustomPoint(p.id)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                          {p.included ? (
+                            <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
+                          ) : (
+                            <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-blue-50 text-blue-700">You</span>
+                              <span className="text-[14.5px] font-semibold">{p.text}</span>
+                            </div>
+                            <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><Plus className="h-[13px] w-[13px]" />Custom topic</span>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  <div className="flex items-center gap-2.5 my-2 mb-3.5 px-3 py-2.5 border border-dashed border-input rounded-md">
+                    <Plus className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <input value={newPoint} onChange={e => setNewPoint(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addPoint(); }}
+                      placeholder="Add your own talking point — press Enter" className="flex-1 bg-transparent border-0 outline-none text-[13.5px]" />
+                  </div>
+                </Card>
+
+                {/* STATUS / PRIORITY CHECK-IN */}
+                {priorities.length > 0 && (
+                  <Card className="px-[22px] pt-[18px] pb-4">
+                    <SecHdr icon={Rocket} label="Priority check-in" right={
+                      <span className="ml-auto text-[12.5px] text-muted-foreground">Updates to request from {firstName}</span>
+                    } />
+                    <p className="text-[12.5px] text-muted-foreground mt-1 mb-3.5">{firstName}&apos;s active commitments this quarter{quarter ? ` · ${quarter.label}` : ''}.</p>
+                    <div className="grid grid-cols-[1fr_130px] sm:grid-cols-[1fr_130px_150px] px-3 pb-2 text-[11px] font-semibold tracking-[0.04em] uppercase text-muted-foreground">
+                      <div>Priority</div><div>Status</div><div className="hidden sm:block">Owner</div>
+                    </div>
+                    {priorities.map(p => {
+                      const sm = STATUS_META[p.status] ?? STATUS_META.draft;
+                      return (
+                        <div key={p.id} className="grid grid-cols-[1fr_130px] sm:grid-cols-[1fr_130px_150px] items-center p-3 border-t border-border/60 rounded-md hover:bg-muted/40 transition-colors">
+                          <div className="text-[13.5px] font-semibold pr-2">{p.title}</div>
+                          <div><span className={cn('inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-[3px] rounded-full', sm.cls)}><span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />{sm.label}</span></div>
+                          <div className="hidden sm:block text-[13px] text-muted-foreground">{firstName}</div>
                         </div>
-                      </div>
+                      );
+                    })}
+                  </Card>
+                )}
+
+                {/* QUESTIONS */}
+                <Card className="px-[22px] py-[18px]">
+                  <SecHdr icon={HelpCircle} label="Questions to ask" />
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-1.5">Pick a few to anchor the conversation.</p>
+                  {questions.map((q, i) => {
+                    const picked = pickedQuestions.has(i);
+                    return (
+                      <button key={i} onClick={() => toggleQuestion(i)} className="w-full flex items-center gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                        {picked ? (
+                          <span className="w-5 h-5 flex-shrink-0 rounded-full bg-primary grid place-items-center"><Check className="h-[13px] w-[13px] text-primary-foreground" /></span>
+                        ) : (
+                          <span className="w-5 h-5 flex-shrink-0 rounded-full border-[1.5px] border-input bg-background" />
+                        )}
+                        <span className="text-sm leading-snug">{q}</span>
+                      </button>
+                    );
+                  })}
+                </Card>
+              </div>
+
+              {/* RIGHT RAIL */}
+              <div className="flex flex-col gap-3.5">
+                {/* agent provenance */}
+                <Card className="px-[18px] py-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-accent grid place-items-center"><Bot className="h-[18px] w-[18px] text-primary" /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13.5px] font-bold">Prepared by your agent</div>
+                      <div className="text-xs text-muted-foreground">Generated {generatedLabel} · {source === 'ai_generated' ? 'AI' : source === 'cleargo' ? 'ClearGO' : 'Static'}</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-[1.5] mt-3">A fresh draft is auto-prepared before every 1:1. Your edits are always kept — use <strong className="text-foreground font-semibold">Refresh</strong> up top to regenerate.</p>
+                </Card>
+
+                {/* shared doc */}
+                <Card className="px-[18px] py-4">
+                  <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground mb-[11px]">Shared doc</div>
+                  <a href="#" onClick={e => e.preventDefault()} className="flex items-center gap-[11px] p-[11px] border border-border rounded-md hover:bg-muted/50 transition-colors">
+                    <span className="w-8 h-8 flex-shrink-0 rounded-md bg-blue-50 grid place-items-center"><FileText className="h-[17px] w-[17px] text-blue-600" /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold truncate">{firstName} 1:1 notes</div>
+                      <div className="text-[11.5px] text-muted-foreground">Last edited 3 days ago</div>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  </a>
+                </Card>
+
+                {/* jump to settings */}
+                <button onClick={() => setActiveTab('settings')} className="flex items-center gap-[11px] px-4 py-[13px] bg-card border border-border rounded-lg hover:bg-muted/50 transition-colors text-left">
+                  <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-muted grid place-items-center"><Settings className="h-[18px] w-[18px] text-muted-foreground" /></span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold">Agent settings</div>
+                    <div className="text-[11.5px] text-muted-foreground">Context, instructions &amp; nudges</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </button>
+
+                {/* relationship memory */}
+                {relTopics.length > 0 && (
+                  <Card className="px-[18px] py-4">
+                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5"><Brain className="h-3.5 w-3.5" />Relationship memory</div>
+                    <ul className="space-y-1.5">
+                      {relTopics.slice(0, 8).map(topic => {
+                        const catColors: Record<string, string> = { blocker: 'bg-red-500', escalation: 'bg-orange-500', project: 'bg-blue-500', goal: 'bg-emerald-500', feedback: 'bg-violet-500', development: 'bg-indigo-500', personal: 'bg-pink-500', general: 'bg-gray-400' };
+                        const isResolved = topic.status === 'resolved';
+                        const lastDate = parseLocalDate(topic.last_mentioned_at);
+                        const daysAgo = lastDate ? Math.floor((Date.now() - lastDate.getTime()) / 86_400_000) : null;
+                        return (
+                          <li key={topic.id} className={cn('text-xs flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border group', isResolved && 'opacity-50')}>
+                            <span className={cn('w-2 h-2 rounded-full mt-1 flex-shrink-0', catColors[topic.category] ?? 'bg-gray-400')} />
+                            <div className="flex-1 min-w-0">
+                              <p className={cn('font-medium leading-snug', isResolved && 'line-through text-muted-foreground')}>{topic.topic}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {topic.mention_count > 1 && <span className="text-[9px] text-muted-foreground flex items-center gap-0.5"><TrendingUp className="h-2.5 w-2.5" />{topic.mention_count}x</span>}
+                                {daysAgo !== null && <span className="text-[9px] text-muted-foreground">{daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`}</span>}
+                              </div>
+                            </div>
+                            <button onClick={() => updateTopicStatus(topic.id, isResolved ? 'active' : 'resolved')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5" title={isResolved ? 'Mark active' : 'Mark resolved'}>
+                              <Check className={cn('h-3 w-3', isResolved && 'text-emerald-500')} />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Card>
+                )}
+
+                {/* monthly commitments */}
+                {commitments.length > 0 && (
+                  <Card className="px-[18px] py-4">
+                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5"><ListChecks className="h-3.5 w-3.5" />{firstName}&apos;s commitments</div>
+                    <ul className="space-y-1.5">
+                      {commitments.map(c => {
+                        const sm = STATUS_META[c.status] ?? STATUS_META.draft;
+                        return (
+                          <li key={c.id} className="text-xs flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border">
+                            <span className="inline-flex h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 text-[9px] font-bold items-center justify-center mt-0.5 flex-shrink-0">{c.display_order}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium leading-snug">{c.title}</p>
+                              <span className={cn('inline-flex items-center gap-1 mt-1 text-[9px] font-semibold px-1.5 py-px rounded-full', sm.cls)}>{sm.label}</span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ---------- PAST 1:1s TAB ---------- */}
+          {activeTab === 'past' && (
+            <div className="max-w-[780px] mx-auto px-7 pt-6 pb-12">
+              <div className="flex items-start gap-3.5 px-[18px] py-[15px] rounded-lg bg-accent/50 border border-border/70 mb-5">
+                <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-card grid place-items-center shadow-sm"><FileText className="h-[18px] w-[18px] text-primary" /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13.5px] font-bold mb-0.5">Summaries from your past 1:1s</div>
+                  <div className="text-[13px] leading-[1.5] text-muted-foreground">Each 1:1 is captured from its Zoom recording. Transcribed calls are summarized into recap, topics, and the commitments each of you made.</div>
+                </div>
+              </div>
+
+              {zoomRecordings.length === 0 ? (
+                <div className="text-center py-16 text-sm text-muted-foreground">
+                  <Video className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                  No past 1:1s recorded yet. Once your Zoom calls with {firstName} are synced, their summaries appear here.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-[18px]">
+                  {zoomRecordings.map(rec => {
+                    const d = new Date(rec.start_time);
+                    return (
+                      <Card key={rec.id} className="overflow-hidden">
+                        <div className="flex items-center gap-3 px-[22px] py-4 border-b border-border/60 bg-muted/40">
+                          <div className="w-[42px] h-[42px] flex-shrink-0 rounded-[9px] bg-card border border-border flex flex-col items-center justify-center leading-none">
+                            <span className="text-[9px] font-bold tracking-[0.05em] uppercase text-primary">{MONTHS[d.getMonth()]}</span>
+                            <span className="text-[17px] font-bold mt-px">{d.getDate()}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[14.5px] font-bold truncate">{rec.topic ?? `1:1 with ${firstName}`}</div>
+                            <div className="flex items-center gap-[7px] mt-0.5 text-xs text-muted-foreground">
+                              <span>{format(d, 'MMM d, yyyy')}</span>
+                              {rec.duration_minutes != null && (<><span>·</span><span>{rec.duration_minutes} min</span></>)}
+                            </div>
+                          </div>
+                          {rec.has_transcript && (
+                            <Badge variant="outline" className="text-[11px] h-6 px-2.5 border-emerald-200 text-emerald-700">Transcript</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2.5 px-[22px] py-3.5">
+                          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground"><Sparkles className="h-[13px] w-[13px] text-primary" />{rec.has_transcript ? 'Summarized from Zoom transcript' : 'Recording captured — transcript pending'}</span>
+                          {rec.has_transcript && (
+                            <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer hover:underline"><FileText className="h-[14px] w-[14px]" />View transcript</span>
+                          )}
+                        </div>
+                      </Card>
                     );
                   })}
                 </div>
               )}
-              {/* Add topic */}
-              <div className="flex gap-2 mt-2">
-                <Input
-                  value={newAgendaItem}
-                  onChange={e => setNewAgendaItem(e.target.value)}
-                  placeholder="Add topic..."
-                  className="h-8 text-sm flex-1"
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && newAgendaItem.trim()) {
-                      setNewAgendaItem('');
-                    }
-                  }}
-                />
-              </div>
-            </section>
-
-            {/* Action capture — for them | for me */}
-            <section className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-                <SecHdr icon={ClipboardList} label={`Actions for ${firstName}`} />
-                <Textarea
-                  value={actionDraftForThem}
-                  onChange={e => setActionDraftForThem(e.target.value)}
-                  placeholder={`@${firstName} send the Q3 plan by Friday\n@${firstName} loop me into the review`}
-                  rows={3}
-                  className="text-sm resize-none"
-                />
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={saveActionsForThem} disabled={savingForThem || !actionDraftForThem.trim()}>
-                    {savingForThem ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                    Queue for {firstName}
-                  </Button>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="h-3 w-3 text-muted-foreground" />
-                    <input
-                      type="date"
-                      value={actionDueDate}
-                      onChange={e => setActionDueDate(e.target.value)}
-                      className="h-7 text-xs border border-border rounded-md px-2 bg-background text-foreground"
-                      placeholder="Due date"
-                    />
-                    {actionDueDate && (
-                      <button
-                        onClick={() => setActionDueDate('')}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-primary/30 bg-primary/[0.03] p-4 space-y-3">
-                <SecHdr icon={CheckSquare} label="To-dos for me" />
-                <Textarea
-                  value={todoDraftForMe}
-                  onChange={e => setTodoDraftForMe(e.target.value)}
-                  placeholder={`Draft the Q3 narrative\nIntro to the team lead`}
-                  rows={3}
-                  className="text-sm resize-none"
-                />
-                <Button size="sm" onClick={saveTodosForMe} disabled={savingForMe || !todoDraftForMe.trim()}>
-                  {savingForMe ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                  Add to My Lists
-                </Button>
-              </div>
-            </section>
-
-            {/* Context + prep instructions */}
-            <section className="rounded-lg border border-border p-4 space-y-2">
-              <SecHdr icon={FileText} label={`Context about ${firstName}`} />
-              <Textarea
-                value={contextDraft}
-                onChange={e => setContextDraft(e.target.value)}
-                placeholder={`e.g. ${firstName} cares deeply about shipping quality over speed.`}
-                rows={3}
-                className="text-sm resize-none"
-              />
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={saveContext} disabled={savingContext}>
-                  {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                  Save context
-                </Button>
-                <span className="text-[10px] text-muted-foreground">Appended to every future prep</span>
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-border p-4 space-y-2">
-              <SecHdr icon={Sparkles} label="Prep instructions" />
-              <Textarea
-                value={feedbackDraft}
-                onChange={e => setFeedbackDraft(e.target.value)}
-                placeholder="e.g. Always highlight blockers first. Don't repeat unchanged items."
-                rows={3}
-                className="text-sm resize-none"
-              />
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={saveFeedback} disabled={savingFeedback}>
-                  {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                  Save instructions
-                </Button>
-                <span className="text-[10px] text-muted-foreground">Applied to every prep</span>
-              </div>
-            </section>
-            </>
-          )}
-          </main>
-
-          {/* Reference panel */}
-          <aside className="hidden lg:flex flex-col border-l border-border bg-muted/30 overflow-y-auto">
-            <div className="px-5 py-5 space-y-6">
-              {/* My quarterly priorities — for context in the meeting */}
-              {priorities.length > 0 && (
-                <section>
-                  <header className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                      <Target className="h-3.5 w-3.5" />
-                      {firstName}&apos;s quarterly priorities
-                    </h3>
-                    {quarter && (
-                      <span className="text-[10px] text-muted-foreground">{quarter.label}</span>
-                    )}
-                  </header>
-                  <p className="text-[10px] text-muted-foreground mb-2 italic">{firstName}&apos;s quarterly priorities — for reference during the conversation</p>
-                  <ol className="space-y-1.5">
-                    {priorities.map(p => (
-                      <li key={p.id} className="text-xs leading-snug flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border">
-                        <span className="inline-flex h-4 w-4 rounded-full bg-primary/10 text-primary text-[9px] font-bold items-center justify-center mt-0.5 flex-shrink-0">
-                          {p.display_order}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground leading-snug">{p.title}</p>
-                          {p.description && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>
-                          )}
-                          <span className="inline-flex items-center gap-1 mt-1">
-                            <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[p.status] ?? 'bg-muted-foreground/30')} />
-                            <span className="text-[9px] text-muted-foreground capitalize">{p.status.replace('_', ' ')}</span>
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              )}
-
-              {/* Monthly commitments */}
-              {commitments.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
-                    <ListChecks className="h-3.5 w-3.5" />
-                    {firstName}&apos;s commitments
-                  </h3>
-                  <ol className="space-y-1.5">
-                    {commitments.map(c => (
-                      <li key={c.id} className="text-xs leading-snug flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border">
-                        <span className="inline-flex h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 text-[9px] font-bold items-center justify-center mt-0.5 flex-shrink-0">
-                          {c.display_order}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground leading-snug">{c.title}</p>
-                          {c.description && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{c.description}</p>
-                          )}
-                          <span className="inline-flex items-center gap-1 mt-1">
-                            <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[c.status] ?? 'bg-muted-foreground/30')} />
-                            <span className="text-[9px] text-muted-foreground capitalize">{c.status.replace('_', ' ')}</span>
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              )}
-
-              {/* Relationship Topics (Memory) */}
-              {relTopics.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
-                    <Brain className="h-3.5 w-3.5" />
-                    Relationship memory
-                  </h3>
-                  <ul className="space-y-1.5">
-                    {relTopics.slice(0, 10).map(topic => {
-                      const catColors: Record<string, string> = {
-                        blocker: 'bg-red-500',
-                        escalation: 'bg-orange-500',
-                        project: 'bg-blue-500',
-                        goal: 'bg-emerald-500',
-                        feedback: 'bg-violet-500',
-                        development: 'bg-indigo-500',
-                        personal: 'bg-pink-500',
-                        general: 'bg-gray-400',
-                      };
-                      const isResolved = topic.status === 'resolved';
-                      const isStale = topic.status === 'stale';
-                      const lastDate = parseLocalDate(topic.last_mentioned_at);
-                      const daysAgo = lastDate
-                        ? Math.floor((Date.now() - lastDate.getTime()) / 86_400_000)
-                        : null;
-
-                      return (
-                        <li
-                          key={topic.id}
-                          className={cn(
-                            'text-xs leading-snug flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border group',
-                            isResolved && 'opacity-50',
-                            isStale && 'opacity-70',
-                          )}
-                        >
-                          <span className={cn(
-                            'w-2 h-2 rounded-full mt-1 flex-shrink-0',
-                            catColors[topic.category] ?? 'bg-gray-400',
-                            isResolved && 'opacity-50',
-                          )} />
-                          <div className="flex-1 min-w-0">
-                            <p className={cn(
-                              'font-medium text-foreground leading-snug',
-                              isResolved && 'line-through text-muted-foreground',
-                            )}>
-                              {topic.topic}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {topic.mention_count > 1 && (
-                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                                  <TrendingUp className="h-2.5 w-2.5" />
-                                  {topic.mention_count}x
-                                </span>
-                              )}
-                              {daysAgo !== null && (
-                                <span className="text-[9px] text-muted-foreground">
-                                  {daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`}
-                                </span>
-                              )}
-                              {isStale && (
-                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-200 text-amber-600">
-                                  stale
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          {/* Toggle resolved */}
-                          <button
-                            onClick={() => updateTopicStatus(
-                              topic.id,
-                              isResolved ? 'active' : 'resolved',
-                            )}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5"
-                            title={isResolved ? 'Mark active' : 'Mark resolved'}
-                          >
-                            <Check className={cn('h-3 w-3', isResolved && 'text-emerald-500')} />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </section>
-              )}
-
-              {/* Recent Zoom calls */}
-              {zoomRecordings.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
-                    <Video className="h-3.5 w-3.5" />
-                    Recent Zoom calls
-                  </h3>
-                  <ul className="space-y-1.5">
-                    {zoomRecordings.map(rec => (
-                      <li key={rec.id} className="text-xs leading-snug px-2.5 py-2 rounded-md bg-background border border-border">
-                        <p className="font-medium text-foreground leading-snug">{rec.topic ?? 'Untitled meeting'}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-muted-foreground">
-                            {format(new Date(rec.start_time), 'MMM d')}
-                          </span>
-                          {rec.duration_minutes != null && (
-                            <span className="text-[10px] text-muted-foreground">{rec.duration_minutes}min</span>
-                          )}
-                          {rec.has_transcript && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-200 text-emerald-700">
-                              Transcript
-                            </Badge>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {/* Shared doc */}
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
-                  <NotebookText className="h-3.5 w-3.5" />
-                  Shared doc
-                </h3>
-                <a
-                  href="#"
-                  onClick={e => e.preventDefault()}
-                  className="flex items-center gap-2.5 text-xs px-3 py-2.5 rounded-md bg-background border border-border hover:bg-muted/50 transition-colors"
-                >
-                  <FileText className="h-4 w-4 text-primary flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground text-[13px]">Arnaud × {firstName} 1:1 Notes</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Last edited 3 days ago</p>
-                  </div>
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                </a>
-              </section>
-
-              {/* Per-person agent overrides */}
-              <AgentOverridesSection memberId={member.id} memberName={firstName} />
-
-              {/* Generated info */}
-              <p className="text-[10px] text-muted-foreground text-center pt-2 border-t border-border">
-                Generated {generatedLabel} · {source === 'ai_generated' ? 'AI' : source === 'cleargo' ? 'ClearGO' : 'Static'}
-              </p>
             </div>
-          </aside>
+          )}
+
+          {/* ---------- ASK TAB ---------- */}
+          {activeTab === 'ask' && (
+            <div className="max-w-[760px] mx-auto h-full flex flex-col px-7">
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto py-6 flex flex-col gap-[18px]">
+                {chat.map(msg => msg.role === 'agent' ? (
+                  <div key={msg.id} className="flex gap-[11px] items-start max-w-[88%]">
+                    <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-accent grid place-items-center"><Bot className="h-[18px] w-[18px] text-primary" /></span>
+                    <div className="bg-card border border-border rounded-[4px_12px_12px_12px] px-4 py-3 text-[13.5px] leading-[1.6] whitespace-pre-line">{msg.text}</div>
+                  </div>
+                ) : (
+                  <div key={msg.id} className="self-end max-w-[80%] bg-primary text-primary-foreground rounded-[12px_4px_12px_12px] px-[15px] py-[11px] text-[13.5px] leading-[1.55]">{msg.text}</div>
+                ))}
+                {askLoading && (
+                  <div className="flex gap-[11px] items-center text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /><span className="text-xs">Searching your 1:1 history…</span></div>
+                )}
+              </div>
+
+              <div className="flex gap-2 flex-wrap pt-1 pb-3">
+                {[`What's overdue?`, 'Recap the last 1:1', 'What should I cover?'].map((s, i) => (
+                  <button key={i} onClick={() => sendAsk(s)} disabled={askLoading} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-1.5 rounded-full border border-border bg-card hover:bg-muted/50 transition-colors disabled:opacity-50">
+                    <Sparkles className="h-[13px] w-[13px] text-primary" />{s}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-end gap-2.5 px-3.5 py-3 mb-[22px] bg-card border border-input rounded-xl">
+                <Bot className="h-[18px] w-[18px] text-primary mb-0.5 flex-shrink-0" />
+                <textarea
+                  value={askInput}
+                  onChange={e => setAskInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAsk(); } }}
+                  rows={1}
+                  placeholder={`Ask your agent about ${firstName}, the last 1:1, or what's overdue…`}
+                  className="flex-1 bg-transparent border-0 outline-none resize-none text-sm leading-[1.5] max-h-[120px]"
+                />
+                <Button size="icon" className="h-9 w-9 rounded-lg flex-shrink-0" disabled={!askInput.trim() || askLoading} onClick={() => sendAsk()}>
+                  <ArrowUp className="h-[18px] w-[18px]" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ---------- TIMELINE TAB ---------- */}
+          {activeTab === 'timeline' && (
+            <div className="max-w-[680px] mx-auto px-7 py-7">
+              <RelationshipTimeline memberId={member.id} memberName={member.name} />
+            </div>
+          )}
+
+          {/* ---------- SETTINGS TAB ---------- */}
+          {activeTab === 'settings' && (
+            <div className="max-w-[680px] mx-auto px-7 pt-6 pb-12 flex flex-col gap-[18px]">
+              <AgentToggles memberId={member.id} memberName={firstName} />
+
+              {/* context */}
+              <Card className="px-[22px] py-5">
+                <SecHdr icon={Brain} label={`Context about ${firstName}`} />
+                <p className="text-[12.5px] text-muted-foreground mt-1 mb-3">Appended to every future prep so your agent stays grounded.</p>
+                <Textarea value={contextDraft} onChange={e => setContextDraft(e.target.value)} rows={4}
+                  placeholder={`e.g. ${firstName} cares about shipping quality over speed. Prefers async written updates.`}
+                  className="text-[13.5px] leading-[1.55] resize-y" />
+                <div className="flex items-center gap-3 mt-3">
+                  <Button size="sm" variant="secondary" onClick={saveContext} disabled={savingContext}>
+                    {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save context
+                  </Button>
+                  {savedContext && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
+                </div>
+              </Card>
+
+              {/* prep instructions */}
+              <Card className="px-[22px] py-5">
+                <SecHdr icon={Sparkles} label="Prep instructions" />
+                <p className="text-[12.5px] text-muted-foreground mt-1 mb-3">Your agent follows these every time it drafts a prep.</p>
+                <Textarea value={feedbackDraft} onChange={e => setFeedbackDraft(e.target.value)} rows={4}
+                  placeholder="e.g. Always highlight blockers first. Don't repeat unchanged items. Keep it terse."
+                  className="text-[13.5px] leading-[1.55] resize-y" />
+                <div className="flex items-center gap-3 mt-3">
+                  <Button size="sm" variant="secondary" onClick={saveFeedback} disabled={savingFeedback}>
+                    {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save instructions
+                  </Button>
+                  {savedFeedback && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
+                </div>
+              </Card>
+            </div>
+          )}
+
         </div>
       </SheetContent>
-
-      {/* Relationship Query Dialog */}
-      {member && (
-        <RelationshipQueryDialog
-          open={queryDialogOpen}
-          onClose={() => setQueryDialogOpen(false)}
-          memberId={member.id}
-          memberName={member.name}
-        />
-      )}
     </Sheet>
   );
 }
 
-function AgentOverridesSection({ memberId, memberName }: { memberId: string; memberName: string }) {
-  const [overrides, setOverrides] = React.useState<Record<string, unknown>>({});
-  const [loaded, setLoaded] = React.useState(false);
+// ── Per-member agent toggles (Settings tab) ────────────────────────────────────
 
-  React.useEffect(() => {
+function AgentToggles({ memberId, memberName }: { memberId: string; memberName: string }) {
+  const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
     (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase as any)
@@ -1061,74 +1109,35 @@ function AgentOverridesSection({ memberId, memberName }: { memberId: string; mem
     })();
   }, [memberId]);
 
-  const update = React.useCallback(async (patch: Record<string, unknown>) => {
+  const update = async (patch: Record<string, unknown>) => {
     const next = { ...overrides, ...patch };
     setOverrides(next);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from('cos_team_members')
-      .update({ agent_overrides: next })
-      .eq('id', memberId);
-  }, [memberId, overrides]);
+    await (supabase as any).from('cos_team_members').update({ agent_overrides: next }).eq('id', memberId);
+  };
 
-  if (!loaded) return null;
-
-  // Only show if at least one override is set, or on hover to discover
   return (
-    <section className="group">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-2">
-        <Bot className="h-3.5 w-3.5" />
-        Agent for {memberName}
-      </h3>
-      <div className="space-y-1.5">
-        <OverrideToggle
-          label="Auto-generate prep"
-          checked={overrides.auto_prep !== false}
-          onChange={v => update({ auto_prep: v })}
-        />
-        <OverrideToggle
-          label="Nudge on actions"
-          checked={overrides.nudge_actions !== false}
-          onChange={v => update({ nudge_actions: v })}
-        />
+    <Card className="px-[22px] py-5 flex flex-col gap-4">
+      <div>
+        <div className="text-[13.5px] font-bold flex items-center gap-2"><Bot className="h-[17px] w-[17px] text-primary" />Agent for {memberName}</div>
+        <div className="text-[12.5px] text-muted-foreground mt-0.5">How your agent prepares and follows up between 1:1s.</div>
       </div>
-    </section>
+      <ToggleRow label="Auto-generate prep" description="Draft a new prep before each 1:1"
+        checked={loaded ? overrides.auto_prep !== false : true} onChange={v => update({ auto_prep: v })} />
+      <ToggleRow label="Nudge on open actions" description={`Remind ${memberName} as due dates approach`}
+        checked={loaded ? overrides.nudge_actions !== false : true} onChange={v => update({ nudge_actions: v })} />
+    </Card>
   );
 }
 
-function OverrideToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-background border border-border">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <button
-        onClick={() => onChange(!checked)}
-        className={cn(
-          'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
-          checked ? 'bg-primary' : 'bg-muted-foreground/30',
-        )}
-      >
-        <span
-          className={cn(
-            'inline-block h-3 w-3 rounded-full bg-white transition-transform',
-            checked ? 'translate-x-3.5' : 'translate-x-0.5',
-          )}
-        />
-      </button>
-    </div>
-  );
-}
-
-function SetUpNowPrompt({ label, href }: { label: string; href: string }) {
-  return (
-    <a
-      href={href}
-      className="flex items-start gap-2 px-3 py-2.5 rounded-md border border-destructive/40 bg-destructive/[0.04] hover:bg-destructive/[0.08] transition-colors"
-    >
-      <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+    <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-destructive">Set up now</p>
-        <p className="text-[10px] text-destructive/80 mt-0.5">{label}</p>
+        <div className="text-[13.5px] font-medium">{label}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
       </div>
-    </a>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
   );
 }
