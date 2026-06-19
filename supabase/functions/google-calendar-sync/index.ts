@@ -306,6 +306,11 @@ serve(async (req) => {
     let created = 0
     let updated = 0
     let skipped = 0
+    // Track DB write failures so we can surface them in last_sync_status rather
+    // than silently reporting "ok" (a swallowed upsert error previously masked
+    // missing-column schema drift, so no events ever synced while status read ok).
+    let writeErrors = 0
+    let firstWriteError: string | null = null
     const seenEventIds = new Set<string>()
     const unmatchedEvents: UnmatchedEvent[] = []
 
@@ -401,6 +406,8 @@ serve(async (req) => {
         .upsert(row, { onConflict: 'user_id,google_event_id' })
 
       if (upsertErr) {
+        writeErrors++
+        if (!firstWriteError) firstWriteError = upsertErr.message
         skipped++
         continue
       }
@@ -434,7 +441,10 @@ serve(async (req) => {
         .from('cos_one_on_one_events')
         .update({ status: 'cancelled', last_synced_at: new Date().toISOString() }, { count: 'exact' })
         .in('id', toCancelIds)
-      if (!cancelErr) {
+      if (cancelErr) {
+        writeErrors++
+        if (!firstWriteError) firstWriteError = cancelErr.message
+      } else {
         cancelled = count ?? toCancelIds.length
       }
     }
@@ -517,13 +527,19 @@ serve(async (req) => {
       }
     }
 
-    // Mark success.
+    // Record outcome. Surface write failures instead of always reporting "ok"
+    // so silent schema drift (e.g. a missing column rejecting every upsert) is
+    // visible in last_sync_status instead of looking like a healthy sync.
+    const lastSyncStatus = writeErrors > 0
+      ? `error: ${writeErrors} write(s) failed: ${(firstWriteError ?? 'unknown').slice(0, 150)}`
+      : 'ok'
+
     await supabase
       .from('user_calendar_credentials')
-      .update({ last_sync_at: new Date().toISOString(), last_sync_status: 'ok' })
+      .update({ last_sync_at: new Date().toISOString(), last_sync_status: lastSyncStatus })
       .eq('user_id', userId)
 
-    return jsonResponse({ created, updated, cancelled, skipped, unmatched: unmatchedEvents }, 200)
+    return jsonResponse({ created, updated, cancelled, skipped, writeErrors, lastSyncStatus, unmatched: unmatchedEvents }, 200)
   } catch (error) {
     return jsonResponse({ error: (error as Error).message }, 500)
   }
