@@ -29,8 +29,14 @@ function dotColor(seed: string): string {
   return DOT_COLORS[Math.abs(hash) % DOT_COLORS.length];
 }
 
+const MEETING_SOURCE_TYPES = ['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting'];
+
 function headerTitle(suggestions: MeetingSuggestion[]): string {
   if (suggestions.length === 0) return 'Suggested from your meetings';
+  // Once non-meeting sources (e.g. Slack) are mixed in, the meeting-specific
+  // framing no longer fits — fall back to a source-agnostic title.
+  const allMeetings = suggestions.every(s => MEETING_SOURCE_TYPES.includes(s.source_type ?? ''));
+  if (!allMeetings) return 'Suggested for your lists';
   const allOneOnOne = suggestions.every(s => s.source_type === 'one_on_one');
   if (allOneOnOne) return 'Suggested from your 1:1s';
   const anyOneOnOne = suggestions.some(s => s.source_type === 'one_on_one');
