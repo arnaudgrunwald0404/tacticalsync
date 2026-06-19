@@ -178,6 +178,18 @@ function dueBadge(iso: string | null, done: boolean): DueBadge {
   return { label: `Due ${fmtShort(iso)}`, cls: 'bg-muted text-muted-foreground', icon: Calendar };
 }
 
+// Pull a joinable meeting URL out of a calendar event, if there is one.
+// Calendar sync stores the link in location/description; Zoom calls also
+// carry a meeting id we can rebuild a join URL from.
+const URL_RE = /https?:\/\/[^\s<>"')]+/i;
+function deriveMeetingUrl(ev?: { location: string | null; description: string | null; zoom_meeting_id: string | null }): string | null {
+  if (!ev) return null;
+  if (ev.zoom_meeting_id) return `https://zoom.us/j/${ev.zoom_meeting_id}`;
+  if (ev.location && URL_RE.test(ev.location)) return ev.location.match(URL_RE)![0];
+  if (ev.description) { const m = ev.description.match(URL_RE); if (m) return m[0]; }
+  return null;
+}
+
 // Section header used throughout the drawer
 function SecHdr({ icon: Icon, label, right }: { icon: React.ElementType; label: string; right?: React.ReactNode }) {
   return (
@@ -215,7 +227,7 @@ export function OneOnOnePrepDrawer({
   const [mineInput, setMineInput] = useState('');
 
   // Talking points (derived from the prep brief) + custom additions
-  const [excludedPoints, setExcludedPoints] = useState<Set<number>>(new Set());
+  const [excludedPoints, setExcludedPoints] = useState<Set<string>>(new Set());
   const [customPoints, setCustomPoints] = useState<Array<{ id: string; text: string; included: boolean }>>([]);
   const [newPoint, setNewPoint] = useState('');
 
@@ -238,6 +250,7 @@ export function OneOnOnePrepDrawer({
     id: string; topic: string | null; start_time: string;
     duration_minutes: number | null; has_transcript: boolean;
   }>>([]);
+  const [nextMeetingUrl, setNextMeetingUrl] = useState<string | null>(null);
 
   // Ask / agent chat
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -260,6 +273,7 @@ export function OneOnOnePrepDrawer({
     setExcludedPoints(new Set());
     setCustomPoints([]);
     setPickedQuestions(new Set());
+    setNextMeetingUrl(null);
     setContextDraft(member.context_notes ?? '');
     setChat([{
       id: 'greeting',
@@ -293,6 +307,19 @@ export function OneOnOnePrepDrawer({
         setZoomRecordings(data ?? []);
       })
       .catch(() => setZoomRecordings([]));
+
+    // Next upcoming 1:1 — used to wire the "Start Zoom" button to the real call.
+    db.from('cos_one_on_one_events')
+      .select('location, description, zoom_meeting_id, start_time')
+      .eq('team_member_id', member.id)
+      .neq('status', 'cancelled')
+      .gte('start_time', new Date().toISOString())
+      .order('start_time', { ascending: true })
+      .limit(1)
+      .then(({ data }: { data: Array<{ location: string | null; description: string | null; zoom_meeting_id: string | null }> | null }) => {
+        setNextMeetingUrl(deriveMeetingUrl(data?.[0]));
+      })
+      .catch(() => setNextMeetingUrl(null));
   }, [open, member]);
 
   // Load the member's quarterly priorities + monthly commitments for reference
@@ -442,9 +469,36 @@ export function OneOnOnePrepDrawer({
   };
 
   // ── Talking points ──────────────────────────────────────────────────────────
-  const togglePoint = (i: number) => setExcludedPoints(prev => {
+  // Rank by urgency signals in the topic text rather than markdown order, so the
+  // most pressing items (overdue, at-risk, blockers) surface as P1.
+  const rankedPoints = useMemo(() => {
+    const P1 = /overdue|at[\s-]?risk|slipping|slipped|blocker|blocked|behind|escalat|urgent|past[\s-]?due|missed|jeopard/i;
+    const P2 = /decision|deadline|\bdue\b|launch|ship|review|sign[\s-]?off|approval|commit|deliver/i;
+    const tierOf = (t: TopicSection) => {
+      const text = [t.heading, ...t.paragraphs, ...t.bullets].join(' ');
+      if (P1.test(text)) return 0;
+      if (P2.test(text)) return 1;
+      return 2;
+    };
+    return filteredTopics
+      .map((t, i) => ({
+        key: `tp-${i}`,
+        heading: t.heading,
+        why: t.paragraphs.length ? t.paragraphs.join(' ') : t.bullets.join(' · '),
+        tier: tierOf(t),
+        order: i,
+      }))
+      .sort((a, b) => a.tier - b.tier || a.order - b.order)
+      .map(p => {
+        const rankLabel = `P${p.tier + 1}`;
+        const rankCls = p.tier === 0 ? 'bg-orange-50 text-orange-700' : p.tier === 1 ? 'bg-amber-50 text-amber-700' : 'bg-muted text-muted-foreground';
+        return { ...p, rankLabel, rankCls };
+      });
+  }, [filteredTopics]);
+
+  const togglePoint = (key: string) => setExcludedPoints(prev => {
     const next = new Set(prev);
-    if (next.has(i)) next.delete(i); else next.add(i);
+    if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
   const addPoint = () => {
@@ -456,7 +510,7 @@ export function OneOnOnePrepDrawer({
   const toggleCustomPoint = (id: string) =>
     setCustomPoints(prev => prev.map(p => p.id === id ? { ...p, included: !p.included } : p));
   const includedCount =
-    filteredTopics.filter((_, i) => !excludedPoints.has(i)).length +
+    rankedPoints.filter(p => !excludedPoints.has(p.key)).length +
     customPoints.filter(p => p.included).length;
 
   // ── Questions ────────────────────────────────────────────────────────────────
@@ -555,14 +609,19 @@ export function OneOnOnePrepDrawer({
   })();
 
   // AI coach summary — derived from the real signals we have on hand.
+  const offTrackPriorities = useMemo(
+    () => priorities.filter(p => p.status === 'not_done'),
+    [priorities],
+  );
   const coachSummary = useMemo(() => {
     const bits: string[] = [];
     if (overdueCount > 0) bits.push(`${overdueCount} commitment${overdueCount === 1 ? '' : 's'} from past 1:1s ${overdueCount === 1 ? 'is' : 'are'} overdue — clear ${overdueCount === 1 ? 'it' : 'those'} first.`);
+    if (offTrackPriorities.length > 0) bits.push(`${offTrackPriorities.length} of ${firstName}'s quarterly ${offTrackPriorities.length === 1 ? 'priority is' : 'priorities are'} off track${offTrackPriorities.length === 1 ? ` — "${offTrackPriorities[0].title}"` : ''}.`);
     if (forgottenItems.length > 0) bits.push(`${forgottenItems.length} item${forgottenItems.length === 1 ? ' has' : 's have'} been sitting unresolved for a while.`);
     if (filteredTopics.length > 0) bits.push(`${filteredTopics.length} talking point${filteredTopics.length === 1 ? '' : 's'} are suggested below, ordered by priority.`);
     if (bits.length === 0) return `Your prep is ready. Review the talking points and check off anything you've already handled.`;
     return bits.join(' ');
-  }, [overdueCount, forgottenItems.length, filteredTopics.length]);
+  }, [overdueCount, offTrackPriorities, forgottenItems.length, filteredTopics.length, firstName]);
 
   if (!member) return null;
 
@@ -614,10 +673,14 @@ export function OneOnOnePrepDrawer({
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button size="sm" className="h-9 gap-1.5" onClick={() => window.open('https://zoom.us/start/videomeeting', '_blank', 'noopener')}>
-                <Video className="h-[17px] w-[17px]" />Start Zoom
-              </Button>
-              <div className="w-px h-6 bg-border mx-0.5" />
+              {nextMeetingUrl && (
+                <>
+                  <Button size="sm" className="h-9 gap-1.5" onClick={() => window.open(nextMeetingUrl, '_blank', 'noopener')}>
+                    <Video className="h-[17px] w-[17px]" />Join call
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-0.5" />
+                </>
+              )}
               <Button size="sm" variant="ghost" className="h-9 gap-1.5" disabled={refreshing} onClick={onRefresh}>
                 {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Refresh
               </Button>
@@ -755,7 +818,7 @@ export function OneOnOnePrepDrawer({
                   } />
                   <p className="text-[12.5px] text-muted-foreground mt-1 mb-0.5">Ordered by priority. Check the ones to cover — checked points become your agenda.</p>
 
-                  {filteredTopics.length === 0 && customPoints.length === 0 ? (
+                  {rankedPoints.length === 0 && customPoints.length === 0 ? (
                     (aiGenerating || refreshing) ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 border-t border-border/60"><Loader2 className="h-4 w-4 animate-spin" />Generating your prep brief…</div>
                     ) : (
@@ -763,13 +826,10 @@ export function OneOnOnePrepDrawer({
                     )
                   ) : (
                     <>
-                      {filteredTopics.map((t, i) => {
-                        const included = !excludedPoints.has(i);
-                        const rank = `P${i + 1}`;
-                        const rankCls = i === 0 ? 'bg-orange-50 text-orange-700' : i === 1 ? 'bg-amber-50 text-amber-700' : 'bg-muted text-muted-foreground';
-                        const why = t.paragraphs.length ? t.paragraphs.join(' ') : t.bullets.join(' · ');
+                      {rankedPoints.map(p => {
+                        const included = !excludedPoints.has(p.key);
                         return (
-                          <button key={i} onClick={() => togglePoint(i)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                          <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
                             {included ? (
                               <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
                             ) : (
@@ -777,10 +837,10 @@ export function OneOnOnePrepDrawer({
                             )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2.5">
-                                <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', rankCls)}>{rank}</span>
-                                <span className="text-[14.5px] font-semibold">{inlineMd(t.heading)}</span>
+                                <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', p.rankCls)}>{p.rankLabel}</span>
+                                <span className="text-[14.5px] font-semibold">{inlineMd(p.heading)}</span>
                               </div>
-                              {why && <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{inlineMd(why)}</div>}
+                              {p.why && <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{inlineMd(p.why)}</div>}
                               <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><FileText className="h-[13px] w-[13px]" />From prep brief</span>
                             </div>
                           </button>
