@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare, Brain, CalendarClock } from 'lucide-react';
+import { Loader2, Save, Clock, Play, Plus, X, CheckCircle, AlertTriangle, XCircle, Video, MessageSquare, Brain, CalendarClock, Repeat, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +18,8 @@ import {
   isValidTimezone,
   type PrepScheduleConfig,
 } from '@/hooks/usePrepScheduleConfig';
+import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
+import { PREP_TOOLS } from '@/lib/prepTools';
 
 const DCI_SOURCES = [
   { id: 'calendar',    label: 'Calendar' },
@@ -100,6 +103,22 @@ function RecurringMeetingPrepSection({
   };
   const removeChannel = (ch: string) =>
     update({ slack_channels: draft.slack_channels.filter(c => c !== ch) });
+
+  const { recurringOneOnOnes, oneOffOneOnOnes, recurringGroups, loading: meetingsLoading } = useUpcomingMeetingGroups();
+
+  const toggleTool = (id: string) =>
+    update({
+      prep_tools: draft.prep_tools.includes(id)
+        ? draft.prep_tools.filter(t => t !== id)
+        : [...draft.prep_tools, id],
+    });
+
+  const toggleGroupSeries = (key: string) =>
+    update({
+      included_group_series: draft.included_group_series.includes(key)
+        ? draft.included_group_series.filter(k => k !== key)
+        : [...draft.included_group_series, key],
+    });
 
   const tzOptions = Array.from(new Set([getBrowserTimezone(), draft.timezone, ...COMMON_TIMEZONES]));
 
@@ -195,13 +214,84 @@ function RecurringMeetingPrepSection({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Meeting inclusion rules</CardTitle>
+          <CardTitle className="text-base">Which meetings get prepped</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
+        <CardContent className="space-y-5">
+          {/* Recurring 1:1s — auto-included preview */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium">Recurring 1:1s</label>
+              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">auto-included</Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Your regular 1:1s are always prepped.</p>
+            {meetingsLoading ? (
+              <p className="text-[11px] text-muted-foreground">Loading meetings…</p>
+            ) : recurringOneOnOnes.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">No recurring 1:1s found in the next 60 days.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {recurringOneOnOnes.map(m => (
+                  <Badge key={m.key} variant="outline" className="bg-background gap-1">
+                    <Repeat className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs">{m.attendeeLabel}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* One-off 1:1s — high-value */}
+          {!meetingsLoading && oneOffOneOnOnes.length > 0 && (
+            <div className="space-y-1.5 border-t pt-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium">One-off 1:1s</label>
+                <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-800 hover:bg-amber-100">high-value</Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                One-time 1:1s often need the most prep — included by default.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {oneOffOneOnOnes.map(m => (
+                  <Badge key={m.key} variant="outline" className="bg-background gap-1">
+                    <Star className="h-3 w-3 text-amber-500" />
+                    <span className="text-xs">{m.attendeeLabel}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recurring group meetings — opt-in */}
+          <div className="space-y-1.5 border-t pt-3">
+            <label className="text-xs font-medium">Recurring meetings with more people</label>
+            <p className="text-[11px] text-muted-foreground">
+              Pick which group meetings to also prep.
+            </p>
+            {meetingsLoading ? (
+              <p className="text-[11px] text-muted-foreground">Loading meetings…</p>
+            ) : recurringGroups.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">No recurring group meetings found.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {recurringGroups.map(m => (
+                  <label key={m.key} className="flex items-center gap-2.5 cursor-pointer">
+                    <Checkbox
+                      checked={draft.included_group_series.includes(m.key)}
+                      onCheckedChange={() => toggleGroupSeries(m.key)}
+                    />
+                    <span className="text-sm">{m.title}</span>
+                    <span className="text-[11px] text-muted-foreground">{m.attendeeCount} attendees</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Always-include override */}
+          <div className="space-y-2 border-t pt-3">
             <label className="text-xs font-medium">Always include meetings with</label>
             <p className="text-[11px] text-muted-foreground">
-              Meetings with these people always qualify, even if other attendees are present.
+              Force-include anyone here, regardless of the rules above.
             </p>
             <div className="flex flex-wrap gap-1.5">
               {draft.always_include.map(name => (
@@ -226,55 +316,41 @@ function RecurringMeetingPrepSection({
               </Button>
             </div>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Max other attendees (after removing above)</label>
-            <Input
-              type="number"
-              min={0}
-              max={5}
-              value={draft.max_others_after_exclude}
-              onChange={e =>
-                update({ max_others_after_exclude: Math.max(0, Math.min(5, parseInt(e.target.value) || 0)) })
-              }
-              className="h-9 text-sm w-24"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              1 = true 1:1s. Higher includes small group meetings. 0 = only "always include" people.
-            </p>
-          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pre-sync integrations</CardTitle>
+          <CardTitle className="text-base">Default tools</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <label className="flex items-center gap-3">
-            <Switch checked={draft.sync_zoom_before} onCheckedChange={v => update({ sync_zoom_before: v })} />
-            <span className="text-sm">Sync Zoom recordings before generating</span>
-          </label>
-
-          <label className="flex items-center gap-3">
-            <Switch checked={draft.sync_slack_before} onCheckedChange={v => update({ sync_slack_before: v })} />
-            <span className="text-sm">Sync Slack messages before generating</span>
-          </label>
-
-          <div className="pt-2 border-t">
-            <label className="flex items-center gap-3">
-              <Switch checked={draft.enrich_stackone ?? false} onCheckedChange={v => update({ enrich_stackone: v })} />
-              <div>
-                <span className="text-sm">Enrich with StackOne data</span>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Pull HRIS, project management, and CRM data for each team member during prep generation.
-                  Requires a connected StackOne account in Settings &rarr; Integrations.
-                </p>
-              </div>
-            </label>
+          <p className="text-[11px] text-muted-foreground">
+            Data sources gathered for every prep. You can fine-tune tools per person from each
+            1:1's prep panel.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {PREP_TOOLS.map(tool => {
+              const on = draft.prep_tools.includes(tool.id);
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  title={tool.description}
+                  onClick={() => toggleTool(tool.id)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs border transition-colors',
+                    on
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  {tool.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 border-t pt-3">
             <label className="text-xs font-medium">Slack channels to include</label>
             <div className="flex flex-wrap gap-1.5">
               {draft.slack_channels.map(ch => (
@@ -557,10 +633,12 @@ export default function CosPrepSchedulePanel() {
       run_hour_local: d.run_hour_local,
       timezone: d.timezone,
       always_include: d.always_include,
-      max_others_after_exclude: d.max_others_after_exclude,
-      sync_zoom_before: d.sync_zoom_before,
-      sync_slack_before: d.sync_slack_before,
-      enrich_stackone: d.enrich_stackone,
+      included_group_series: d.included_group_series,
+      prep_tools: d.prep_tools,
+      // Keep the deprecated booleans consistent with prep_tools for back-compat.
+      sync_zoom_before: d.prep_tools.includes('zoom'),
+      sync_slack_before: d.prep_tools.includes('slack'),
+      enrich_stackone: d.prep_tools.includes('stackone'),
       slack_channels: d.slack_channels,
       dci_enabled: d.dci_enabled,
       dci_sources: d.dci_sources,

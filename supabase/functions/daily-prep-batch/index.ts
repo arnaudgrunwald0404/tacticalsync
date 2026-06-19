@@ -148,8 +148,18 @@ serve(async (req) => {
           .maybeSingle()
 
         const alwaysInclude: string[] = (schedule?.always_include ?? []) as string[]
-        const syncZoom: boolean = schedule?.sync_zoom_before ?? true
-        const syncSlack: boolean = schedule?.sync_slack_before ?? true
+        const includedGroupSeries = new Set<string>((schedule?.included_group_series ?? []) as string[])
+        // Global default toolset (which data sources prep gathers). Falls back to
+        // the deprecated booleans for rows not yet migrated.
+        const globalTools: string[] = Array.isArray(schedule?.prep_tools) && schedule.prep_tools.length > 0
+          ? (schedule.prep_tools as string[])
+          : [
+              ...(schedule?.sync_zoom_before ?? true ? ['zoom'] : []),
+              ...(schedule?.sync_slack_before ?? true ? ['slack'] : []),
+              ...(schedule?.enrich_stackone ? ['stackone'] : []),
+            ]
+        const syncZoom: boolean = globalTools.includes('zoom')
+        const syncSlack: boolean = globalTools.includes('slack')
         const slackChannels: string[] = (schedule?.slack_channels ?? []) as string[]
 
         // ── Step 1: Sync integrations ─────────────────────────────────────
@@ -260,7 +270,7 @@ serve(async (req) => {
 
         const { data: events } = await supabase
           .from('cos_one_on_one_events')
-          .select('id, team_member_id, title, start_time, attendee_email, attendee_emails, attendee_name, status')
+          .select('id, team_member_id, title, start_time, attendee_email, attendee_emails, attendee_name, recurring_event_id, status')
           .eq('user_id', userId)
           .gte('start_time', todayStart.toISOString())
           .lte('start_time', todayEnd.toISOString())
@@ -270,10 +280,10 @@ serve(async (req) => {
 
         const { data: members } = await supabase
           .from('cos_team_members')
-          .select('id, name')
+          .select('id, name, agent_overrides')
           .eq('user_id', userId)
 
-        const allMembers = (members ?? []) as Array<{ id: string; name: string }>
+        const allMembers = (members ?? []) as Array<{ id: string; name: string; agent_overrides: Record<string, unknown> | null }>
         const memberById = new Map(allMembers.map(m => [m.id, m]))
 
         // Match an attendee email's local-part to a team member by name.
@@ -301,7 +311,7 @@ serve(async (req) => {
         for (const event of (events ?? []) as Array<{
           id: string; team_member_id: string | null; title: string | null;
           start_time: string; attendee_email: string | null; attendee_emails: string[] | null;
-          attendee_name: string | null; status: string;
+          attendee_name: string | null; recurring_event_id: string | null; status: string;
         }>) {
           // Resolve the member: prefer the DB link, then fall back to matching
           // the best available attendee email's local-part against member names.
@@ -318,12 +328,22 @@ serve(async (req) => {
 
           const memberNameNorm = member.name.toLowerCase().trim()
 
+          // always_include is an explicit override that force-qualifies.
           if (alwaysIncludeNorm.has(memberNameNorm)) {
             qualifyingMemberIds.add(member.id)
             continue
           }
 
-          qualifyingMemberIds.add(member.id)
+          // Inclusion model: 1:1s (≤1 other attendee) auto-qualify; recurring
+          // group meetings qualify only if the user opted their series in;
+          // one-off group meetings never auto-qualify.
+          const attendeeCount = event.attendee_emails?.length ?? 0
+          const isOneOnOne = attendeeCount <= 1
+          if (isOneOnOne) {
+            qualifyingMemberIds.add(member.id)
+          } else if (event.recurring_event_id && includedGroupSeries.has(event.recurring_event_id)) {
+            qualifyingMemberIds.add(member.id)
+          }
         }
 
         meetingsQualified = qualifyingMemberIds.size
@@ -334,6 +354,12 @@ serve(async (req) => {
 
         for (const memberId of qualifyingMemberIds) {
           const member = memberById.get(memberId)
+          // Effective toolset: a per-member override (agent_overrides.prep_tools)
+          // wins over the global default.
+          const memberOverride = member?.agent_overrides?.['prep_tools']
+          const tools: string[] = Array.isArray(memberOverride) && memberOverride.length > 0
+            ? memberOverride as string[]
+            : globalTools
           try {
             // Check for cached prep.
             const { data: existingPrep } = await supabase
@@ -364,6 +390,7 @@ serve(async (req) => {
                 team_member_id: memberId,
                 force_regenerate: false,
                 _batch_user_id: userId,
+                tools,
               }),
             })
 

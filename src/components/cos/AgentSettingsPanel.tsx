@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ interface AgentConfig {
   pre_stage_prep: boolean;
   escalate_patterns: boolean;
   recommend_format: boolean;
+  recommend_tools: boolean;
   nudge_timing_hours: number;
   quiet_hours_start: number;
   quiet_hours_end: number;
@@ -32,6 +33,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   pre_stage_prep: true,
   escalate_patterns: false,
   recommend_format: false,
+  recommend_tools: false,
   nudge_timing_hours: 24,
   quiet_hours_start: 18,
   quiet_hours_end: 9,
@@ -287,6 +289,14 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
               description="Suggest meeting format (full / async / skip) based on agenda density"
               checked={config.recommend_format}
               onChange={recommend_format => update({ recommend_format })}
+            />
+
+            <FeatureToggle
+              icon={Wrench}
+              label="Tool recommendations"
+              description="Suggest which data sources to attach to each 1:1's prep, shown in the prep panel"
+              checked={config.recommend_tools}
+              onChange={recommend_tools => update({ recommend_tools })}
             />
 
             {/* Per-person exceptions summary */}
