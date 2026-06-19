@@ -134,7 +134,7 @@ serve(async (req) => {
     }
 
     return ephemeral(
-      `:sparkles: Added to your TacticalSync suggestions: *${text}*\nOpen the app to route it to a list.`,
+      `:sparkles: Added to your TacticalSync suggestions: *${text}*\nOpen <https://tacticalsync.com/chief-of-staff|the TacticalSync app> to route it to a list.`,
     )
   } catch (error) {
     console.error('slack-add-suggestion error:', error)
