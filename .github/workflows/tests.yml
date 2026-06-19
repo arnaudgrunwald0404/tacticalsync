@@ -122,3 +122,25 @@ jobs:
 
       - name: Run linter
         run: npm run lint
+
+  validate-migrations:
+    name: Validate Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Catches duplicate / out-of-order migration timestamps before they
+      # merge to main and break `npm run dev` (predev runs db:validate).
+      - name: Validate migrations
+        run: npm run db:validate

@@ -11,23 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function utcHourToLocal(utcHour: number): number {
-  const d = new Date();
-  d.setUTCHours(utcHour, 0, 0, 0);
-  return d.getHours();
-}
-
-function formatHour(h: number): string {
-  if (h === 0) return '12:00 AM';
-  if (h < 12) return `${h}:00 AM`;
-  if (h === 12) return '12:00 PM';
-  return `${h - 12}:00 PM`;
-}
+import { formatHourLabel } from '@/hooks/usePrepScheduleConfig';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,7 +74,7 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
       const db = supabase as any;
       const [scheduleRes, slackRes] = await Promise.all([
         db.from('cos_prep_schedule')
-          .select('dci_enabled, dci_slack_dm, dci_sources, dci_instructions, dci_last_run_at, dci_last_run_status, run_hour_utc')
+          .select('dci_enabled, dci_slack_dm, dci_sources, dci_instructions, dci_last_run_at, dci_last_run_status, run_hour_local')
           .eq('user_id', user.id)
           .maybeSingle(),
         db.from('user_slack_credentials')
@@ -105,7 +89,7 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
         dci_enabled: boolean; dci_slack_dm: boolean;
         dci_sources: string[] | null; dci_instructions: string | null;
         dci_last_run_at: string | null; dci_last_run_status: string | null;
-        run_hour_utc: number | null;
+        run_hour_local: number | null;
       } | null;
 
       if (schedule?.dci_sources) setSources(schedule.dci_sources);
@@ -116,11 +100,11 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
         setSlackDm(schedule.dci_slack_dm ?? true);
         setLastRunStatus(schedule.dci_last_run_status);
         setLastRunAt(schedule.dci_last_run_at);
-        if (schedule.run_hour_utc != null) setRunHourLocal(utcHourToLocal(schedule.run_hour_utc));
+        if (schedule.run_hour_local != null) setRunHourLocal(schedule.run_hour_local);
       } else {
         const dismissed = localStorage.getItem('dci-brief-banner-dismissed');
         setState(dismissed === 'true' ? 'dismissed' : 'prompt');
-        if (schedule?.run_hour_utc != null) setRunHourLocal(utcHourToLocal(schedule.run_hour_utc));
+        if (schedule?.run_hour_local != null) setRunHourLocal(schedule.run_hour_local);
       }
     }
     check();
@@ -325,7 +309,7 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
   // ── Render: Enabled state ───────────────────────────────────────────────
 
   if (state === 'enabled') {
-    const timeLabel = runHourLocal != null ? formatHour(runHourLocal) : 'your scheduled time';
+    const timeLabel = runHourLocal != null ? formatHourLabel(runHourLocal) : 'your scheduled time';
     const lastRunLabel = lastRunAt
       ? new Date(lastRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : null;

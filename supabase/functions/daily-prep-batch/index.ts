@@ -15,14 +15,33 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 /**
+ * Current hour (0-23) in the given IANA timezone. Falls back to UTC if the
+ * timezone is missing or invalid.
+ */
+function currentHourInTimezone(timeZone: string): number {
+  try {
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: timeZone || 'UTC',
+    }).format(new Date())
+    const hour = parseInt(formatted, 10)
+    return Number.isNaN(hour) ? new Date().getUTCHours() : hour % 24
+  } catch {
+    return new Date().getUTCHours()
+  }
+}
+
+/**
  * Daily prep batch generator.
  *
  * Two invocation modes:
- * 1. **Cron mode** (no Authorization header): runs for ALL users whose
- *    cos_prep_schedule.enabled = true and run_hour_utc matches the current hour.
+ * 1. **Cron mode** (no Authorization header, or the service-role key — how
+ *    pg_cron calls us): runs for ALL users with cos_prep_schedule.enabled or
+ *    dci_enabled whose run_hour_local matches the current hour in their timezone.
  *    Triggered by pg_cron every hour.
- * 2. **User mode** (with Authorization header): runs for the calling user only,
- *    regardless of schedule settings. Used by the "Run now" button in Settings.
+ * 2. **User mode** (with a user's Authorization header): runs for the calling
+ *    user only, regardless of schedule. Used by the "Run now" buttons in Settings.
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -41,14 +60,16 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    // Determine invocation mode.
+    // Determine invocation mode. A user JWT means "Run now"; no token or the
+    // service-role key (how pg_cron authenticates) means the scheduled batch.
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
+    const isUserToken = jwt && jwt !== serviceRoleKey
 
     let targetUserIds: string[] = []
     let triggerType: 'cron' | 'manual' = 'manual'
 
-    if (jwt) {
+    if (isUserToken) {
       const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
       if (userErr || !userData?.user) {
         return jsonResponse({ error: 'invalid_token' }, 401)
@@ -56,15 +77,18 @@ serve(async (req) => {
       targetUserIds = [userData.user.id]
       triggerType = 'manual'
     } else {
-      const currentHourUtc = new Date().getUTCHours()
-      // Include users with either 1:1 prep or DCI brief enabled at this hour
+      // Cron mode: load every enabled schedule, then keep the users whose local
+      // run hour matches the current hour in their own timezone (DST-correct).
       const { data: schedules } = await supabase
         .from('cos_prep_schedule')
-        .select('user_id, enabled, dci_enabled')
-        .eq('run_hour_utc', currentHourUtc)
+        .select('user_id, enabled, dci_enabled, run_hour_local, timezone')
         .or('enabled.eq.true,dci_enabled.eq.true')
 
-      targetUserIds = (schedules ?? []).map((s: { user_id: string }) => s.user_id)
+      targetUserIds = ((schedules ?? []) as Array<{
+        user_id: string; run_hour_local: number | null; timezone: string | null
+      }>)
+        .filter(s => currentHourInTimezone(s.timezone ?? 'UTC') === (s.run_hour_local ?? 8))
+        .map(s => s.user_id)
       triggerType = 'cron'
     }
 
@@ -124,8 +148,18 @@ serve(async (req) => {
           .maybeSingle()
 
         const alwaysInclude: string[] = (schedule?.always_include ?? []) as string[]
-        const syncZoom: boolean = schedule?.sync_zoom_before ?? true
-        const syncSlack: boolean = schedule?.sync_slack_before ?? true
+        const includedGroupSeries = new Set<string>((schedule?.included_group_series ?? []) as string[])
+        // Global default toolset (which data sources prep gathers). Falls back to
+        // the deprecated booleans for rows not yet migrated.
+        const globalTools: string[] = Array.isArray(schedule?.prep_tools) && schedule.prep_tools.length > 0
+          ? (schedule.prep_tools as string[])
+          : [
+              ...(schedule?.sync_zoom_before ?? true ? ['zoom'] : []),
+              ...(schedule?.sync_slack_before ?? true ? ['slack'] : []),
+              ...(schedule?.enrich_stackone ? ['stackone'] : []),
+            ]
+        const syncZoom: boolean = globalTools.includes('zoom')
+        const syncSlack: boolean = globalTools.includes('slack')
         const slackChannels: string[] = (schedule?.slack_channels ?? []) as string[]
 
         // ── Step 1: Sync integrations ─────────────────────────────────────
@@ -236,7 +270,7 @@ serve(async (req) => {
 
         const { data: events } = await supabase
           .from('cos_one_on_one_events')
-          .select('id, team_member_id, title, start_time, attendee_email, attendee_emails, attendee_name, status')
+          .select('id, team_member_id, title, start_time, attendee_email, attendee_emails, attendee_name, recurring_event_id, status')
           .eq('user_id', userId)
           .gte('start_time', todayStart.toISOString())
           .lte('start_time', todayEnd.toISOString())
@@ -246,10 +280,10 @@ serve(async (req) => {
 
         const { data: members } = await supabase
           .from('cos_team_members')
-          .select('id, name')
+          .select('id, name, agent_overrides')
           .eq('user_id', userId)
 
-        const allMembers = (members ?? []) as Array<{ id: string; name: string }>
+        const allMembers = (members ?? []) as Array<{ id: string; name: string; agent_overrides: Record<string, unknown> | null }>
         const memberById = new Map(allMembers.map(m => [m.id, m]))
 
         // Match an attendee email's local-part to a team member by name.
@@ -277,7 +311,7 @@ serve(async (req) => {
         for (const event of (events ?? []) as Array<{
           id: string; team_member_id: string | null; title: string | null;
           start_time: string; attendee_email: string | null; attendee_emails: string[] | null;
-          attendee_name: string | null; status: string;
+          attendee_name: string | null; recurring_event_id: string | null; status: string;
         }>) {
           // Resolve the member: prefer the DB link, then fall back to matching
           // the best available attendee email's local-part against member names.
@@ -294,12 +328,22 @@ serve(async (req) => {
 
           const memberNameNorm = member.name.toLowerCase().trim()
 
+          // always_include is an explicit override that force-qualifies.
           if (alwaysIncludeNorm.has(memberNameNorm)) {
             qualifyingMemberIds.add(member.id)
             continue
           }
 
-          qualifyingMemberIds.add(member.id)
+          // Inclusion model: 1:1s (≤1 other attendee) auto-qualify; recurring
+          // group meetings qualify only if the user opted their series in;
+          // one-off group meetings never auto-qualify.
+          const attendeeCount = event.attendee_emails?.length ?? 0
+          const isOneOnOne = attendeeCount <= 1
+          if (isOneOnOne) {
+            qualifyingMemberIds.add(member.id)
+          } else if (event.recurring_event_id && includedGroupSeries.has(event.recurring_event_id)) {
+            qualifyingMemberIds.add(member.id)
+          }
         }
 
         meetingsQualified = qualifyingMemberIds.size
@@ -310,6 +354,12 @@ serve(async (req) => {
 
         for (const memberId of qualifyingMemberIds) {
           const member = memberById.get(memberId)
+          // Effective toolset: a per-member override (agent_overrides.prep_tools)
+          // wins over the global default.
+          const memberOverride = member?.agent_overrides?.['prep_tools']
+          const tools: string[] = Array.isArray(memberOverride) && memberOverride.length > 0
+            ? memberOverride as string[]
+            : globalTools
           try {
             // Check for cached prep.
             const { data: existingPrep } = await supabase
@@ -340,6 +390,7 @@ serve(async (req) => {
                 team_member_id: memberId,
                 force_regenerate: false,
                 _batch_user_id: userId,
+                tools,
               }),
             })
 
