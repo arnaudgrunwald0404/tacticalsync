@@ -22,6 +22,8 @@ export interface PrepScheduleConfig {
   enabled: boolean;
   always_include: string[];
   max_others_after_exclude: number;
+  included_group_series: string[];
+  prep_tools: string[];
   sync_zoom_before: boolean;
   sync_slack_before: boolean;
   enrich_stackone: boolean;
@@ -46,6 +48,8 @@ export const DEFAULT_PREP_SCHEDULE: PrepScheduleConfig = {
   enabled: false,
   always_include: [],
   max_others_after_exclude: 1,
+  included_group_series: [],
+  prep_tools: ['zoom', 'slack'],
   sync_zoom_before: true,
   sync_slack_before: true,
   enrich_stackone: false,
@@ -73,6 +77,8 @@ function mapRow(data: Record<string, unknown> | null): PrepScheduleConfig {
     enabled: (data.enabled as boolean) ?? d.enabled,
     always_include: (data.always_include as string[]) ?? d.always_include,
     max_others_after_exclude: (data.max_others_after_exclude as number) ?? d.max_others_after_exclude,
+    included_group_series: (data.included_group_series as string[]) ?? d.included_group_series,
+    prep_tools: (data.prep_tools as string[]) ?? d.prep_tools,
     sync_zoom_before: (data.sync_zoom_before as boolean) ?? d.sync_zoom_before,
     sync_slack_before: (data.sync_slack_before as boolean) ?? d.sync_slack_before,
     enrich_stackone: (data.enrich_stackone as boolean) ?? d.enrich_stackone,

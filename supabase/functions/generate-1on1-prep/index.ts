@@ -13,6 +13,8 @@ interface GeneratePrepRequest {
   team_member_id: string
   event_id?: string
   force_regenerate?: boolean
+  /** Data sources to gather for this prep. Omitted = all (preserves prior behavior). */
+  tools?: string[]
 }
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -77,10 +79,15 @@ serve(async (req) => {
       userId = userData.user.id
     }
 
-    const { team_member_id, event_id, force_regenerate } = body
+    const { team_member_id, event_id, force_regenerate, tools } = body
     if (!team_member_id) {
       return jsonResponse({ error: 'team_member_id_required' }, 400)
     }
+
+    // Effective toolset: undefined = gather everything (back-compat); otherwise
+    // only the listed sources are gathered.
+    const toolSet = Array.isArray(tools) ? new Set(tools) : null
+    const toolEnabled = (id: string) => toolSet === null || toolSet.has(id)
 
     // Rate limit: 20 generations per user per day
     const dayStart = new Date()
@@ -371,7 +378,7 @@ serve(async (req) => {
       id: string; topic: string | null; start_time: string;
       duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
     }>
-    if (zoomRecordings.length > 0) {
+    if (toolEnabled('zoom') && zoomRecordings.length > 0) {
       contextParts.push(`\nRecent Zoom meetings with ${member.name}:`)
       let transcriptsIncluded = 0
       for (const rec of zoomRecordings) {
@@ -403,7 +410,7 @@ serve(async (req) => {
       content: string; sender_name: string | null; channel_name: string | null;
       is_dm: boolean; message_date: string;
     }>
-    if (slackMessages.length > 0) {
+    if (toolEnabled('slack') && slackMessages.length > 0) {
       const dmMessages = slackMessages.filter(m => m.is_dm)
       const channelMessages = slackMessages.filter(m => !m.is_dm)
 
@@ -431,7 +438,7 @@ serve(async (req) => {
     }
 
     // ── StackOne enrichment (HRIS, ticketing, CRM) ────────────────────────
-    if (member.email) {
+    if (toolEnabled('stackone') && member.email) {
       try {
         const s1Config = await getStackOneConfig(supabase, userId)
         if (s1Config) {

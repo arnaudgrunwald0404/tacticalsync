@@ -5,7 +5,7 @@ import {
   ClipboardList, NotebookText, CornerUpLeft, ExternalLink,
   Repeat, Clock, Video, Brain, AlertTriangle, Check, Calendar,
   TrendingUp, Bot, Mail, Rocket, Flag, HelpCircle, History, Settings,
-  ChevronRight, ArrowUp, CircleCheck, UserPlus, Plus, EyeOff,
+  ChevronRight, ArrowUp, CircleCheck, UserPlus, Plus, EyeOff, Wrench,
 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
+import { PREP_TOOLS } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
@@ -946,6 +947,9 @@ export function OneOnOnePrepDrawer({
                   </a>
                 </Card>
 
+                {/* tools for this 1:1 */}
+                {member && <PrepToolsCard memberId={member.id} memberName={firstName} />}
+
                 {/* jump to settings */}
                 <button onClick={() => setActiveTab('settings')} className="flex items-center gap-[11px] px-4 py-[13px] bg-card border border-border rounded-lg hover:bg-muted/50 transition-colors text-left">
                   <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-muted grid place-items-center"><Settings className="h-[18px] w-[18px] text-muted-foreground" /></span>
@@ -1154,6 +1158,109 @@ export function OneOnOnePrepDrawer({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── Tool recommendations for this 1:1 (Prep right rail) ─────────────────────────
+
+interface ToolRec { tool: string; action: 'add' | 'remove'; reason: string }
+
+function PrepToolsCard({ memberId, memberName }: { memberId: string; memberName: string }) {
+  const { toast } = useToast();
+  const [currentTools, setCurrentTools] = useState<string[]>([]);
+  const [recs, setRecs] = useState<ToolRec[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('recommend-prep-tools', {
+          body: { team_member_id: memberId },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        const res = data as { current_tools?: string[]; recommendations?: ToolRec[] };
+        setCurrentTools(res.current_tools ?? []);
+        setRecs(res.recommendations ?? []);
+      } catch {
+        if (!cancelled) { setCurrentTools([]); setRecs([]); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [memberId]);
+
+  const labelFor = (id: string) => PREP_TOOLS.find(t => t.id === id)?.label ?? id;
+
+  const applyRec = async (rec: ToolRec) => {
+    setApplying(rec.tool);
+    const next = rec.action === 'add'
+      ? Array.from(new Set([...currentTools, rec.tool]))
+      : currentTools.filter(t => t !== rec.tool);
+    try {
+      // Merge into existing per-member overrides (preserve other keys).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any)
+        .from('cos_team_members').select('agent_overrides').eq('id', memberId).single();
+      const overrides = (data?.agent_overrides ?? {}) as Record<string, unknown>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).from('cos_team_members')
+        .update({ agent_overrides: { ...overrides, prep_tools: next } }).eq('id', memberId);
+      setCurrentTools(next);
+      setRecs(prev => prev.filter(r => r.tool !== rec.tool));
+      toast({ title: rec.action === 'add' ? `Added ${labelFor(rec.tool)}` : `Removed ${labelFor(rec.tool)}` });
+    } catch (err) {
+      toast({ title: 'Could not update tools', description: String(err), variant: 'destructive' });
+    } finally {
+      setApplying(null);
+    }
+  };
+
+  return (
+    <Card className="px-[18px] py-4">
+      <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5">
+        <Wrench className="h-3.5 w-3.5" />Tools for this 1:1
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking…</div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {currentTools.length === 0 ? (
+              <span className="text-xs text-muted-foreground">Using your default tools.</span>
+            ) : currentTools.map(t => (
+              <Badge key={t} variant="outline" className="bg-background text-xs">{labelFor(t)}</Badge>
+            ))}
+          </div>
+
+          {recs.length > 0 && (
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <p className="text-[11px] font-medium text-muted-foreground">Suggestions</p>
+              {recs.map(rec => (
+                <div key={`${rec.action}-${rec.tool}`} className="flex items-start gap-2">
+                  <button
+                    onClick={() => applyRec(rec)}
+                    disabled={applying === rec.tool}
+                    className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
+                  >
+                    {applying === rec.tool
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : rec.action === 'add' ? <Plus className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                    {rec.action === 'add' ? 'Add' : 'Remove'} {labelFor(rec.tool)}
+                  </button>
+                  <span className="text-[11px] text-muted-foreground leading-snug flex-1">{rec.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 
