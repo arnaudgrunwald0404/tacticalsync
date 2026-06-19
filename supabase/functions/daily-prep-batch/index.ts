@@ -236,7 +236,7 @@ serve(async (req) => {
 
         const { data: events } = await supabase
           .from('cos_one_on_one_events')
-          .select('id, team_member_id, title, start_time, attendee_emails, attendee_name, status')
+          .select('id, team_member_id, title, start_time, attendee_email, attendee_emails, attendee_name, status')
           .eq('user_id', userId)
           .gte('start_time', todayStart.toISOString())
           .lte('start_time', todayEnd.toISOString())
@@ -249,9 +249,24 @@ serve(async (req) => {
           .select('id, name')
           .eq('user_id', userId)
 
-        const memberById = new Map(
-          ((members ?? []) as Array<{ id: string; name: string }>).map(m => [m.id, m])
-        )
+        const allMembers = (members ?? []) as Array<{ id: string; name: string }>
+        const memberById = new Map(allMembers.map(m => [m.id, m]))
+
+        // Match an attendee email's local-part to a team member by name.
+        // Mirrors clientMatchByEmailLocal in the 1:1s UI (ChiefOfStaff.tsx) so
+        // the batch pre-stages prep for 1:1s that were resolved client-side but
+        // never written back to cos_one_on_one_events.team_member_id.
+        const matchMemberByEmail = (email: string | null): { id: string; name: string } | null => {
+          if (!email) return null
+          const local = email.split('@')[0].toLowerCase().replace(/[._-]/g, '')
+          for (const m of allMembers) {
+            const parts = m.name.toLowerCase().trim().split(/\s+/)
+            if (parts.length < 2) continue
+            const first = parts[0], last = parts[parts.length - 1]
+            if (local === first[0] + last || local === first + last) return m
+          }
+          return null
+        }
 
         const alwaysIncludeNorm = new Set(
           alwaysInclude.map(n => n.toLowerCase().trim())
@@ -261,21 +276,30 @@ serve(async (req) => {
 
         for (const event of (events ?? []) as Array<{
           id: string; team_member_id: string | null; title: string | null;
-          start_time: string; attendee_emails: string[] | null; attendee_name: string | null;
-          status: string;
+          start_time: string; attendee_email: string | null; attendee_emails: string[] | null;
+          attendee_name: string | null; status: string;
         }>) {
-          if (!event.team_member_id) continue
-          const member = memberById.get(event.team_member_id)
+          // Resolve the member: prefer the DB link, then fall back to matching
+          // the best available attendee email's local-part against member names.
+          let member = event.team_member_id ? (memberById.get(event.team_member_id) ?? null) : null
+          if (!member) {
+            const bestEmail =
+              event.attendee_email
+              ?? event.attendee_emails?.[0]
+              ?? (event.attendee_name?.includes('@') ? event.attendee_name : null)
+              ?? null
+            member = matchMemberByEmail(bestEmail)
+          }
           if (!member) continue
 
           const memberNameNorm = member.name.toLowerCase().trim()
 
           if (alwaysIncludeNorm.has(memberNameNorm)) {
-            qualifyingMemberIds.add(event.team_member_id)
+            qualifyingMemberIds.add(member.id)
             continue
           }
 
-          qualifyingMemberIds.add(event.team_member_id)
+          qualifyingMemberIds.add(member.id)
         }
 
         meetingsQualified = qualifyingMemberIds.size
