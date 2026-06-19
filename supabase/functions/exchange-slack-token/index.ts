@@ -95,10 +95,16 @@ serve(async (req) => {
       user?: string
     }
 
-    // Also fetch email via users.info if we have the user ID.
+    // The Slack user to associate with this account is the human who authorized
+    // the app — tokenData.authed_user.id. auth.test on the bot token returns the
+    // *bot's* user id, so we must NOT use that as the account's slack_user_id
+    // (it would be identical for every user and never match a slash command).
+    const slackUserId = tokenData.authed_user?.id ?? authTest.user_id ?? null
+
+    // Also fetch email via users.info for the authorizing user.
     let slackEmail: string | null = null
-    if (authTest.ok && authTest.user_id) {
-      const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${authTest.user_id}`, {
+    if (slackUserId) {
+      const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${slackUserId}`, {
         headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
       })
       const userInfo = await userInfoRes.json() as {
@@ -119,7 +125,7 @@ serve(async (req) => {
         scope: tokenData.scope ?? '',
         slack_team_id: tokenData.team?.id ?? null,
         slack_team_name: tokenData.team?.name ?? null,
-        slack_user_id: authTest.user_id ?? null,
+        slack_user_id: slackUserId,
         slack_email: slackEmail,
         last_sync_at: null,
         last_sync_status: null,
