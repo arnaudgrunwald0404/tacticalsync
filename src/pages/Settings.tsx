@@ -2730,12 +2730,12 @@ const Settings = () => {
         ) : activeSection === "agent-settings" ? (
           <div className="mb-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Agentic follow-through</h2>
+              <h2 className="text-2xl font-bold mb-1">Agent</h2>
               <p className="text-muted-foreground text-sm">
                 An autonomous agent that works between your 1:1s — nudging on overdue actions, pre-staging meeting prep, and detecting patterns.
               </p>
             </div>
-            <AgentSettingsPanel />
+            <AgentSettingsPanel onNavigateToSection={setActiveSection} />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

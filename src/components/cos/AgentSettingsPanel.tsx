@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cn } from '@/lib/utils';
+import { AgentActivityFeed } from './AgentActivityFeed';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -66,15 +67,18 @@ function formatHour(h: number): string {
 
 interface AgentSettingsPanelProps {
   className?: string;
+  /** Allows the panel to jump the user to another Settings section (e.g. Slack). */
+  onNavigateToSection?: (section: string) => void;
 }
 
-export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
+export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSettingsPanelProps) {
   const { toast } = useToast();
   const [config, setConfig] = useState<AgentConfig>(DEFAULT_AGENT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
   const [slackEmail, setSlackEmail] = useState<string | null>(null);
+  const [exceptionCount, setExceptionCount] = useState(0);
 
   // Load current config
   useEffect(() => {
@@ -101,6 +105,19 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
 
         setSlackConnected(slackCreds?.connected === true);
         setSlackEmail(slackCreds?.slack_email ?? null);
+
+        // Count per-person exceptions (members with any agent override turned off)
+        const { data: members } = await (supabase as unknown as SupabaseClient)
+          .from('cos_team_members')
+          .select('agent_overrides')
+          .eq('user_id', userData.user.id);
+
+        const exceptions = ((members ?? []) as Array<{ agent_overrides: Record<string, unknown> | null }>)
+          .filter(m => {
+            const o = m.agent_overrides ?? {};
+            return o.auto_prep === false || o.nudge_actions === false;
+          }).length;
+        setExceptionCount(exceptions);
       } catch (err) {
         console.error('Failed to load agent settings:', err);
       } finally {
@@ -151,37 +168,95 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
-      {/* Master toggle */}
-      <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-card">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            'h-9 w-9 rounded-lg flex items-center justify-center',
-            config.enabled ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-          )}>
-            <Bot className="h-5 w-5" />
+    <div className={cn('space-y-8', className)}>
+      {/* ── Group 1: Activation ─────────────────────────────────────────── */}
+      <SettingsGroup
+        title="Activation"
+        description="Turn the Agent on and make sure it has a way to reach you."
+      >
+        {/* Master toggle */}
+        <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-card">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              'h-9 w-9 rounded-lg flex items-center justify-center',
+              config.enabled ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+            )}>
+              <Bot className="h-5 w-5" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Agent</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {config.enabled
+                  ? 'Active — working between your 1:1s'
+                  : 'Enable to get proactive nudges and pre-staged prep'}
+              </p>
+            </div>
           </div>
-          <div>
-            <Label className="text-sm font-semibold">Agentic Follow-Through</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {config.enabled
-                ? 'Agent is actively monitoring your 1:1s'
-                : 'Enable to get proactive nudges and pre-staged prep'}
-            </p>
-          </div>
+          <Switch
+            checked={config.enabled}
+            onCheckedChange={enabled => update({ enabled })}
+          />
         </div>
-        <Switch
-          checked={config.enabled}
-          onCheckedChange={enabled => update({ enabled })}
-        />
-      </div>
+
+        {/* Slack prerequisite — guided step */}
+        <div className={cn(
+          'flex items-center justify-between px-4 py-3 rounded-lg border',
+          slackConnected
+            ? 'border-border bg-background'
+            : 'border-amber-200 bg-amber-50/50',
+        )}>
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              'h-8 w-8 rounded-md flex items-center justify-center',
+              slackConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600',
+            )}>
+              <Slack className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Slack delivery</span>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[9px] h-4 px-1.5',
+                    slackConnected
+                      ? 'border-emerald-200 text-emerald-700'
+                      : 'border-amber-300 text-amber-700',
+                  )}
+                >
+                  {slackConnected
+                    ? `Connected${slackEmail ? ` as ${slackEmail}` : ''}`
+                    : 'Required'}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {slackConnected
+                  ? 'Nudges and alerts will be delivered to your Slack DMs.'
+                  : 'The Agent reaches you over Slack. Connect it so nudges and alerts can be delivered.'}
+              </p>
+            </div>
+          </div>
+          {!slackConnected && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-shrink-0 gap-1.5"
+              onClick={() => onNavigateToSection?.('slack-sync')}
+            >
+              Connect Slack
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </SettingsGroup>
 
       {config.enabled && (
         <>
-          {/* Feature toggles */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Features</h3>
-
+          {/* ── Group 2: What the agent does ──────────────────────────────── */}
+          <SettingsGroup
+            title="What the Agent does"
+            description="These are team-wide defaults. You can override prep and nudges for individual people from each 1:1's prep panel."
+          >
             <FeatureToggle
               icon={Bell}
               label="Nudge on overdue actions"
@@ -193,7 +268,7 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
             <FeatureToggle
               icon={FileText}
               label="Pre-stage meeting prep"
-              description="Auto-generate prep 24 hours before each 1:1"
+              description="Auto-generate prep ahead of each 1:1 (timing set below)"
               checked={config.pre_stage_prep}
               onChange={pre_stage_prep => update({ pre_stage_prep })}
             />
@@ -201,25 +276,58 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
             <FeatureToggle
               icon={AlertTriangle}
               label="Escalation alerts"
-              description="Flag patterns like chronic overdue items or missed meetings"
+              description="Flag patterns like chronic overdue items, missed meetings, or stalled topics"
               checked={config.escalate_patterns}
               onChange={escalate_patterns => update({ escalate_patterns })}
-              badge="Coming soon"
             />
 
             <FeatureToggle
               icon={BarChart3}
               label="Format recommendations"
-              description="Suggest meeting format (full/async/skip) based on agenda density"
+              description="Suggest meeting format (full / async / skip) based on agenda density"
               checked={config.recommend_format}
               onChange={recommend_format => update({ recommend_format })}
-              badge="Coming soon"
             />
-          </div>
 
-          {/* Timing */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Timing</h3>
+            {/* Per-person exceptions summary */}
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md border border-dashed border-border bg-muted/30">
+              <Users className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-muted-foreground">
+                {exceptionCount > 0 ? (
+                  <>
+                    <span className="font-medium text-foreground">
+                      {exceptionCount} {exceptionCount === 1 ? 'person has' : 'people have'} custom Agent settings
+                    </span>{' '}
+                    that override these defaults. Adjust them from each person's 1:1 prep panel.
+                  </>
+                ) : (
+                  <>Need an exception for someone? You can turn prep or nudges off for an individual from their 1:1 prep panel.</>
+                )}
+              </p>
+            </div>
+          </SettingsGroup>
+
+          {/* ── Group 3: When it contacts you ─────────────────────────────── */}
+          <SettingsGroup
+            title="When it contacts you"
+            description="Control delivery channel, timing, and quiet hours."
+          >
+            {/* Slack notifications toggle */}
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border bg-background">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">Send Slack notifications</span>
+                {!slackConnected && (
+                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-200 text-amber-600">
+                    Connect Slack first
+                  </Badge>
+                )}
+              </div>
+              <Switch
+                checked={config.slack_notifications}
+                onCheckedChange={slack_notifications => update({ slack_notifications })}
+                disabled={!slackConnected}
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -300,37 +408,16 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
                 </Select>
               </div>
             </div>
-          </div>
+          </SettingsGroup>
 
-          {/* Notifications */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notifications</h3>
-
-            <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border bg-background">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">Slack notifications</span>
-                {slackConnected ? (
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-200 text-emerald-700">
-                    Connected{slackEmail ? ` as ${slackEmail}` : ''}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-200 text-amber-600">
-                    Not connected
-                  </Badge>
-                )}
-              </div>
-              <Switch
-                checked={config.slack_notifications}
-                onCheckedChange={slack_notifications => update({ slack_notifications })}
-                disabled={!slackConnected}
-              />
-            </div>
-            {!slackConnected && config.slack_notifications && (
-              <p className="text-[10px] text-amber-600 px-3">
-                Connect Slack in Settings to receive notifications.
-              </p>
-            )}
-          </div>
+          {/* ── Recent activity (co-located outcomes) ─────────────────────── */}
+          <SettingsGroup
+            title="Recent activity"
+            description="What the Agent has done on your behalf."
+            icon={Activity}
+          >
+            <AgentActivityFeed />
+          </SettingsGroup>
         </>
       )}
     </div>
@@ -338,6 +425,33 @@ export function AgentSettingsPanel({ className }: AgentSettingsPanelProps) {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+function SettingsGroup({
+  title,
+  description,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  description?: string;
+  icon?: React.ElementType;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+          {Icon && <Icon className="h-3.5 w-3.5" />}
+          {title}
+        </h3>
+        {description && (
+          <p className="text-[11px] text-muted-foreground/80 mt-1">{description}</p>
+        )}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
 
 function FeatureToggle({
   icon: Icon,
