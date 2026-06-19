@@ -3384,31 +3384,6 @@ function renderMarkdown(content: string): React.ReactNode {
   return <>{elements}</>;
 }
 
-// ── Team — ClearGO API types ──────────────────────────────────────────────────
-
-interface CleargoMember { id: string; name: string; role: string; }
-interface CleargoEpic {
-  name: string; tier: string;
-  target_launch_date: string | null;
-  risk_level: string | null;
-  readiness_score: number | null;
-}
-interface CleargoEscalation {
-  epic_name: string; blocker_title: string;
-  severity: string; days_blocked: number;
-}
-interface CleargoPrep {
-  person: CleargoMember;
-  summary: { active_epics: number; completed_this_week: number; open_blockers: number; escalations_needed: number };
-  active_epics: CleargoEpic[];
-  completed_this_week: CleargoEpic[];
-  escalations_needed: CleargoEscalation[];
-  suggested_talking_points: string[];
-}
-
-const CLEARGO_API_URL = import.meta.env.VITE_CLEARGO_API_URL ?? 'https://cleargo.netlify.app';
-const CLEARGO_API_KEY = import.meta.env.VITE_CLEARGO_API_KEY ?? '';
-
 function buildPersonTopicSuggestPrompt(
   member: CosTeamMember,
   accts: CosPersonAccountability[],
@@ -3454,129 +3429,6 @@ function buildPersonTopicSuggestPrompt(
   return lines.join('\n');
 }
 
-function buildStaticPrepPrompt(member: CosTeamMember, prepInstructions?: string): string {
-  const parts = [`I have a 1:1 with ${member.name} (${member.role}) coming up.`];
-  if (member.context_notes) parts.push(`Context: ${member.context_notes}.`);
-  if (member.last_1on1_date) parts.push(`Last meeting: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}.`);
-  if (prepInstructions) parts.push(`My standing instructions for this prep: ${prepInstructions}`);
-  parts.push('Please help me prepare: what questions should I ask, what updates to request, and how to make the most of this time?');
-  return parts.join(' ');
-}
-
-function buildLivePrepPrompt(prep: CleargoPrep, member: CosTeamMember, prepInstructions?: string): string {
-  const lines: string[] = [
-    `1:1 Prep — ${prep.person.name} (${prep.person.role})`,
-    `Generated: ${format(new Date(), 'MMM d yyyy, h:mm a')}`,
-    '',
-    `📊 ${prep.summary.active_epics} active epics · ${prep.summary.open_blockers} open blockers · ${prep.summary.escalations_needed} escalation${prep.summary.escalations_needed !== 1 ? 's' : ''}`,
-    '',
-  ];
-
-  if (prep.escalations_needed.length > 0) {
-    lines.push('🚨 Escalations:');
-    prep.escalations_needed.forEach(e =>
-      lines.push(`  • [${e.severity.toUpperCase()}] ${e.epic_name}: ${e.blocker_title} — ${e.days_blocked}d blocked`)
-    );
-    lines.push('');
-  }
-
-  if (prep.active_epics.length > 0) {
-    lines.push('🏗 Active epics:');
-    prep.active_epics.forEach(e => {
-      const parts: string[] = [`[${e.tier}] ${e.name}`];
-      if (e.risk_level) parts.push(`risk: ${e.risk_level}`);
-      if (e.readiness_score != null) parts.push(`readiness: ${e.readiness_score}%`);
-      if (e.target_launch_date) parts.push(`target: ${e.target_launch_date}`);
-      lines.push(`  • ${parts.join(' · ')}`);
-    });
-    lines.push('');
-  }
-
-  if (prep.completed_this_week.length > 0) {
-    lines.push(`🎉 Shipped this week: ${prep.completed_this_week.map(e => e.name).join(', ')}`);
-    lines.push('');
-  }
-
-  if (prep.suggested_talking_points.length > 0) {
-    lines.push('💬 Suggested talking points:');
-    prep.suggested_talking_points.forEach(p => lines.push(`  • ${p}`));
-    lines.push('');
-  }
-
-  if (member.context_notes) lines.push(`📝 Context: ${member.context_notes}`);
-  if (member.last_1on1_date) lines.push(`📅 Last 1:1: ${format(new Date(member.last_1on1_date + 'T12:00:00'), 'MMM d yyyy')}`);
-  if (prepInstructions) {
-    lines.push('');
-    lines.push(`⚙️ Standing instructions: ${prepInstructions}`);
-  }
-
-  lines.push('', 'Based on the above, help me prepare for this 1:1: what should I prioritise, what questions should I ask, and how can I best support this person?');
-  return lines.join('\n');
-}
-
-async function fetchCleargoPrep(member: CosTeamMember, prepInstructions?: string): Promise<string> {
-  const headers = { 'X-ClearGo-Key': CLEARGO_API_KEY };
-
-  const membersRes = await fetch(`${CLEARGO_API_URL}/api/v1/team-members`, { headers });
-  if (!membersRes.ok) throw new Error('team-members fetch failed');
-  const { data: cleargoMembers }: { data: CleargoMember[] } = await membersRes.json();
-
-  // Match by first name (case-insensitive)
-  const firstName = member.name.split(' ')[0].toLowerCase();
-  const matched = cleargoMembers.find(m =>
-    m.name.toLowerCase().includes(firstName) || firstName.includes(m.name.toLowerCase().split(' ')[0])
-  );
-  if (!matched) throw new Error(`${member.name} not found in ClearGO`);
-
-  const prepRes = await fetch(`${CLEARGO_API_URL}/api/v1/1on1-prep/${matched.id}`, { headers });
-  if (!prepRes.ok) throw new Error('1on1-prep fetch failed');
-  const prep: CleargoPrep = await prepRes.json();
-
-  return buildLivePrepPrompt(prep, member, prepInstructions);
-}
-
-async function generatePrep(member: CosTeamMember, prepInstructions?: string): Promise<{ content: string; source: 'cleargo' | 'static' }> {
-  if (CLEARGO_API_KEY) {
-    try {
-      const content = await fetchCleargoPrep(member, prepInstructions);
-      return { content, source: 'cleargo' };
-    } catch {
-      // fall through to static
-    }
-  }
-  return { content: buildStaticPrepPrompt(member, prepInstructions), source: 'static' };
-}
-
-/**
- * Find the latest dated prep file for a person.
- * Files follow the pattern: slug_YYYYMMDD.md (e.g. aj_depew_20260601.md).
- * Returns the file with the most recent date suffix (today or closest prior).
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function findLatestPrepFile(dirHandle: any, slug: string): Promise<{ content: string; lastModified: number } | null> {
-  const prefix = `${slug}_`;
-  const datePattern = /^(\d{8})\.md$/;
-  let latestDate = '';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let latestHandle: any = null;
-
-  for await (const [name, handle] of dirHandle.entries()) {
-    if (handle.kind !== 'file') continue;
-    if (!name.startsWith(prefix)) continue;
-    const suffix = name.slice(prefix.length);
-    const match = suffix.match(datePattern);
-    if (match && match[1] > latestDate) {
-      latestDate = match[1];
-      latestHandle = handle;
-    }
-  }
-
-  if (!latestHandle) return null;
-  const file = await latestHandle.getFile();
-  const content = await file.text();
-  return { content, lastModified: file.lastModified };
-}
-
 function formatGeneratedAt(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60000);
@@ -3595,8 +3447,6 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dirHandleRef = React.useRef<any>(null);
   const [prepSheet, setPrepSheet] = useState<{
     member: CosTeamMember;
     content: string;
@@ -3879,51 +3729,89 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   };
 
-  const openPrepFile = async (member: CosTeamMember) => {
+  // Generate (or load cached) an AI prep brief via the generate-1on1-prep edge
+  // function. The result is computed server-side and persisted to
+  // cos_one_on_one_prep — no local files or external services involved.
+  const generatePrepForMember = useCallback(async (
+    member: CosTeamMember,
+    { force, setBusy }: { force: boolean; setBusy: (b: boolean) => void },
+  ) => {
+    setBusy(true);
+    try {
+      const res = await supabase.functions.invoke('generate-1on1-prep', {
+        body: { team_member_id: member.id, force_regenerate: force },
+      });
+      if (res.error) throw res.error;
+      const data = res.data as {
+        content?: string;
+        generated_at?: string;
+        data_sources_used?: string[];
+        cached?: boolean;
+      };
+      if (!data?.content) throw new Error('No content returned');
+      setPrepSheet(prev =>
+        prev && prev.member.id === member.id
+          ? {
+              ...prev,
+              content: data.content!,
+              source: 'ai_generated',
+              generatedAt: data.generated_at ?? new Date().toISOString(),
+            }
+          : prev,
+      );
+      // Flip the upcoming-event card to "Review prep" without a full reload.
+      setUpcomingEvents(prev =>
+        prev.map(e => (e.team_member_id === member.id ? { ...e, prep_available: true } : e)),
+      );
+      const sources = data.data_sources_used ?? [];
+      toast({
+        title: data.cached ? 'Prep loaded' : 'Prep generated',
+        description: sources.length ? `Sources: ${sources.join(', ')}` : undefined,
+      });
+    } catch (err) {
+      toast({ title: 'Prep generation failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  }, [toast]);
+
+  // Open the prep drawer. If a stored brief already exists for this person we
+  // show it immediately; otherwise we open the drawer empty and kick off
+  // server-side generation (the result streams into the drawer when ready).
+  const openPrep = async (member: CosTeamMember) => {
     setLoadingPrep(true);
     try {
-      // Fetch standing prep instructions upfront (used by ClearGO + static paths)
-      const { data: settings } = await supabase.from('cos_prep_settings').select('prep_instructions').single();
-      const prepInstructions = settings?.prep_instructions || '';
-
-      // 1. Try ClearGO API
-      if (CLEARGO_API_KEY) {
-        try {
-          const content = await fetchCleargoPrep(member, prepInstructions);
-          setPrepSheet({ member, content, source: 'cleargo', generatedAt: new Date().toISOString() });
-          return;
-        } catch {
-          // fall through
-        }
-      }
-
-      // 2. Try local filesystem
+      const { data: { user } } = await supabase.auth.getUser();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fsApi = (window as any).showDirectoryPicker;
-      if (fsApi) {
-        if (!dirHandleRef.current) {
-          try {
-            dirHandleRef.current = await fsApi({ id: '1on1-prep', mode: 'read' });
-          } catch {
-            // user cancelled — fall through
-          }
-        }
-        if (dirHandleRef.current) {
-          const slug = member.name.trim().toLowerCase().replace(/\s+/g, '_');
-          const result = await findLatestPrepFile(dirHandleRef.current, slug);
-          if (result) {
-            setPrepSheet({ member, content: result.content, source: 'static', generatedAt: new Date(result.lastModified).toISOString() });
-            return;
-          }
-          dirHandleRef.current = null;
-        }
+      const db = supabase as any;
+      let existing: { content: string; generated_at: string | null } | null = null;
+      if (user) {
+        const { data } = await db
+          .from('cos_one_on_one_prep')
+          .select('content, generated_at')
+          .eq('user_id', user.id)
+          .eq('team_member_id', member.id)
+          .eq('status', 'ready')
+          .order('prep_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existing = (data as { content: string; generated_at: string | null } | null) ?? null;
       }
 
-      // 3. Fall back to static prompt
-      const content = buildStaticPrepPrompt(member, prepInstructions);
-      setPrepSheet({ member, content, source: 'static', generatedAt: new Date().toISOString() });
-      try { await navigator.clipboard.writeText(content); } catch { /* ignore */ }
-      toast({ title: 'Prep prompt ready — also copied to clipboard' });
+      if (existing?.content) {
+        setPrepSheet({
+          member,
+          content: existing.content,
+          source: 'ai_generated',
+          generatedAt: existing.generated_at ?? new Date().toISOString(),
+        });
+      } else {
+        // No stored prep — open the drawer in a loading state, then generate.
+        setPrepSheet({ member, content: '', source: 'ai_generated', generatedAt: new Date().toISOString() });
+        void generatePrepForMember(member, { force: false, setBusy: setAiGenerating });
+      }
+    } catch (err) {
+      toast({ title: 'Could not open prep', description: String(err), variant: 'destructive' });
     } finally {
       setLoadingPrep(false);
     }
@@ -3931,63 +3819,12 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
 
   const refreshPrep = async () => {
     if (!prepSheet) return;
-    setRefreshingPrep(true);
-    try {
-      // Try local filesystem first (re-read latest dated file)
-      if (dirHandleRef.current) {
-        const slug = prepSheet.member.name.trim().toLowerCase().replace(/\s+/g, '_');
-        const result = await findLatestPrepFile(dirHandleRef.current, slug);
-        if (result) {
-          setPrepSheet({ ...prepSheet, content: result.content, source: 'static', generatedAt: new Date(result.lastModified).toISOString() });
-          return;
-        }
-      }
-      // Fall back to ClearGO / static — fetch fresh prep instructions
-      const { data: settings } = await supabase.from('cos_prep_settings').select('prep_instructions').single();
-      const prepInstructions = settings?.prep_instructions || '';
-      const { content, source } = await generatePrep(prepSheet.member, prepInstructions);
-      setPrepSheet({ ...prepSheet, content, source, generatedAt: new Date().toISOString() });
-    } catch (err) {
-      toast({ title: 'Refresh failed', description: String(err), variant: 'destructive' });
-    } finally {
-      setRefreshingPrep(false);
-    }
+    await generatePrepForMember(prepSheet.member, { force: true, setBusy: setRefreshingPrep });
   };
 
   const aiGeneratePrep = async () => {
     if (!prepSheet) return;
-    setAiGenerating(true);
-    try {
-      const res = await supabase.functions.invoke('generate-1on1-prep', {
-        body: {
-          team_member_id: prepSheet.member.id,
-          force_regenerate: true,
-        },
-      });
-      if (res.error) throw res.error;
-      const data = res.data as {
-        content?: string;
-        source?: string;
-        generated_at?: string;
-        data_sources_used?: string[];
-        cached?: boolean;
-      };
-      if (!data?.content) throw new Error('No content returned');
-      setPrepSheet({
-        ...prepSheet,
-        content: data.content,
-        source: 'ai_generated',
-        generatedAt: data.generated_at ?? new Date().toISOString(),
-      });
-      toast({
-        title: data.cached ? 'AI prep loaded (cached)' : 'AI prep generated',
-        description: `Sources: ${(data.data_sources_used ?? []).join(', ')}`,
-      });
-    } catch (err) {
-      toast({ title: 'AI generation failed', description: String(err), variant: 'destructive' });
-    } finally {
-      setAiGenerating(false);
-    }
+    await generatePrepForMember(prepSheet.member, { force: true, setBusy: setAiGenerating });
   };
 
   const handleIncludeInPrep = useCallback(async (event: UpcomingOneOnOneEvent) => {
@@ -4128,7 +3965,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           members={members}
           loadingPrep={loadingPrep}
           loadingInitial={loadingInitial}
-          onViewPrep={openPrepFile}
+          onViewPrep={openPrep}
           upcomingEvents={upcomingEvents}
           calendarConnected={calendarConnected}
           lastSyncAt={lastSyncAt}
@@ -4154,7 +3991,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           <CoverageMap
             members={members}
             upcomingEvents={upcomingEvents}
-            onViewPrep={openPrepFile}
+            onViewPrep={openPrep}
           />
         </>
       )}
