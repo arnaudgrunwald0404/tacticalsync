@@ -83,17 +83,7 @@ function RecurringMeetingPrepSection({
   onRunNow: () => void;
   logs: BatchLog[];
 }) {
-  const [newIncludeName, setNewIncludeName] = useState('');
   const [newChannel, setNewChannel] = useState('');
-
-  const addIncludeName = () => {
-    const name = newIncludeName.trim();
-    if (!name || draft.always_include.includes(name)) return;
-    update({ always_include: [...draft.always_include, name] });
-    setNewIncludeName('');
-  };
-  const removeIncludeName = (name: string) =>
-    update({ always_include: draft.always_include.filter(n => n !== name) });
 
   const addChannel = () => {
     const ch = newChannel.trim().replace(/^#/, '');
@@ -285,36 +275,6 @@ function RecurringMeetingPrepSection({
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Always-include override */}
-          <div className="space-y-2 border-t pt-3">
-            <label className="text-xs font-medium">Always include meetings with</label>
-            <p className="text-[11px] text-muted-foreground">
-              Force-include anyone here, regardless of the rules above.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {draft.always_include.map(name => (
-                <Badge key={name} variant="outline" className="bg-background">
-                  <span className="text-xs">{name}</span>
-                  <button className="ml-1 rounded-full hover:bg-muted" onClick={() => removeIncludeName(name)}>
-                    <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newIncludeName}
-                onChange={e => setNewIncludeName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addIncludeName()}
-                placeholder="e.g. Dan Pope"
-                className="h-8 text-sm flex-1"
-              />
-              <Button size="sm" variant="outline" onClick={addIncludeName} className="h-8 gap-1">
-                <Plus className="h-3 w-3" /> Add
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
-  Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RefreshCw, RotateCcw, Settings,
+  Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
   Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
@@ -496,66 +496,6 @@ export default function ChiefOfStaff() {
     if (!error && data) setDciLogs(prev => prev.map(l => l.id === id ? { ...l, ...data } as CosDciLog : l));
   };
 
-  const rerunDci = async (log: CosDciLog) => {
-    if (!userId) return;
-    const items = [
-      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
-      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
-      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
-    ].filter(i => i.text && i.status !== 'done');
-
-    const newPriorities = items.map(i => i.text!);
-    const topic = `Rerun from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}`;
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const existingToday = dciLogs.find(l => l.date === today);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    const payload = {
-      priority_1: newPriorities[0] ?? null,
-      priority_2: newPriorities[1] ?? null,
-      priority_3: newPriorities[2] ?? null,
-      topic_raised: topic,
-    };
-    let data, error;
-    if (existingToday) {
-      ({ data, error } = await db.from('cos_dci_logs').update(payload).eq('id', existingToday.id).select().single());
-      if (!error && data) setDciLogs(prev => prev.map(l => l.id === existingToday.id ? data as CosDciLog : l));
-    } else {
-      ({ data, error } = await db.from('cos_dci_logs').insert({ user_id: userId, date: today, ...payload }).select().single());
-      if (!error && data) setDciLogs(prev => [data as CosDciLog, ...prev]);
-    }
-
-    if (!error && data) {
-      toast({ title: existingToday ? 'Brief updated from undone items' : 'New brief created from undone items' });
-    }
-
-    // Also build agentic context and copy to clipboard
-    const statusLabel: Record<string, string> = {
-      done: '✅ Done', in_progress: '🔄 In Progress', blocked: '🚫 Blocked', deferred: '⏭️ Deferred',
-    };
-    const lines = [
-      `Daily Check-in Status Review — ${format(new Date(), 'EEEE, MMMM d')}`,
-      `Original brief from ${format(new Date(log.date + 'T12:00:00'), 'MMM d')}:`,
-      '',
-    ];
-    [
-      { text: log.priority_1, status: log.priority_1_status, comment: log.priority_1_comment },
-      { text: log.priority_2, status: log.priority_2_status, comment: log.priority_2_comment },
-      { text: log.priority_3, status: log.priority_3_status, comment: log.priority_3_comment },
-    ].filter(i => i.text).forEach((item, i) => {
-      lines.push(`${i + 1}. ${item.text}`);
-      if (item.status) lines.push(`   Status: ${statusLabel[item.status] ?? item.status}`);
-      if (item.comment) lines.push(`   Note: ${item.comment}`);
-    });
-    if (newPriorities.length > 0) {
-      lines.push('', 'Still open for next Daily Check-in:');
-      newPriorities.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
-    }
-    lines.push('', 'Given this context, please: (1) identify what needs the most attention right now, (2) suggest any adjustments to the remaining priorities, and (3) draft a brief update I can share with my team.');
-
-    copyToClipboard(lines.join('\n'), 'Review prompt copied — paste into Cowork');
-  };
 
   if (loading) {
     return (
@@ -729,7 +669,6 @@ export default function ChiefOfStaff() {
               dciLogs={dciLogs}
               onLog={logBrief}
               onUpdateLog={updateDciLog}
-              onRerun={rerunDci}
               onBriefGenerated={reloadDciLogs}
             />
           </div>
@@ -814,6 +753,100 @@ function DciEditableText({
   );
 }
 
+function DciEditableActivities({
+  activities,
+  onSave,
+  canEdit,
+}: {
+  activities: (string | null | undefined)[] | null | undefined;
+  onSave: (newActivities: string[]) => void;
+  canEdit: boolean;
+}) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [addDraft, setAddDraft] = useState('');
+  const addInputRef = React.useRef<HTMLInputElement>(null);
+
+  const items = (activities ?? []).filter((a): a is string => typeof a === 'string' && a.trim() !== '');
+
+  useEffect(() => {
+    if (isAdding && addInputRef.current) addInputRef.current.focus();
+  }, [isAdding]);
+
+  const commitAdd = () => {
+    const trimmed = addDraft.trim();
+    if (trimmed) onSave([...items, trimmed]);
+    setAddDraft('');
+    setIsAdding(false);
+  };
+
+  if (!canEdit) {
+    if (items.length === 0) return null;
+    return (
+      <ul className="mt-0.5">
+        {items.map((a, j) => (
+          <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
+            <span className="mt-0.5">•</span><span>{a}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="mt-0.5">
+      {items.map((a, j) => (
+        <div key={j} className="flex items-start gap-0.5 group/bullet">
+          <span className="text-[10px] text-muted-foreground/70 mt-0.5 flex-shrink-0 select-none">•</span>
+          <div className="flex-1 min-w-0">
+            <DciEditableText
+              value={a}
+              onSave={(newText) => {
+                const updated = newText
+                  ? items.map((item, i) => (i === j ? newText : item))
+                  : items.filter((_, i) => i !== j);
+                onSave(updated);
+              }}
+              className="text-[10px] text-muted-foreground/70 font-normal"
+              placeholder="Add detail..."
+            />
+          </div>
+          <button
+            onClick={() => onSave(items.filter((_, i) => i !== j))}
+            className="opacity-0 group-hover/bullet:opacity-100 flex-shrink-0 text-muted-foreground/30 hover:text-destructive/60 transition-opacity ml-0.5"
+            title="Remove"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </div>
+      ))}
+      {isAdding ? (
+        <div className="flex items-center gap-0.5 mt-0.5">
+          <span className="text-[10px] text-muted-foreground/70 flex-shrink-0 select-none">•</span>
+          <input
+            ref={addInputRef}
+            value={addDraft}
+            onChange={e => setAddDraft(e.target.value)}
+            onBlur={commitAdd}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitAdd();
+              if (e.key === 'Escape') { setAddDraft(''); setIsAdding(false); }
+            }}
+            className="flex-1 min-w-0 bg-transparent border-b border-primary/30 outline-none text-[10px] text-muted-foreground/70 leading-snug px-0 py-0"
+            placeholder="Add detail..."
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setIsAdding(true)}
+          className="mt-0.5 text-[9px] text-muted-foreground/30 hover:text-primary/70 transition-colors flex items-center gap-0.5"
+        >
+          + add detail
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── DCI Tab Content (weekly matrix + today's brief) ─────────────────────────
 
 const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -825,7 +858,6 @@ function DciTabContent({
   dciLogs,
   onLog,
   onUpdateLog,
-  onRerun,
   onBriefGenerated,
 }: {
   priorities: CosPriority[];
@@ -833,7 +865,6 @@ function DciTabContent({
   dciLogs: CosDciLog[];
   onLog: (priorities: CosPriority[], topic: string, weeklyObjectives?: { text: string; activities: string[] }[]) => void;
   onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
-  onRerun: (log: CosDciLog) => void;
   onBriefGenerated?: () => void;
 }) {
   const { brief, isLoading, error, refreshBrief } = useDciBrief();
@@ -993,6 +1024,21 @@ function DciTabContent({
     onLog(logPriorities, topicRaised, weeklyObjs);
   };
 
+  // Auto-save the brief log as soon as daily priorities are ready, removing the
+  // need for an explicit Save button. Runs once per calendar day.
+  const autoLoggedDateRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasBrief || todayDayIdx < 0 || orderedDaily.length === 0) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    if (autoLoggedDateRef.current === today) return;
+    if (dciLogs.some(l => l.date === today && !!l.priority_1)) {
+      autoLoggedDateRef.current = today;
+      return;
+    }
+    autoLoggedDateRef.current = today;
+    handleLog();
+  }, [hasBrief, todayDayIdx, orderedDaily, dciLogs]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="space-y-6">
       {/* DCI Brief Automation Banner */}
@@ -1007,18 +1053,6 @@ function DciTabContent({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {hasBrief && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={refreshBrief}
-              disabled={isLoading}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <RefreshCw className={cn('h-4 w-4 mr-1.5', isLoading && 'animate-spin')} />
-              Refresh
-            </Button>
-          )}
         </div>
       </div>
 
@@ -1131,14 +1165,15 @@ function DciTabContent({
                           </span>
                           )}
                           {/* Weekly: show activities */}
-                          {item.activities && (item.activities as string[]).length > 0 && (
-                            <ul className="mt-0.5">
-                              {(item.activities as string[]).map((a, j) => (
-                                <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
-                                  <span className="mt-0.5">•</span><span>{a}</span>
-                                </li>
-                              ))}
-                            </ul>
+                          {carouselTier === 'weekly' && (
+                            <DciEditableActivities
+                              activities={item.activities}
+                              canEdit={canEditWeeklyObj}
+                              onSave={(newActs) => {
+                                const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
+                                onUpdateLog(weeklyObjectivesLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
+                              }}
+                            />
                           )}
                           {/* Quarterly/Monthly: show description */}
                           {item.description && carouselTier !== 'weekly' && (
@@ -1161,10 +1196,6 @@ function DciTabContent({
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
                     {carouselTier === 'weekly' && hasWeeklyObjs ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Set</span>
-                    ) : carouselTier === 'weekly' && previewWeekly && todayDayIdx >= 0 ? (
-                      <button onClick={handleLog} className="text-[10px] font-medium text-white bg-primary hover:bg-primary/90 rounded px-2.5 py-1 transition-colors">
-                        Save
-                      </button>
                     ) : carouselTier !== 'weekly' ? (
                       <span className="text-[9px] text-muted-foreground/50">from Commitments</span>
                     ) : (
@@ -1265,10 +1296,6 @@ function DciTabContent({
                   <div className="px-3 py-1.5 border-t border-border/50 text-center">
                     {day.isLogged ? (
                       <span className="text-[10px] text-emerald-600 font-medium">✓ Logged</span>
-                    ) : isTodayCol && showBriefPreview ? (
-                      <button onClick={handleLog} className="text-[10px] font-medium text-white bg-copper hover:bg-copper-hover rounded px-2.5 py-1 transition-colors">
-                        Save
-                      </button>
                     ) : isFuture ? (
                       <span className="text-[10px] text-muted-foreground/30">—</span>
                     ) : isPast ? (
@@ -1469,7 +1496,7 @@ const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
 
 function SortableBriefItem({
   id, index, item, tier, isAboveLine,
-  editingIdx, editingTier, onStartEdit, onStopEdit, onEditText,
+  editingIdx, editingTier, onStartEdit, onStopEdit, onEditText, onDeleteItem,
 }: {
   id: string;
   index: number;
@@ -1481,6 +1508,7 @@ function SortableBriefItem({
   onStartEdit: (idx: number, tier: 'daily' | 'weekly') => void;
   onStopEdit: () => void;
   onEditText: (idx: number, text: string) => void;
+  onDeleteItem?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -1524,6 +1552,15 @@ function SortableBriefItem({
                 >
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
                 </button>
+                {onDeleteItem && (
+                  <button
+                    onClick={onDeleteItem}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove"
+                  >
+                    <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                  </button>
+                )}
               </div>
             </div>
             {/* Weekly objectives: show activities as bullet points */}
@@ -1573,6 +1610,7 @@ function ReorderablePriorityList({
   tier,
   onReorder,
   onEditItem,
+  onDeleteItem,
   editingIdx,
   editingTier,
   onStartEdit,
@@ -1582,6 +1620,7 @@ function ReorderablePriorityList({
   tier: 'daily' | 'weekly';
   onReorder: (items: OrderedItem[]) => void;
   onEditItem: (idx: number, text: string) => void;
+  onDeleteItem?: (idx: number) => void;
   editingIdx: number | null;
   editingTier: 'daily' | 'weekly' | null;
   onStartEdit: (idx: number, tier: 'daily' | 'weekly') => void;
@@ -1629,6 +1668,7 @@ function ReorderablePriorityList({
               onStartEdit={onStartEdit}
               onStopEdit={onStopEdit}
               onEditText={onEditItem}
+              onDeleteItem={onDeleteItem ? () => onDeleteItem(i) : undefined}
             />
           </React.Fragment>
         ))}
@@ -1665,6 +1705,14 @@ function TonightsBrief({
     onReorderWeekly(orderedWeekly.map((o, i) => i === idx ? { ...o, item: { ...o.item, text } } : o));
   };
 
+  const deleteDailyItem = (idx: number) => {
+    onReorderDaily(orderedDaily.filter((_, i) => i !== idx));
+  };
+
+  const deleteWeeklyItem = (idx: number) => {
+    onReorderWeekly(orderedWeekly.filter((_, i) => i !== idx));
+  };
+
   const hasBrief = brief && brief.source !== 'none';
 
   return (
@@ -1697,6 +1745,7 @@ function TonightsBrief({
                   tier="weekly"
                   onReorder={onReorderWeekly}
                   onEditItem={editWeeklyItem}
+                  onDeleteItem={deleteWeeklyItem}
                   editingIdx={editingIdx}
                   editingTier={editingTier}
                   onStartEdit={(idx, tier) => { setEditingIdx(idx); setEditingTier(tier); }}
@@ -1730,6 +1779,7 @@ function TonightsBrief({
                 tier="daily"
                 onReorder={onReorderDaily}
                 onEditItem={editDailyItem}
+                onDeleteItem={deleteDailyItem}
                 editingIdx={editingIdx}
                 editingTier={editingTier}
                 onStartEdit={(idx, tier) => { setEditingIdx(idx); setEditingTier(tier); }}
@@ -3235,15 +3285,14 @@ function DciHistory({ logs, onUpdate }: {
                                   ) : (
                                     <span className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
                                   )}
-                                  {obj.activities && (obj.activities as string[]).length > 0 && (
-                                    <ul className="mt-0.5">
-                                      {(obj.activities as string[]).map((a, j) => (
-                                        <li key={j} className="text-[10px] text-muted-foreground/70 leading-snug flex items-start gap-1">
-                                          <span className="mt-0.5">•</span><span>{a}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
+                                  <DciEditableActivities
+                                    activities={obj.activities}
+                                    canEdit={!!weeklyObjLog}
+                                    onSave={(newActs) => {
+                                      const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
+                                      onUpdate(weeklyObjLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
+                                    }}
+                                  />
                                   <div className="mt-1">
                                     <DciStatusPill
                                       status={obj.status}
