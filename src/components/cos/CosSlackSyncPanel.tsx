@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, MessageSquare, Unlink, RefreshCw, X, Hash } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, MessageSquare, Unlink, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,16 +33,10 @@ export default function CosSlackSyncPanel() {
     slackEmail: string | null;
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
-    syncChannels: string[];
   } | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-
-  // Extra channel input
-  const [channelInput, setChannelInput] = useState('');
-  const [savingChannels, setSavingChannels] = useState(false);
-  const channelInputRef = useRef<HTMLInputElement>(null);
 
   const loadState = async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,43 +52,11 @@ export default function CosSlackSyncPanel() {
         slackEmail: data.slack_email ?? null,
         lastSyncAt: data.last_sync_at ?? null,
         lastSyncStatus: data.last_sync_status ?? null,
-        syncChannels: Array.isArray(data.sync_channels) ? data.sync_channels : [],
       });
     } else {
-      setConnection({ connected: false, slackTeamName: null, slackEmail: null, lastSyncAt: null, lastSyncStatus: null, syncChannels: [] });
+      setConnection({ connected: false, slackTeamName: null, slackEmail: null, lastSyncAt: null, lastSyncStatus: null });
     }
     setLoading(false);
-  };
-
-  const saveChannels = async (channels: string[]) => {
-    setSavingChannels(true);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
-        .from('user_slack_credentials')
-        .update({ sync_channels: channels })
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
-      if (error) throw error;
-      setConnection(prev => prev ? { ...prev, syncChannels: channels } : prev);
-    } catch (err) {
-      toast({ title: 'Could not save channels', description: String(err), variant: 'destructive' });
-    } finally {
-      setSavingChannels(false);
-    }
-  };
-
-  const addChannel = async () => {
-    const raw = channelInput.trim().replace(/^#/, '').toLowerCase();
-    if (!raw || !connection) return;
-    if (connection.syncChannels.includes(raw)) { setChannelInput(''); return; }
-    const next = [...connection.syncChannels, raw];
-    setChannelInput('');
-    await saveChannels(next);
-  };
-
-  const removeChannel = async (ch: string) => {
-    if (!connection) return;
-    await saveChannels(connection.syncChannels.filter(c => c !== ch));
   };
 
   useEffect(() => {
@@ -160,8 +122,16 @@ export default function CosSlackSyncPanel() {
   const syncNow = async () => {
     setSyncing(true);
     try {
+      // Read configured channels from cos_prep_schedule (the source of truth set in Briefs & Schedule).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: scheduleData } = await (supabase as any)
+        .from('cos_prep_schedule')
+        .select('slack_channels')
+        .maybeSingle();
+      const channels: string[] = Array.isArray(scheduleData?.slack_channels) ? scheduleData.slack_channels : [];
+
       const { data, error } = await supabase.functions.invoke('slack-messages-sync', {
-        body: connection?.syncChannels.length ? { channels: connection.syncChannels } : {},
+        body: channels.length ? { channels } : {},
       });
       if (error) throw error;
       const { synced = 0 } = (data ?? {}) as { synced?: number };
@@ -219,49 +189,7 @@ export default function CosSlackSyncPanel() {
               </p>
             )}
 
-            {/* Extra channels */}
-            <div className="pt-1">
-              <p className="text-xs font-medium text-foreground mb-1.5">Extra channels to sync</p>
-              <p className="text-xs text-muted-foreground mb-2.5">
-                DMs are always synced. Add public channels here to pull in their messages too — e.g. <span className="font-mono">#success</span> for recognitions.
-              </p>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {connection.syncChannels.map(ch => (
-                  <span key={ch} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-foreground">
-                    <Hash className="h-3 w-3 text-muted-foreground" />{ch}
-                    <button
-                      onClick={() => removeChannel(ch)}
-                      disabled={savingChannels}
-                      className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
-                      aria-label={`Remove #${ch}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-                {connection.syncChannels.length === 0 && (
-                  <span className="text-xs text-muted-foreground italic">No extra channels configured</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 min-w-0 border border-input rounded-md px-2.5 py-1.5 bg-background focus-within:ring-1 focus-within:ring-ring">
-                  <Hash className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                  <input
-                    ref={channelInputRef}
-                    value={channelInput}
-                    onChange={e => setChannelInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') addChannel(); }}
-                    placeholder="channel-name"
-                    className="flex-1 min-w-0 bg-transparent border-0 outline-none text-xs"
-                  />
-                </div>
-                <Button size="sm" variant="secondary" onClick={addChannel} disabled={!channelInput.trim() || savingChannels} className="shrink-0">
-                  {savingChannels ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-1 flex-wrap">
+            <div className="flex gap-2 pt-2 flex-wrap">
               <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
                 {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Sync now
