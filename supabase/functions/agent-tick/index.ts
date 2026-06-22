@@ -22,6 +22,7 @@ interface AgentConfig {
   escalate_patterns: boolean
   recommend_format: boolean
   nudge_timing_hours: number
+  nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
   quiet_hours_end: number   // 0-23
   timezone: string
@@ -35,6 +36,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   nudge_timing_hours: 24,
+  nudge_max_count: 5,
   quiet_hours_start: 18,
   quiet_hours_end: 9,
   timezone: 'America/New_York',
@@ -376,20 +378,58 @@ async function nudgeActionItems(
   const allActions = [...(dueActions ?? []), ...(agedActions ?? [])]
   if (allActions.length === 0) return 0
 
-  // Check which actions were already nudged today
-  const { data: recentNudges } = await supabase
+  // Pull the full nudge history (and any prior "capped" markers) for the
+  // candidate actions. This drives both the same-day de-dupe AND the all-time
+  // ceiling that stops a stale pending item from nagging forever.
+  const candidateIds = allActions.map((a: { id: string }) => a.id)
+  const { data: historyLogs } = await supabase
     .from('cos_agent_log')
-    .select('action_id')
+    .select('action_id, event_type, created_at')
     .eq('user_id', userId)
-    .eq('event_type', 'nudge_sent')
-    .gte('created_at', today + 'T00:00:00Z')
+    .in('event_type', ['nudge_sent', 'nudge_capped'])
+    .in('action_id', candidateIds)
 
-  const nudgedToday = new Set(
-    (recentNudges ?? []).map((n: { action_id: string | null }) => n.action_id)
-  )
+  const nudgeCountByAction = new Map<string, number>()
+  const nudgedToday = new Set<string>()
+  const alreadyCapped = new Set<string>()
+  for (const log of (historyLogs ?? []) as Array<{ action_id: string | null; event_type: string; created_at: string }>) {
+    if (!log.action_id) continue
+    if (log.event_type === 'nudge_capped') {
+      alreadyCapped.add(log.action_id)
+      continue
+    }
+    nudgeCountByAction.set(log.action_id, (nudgeCountByAction.get(log.action_id) ?? 0) + 1)
+    if (log.created_at >= today + 'T00:00:00Z') nudgedToday.add(log.action_id)
+  }
+
+  // Actions that have hit the nudge ceiling but haven't been parked yet.
+  // Park them with a one-time notice so they stop nagging daily; the user can
+  // still resolve them via Mark done / Snooze in Slack.
+  const newlyCapped = allActions.filter(
+    (a: { id: string }) =>
+      !alreadyCapped.has(a.id) &&
+      (nudgeCountByAction.get(a.id) ?? 0) >= config.nudge_max_count,
+  ) as Array<{ id: string; text: string; member_id: string }>
+
+  for (const action of newlyCapped) {
+    await supabase.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'nudge_capped',
+      action_id: action.id,
+      member_id: action.member_id,
+      payload: {
+        text: action.text,
+        nudge_count: config.nudge_max_count,
+        reason: 'max_nudges_reached',
+      },
+    })
+  }
 
   const toNudgeRaw = allActions.filter(
-    (a: { id: string }) => !nudgedToday.has(a.id)
+    (a: { id: string }) =>
+      !nudgedToday.has(a.id) &&
+      !alreadyCapped.has(a.id) &&
+      (nudgeCountByAction.get(a.id) ?? 0) < config.nudge_max_count,
   )
 
   if (toNudgeRaw.length === 0) return 0
