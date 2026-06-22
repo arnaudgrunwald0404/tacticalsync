@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
-  Bell, FileText, AlertTriangle, BarChart3, CheckCircle2, XCircle,
+  Bell, BellOff, FileText, AlertTriangle, BarChart3, CheckCircle2, XCircle,
   Bot, Clock, Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,7 @@ const EVENT_META: Record<string, {
   color: string;
 }> = {
   nudge_sent:          { icon: Bell,           label: 'Nudge sent',        color: 'text-amber-500' },
+  nudge_capped:        { icon: BellOff,        label: 'Nudges paused',     color: 'text-muted-foreground' },
   prep_staged:         { icon: FileText,       label: 'Prep staged',       color: 'text-blue-500' },
   escalation_flagged:  { icon: AlertTriangle,  label: 'Escalation',        color: 'text-red-500' },
   escalation_dismissed:{ icon: XCircle,        label: 'Dismissed',         color: 'text-muted-foreground' },
@@ -189,6 +190,10 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
             let description = '';
             if (entry.event_type === 'nudge_sent') {
               description = (payload.text as string) ?? 'Action item nudge';
+            } else if (entry.event_type === 'nudge_capped') {
+              const text = (payload.text as string) ?? 'Action item';
+              const count = (payload.nudge_count as number) ?? '';
+              description = `Stopped nudging after ${count} reminders — resolve or snooze in Slack: ${text}`;
             } else if (entry.event_type === 'prep_staged') {
               description = `Prep generated for ${payload.member_name ?? memberName ?? 'meeting'}`;
             } else if (entry.event_type === 'escalation_flagged') {

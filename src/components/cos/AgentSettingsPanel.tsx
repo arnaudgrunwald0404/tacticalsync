@@ -21,6 +21,7 @@ interface AgentConfig {
   recommend_format: boolean;
   recommend_tools: boolean;
   nudge_timing_hours: number;
+  nudge_max_count: number;
   quiet_hours_start: number;
   quiet_hours_end: number;
   timezone: string;
@@ -35,6 +36,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   recommend_format: false,
   recommend_tools: false,
   nudge_timing_hours: 24,
+  nudge_max_count: 5,
   quiet_hours_start: 18,
   quiet_hours_end: 9,
   timezone: 'America/New_York',
@@ -372,6 +374,24 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
                     <SelectItem value="12" className="text-xs">12 hours before</SelectItem>
                     <SelectItem value="24" className="text-xs">24 hours before</SelectItem>
                     <SelectItem value="48" className="text-xs">48 hours before</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Stop nudging after</Label>
+                <Select
+                  value={String(config.nudge_max_count)}
+                  onValueChange={v => update({ nudge_max_count: Number(v) })}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3" className="text-xs">3 reminders</SelectItem>
+                    <SelectItem value="5" className="text-xs">5 reminders</SelectItem>
+                    <SelectItem value="7" className="text-xs">7 reminders</SelectItem>
+                    <SelectItem value="10" className="text-xs">10 reminders</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
