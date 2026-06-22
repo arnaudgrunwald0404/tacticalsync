@@ -487,7 +487,7 @@ ${contextParts.join('\n')}`
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -532,7 +532,7 @@ ${contextParts.join('\n')}`
       prep_id: upserted?.id ?? null,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       duration_ms: Date.now() - startMs,
       data_sources_used: dataSources,
     })

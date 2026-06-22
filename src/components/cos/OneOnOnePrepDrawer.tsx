@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
-  ClipboardList, NotebookText, CornerUpLeft, ExternalLink,
+  ClipboardList, NotebookText, CornerUpLeft,
   Repeat, Clock, Video, Brain, AlertTriangle, Check, Calendar,
   TrendingUp, Bot, Mail, Rocket, Flag, HelpCircle, History, Settings,
-  ChevronRight, ArrowUp, CircleCheck, UserPlus, Plus, EyeOff, Wrench,
+  ChevronDown, ChevronUp, ArrowUp, CircleCheck, UserPlus, Plus, EyeOff, Wrench, Star,
 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
@@ -232,6 +232,10 @@ export function OneOnOnePrepDrawer({
   const [excludedPoints, setExcludedPoints] = useState<Set<string>>(new Set());
   const [customPoints, setCustomPoints] = useState<Array<{ id: string; text: string; included: boolean }>>([]);
   const [newPoint, setNewPoint] = useState('');
+  const [showAllPoints, setShowAllPoints] = useState(false);
+
+  // How many talking points to surface before the "show more" cut-off.
+  const TALKING_POINTS_VISIBLE = 5;
 
   // Questions to ask
   const [pickedQuestions, setPickedQuestions] = useState<Set<number>>(new Set());
@@ -253,6 +257,10 @@ export function OneOnOnePrepDrawer({
     duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
   }>>([]);
   const [nextMeetingUrl, setNextMeetingUrl] = useState<string | null>(null);
+
+  // Recognitions from #success Slack channel
+  type Recognition = { giver: string; receiver: string; excerpt: string; date: string };
+  const [recognitions, setRecognitions] = useState<Recognition[]>([]);
 
   // Ask / agent chat
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -367,6 +375,71 @@ export function OneOnOnePrepDrawer({
       setCommitments(comRes.data ?? []);
     }
     load();
+    return () => { cancelled = true; };
+  }, [open, member]);
+
+  // Load recognitions from #success Slack channel involving either party since last 1:1
+  useEffect(() => {
+    if (!open || !member) { setRecognitions([]); return; }
+    let cancelled = false;
+    async function loadRecognitions() {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = supabase as any;
+        const { data: { user: me } } = await supabase.auth.getUser();
+        if (!me || cancelled) return;
+
+        const { data: myProfile } = await db.from('profiles').select('full_name').eq('id', me.id).maybeSingle();
+        const myFullName: string = myProfile?.full_name ?? '';
+
+        const since = member!.last_1on1_date
+          ? (() => {
+              const d = parseLocalDate(member!.last_1on1_date!);
+              d?.setHours(0, 0, 0, 0);
+              return d?.toISOString() ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+            })()
+          : new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+        const { data: msgs } = await db
+          .from('cos_slack_messages')
+          .select('content, message_date')
+          .eq('channel_name', 'success')
+          .gte('message_date', since)
+          .order('message_date', { ascending: false })
+          .limit(100);
+
+        if (cancelled) return;
+
+        const SHOUTOUT_RE = /^(.+?)\s+gave a shout out to\s+(.+?)(?:\n|$)/im;
+        const memberLc = member!.name.toLowerCase();
+        const myLc = myFullName.toLowerCase();
+
+        type Recognition = { giver: string; receiver: string; excerpt: string; date: string };
+        const parsed: Recognition[] = ((msgs ?? []) as Array<{ content: string; message_date: string }>)
+          .map(msg => {
+            const m = SHOUTOUT_RE.exec(msg.content);
+            if (!m) return null;
+            const giver = m[1].trim();
+            const receiver = m[2].trim();
+            const lines = msg.content.split('\n').filter((l: string) => l.trim());
+            const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
+            return { giver, receiver, excerpt, date: msg.message_date };
+          })
+          .filter((r): r is Recognition => {
+            if (!r) return false;
+            const gl = r.giver.toLowerCase();
+            const rl = r.receiver.toLowerCase();
+            const involvesMember = gl.includes(memberLc) || rl.includes(memberLc);
+            const involvesMe = myLc.length > 0 && (gl.includes(myLc) || rl.includes(myLc));
+            return involvesMember || involvesMe;
+          });
+
+        if (!cancelled) setRecognitions(parsed);
+      } catch {
+        if (!cancelled) setRecognitions([]);
+      }
+    }
+    loadRecognitions();
     return () => { cancelled = true; };
   }, [open, member]);
 
@@ -679,9 +752,6 @@ export function OneOnOnePrepDrawer({
                   <div className="w-px h-6 bg-border mx-0.5" />
                 </>
               )}
-              <Button size="sm" variant="ghost" className="h-9 gap-1.5" disabled={refreshing} onClick={onRefresh}>
-                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Refresh
-              </Button>
               {onAiGenerate && (
                 <Button size="sm" variant="secondary" className="h-9 gap-1.5" disabled={aiGenerating} onClick={onAiGenerate}>
                   {aiGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-primary" />}
@@ -748,12 +818,18 @@ export function OneOnOnePrepDrawer({
                   <div className="flex-1 min-w-0">
                     <div className="text-[13.5px] font-bold mb-0.5">Your agent&apos;s read on this 1:1</div>
                     <div className="text-[13.5px] leading-[1.55] text-foreground">{coachSummary}</div>
+                    <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-border/60">
+                      <span className="text-xs text-muted-foreground">Generated {generatedLabel} · {source === 'ai_generated' ? 'AI' : source === 'cleargo' ? 'ClearGO' : 'Static'}</span>
+                      <Button size="sm" variant="ghost" className="h-7 gap-1.5 ml-auto -mr-2 text-xs" disabled={refreshing} onClick={onRefresh}>
+                        {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}Refresh
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
                 {/* OPEN COMMITMENTS */}
                 <Card className="px-[22px] pt-[18px] pb-4">
-                  <SecHdr icon={Flag} label="Open commitments" right={
+                  <SecHdr icon={Flag} label="Open assignments" right={
                     <span className={cn('ml-auto inline-flex items-center gap-1.5 text-xs font-semibold px-[11px] py-[3px] rounded-full',
                       overdueCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700')}>
                       {overdueCount > 0 ? <AlertTriangle className="h-[13px] w-[13px]" /> : <CircleCheck className="h-[13px] w-[13px]" />}
@@ -831,7 +907,7 @@ export function OneOnOnePrepDrawer({
                     )
                   ) : (
                     <>
-                      {rankedPoints.map(p => {
+                      {(showAllPoints ? rankedPoints : rankedPoints.slice(0, TALKING_POINTS_VISIBLE)).map(p => {
                         const included = !excludedPoints.has(p.key);
                         return (
                           <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
@@ -840,17 +916,24 @@ export function OneOnOnePrepDrawer({
                             ) : (
                               <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
                             )}
-                            <div className="flex-1 min-w-0">
+                            <div className={cn('flex-1 min-w-0 transition-opacity', !included && 'opacity-40')}>
                               <div className="flex items-center gap-2.5">
                                 <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', p.rankCls)}>{p.rankLabel}</span>
-                                <span className="text-[14.5px] font-semibold">{inlineMd(p.heading)}</span>
+                                <span className={cn('text-[14.5px] font-semibold', !included && 'line-through font-normal text-muted-foreground')}>{inlineMd(p.heading)}</span>
                               </div>
-                              {p.why && <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{inlineMd(p.why)}</div>}
+                              {p.why && <div className={cn('text-[13px] text-muted-foreground mt-1.5 leading-[1.5]', !included && 'line-through')}>{inlineMd(p.why)}</div>}
                               <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><FileText className="h-[13px] w-[13px]" />From prep brief</span>
                             </div>
                           </button>
                         );
                       })}
+                      {rankedPoints.length > TALKING_POINTS_VISIBLE && (
+                        <button onClick={() => setShowAllPoints(v => !v)} className="w-full flex items-center justify-center gap-1.5 py-3 text-[12.5px] font-semibold text-primary border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                          {showAllPoints
+                            ? <>Show fewer<ChevronUp className="h-3.5 w-3.5" /></>
+                            : <>Show {rankedPoints.length - TALKING_POINTS_VISIBLE} more<ChevronDown className="h-3.5 w-3.5" /></>}
+                        </button>
+                      )}
                       {customPoints.map(p => (
                         <button key={p.id} onClick={() => toggleCustomPoint(p.id)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
                           {p.included ? (
@@ -858,10 +941,10 @@ export function OneOnOnePrepDrawer({
                           ) : (
                             <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
                           )}
-                          <div className="flex-1 min-w-0">
+                          <div className={cn('flex-1 min-w-0 transition-opacity', !p.included && 'opacity-40')}>
                             <div className="flex items-center gap-2.5">
                               <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-blue-50 text-blue-700">You</span>
-                              <span className="text-[14.5px] font-semibold">{p.text}</span>
+                              <span className={cn('text-[14.5px] font-semibold', !p.included && 'line-through font-normal text-muted-foreground')}>{p.text}</span>
                             </div>
                             <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><Plus className="h-[13px] w-[13px]" />Custom topic</span>
                           </div>
@@ -876,113 +959,45 @@ export function OneOnOnePrepDrawer({
                       placeholder="Add your own talking point — press Enter" className="flex-1 bg-transparent border-0 outline-none text-[13.5px]" />
                   </div>
                 </Card>
-
-                {/* STATUS / PRIORITY CHECK-IN */}
-                {priorities.length > 0 && (
-                  <Card className="px-[22px] pt-[18px] pb-4">
-                    <SecHdr icon={Rocket} label="Priority check-in" right={
-                      <span className="ml-auto text-[12.5px] text-muted-foreground">Updates to request from {firstName}</span>
-                    } />
-                    <p className="text-[12.5px] text-muted-foreground mt-1 mb-3.5">{firstName}&apos;s active commitments this quarter{quarter ? ` · ${quarter.label}` : ''}.</p>
-                    <div className="grid grid-cols-[1fr_130px] sm:grid-cols-[1fr_130px_150px] px-3 pb-2 text-[11px] font-semibold tracking-[0.04em] uppercase text-muted-foreground">
-                      <div>Priority</div><div>Status</div><div className="hidden sm:block">Owner</div>
-                    </div>
-                    {priorities.map(p => {
-                      const sm = STATUS_META[p.status] ?? STATUS_META.draft;
-                      return (
-                        <div key={p.id} className="grid grid-cols-[1fr_130px] sm:grid-cols-[1fr_130px_150px] items-center p-3 border-t border-border/60 rounded-md hover:bg-muted/40 transition-colors">
-                          <div className="text-[13.5px] font-semibold pr-2">{p.title}</div>
-                          <div><span className={cn('inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-[3px] rounded-full', sm.cls)}><span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />{sm.label}</span></div>
-                          <div className="hidden sm:block text-[13px] text-muted-foreground">{firstName}</div>
-                        </div>
-                      );
-                    })}
-                  </Card>
-                )}
-
-                {/* QUESTIONS */}
-                <Card className="px-[22px] py-[18px]">
-                  <SecHdr icon={HelpCircle} label="Questions to ask" />
-                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-1.5">Pick a few to anchor the conversation.</p>
-                  {questions.map((q, i) => {
-                    const picked = pickedQuestions.has(i);
-                    return (
-                      <button key={i} onClick={() => toggleQuestion(i)} className="w-full flex items-center gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
-                        {picked ? (
-                          <span className="w-5 h-5 flex-shrink-0 rounded-full bg-primary grid place-items-center"><Check className="h-[13px] w-[13px] text-primary-foreground" /></span>
-                        ) : (
-                          <span className="w-5 h-5 flex-shrink-0 rounded-full border-[1.5px] border-input bg-background" />
-                        )}
-                        <span className="text-sm leading-snug">{q}</span>
-                      </button>
-                    );
-                  })}
-                </Card>
               </div>
 
               {/* RIGHT RAIL */}
               <div className="flex flex-col gap-3.5">
-                {/* agent provenance */}
+                {/* recognition banner */}
+                {recognitions.length > 0 && (
+                  <RecognitionBanner recognitions={recognitions} />
+                )}
+                {/* questions to ask */}
                 <Card className="px-[18px] py-4">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-accent grid place-items-center"><Bot className="h-[18px] w-[18px] text-primary" /></span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13.5px] font-bold">Prepared by your agent</div>
-                      <div className="text-xs text-muted-foreground">Generated {generatedLabel} · {source === 'ai_generated' ? 'AI' : source === 'cleargo' ? 'ClearGO' : 'Static'}</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-[1.5] mt-3">A fresh draft is auto-prepared before every 1:1. Your edits are always kept — use <strong className="text-foreground font-semibold">Refresh</strong> up top to regenerate.</p>
+                  <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-1"><HelpCircle className="h-3.5 w-3.5" />Questions to ask</div>
+                  <p className="text-[11.5px] text-muted-foreground mb-1.5">Pick a few to anchor the conversation.</p>
+                  {questions.map((q, i) => {
+                    const picked = pickedQuestions.has(i);
+                    return (
+                      <button key={i} onClick={() => toggleQuestion(i)} className="w-full flex items-start gap-2.5 py-2.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[18px] px-[18px]">
+                        {picked ? (
+                          <span className="w-[18px] h-[18px] flex-shrink-0 mt-px rounded-full bg-primary grid place-items-center"><Check className="h-3 w-3 text-primary-foreground" /></span>
+                        ) : (
+                          <span className="w-[18px] h-[18px] flex-shrink-0 mt-px rounded-full border-[1.5px] border-input bg-background" />
+                        )}
+                        <span className={cn('text-[12.5px] leading-snug', !picked && 'text-muted-foreground')}>{q}</span>
+                      </button>
+                    );
+                  })}
                 </Card>
 
-                {/* shared doc */}
-                <Card className="px-[18px] py-4">
-                  <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground mb-[11px]">Shared doc</div>
-                  <a href="#" onClick={e => e.preventDefault()} className="flex items-center gap-[11px] p-[11px] border border-border rounded-md hover:bg-muted/50 transition-colors">
-                    <span className="w-8 h-8 flex-shrink-0 rounded-md bg-blue-50 grid place-items-center"><FileText className="h-[17px] w-[17px] text-blue-600" /></span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold truncate">{firstName} 1:1 notes</div>
-                      <div className="text-[11.5px] text-muted-foreground">Last edited 3 days ago</div>
-                    </div>
-                    <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  </a>
-                </Card>
-
-                {/* tools for this 1:1 */}
-                {member && <PrepToolsCard memberId={member.id} memberName={firstName} />}
-
-                {/* jump to settings */}
-                <button onClick={() => setActiveTab('settings')} className="flex items-center gap-[11px] px-4 py-[13px] bg-card border border-border rounded-lg hover:bg-muted/50 transition-colors text-left">
-                  <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-muted grid place-items-center"><Settings className="h-[18px] w-[18px] text-muted-foreground" /></span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold">Agent settings</div>
-                    <div className="text-[11.5px] text-muted-foreground">Context, instructions &amp; nudges</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </button>
-
-                {/* relationship memory */}
-                {relTopics.length > 0 && (
+                {/* priority check-in */}
+                {priorities.length > 0 && (
                   <Card className="px-[18px] py-4">
-                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5"><Brain className="h-3.5 w-3.5" />Relationship memory</div>
+                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-1"><Rocket className="h-3.5 w-3.5" />Priority check-in</div>
+                    <p className="text-[11.5px] text-muted-foreground mb-2.5">{firstName}&apos;s priorities this quarter{quarter ? ` · ${quarter.label}` : ''}.</p>
                     <ul className="space-y-1.5">
-                      {relTopics.slice(0, 8).map(topic => {
-                        const catColors: Record<string, string> = { blocker: 'bg-red-500', escalation: 'bg-orange-500', project: 'bg-blue-500', goal: 'bg-emerald-500', feedback: 'bg-violet-500', development: 'bg-indigo-500', personal: 'bg-pink-500', general: 'bg-gray-400' };
-                        const isResolved = topic.status === 'resolved';
-                        const lastDate = parseLocalDate(topic.last_mentioned_at);
-                        const daysAgo = lastDate ? Math.floor((Date.now() - lastDate.getTime()) / 86_400_000) : null;
+                      {priorities.map(p => {
+                        const sm = STATUS_META[p.status] ?? STATUS_META.draft;
                         return (
-                          <li key={topic.id} className={cn('text-xs flex items-start gap-2 px-2.5 py-2 rounded-md bg-background border border-border group', isResolved && 'opacity-50')}>
-                            <span className={cn('w-2 h-2 rounded-full mt-1 flex-shrink-0', catColors[topic.category] ?? 'bg-gray-400')} />
-                            <div className="flex-1 min-w-0">
-                              <p className={cn('font-medium leading-snug', isResolved && 'line-through text-muted-foreground')}>{topic.topic}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {topic.mention_count > 1 && <span className="text-[9px] text-muted-foreground flex items-center gap-0.5"><TrendingUp className="h-2.5 w-2.5" />{topic.mention_count}x</span>}
-                                {daysAgo !== null && <span className="text-[9px] text-muted-foreground">{daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`}</span>}
-                              </div>
-                            </div>
-                            <button onClick={() => updateTopicStatus(topic.id, isResolved ? 'active' : 'resolved')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5" title={isResolved ? 'Mark active' : 'Mark resolved'}>
-                              <Check className={cn('h-3 w-3', isResolved && 'text-emerald-500')} />
-                            </button>
+                          <li key={p.id} className="text-xs flex flex-col gap-1.5 px-2.5 py-2 rounded-md bg-background border border-border">
+                            <p className="font-medium leading-snug text-[12.5px]">{p.title}</p>
+                            <span className={cn('inline-flex items-center gap-1.5 self-start text-[10px] font-semibold px-2 py-0.5 rounded-full', sm.cls)}><span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />{sm.label}</span>
                           </li>
                         );
                       })}
@@ -1113,7 +1128,37 @@ export function OneOnOnePrepDrawer({
 
           {/* ---------- TIMELINE TAB ---------- */}
           {activeTab === 'timeline' && (
-            <div className="max-w-[680px] mx-auto px-7 py-7">
+            <div className="max-w-[680px] mx-auto px-7 py-7 flex flex-col gap-[18px]">
+              {/* relationship memory */}
+              {relTopics.length > 0 && (
+                <Card className="px-[22px] py-5">
+                  <SecHdr icon={Brain} label="Relationship memory" />
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-3">Recurring topics your agent has tracked across your 1:1s.</p>
+                  <ul className="space-y-1.5">
+                    {relTopics.map(topic => {
+                      const catColors: Record<string, string> = { blocker: 'bg-red-500', escalation: 'bg-orange-500', project: 'bg-blue-500', goal: 'bg-emerald-500', feedback: 'bg-violet-500', development: 'bg-indigo-500', personal: 'bg-pink-500', general: 'bg-gray-400' };
+                      const isResolved = topic.status === 'resolved';
+                      const lastDate = parseLocalDate(topic.last_mentioned_at);
+                      const daysAgo = lastDate ? Math.floor((Date.now() - lastDate.getTime()) / 86_400_000) : null;
+                      return (
+                        <li key={topic.id} className={cn('text-[13px] flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-background border border-border group', isResolved && 'opacity-50')}>
+                          <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', catColors[topic.category] ?? 'bg-gray-400')} />
+                          <div className="flex-1 min-w-0">
+                            <p className={cn('font-medium leading-snug', isResolved && 'line-through text-muted-foreground')}>{topic.topic}</p>
+                            <div className="flex items-center gap-2.5 mt-1">
+                              {topic.mention_count > 1 && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><TrendingUp className="h-2.5 w-2.5" />{topic.mention_count}x</span>}
+                              {daysAgo !== null && <span className="text-[10px] text-muted-foreground">{daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`}</span>}
+                            </div>
+                          </div>
+                          <button onClick={() => updateTopicStatus(topic.id, isResolved ? 'active' : 'resolved')} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5" title={isResolved ? 'Mark active' : 'Mark resolved'}>
+                            <Check className={cn('h-3.5 w-3.5', isResolved && 'text-emerald-500')} />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              )}
               <RelationshipTimeline memberId={member.id} memberName={member.name} />
             </div>
           )}
@@ -1122,6 +1167,9 @@ export function OneOnOnePrepDrawer({
           {activeTab === 'settings' && (
             <div className="max-w-[680px] mx-auto px-7 pt-6 pb-12 flex flex-col gap-[18px]">
               <AgentToggles memberId={member.id} memberName={firstName} />
+
+              {/* tools for this 1:1 */}
+              <PrepToolsCard memberId={member.id} memberName={firstName} />
 
               {/* context */}
               <Card className="px-[22px] py-5">
@@ -1158,6 +1206,52 @@ export function OneOnOnePrepDrawer({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── Recognition banner (Prep right rail) ───────────────────────────────────────
+
+type RecognitionItem = { giver: string; receiver: string; excerpt: string; date: string };
+
+function RecognitionBanner({ recognitions }: { recognitions: RecognitionItem[] }) {
+  const [idx, setIdx] = useState(0);
+  const r = recognitions[Math.min(idx, recognitions.length - 1)];
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 px-[18px] py-4">
+      <div className="flex items-center gap-1.5 mb-[10px]">
+        <Star className="h-[14px] w-[14px] text-amber-500 fill-amber-400" />
+        <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-amber-700">Recognition</span>
+        {recognitions.length > 1 && (
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => setIdx(i => Math.max(0, i - 1))}
+              disabled={idx === 0}
+              className="h-5 w-5 grid place-items-center rounded text-amber-600 hover:bg-amber-100 disabled:opacity-30 transition-colors"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-[10px] font-medium text-amber-600">{idx + 1}/{recognitions.length}</span>
+            <button
+              onClick={() => setIdx(i => Math.min(recognitions.length - 1, i + 1))}
+              disabled={idx === recognitions.length - 1}
+              className="h-5 w-5 grid place-items-center rounded text-amber-600 hover:bg-amber-100 disabled:opacity-30 transition-colors"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+      <p className="text-[13px] font-semibold text-amber-900 leading-snug">
+        {r.giver} recognized {r.receiver}
+      </p>
+      {r.excerpt && (
+        <p className="text-[12px] text-amber-800 mt-1.5 leading-[1.5] line-clamp-3 italic">
+          &ldquo;{r.excerpt}&rdquo;
+        </p>
+      )}
+      <p className="text-[11px] text-amber-600 mt-2">{format(new Date(r.date), 'MMM d')}</p>
+    </div>
   );
 }
 

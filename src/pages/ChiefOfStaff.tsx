@@ -39,6 +39,8 @@ import {
 } from '@/types/cos';
 import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { CoverageMap } from '@/components/cos/CoverageMap';
+import { GroupMeetingCoverage } from '@/components/cos/GroupMeetingCoverage';
+import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
@@ -202,6 +204,14 @@ export default function ChiefOfStaff() {
     setShowWelcomeCarousel(false);
     markComplete('welcome');
   }, [markComplete]);
+
+  const reloadDciLogs = useCallback(async () => {
+    if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data } = await db.from('cos_dci_logs').select('*').eq('user_id', userId).order('date', { ascending: false });
+    if (data) setDciLogs(data as CosDciLog[]);
+  }, [userId]);
 
   const reloadSettings = useCallback(async () => {
     if (!userId) return;
@@ -720,6 +730,7 @@ export default function ChiefOfStaff() {
               onLog={logBrief}
               onUpdateLog={updateDciLog}
               onRerun={rerunDci}
+              onBriefGenerated={reloadDciLogs}
             />
           </div>
         </TabsContent>
@@ -815,6 +826,7 @@ function DciTabContent({
   onLog,
   onUpdateLog,
   onRerun,
+  onBriefGenerated,
 }: {
   priorities: CosPriority[];
   thisWeekPriorities: CosPriority[];
@@ -822,8 +834,14 @@ function DciTabContent({
   onLog: (priorities: CosPriority[], topic: string, weeklyObjectives?: { text: string; activities: string[] }[]) => void;
   onUpdateLog: (id: string, updates: Partial<CosDciLog>) => void;
   onRerun: (log: CosDciLog) => void;
+  onBriefGenerated?: () => void;
 }) {
   const { brief, isLoading, error, refreshBrief } = useDciBrief();
+
+  const handleBriefGenerated = useCallback(async () => {
+    await refreshBrief();
+    onBriefGenerated?.();
+  }, [refreshBrief, onBriefGenerated]);
 
   // ── Commitment data for the carousel (quarterly → monthly → weekly) ──
   type CarouselTier = 'weekly' | 'monthly' | 'quarterly';
@@ -964,9 +982,8 @@ function DciTabContent({
       text: ordered.item.text,
     } as CosPriority));
 
-    // Weekly objectives: save top 3 whenever they haven't been set yet this week
-    // (originally Monday-only, but users may set them later in the week too)
-    const weeklyObjs = !hasWeeklyObjsSet && orderedWeekly.length > 0
+    // Weekly objectives: only set on Mondays (when the brief provides fresh weekly candidates)
+    const weeklyObjs = brief?.isMonday && !hasWeeklyObjsSet && orderedWeekly.length > 0
       ? orderedWeekly.slice(0, 3).map(o => ({
           text: o.item.text,
           activities: o.item.activities,
@@ -979,7 +996,7 @@ function DciTabContent({
   return (
     <div className="space-y-6">
       {/* DCI Brief Automation Banner */}
-      <DciBriefSetupBanner />
+      <DciBriefSetupBanner onBriefGenerated={handleBriefGenerated} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1274,6 +1291,7 @@ function DciTabContent({
           orderedWeekly={orderedWeekly}
           onReorderDaily={setOrderedDaily}
           onReorderWeekly={setOrderedWeekly}
+          isMonday={brief?.isMonday ?? false}
         />
       )}
 
@@ -1625,12 +1643,14 @@ function TonightsBrief({
   orderedWeekly,
   onReorderDaily,
   onReorderWeekly,
+  isMonday,
 }: {
   brief?: DciBriefData | null;
   orderedDaily: OrderedItem[];
   orderedWeekly: OrderedItem[];
   onReorderDaily: (items: OrderedItem[]) => void;
   onReorderWeekly: (items: OrderedItem[]) => void;
+  isMonday: boolean;
 }) {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingTier, setEditingTier] = useState<'daily' | 'weekly' | null>(null);
@@ -1652,8 +1672,8 @@ function TonightsBrief({
       {/* ── Side-by-side: Weekly (left) + Daily (right) ── */}
       {hasBrief && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Weekly Objectives — left */}
-          {orderedWeekly.length > 0 && (
+          {/* Weekly Objectives — left, Monday only */}
+          {isMonday && orderedWeekly.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -3498,7 +3518,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, prepScheduleRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes, prepScheduleRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3518,13 +3538,14 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('profiles').select('id, email, manager_email').not('email', 'is', null)
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: [], error: null })),
-      db.from('cos_prep_schedule').select('enabled').eq('user_id', user.id).maybeSingle()
+      db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
+      db.from('cos_prep_schedule').select('enabled, included_group_series').eq('user_id', user.id).maybeSingle()
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: null, error: null })),
     ]);
 
     // Check if prep schedule is configured — show wizard if not
-    const scheduleRow = prepScheduleRes?.data as { enabled: boolean } | null;
+    const scheduleRow = prepScheduleRes?.data as { enabled: boolean; included_group_series?: string[] | null } | null;
     setPrepScheduleConfigured(scheduleRow?.enabled === true);
     if (!scheduleRow) {
       setShowSetupWizard(true);
@@ -3532,6 +3553,15 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
 
     const prepSet = new Set(((prepRes.data ?? []) as Array<{ team_member_id: string }>).map(p => p.team_member_id));
     const memberById = new Map(members.map(m => [m.id, m]));
+
+
+    const includedGroupSeries = new Set<string>(scheduleRow?.included_group_series ?? []);
+
+    const syncRules = syncSettingsRes?.data?.calendar_sync_rules as { exclude_emails?: string[] } | null;
+    const excludedEmails = new Set(
+      (syncRules?.exclude_emails ?? []).map((e: string) => e.trim().toLowerCase()),
+    );
+
 
     // Build org-chart–based category lookup from the profiles table.
     // This is the authoritative source — manager_email says who reports to whom.
@@ -3607,6 +3637,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       attendee_name?: string | null;
       attendee_email?: string | null;
       attendee_emails?: string[] | null;  // original array column — fallback email source
+      recurring_event_id?: string | null;
       inferred_category?: string | null;
       title: string | null;
       start_time: string;
@@ -3629,6 +3660,8 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         // Category comes from the org chart first (profiles.manager_email), then fallbacks.
         const category = resolveCategory(bestEmail, member);
 
+        const attendeeCount = e.attendee_emails?.length ?? 0;
+
         return {
           id: e.id,
           google_event_id: e.google_event_id,
@@ -3642,7 +3675,17 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           end_time: e.end_time,
           status: e.status,
           prep_available: member ? prepSet.has(member.id) : false,
+          recurring_event_id: e.recurring_event_id ?? null,
+          attendee_count: attendeeCount,
         };
+      })
+      .filter(e => {
+        if (e.attendee_count > 1) {
+          // Group meetings: only show if the user explicitly included the series.
+          return e.recurring_event_id != null && includedGroupSeries.has(e.recurring_event_id);
+        }
+        // 1:1s: exclude if the email is on the exclusion list.
+        return !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase());
       });
 
     setUpcomingEvents(events);
@@ -3985,6 +4028,9 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             upcomingEvents={upcomingEvents}
             onViewPrep={openPrep}
           />
+          <div className="mt-8">
+            <GroupMeetingCoverage />
+          </div>
         </>
       )}
 
