@@ -68,14 +68,14 @@ serve(async (req) => {
 
     // Parse optional params: days to sync, extra channel names to include.
     let days = 7
-    let extraChannels: string[] = []
+    let bodyChannels: string[] = []
     try {
       const body = await req.json()
       if (typeof body?.days === 'number' && Number.isFinite(body.days)) {
         days = Math.floor(body.days)
       }
       if (Array.isArray(body?.channels)) {
-        extraChannels = body.channels.filter((c: unknown) => typeof c === 'string')
+        bodyChannels = body.channels.filter((c: unknown) => typeof c === 'string')
       }
     } catch {
       // empty body is fine
@@ -83,10 +83,10 @@ serve(async (req) => {
     if (days < 1) days = 1
     if (days > 30) days = 30
 
-    // Load Slack credentials.
+    // Load Slack credentials (including stored extra channels).
     const { data: creds, error: credsErr } = await supabase
       .from('user_slack_credentials')
-      .select('access_token, slack_user_id')
+      .select('access_token, slack_user_id, sync_channels')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -95,6 +95,10 @@ serve(async (req) => {
 
     const token = creds.access_token as string
     const mySlackId = creds.slack_user_id as string | null
+
+    // Merge stored channels with any passed in the body, deduplicating.
+    const storedChannels: string[] = Array.isArray(creds.sync_channels) ? creds.sync_channels : []
+    const extraChannels = Array.from(new Set([...storedChannels, ...bodyChannels]))
 
     // Helper: call a Slack API method.
     async function slackApi(method: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {

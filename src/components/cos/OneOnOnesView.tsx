@@ -4,7 +4,7 @@ import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomor
 import {
   Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
   ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
-  Search, X, AlertTriangle, Repeat, UserPlus, EyeOff,
+  Search, X, AlertTriangle, Repeat, UserPlus, EyeOff, Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,8 @@ export interface UpcomingOneOnOneEvent {
   end_time: string;
   status: 'confirmed' | 'tentative' | 'cancelled';
   prep_available: boolean;
+  recurring_event_id: string | null;
+  attendee_count: number;
 }
 
 export type { EventCategory };
@@ -305,7 +307,11 @@ export function OneOnOnesView({
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
     const seen = new Set<string>();
     return active.filter(ev => {
-      const key = ev.team_member_id ?? ev.attendee_email ?? ev.id;
+      // Group meetings: each occurrence is unique, deduplicate by event id.
+      // 1:1s: deduplicate by person so each contact appears only once.
+      const key = ev.attendee_count > 1
+        ? (ev.google_event_id ?? ev.id)
+        : (ev.team_member_id ?? ev.attendee_email ?? ev.id);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -947,6 +953,8 @@ function UpNextHeroEvent({
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
+  if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
+
   const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
   const start = new Date(event.start_time);
   const isUnmatched = !event.team_member;
@@ -1152,6 +1160,46 @@ function PrepCompanionPanel({
   );
 }
 
+// ── Group meeting card (calendar-driven) ───────────────────────────────────
+
+function GroupMeetingEventCard({ event }: { event: UpcomingOneOnOneEvent }) {
+  const start = new Date(event.start_time);
+  const totalAttendees = event.attendee_count + 1; // include the user
+  return (
+    <div
+      className={cn(
+        'relative flex items-stretch rounded-lg border border-border bg-card overflow-hidden w-full',
+        'shadow-sm',
+      )}
+    >
+      <span className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-400" aria-hidden />
+      <div className="flex items-center gap-3 p-3 pl-4 w-full">
+        <div className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-indigo-400 to-indigo-600">
+          <Users className="h-4 w-4 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold leading-tight truncate text-sm">
+              {event.title ?? 'Group meeting'}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-1.5 py-px bg-indigo-50 text-indigo-700">
+              <span className="w-[5px] h-[5px] rounded-full bg-indigo-400" />
+              Group
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+            {totalAttendees} attendees
+          </p>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <div className="text-xs font-bold">{format(start, 'h:mm a')}</div>
+          <div className="text-[11px] text-muted-foreground">{format(start, 'EEE')}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Upcoming event card (calendar-driven) ───────────────────────────────────
 
 function UpcomingEventCard({
@@ -1163,6 +1211,8 @@ function UpcomingEventCard({
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
+  if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
+
   const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
   const start = new Date(event.start_time);
   const isUnmatched = !event.team_member;

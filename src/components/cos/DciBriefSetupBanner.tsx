@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Sparkles, CheckCircle2, Loader2, X, Clock, MessageSquare,
+  Sparkles, Loader2, X, Clock, MessageSquare,
   ChevronDown, ChevronUp, Settings2, Calendar, Video, ListChecks, Target, TrendingUp,
+  Eye, RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,13 +40,14 @@ type BannerState = 'loading' | 'prompt' | 'enabled' | 'dismissed';
 
 interface DciBriefSetupBannerProps {
   onStateChange?: (enabled: boolean) => void;
+  onBriefGenerated?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBannerProps) {
+export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }: DciBriefSetupBannerProps) {
   const { toast } = useToast();
   const [state, setState] = useState<BannerState>('loading');
   const [slackDm, setSlackDm] = useState(true);
@@ -182,13 +184,14 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
       setFirstRunDone(true);
       setLastRunStatus('ok');
       setLastRunAt(new Date().toISOString());
-      toast({ title: 'DCI brief generated', description: 'Check the weekly matrix below.' });
+      toast({ title: 'DCI brief generated', description: 'Brief is ready — scroll down to see the matrix.' });
+      onBriefGenerated?.();
     } catch (err) {
       toast({ title: 'Generation failed', description: String(err), variant: 'destructive' });
     } finally {
       setRunningNow(false);
     }
-  }, [state, enableDci, toast]);
+  }, [state, enableDci, toast, onBriefGenerated]);
 
   // ── Disable ─────────────────────────────────────────────────────────────
 
@@ -314,6 +317,12 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
       ? new Date(lastRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : null;
 
+    // Detect whether the brief has already been run today (PT).
+    const ptOpts: Intl.DateTimeFormatOptions = { timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric', year: 'numeric' };
+    const ptToday = new Date().toLocaleDateString('en-US', ptOpts);
+    const ptLastRun = lastRunAt ? new Date(lastRunAt).toLocaleDateString('en-US', ptOpts) : null;
+    const hasRunToday = lastRunStatus === 'ok' && ptLastRun === ptToday;
+
     return (
       <div className="space-y-0">
         <div className="flex items-center justify-between rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800 px-4 py-2.5">
@@ -344,24 +353,41 @@ export default function DciBriefSetupBanner({ onStateChange }: DciBriefSetupBann
               <Settings2 className="h-3.5 w-3.5 mr-1" />
               Settings
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={runNow}
-              disabled={runningNow}
-              className="h-7 text-xs border-emerald-300 dark:border-emerald-700"
-            >
-              {runningNow ? (
+            {runningNow ? (
+              <Button size="sm" variant="outline" disabled className="h-7 text-xs border-emerald-300 dark:border-emerald-700">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : firstRunDone ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                  Done
-                </>
-              ) : (
-                'Run now'
-              )}
-            </Button>
+              </Button>
+            ) : (hasRunToday || firstRunDone) ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onBriefGenerated}
+                  className="h-7 text-xs border-emerald-300 dark:border-emerald-700"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  Show
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={runNow}
+                  className="h-7 text-xs text-muted-foreground"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                  Recalculate
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={runNow}
+                className="h-7 text-xs border-emerald-300 dark:border-emerald-700"
+              >
+                Run now
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"

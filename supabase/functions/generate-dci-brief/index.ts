@@ -677,7 +677,7 @@ Activities:
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       system: finalSystemPrompt,
       messages: [{ role: 'user', content: userPromptParts.join('\n') }],
@@ -842,7 +842,7 @@ Activities:
         prep_id: null,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         duration_ms: Date.now() - startMs,
         data_sources_used: ['dci_brief', ...dataSources],
       })
