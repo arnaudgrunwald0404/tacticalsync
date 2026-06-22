@@ -21,7 +21,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { type EventCategory, type CalendarSyncRules, DEFAULT_SYNC_RULES } from '@/lib/calendar/matchEventToMember';
+import { type EventCategory } from '@/lib/calendar/matchEventToMember';
+import GroupMeetingsManager from '@/components/cos/GroupMeetingsManager';
 
 export type MemberRelationshipType =
   | 'direct_report' | 'collaborator' | 'boss' | 'peer' | 'skip_level' | 'stakeholder' | 'external';
@@ -533,6 +534,9 @@ export function OneOnOnesView({
           )}
         </section>
       )}
+
+      {/* Recurring group meetings (you + 2 or more others) */}
+      <GroupMeetingsManager heading="Group meetings" hideWhenEmpty defaultShowDiscovered={false} />
 
       {/* Calendar-driven: dynamic featured sections */}
       {hasUpcoming && (

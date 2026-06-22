@@ -8,9 +8,12 @@ import { supabase } from '@/integrations/supabase/client';
 
 const SLACK_CLIENT_ID = import.meta.env.VITE_SLACK_CLIENT_ID ?? '';
 
-// Scopes needed for reading DMs/channels and sending messages.
+// Scopes needed for reading DMs/channels, sending messages, and the
+// /add-to-my-lists slash command. `commands` must be included or a (re)install
+// via this flow drops the slash command registration for the workspace.
 const SLACK_SCOPES = [
   'chat:write',
+  'commands',
   'users:read',
   'users:read.email',
   'channels:read',

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, Plus, X, ChevronRight, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { Sparkles, Plus, X, ChevronDown, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -7,7 +7,6 @@ import {
 import { cn } from '@/lib/utils';
 import type { CosLayoutConfig } from '@/types/cos';
 import { useMeetingSuggestions, type MeetingSuggestion } from '@/hooks/useMeetingSuggestions';
-import type { TargetOption } from '@/lib/meetingSuggestions';
 
 interface Member { id: string; name: string }
 
@@ -29,8 +28,14 @@ function dotColor(seed: string): string {
   return DOT_COLORS[Math.abs(hash) % DOT_COLORS.length];
 }
 
+const MEETING_SOURCE_TYPES = ['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting'];
+
 function headerTitle(suggestions: MeetingSuggestion[]): string {
   if (suggestions.length === 0) return 'Suggested from your meetings';
+  // Once non-meeting sources (e.g. Slack) are mixed in, the meeting-specific
+  // framing no longer fits — fall back to a source-agnostic title.
+  const allMeetings = suggestions.every(s => MEETING_SOURCE_TYPES.includes(s.source_type ?? ''));
+  if (!allMeetings) return 'Suggested for your lists';
   const allOneOnOne = suggestions.every(s => s.source_type === 'one_on_one');
   if (allOneOnOne) return 'Suggested from your 1:1s';
   const anyOneOnOne = suggestions.some(s => s.source_type === 'one_on_one');
@@ -43,64 +48,10 @@ function provenance(s: MeetingSuggestion): string {
   return s.rationale ? `${from} · ${s.rationale}` : from;
 }
 
-function RoutingChip({
-  target, options, onSelect,
-}: {
-  target: TargetOption | undefined;
-  options: TargetOption[];
-  onSelect: (category: string) => void;
-}) {
-  if (!target) return null;
-  const label = (
-    <>
-      <ChevronRight className="h-3 w-3 shrink-0 opacity-60" />
-      <span className="font-medium uppercase tracking-wide">{target.columnLabel}</span>
-      <span className="opacity-50">·</span>
-      <span className="truncate">{target.sectionLabel}</span>
-    </>
-  );
-
-  if (options.length <= 1) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
-        {label}
-      </span>
-    );
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/70 transition-colors max-w-[180px]"
-          title="Change destination list"
-        >
-          {label}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-        {options.map(opt => (
-          <DropdownMenuItem
-            key={opt.category}
-            onSelect={() => onSelect(opt.category)}
-            className={cn('text-xs', opt.category === target.category && 'font-semibold')}
-          >
-            <span className="uppercase tracking-wide text-muted-foreground mr-1.5">{opt.columnLabel}</span>
-            {opt.sectionLabel}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAddToList }: Props) {
   const {
     suggestions, loading, refreshing, targetOptions, resolve, addToList, dismiss, refresh,
   } = useMeetingSuggestions({ userId, layoutConfig, members, onAddToList });
-
-  // Per-row destination override (before the user hits Add).
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   if (loading || suggestions.length === 0) return null;
 
@@ -131,8 +82,7 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
       {/* Rows */}
       <div className="space-y-2">
         {suggestions.map(s => {
-          const chosenCategory = overrides[s.id] ?? s.suggested_category ?? undefined;
-          const target = resolve(chosenCategory);
+          const target = resolve(s.suggested_category ?? undefined);
           const seed = s.memberName ?? s.source ?? s.id;
           return (
             <div
@@ -146,21 +96,50 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
                 <p className="truncate text-xs text-muted-foreground">{provenance(s)}</p>
               </div>
 
-              <RoutingChip
-                target={target}
-                options={targetOptions}
-                onSelect={(category) => setOverrides(prev => ({ ...prev, [s.id]: category }))}
-              />
+              {/* Primary: add straight to the suggested list. */}
+              {target && (
+                <Button
+                  size="sm"
+                  onClick={() => addToList(s.id, target.category)}
+                  className="h-8 shrink-0 gap-1 px-3"
+                  title={`Add to ${target.columnLabel} · ${target.sectionLabel}`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Add to</span>
+                  <span className="font-semibold uppercase tracking-wide">{target.columnLabel}</span>
+                  <span className="opacity-60">·</span>
+                  <span className="max-w-[110px] truncate">{target.sectionLabel}</span>
+                </Button>
+              )}
 
-              <Button
-                size="sm"
-                onClick={() => target && addToList(s.id, target.category)}
-                disabled={!target}
-                className="h-8 shrink-0 gap-1 px-3"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </Button>
+              {/* Secondary: choose a different list from the full set of sections. */}
+              {targetOptions.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0 gap-1 px-2.5"
+                      title="Add to a different list"
+                    >
+                      Add to…
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                    {targetOptions.map(opt => (
+                      <DropdownMenuItem
+                        key={opt.category}
+                        onSelect={() => addToList(s.id, opt.category)}
+                        className={cn('text-xs', target && opt.category === target.category && 'font-semibold')}
+                      >
+                        <span className="mr-1.5 uppercase tracking-wide text-muted-foreground">{opt.columnLabel}</span>
+                        {opt.sectionLabel}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               <button
                 onClick={() => dismiss(s.id)}
