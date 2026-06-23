@@ -146,6 +146,26 @@ serve(async (req) => {
       return json({ status: 'ok', session: result.data ?? result })
     }
 
+    // ── list_connector_profiles: Fetch configured connector profiles ─────────
+    if (action === 'list_connector_profiles') {
+      const apiKey = await getStoredKey()
+      if (!apiKey) return json({ error: 'not_configured' }, 400)
+
+      const resp = await fetch(`${STACKONE_API}/connector_profiles`, {
+        headers: stackoneHeaders(apiKey),
+        signal: AbortSignal.timeout(10_000),
+      })
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '')
+        return json({ status: 'error', error: `HTTP ${resp.status}: ${text.slice(0, 200)}` })
+      }
+
+      const result = await resp.json()
+      const profiles = Array.isArray(result) ? result : (result.data ?? [])
+      return json({ status: 'ok', profiles })
+    }
+
 // ── disconnect: Clear stored API key ────────────────────────────────────
     if (action === 'disconnect') {
       await supabase
