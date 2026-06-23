@@ -30,9 +30,9 @@ export const PREP_TOOL_IDS = PREP_TOOLS.map(t => t.id);
 
 /** Optional per-person tools beyond the global default set. */
 export const EXTRA_TOOLS: PrepToolDef[] = [
-  { id: 'cleargo',    label: 'ClearGO',    description: '1:1 prep packs from ClearGO',        connectionKey: 'stackone' },
-  { id: 'jira',       label: 'Jira',       description: 'Issues and projects via StackOne',   connectionKey: 'stackone' },
-  { id: 'salesforce', label: 'Salesforce', description: 'CRM pipeline via StackOne',          connectionKey: 'stackone' },
+  { id: 'cleargo',    label: 'ClearGO',    description: '1:1 prep packs from ClearGO',        connectionKey: 'stackone', defaultTier: 2 },
+  { id: 'jira',       label: 'Jira',       description: 'Issues and projects via StackOne',   connectionKey: 'stackone', defaultTier: 2 },
+  { id: 'salesforce', label: 'Salesforce', description: 'CRM pipeline via StackOne',          connectionKey: 'stackone', defaultTier: 2 },
 ];
 
 /**
