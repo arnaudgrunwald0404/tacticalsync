@@ -25,7 +25,7 @@ import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
 import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
-import CosPrepSchedulePanel from "@/components/cos/CosPrepSchedulePanel";
+import CosPrepSchedulePanel, { MeetingsPrepPanel, DailyBriefPanel } from "@/components/cos/CosPrepSchedulePanel";
 import { AgentSettingsPanel } from "@/components/cos/AgentSettingsPanel";
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
@@ -2718,16 +2718,27 @@ const Settings = () => {
               </div>
             );
           })()
+        ) : activeSection === "meetings-prep" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Meetings</h2>
+              <p className="text-muted-foreground text-sm">
+                Generate a prep brief each morning for today's qualifying 1:1s and group meetings.
+                Configure the schedule, scope, tools, and per-person integrations.
+              </p>
+            </div>
+            <MeetingsPrepPanel />
+          </div>
         ) : activeSection === "prep-schedule" ? (
           <div className="mb-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Briefs &amp; schedule</h2>
+              <h2 className="text-2xl font-bold mb-1">Daily Brief</h2>
               <p className="text-muted-foreground text-sm">
-                Two daily briefs: Recurring Meeting Prep for today's 1:1s, and My Daily Brief for
-                action-item discovery. Each runs on your schedule and can be triggered on demand.
+                Discover action items across your meetings, email, and Slack throughout the day.
+                Configure sources, focus instructions, and delivery preferences.
               </p>
             </div>
-            <CosPrepSchedulePanel />
+            <DailyBriefPanel />
           </div>
         ) : activeSection === "agent-settings" ? (
           <div className="mb-8">
