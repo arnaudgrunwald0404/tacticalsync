@@ -1049,7 +1049,7 @@ function UpNextHeroEvent({
               Run the prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && !isNonRecurring && (
+          {onExcludeFromCalendar && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar
@@ -1302,7 +1302,7 @@ function UpcomingEventCard({
               Run the prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && !isNonRecurring && (
+          {onExcludeFromCalendar && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar
