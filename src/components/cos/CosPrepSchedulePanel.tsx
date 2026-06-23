@@ -484,9 +484,10 @@ function MeetingsToolsCard({
   useEffect(() => {
     if (!userId) { setLoadingMembers(false); return; }
     (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [membersRes, eventsRes] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).from('cos_team_members').select('id, name, email, agent_overrides').eq('user_id', userId).order('name'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).from('cos_one_on_one_events').select('team_member_id, recurring_event_id').eq('user_id', userId),
       ]);
       // Members with at least one recurring 1:1 are "relationships" → shown individually
