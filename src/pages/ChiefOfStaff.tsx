@@ -556,8 +556,8 @@ export default function ChiefOfStaff() {
           <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
 
             <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
-            <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
-            <TabsTrigger value="team">1:1s</TabsTrigger>
+            <TabsTrigger value="dci">Daily Brief</TabsTrigger>
+            <TabsTrigger value="team">Meetings</TabsTrigger>
           </TabsList>
         </div>
         <div id="team-toolbar-slot" className="flex items-center mt-6 mb-8" />
@@ -3551,6 +3551,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [refreshingPrep, setRefreshingPrep] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
+  const [runningPrepEventIds, setRunningPrepEventIds] = useState<Set<string>>(new Set());
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [zoomConnected, setZoomConnected] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
@@ -3952,12 +3953,54 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       email: event.attendee_email,
     });
     if (error) {
-      toast({ title: 'Failed to add team member', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to add to relationships', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: `${name} added to your team` });
+      toast({ title: `${name} added to your relationships` });
       loadCalendarState();
     }
   }, [toast, loadCalendarState]);
+
+  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const name = event.attendee_name?.includes('@')
+      ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
+      : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
+    setRunningPrepEventIds(prev => new Set([...prev, event.id]));
+    try {
+      const { data: inserted, error } = await db.from('cos_team_members').insert({
+        user_id: user.id,
+        name,
+        role: '',
+        relationship_type: 'collaborator',
+        email: event.attendee_email,
+      }).select().single();
+      if (error) {
+        toast({ title: 'Failed to start prep', description: error.message, variant: 'destructive' });
+        return;
+      }
+      await loadCalendarState();
+      await generatePrepForMember({
+        id: inserted.id,
+        user_id: user.id,
+        name,
+        email: event.attendee_email ?? null,
+        role: '',
+        relationship_type: 'collaborator',
+        context_notes: null,
+        last_1on1_date: null,
+        reports_to_id: null,
+      }, { force: false, setBusy: () => {} });
+    } finally {
+      setRunningPrepEventIds(prev => {
+        const next = new Set(prev);
+        next.delete(event.id);
+        return next;
+      });
+    }
+  };
 
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected
@@ -4057,6 +4100,8 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           syncing={syncing}
           onSyncCalendar={handleSyncCalendar}
           onIncludeInPrep={handleIncludeInPrep}
+          onRunPrep={handleRunPrep}
+          runningPrepEventIds={runningPrepEventIds}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />

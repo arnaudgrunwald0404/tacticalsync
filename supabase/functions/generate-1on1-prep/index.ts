@@ -143,9 +143,11 @@ serve(async (req) => {
       quarterRes,
       zoomRecordingsRes,
       slackMessagesRes,
+      gmailMessagesRes,
       // Relationship Memory queries
       relTopicsRes,
       forgottenRes,
+      prepScheduleRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -211,6 +213,14 @@ serve(async (req) => {
         .gte('message_date', new Date(Date.now() - 14 * 86_400_000).toISOString())
         .order('message_date', { ascending: false })
         .limit(15),
+      supabase
+        .from('cos_gmail_messages')
+        .select('subject, snippet, sender_name, sender_email, is_from_member, message_date')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .gte('message_date', new Date(Date.now() - 30 * 86_400_000).toISOString())
+        .order('message_date', { ascending: false })
+        .limit(15),
       // Relationship topics: recurring themes + stale topics
       supabase
         .from('cos_relationship_topics')
@@ -226,6 +236,12 @@ serve(async (req) => {
         .eq('user_id', userId)
         .eq('member_id', team_member_id)
         .order('days_pending', { ascending: false }),
+      // Prep schedule for tool tier overrides
+      supabase
+        .from('cos_prep_schedule')
+        .select('tool_tiers')
+        .eq('user_id', userId)
+        .maybeSingle(),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -265,6 +281,176 @@ serve(async (req) => {
       monthlyCommitments = (comRes.data ?? []) as typeof monthlyCommitments
     }
 
+    // ── Live Slack fetch (DMs with this specific member) ──────────────────
+    // Fetches fresh DMs directly from the Slack API so prep uses real signal
+    // even when the background sync hasn't run recently. Falls back to the
+    // pre-synced cos_slack_messages table if credentials are unavailable.
+    let freshSlackMessages: Array<{
+      content: string; sender_name: string | null; channel_name: string | null;
+      is_dm: boolean; message_date: string;
+    }> = []
+
+    if (toolEnabled('slack') && member.email) {
+      try {
+        const { data: slackCreds } = await supabase
+          .from('user_slack_credentials')
+          .select('access_token, slack_user_id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (slackCreds?.access_token) {
+          const slackToken = slackCreds.access_token as string
+          const mySlackId = (slackCreds.slack_user_id as string | null) ?? ''
+          const oldest14d = String(Math.floor((Date.now() - 14 * 86_400_000) / 1000))
+
+          const slackGet = async (method: string, params: Record<string, string>): Promise<Record<string, unknown>> => {
+            const url = new URL(`https://slack.com/api/${method}`)
+            for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+            const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${slackToken}` } })
+            return r.json() as Promise<Record<string, unknown>>
+          }
+
+          // Resolve member's Slack user ID from their email
+          const lookupRes = await slackGet('users.lookupByEmail', { email: member.email })
+          const memberSlackId = lookupRes.ok
+            ? ((lookupRes.user as { id?: string } | null)?.id ?? null)
+            : null
+
+          if (memberSlackId) {
+            // Find the DM conversation channel
+            const convListRes = await slackGet('conversations.list', { types: 'im', limit: '200' })
+            const dmChannel = convListRes.ok && Array.isArray(convListRes.channels)
+              ? (convListRes.channels as Array<{ id: string; is_im: boolean; user?: string }>)
+                  .find(ch => ch.is_im && ch.user === memberSlackId)
+              : null
+
+            if (dmChannel) {
+              const histRes = await slackGet('conversations.history', {
+                channel: dmChannel.id,
+                oldest: oldest14d,
+                limit: '30',
+              })
+
+              if (histRes.ok && Array.isArray(histRes.messages)) {
+                for (const msg of histRes.messages as Array<{ type: string; ts: string; user?: string; text: string }>) {
+                  if (msg.type !== 'message' || !msg.text || msg.text.length < 5) continue
+
+                  // Resolve sender name without an extra API call: match against known IDs
+                  const senderName = msg.user === memberSlackId
+                    ? member.name
+                    : msg.user === mySlackId
+                      ? 'You'
+                      : (msg.user ?? null)
+                  const messageDate = new Date(parseFloat(msg.ts) * 1000).toISOString()
+                  const content = msg.text.slice(0, 2000)
+
+                  freshSlackMessages.push({ content, sender_name: senderName, channel_name: null, is_dm: true, message_date: messageDate })
+
+                  // Upsert into table for future syncs — fire-and-forget
+                  supabase.from('cos_slack_messages').upsert({
+                    user_id: userId,
+                    team_member_id: member.id,
+                    channel_id: dmChannel.id,
+                    channel_name: null,
+                    message_ts: msg.ts,
+                    sender_slack_id: msg.user ?? null,
+                    sender_name: senderName,
+                    content,
+                    is_dm: true,
+                    message_date: messageDate,
+                  }, { onConflict: 'user_id,channel_id,message_ts' }).then(() => {}).catch(() => {})
+                }
+              }
+            }
+          }
+        }
+      } catch (slackLiveFetchErr) {
+        console.warn('Live Slack fetch failed (non-fatal):', (slackLiveFetchErr as Error).message)
+      }
+    }
+
+    // ── Live Gmail fetch (email threads with this specific member) ───────────
+    // Uses the stored Google Calendar OAuth tokens if they include Gmail scope.
+    // Falls back to the pre-synced cos_gmail_messages table if unavailable.
+    let freshGmailMessages: Array<{
+      subject: string | null; snippet: string | null;
+      sender_name: string | null; sender_email: string | null;
+      is_from_member: boolean; message_date: string;
+    }> = []
+
+    if (toolEnabled('gmail') && member.email) {
+      try {
+        const { data: googleCreds } = await supabase
+          .from('user_calendar_credentials')
+          .select('access_token, scope')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        const hasGmailScope = googleCreds?.scope
+          ? (googleCreds.scope as string).includes('gmail') || (googleCreds.scope as string).includes('mail.google.com')
+          : false
+
+        if (googleCreds?.access_token && hasGmailScope) {
+          const gmailToken = googleCreds.access_token as string
+          const after = Math.floor((Date.now() - 30 * 86_400_000) / 1000)
+
+          const gmailFetch = async (path: string): Promise<Record<string, unknown>> => {
+            const r = await fetch(`https://gmail.googleapis.com/gmail/v1/${path}`, {
+              headers: { Authorization: `Bearer ${gmailToken}` },
+            })
+            return r.json() as Promise<Record<string, unknown>>
+          }
+
+          // Search for threads with this member
+          const query = encodeURIComponent(`(from:${member.email} OR to:${member.email}) after:${after}`)
+          const listRes = await gmailFetch(`users/me/messages?q=${query}&maxResults=20`)
+
+          if (listRes.messages && Array.isArray(listRes.messages)) {
+            for (const msg of (listRes.messages as Array<{ id: string }>).slice(0, 10)) {
+              try {
+                const detail = await gmailFetch(`users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)
+                const headers = (detail.payload as { headers?: Array<{ name: string; value: string }> } | null)?.headers ?? []
+                const getHeader = (name: string) => headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? null
+
+                const from = getHeader('From') ?? ''
+                const subject = getHeader('Subject') ?? null
+                const dateStr = getHeader('Date') ?? null
+                const snippet = (detail.snippet as string | null) ?? null
+
+                // Parse "Name <email>" format
+                const emailMatch = from.match(/<([^>]+)>/)
+                const senderEmail = emailMatch ? emailMatch[1] : from.trim()
+                const nameMatch = from.match(/^([^<]+)</)
+                const senderName = nameMatch ? nameMatch[1].trim().replace(/^"|"$/g, '') : senderEmail
+                const isFromMember = senderEmail.toLowerCase() === member.email.toLowerCase()
+                const messageDate = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
+
+                freshGmailMessages.push({ subject, snippet, sender_name: senderName, sender_email: senderEmail, is_from_member: isFromMember, message_date: messageDate })
+
+                // Upsert into cache — fire-and-forget
+                supabase.from('cos_gmail_messages').upsert({
+                  user_id: userId,
+                  team_member_id: member.id,
+                  gmail_message_id: msg.id,
+                  thread_id: (detail.threadId as string | null) ?? null,
+                  subject,
+                  snippet: snippet ? snippet.slice(0, 500) : null,
+                  sender_email: senderEmail,
+                  sender_name: senderName,
+                  is_from_member: isFromMember,
+                  message_date: messageDate,
+                }, { onConflict: 'user_id,gmail_message_id' }).then(() => {}).catch(() => {})
+              } catch {
+                // skip individual message failures
+              }
+            }
+          }
+        }
+      } catch (gmailLiveFetchErr) {
+        console.warn('Live Gmail fetch failed (non-fatal):', (gmailLiveFetchErr as Error).message)
+      }
+    }
+
     const priorities = (prioritiesRes.data ?? []) as Array<{ text: string; category: string; notes: string | null }>
     const pendingActions = (actionsRes.data ?? []) as Array<{ text: string; created_at: string; due_date: string | null }>
     const accountabilities = (accountabilitiesRes.data ?? []) as Array<{ text: string }>
@@ -281,11 +467,22 @@ serve(async (req) => {
       text: string; due_date: string | null; days_pending: number; urgency: string;
     }>
 
+    // Tool tier overrides from prep schedule (JSONB: {"salesforce": 1, "stackone": 2})
+    const toolTierOverrides = (prepScheduleRes.data as { tool_tiers?: Record<string, number> } | null)?.tool_tiers ?? {}
+    const toolTier = (id: string): 1 | 2 | 3 => {
+      const override = toolTierOverrides[id]
+      if (override === 1 || override === 2 || override === 3) return override
+      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, stackone: 2 }
+      return defaults[id] ?? 2
+    }
+
     const dataSources = ['priorities', 'commitments', 'actions', 'context']
     if (relTopics.length > 0) dataSources.push('relationship_memory')
     if (forgottenItems.length > 0) dataSources.push('forgotten_commitments')
 
     // ── Build prompt ───────────────────────────────────────────────────────
+    // Order: real signal first (Slack, Zoom), then commitments/accountabilities,
+    // then relationship memory, then user's own priorities as background-only.
 
     const contextParts: string[] = []
 
@@ -295,6 +492,124 @@ serve(async (req) => {
     }
     if (member.context_notes) {
       contextParts.push(`Context about ${member.name}: ${member.context_notes}`)
+    }
+
+    // ── 1. Primary signal: Zoom recordings and transcripts ────────────────
+    const zoomRecordings = (zoomRecordingsRes.data ?? []) as Array<{
+      id: string; topic: string | null; start_time: string;
+      duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
+    }>
+    if (toolEnabled('zoom') && zoomRecordings.length > 0) {
+      contextParts.push(`\n=== RECENT MEETINGS WITH ${member.name.toUpperCase()} ===`)
+      let transcriptsIncluded = 0
+      for (const rec of zoomRecordings) {
+        const date = new Date(rec.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        const dur = rec.duration_minutes ? `${rec.duration_minutes}min` : 'unknown duration'
+        contextParts.push(`  - "${rec.topic ?? 'Untitled'}" (${date}, ${dur})`)
+        if (rec.ai_summary) {
+          const preview = rec.ai_summary.length > 600 ? rec.ai_summary.slice(0, 600) + '...' : rec.ai_summary
+          contextParts.push(`    Summary: ${preview}`)
+        }
+        if (rec.has_transcript && transcriptsIncluded < 3) {
+          const { data: transcript } = await supabase
+            .from('cos_zoom_transcripts')
+            .select('content')
+            .eq('recording_id', rec.id)
+            .maybeSingle()
+          if (transcript?.content) {
+            const excerpt = (transcript.content as string).slice(0, 1000)
+            contextParts.push(`    Transcript excerpt: "${excerpt}..."`)
+            transcriptsIncluded++
+          }
+        }
+      }
+      dataSources.push('zoom_recordings')
+    }
+
+    // ── 2. Tier-1 signal: Slack messages ──────────────────────────────────
+    // Use live-fetched DMs if available; fall back to pre-synced table.
+    const slackMessages = freshSlackMessages.length > 0
+      ? freshSlackMessages
+      : (slackMessagesRes.data ?? []) as typeof freshSlackMessages
+
+    if (toolEnabled('slack') && slackMessages.length > 0 && toolTier('slack') === 1) {
+      const dmMessages = slackMessages.filter(m => m.is_dm)
+      const channelMessages = slackMessages.filter(m => !m.is_dm)
+
+      if (dmMessages.length > 0) {
+        contextParts.push(`\n=== RECENT SLACK DMs WITH ${member.name.toUpperCase()} ===`)
+        for (const msg of dmMessages.slice(0, 10)) {
+          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          const sender = msg.sender_name ?? 'unknown'
+          const preview = msg.content.length > 300 ? msg.content.slice(0, 300) + '...' : msg.content
+          contextParts.push(`  - [${date}] ${sender}: "${preview}"`)
+        }
+      }
+
+      if (channelMessages.length > 0) {
+        contextParts.push(`\n=== RECENT SLACK CHANNEL MESSAGES FROM ${member.name.toUpperCase()} ===`)
+        for (const msg of channelMessages.slice(0, 7)) {
+          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          const channel = msg.channel_name ? `#${msg.channel_name}` : 'channel'
+          const preview = msg.content.length > 300 ? msg.content.slice(0, 300) + '...' : msg.content
+          contextParts.push(`  - [${date}] in ${channel}: "${preview}"`)
+        }
+      }
+
+      dataSources.push('slack_messages')
+    }
+
+    // ── 3. Tier-1 signal: Gmail messages ──────────────────────────────────
+    // Use live-fetched emails if available; fall back to pre-synced table.
+    const gmailMessages = freshGmailMessages.length > 0
+      ? freshGmailMessages
+      : (gmailMessagesRes.data ?? []) as typeof freshGmailMessages
+
+    if (toolEnabled('gmail') && gmailMessages.length > 0 && toolTier('gmail') === 1) {
+      contextParts.push(`\n=== RECENT EMAILS WITH ${member.name.toUpperCase()} ===`)
+      for (const email of gmailMessages.slice(0, 10)) {
+        const date = new Date(email.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const sender = email.is_from_member ? member.name : 'You'
+        const subjectLabel = email.subject ? `"${email.subject}"` : '(no subject)'
+        const body = email.snippet ? `: ${email.snippet.slice(0, 200)}` : ''
+        contextParts.push(`  - [${date}] ${sender} — ${subjectLabel}${body}`)
+      }
+      dataSources.push('gmail_messages')
+    }
+
+    // ── 4. Tier-2 signal: External system data (HRIS, ticketing, CRM) ─────
+    if (toolEnabled('stackone') && member.email) {
+      try {
+        const s1Config = await getStackOneConfig(supabase, userId)
+        if (s1Config) {
+          const enrichment = await fetchStackOneEnrichment(
+            s1Config.apiKey,
+            s1Config.accounts,
+            member.email,
+            member.name,
+          )
+          if (enrichment.sections.length > 0) {
+            const tier = toolTier('stackone')
+            const sectionLabel = tier === 1
+              ? `\n=== EXTERNAL SYSTEM DATA FOR ${member.name.toUpperCase()} (primary signal) ===`
+              : `\nExternal system data for ${member.name}:`
+            contextParts.push(sectionLabel)
+            contextParts.push(...enrichment.sections)
+            dataSources.push(...enrichment.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        console.warn('StackOne enrichment failed (non-fatal):', err)
+      }
+    }
+
+    // ── 4. Concrete commitments and accountabilities ───────────────────────
+    if (pendingActions.length > 0) {
+      contextParts.push(`\nPending action items from previous 1:1s with ${member.name}:`)
+      pendingActions.forEach(a => {
+        const dueLabel = a.due_date ? ` [due ${a.due_date}]` : ''
+        contextParts.push(`  - ${a.text}${dueLabel}`)
+      })
     }
 
     if (accountabilities.length > 0) {
@@ -307,15 +622,7 @@ serve(async (req) => {
       topics.forEach(t => contextParts.push(`  - ${t.text}`))
     }
 
-    if (pendingActions.length > 0) {
-      contextParts.push(`\nPending action items from previous 1:1s:`)
-      pendingActions.forEach(a => {
-        const dueLabel = a.due_date ? ` [due ${a.due_date}]` : ''
-        contextParts.push(`  - ${a.text}${dueLabel}`)
-      })
-    }
-
-    // ── Relationship Memory context ───────────────────────────────────────
+    // ── 5. Relationship memory ─────────────────────────────────────────────
     if (forgottenItems.length > 0) {
       contextParts.push(`\n⚠ FORGOTTEN COMMITMENTS — these action items have been pending for a long time and were never resolved:`)
       for (const item of forgottenItems) {
@@ -336,6 +643,36 @@ serve(async (req) => {
       recurringTopics.forEach(t => contextParts.push(`  - "${t.topic}" (${t.mention_count}x, sentiment: ${t.sentiment})`))
     }
 
+    // ── 6. Past preps (for continuity) ────────────────────────────────────
+    if (pastPreps.length > 0) {
+      contextParts.push(`\nRecent past prep briefs for ${member.name} (for continuity):`)
+      for (const pp of pastPreps) {
+        const preview = pp.content.length > 400 ? pp.content.slice(0, 400) + '...' : pp.content
+        contextParts.push(`--- Prep from ${pp.prep_date} (${pp.source}) ---`)
+        contextParts.push(preview)
+      }
+    }
+
+    // ── 7. Team work context: quarterly priorities and monthly commitments ───
+    // These represent the team's active work — relevant for discussing progress,
+    // blockers, and alignment with a direct report. Not org-level background.
+    if (quarterlyPriorities.length > 0) {
+      contextParts.push(`\n=== THIS QUARTER'S PRIORITIES (team work — use to discuss progress and blockers with ${member.name}) ===`)
+      quarterlyPriorities.forEach((p, i) =>
+        contextParts.push(`  ${i + 1}. ${p.title}${p.description ? ` — ${p.description}` : ''} [${p.status}]`)
+      )
+    }
+
+    if (monthlyCommitments.length > 0) {
+      contextParts.push(`\n=== THIS MONTH'S COMMITMENTS (team work — use to discuss progress and blockers with ${member.name}) ===`)
+      monthlyCommitments.forEach((c, i) =>
+        contextParts.push(`  ${i + 1}. ${c.title}${c.description ? ` — ${c.description}` : ''} [${c.status}]`)
+      )
+    }
+
+    // ── 8. Background context: user's general priorities ──────────────────
+    // Org-level priorities the manager tracks. Do NOT project onto this person
+    // without direct evidence from Slack/Zoom/accountabilities.
     const categoryBuckets: Record<string, string[]> = {}
     for (const p of priorities) {
       const cat = p.category ?? 'other'
@@ -343,137 +680,39 @@ serve(async (req) => {
       categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
     }
     if (Object.keys(categoryBuckets).length > 0) {
-      contextParts.push(`\nMy current priorities:`)
+      contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
       for (const [cat, items] of Object.entries(categoryBuckets)) {
         contextParts.push(`  ${cat.replace('_', ' ')}:`)
         items.forEach(i => contextParts.push(`    - ${i}`))
       }
     }
 
-    if (quarterlyPriorities.length > 0) {
-      contextParts.push(`\nQuarterly priorities:`)
-      quarterlyPriorities.forEach((p, i) =>
-        contextParts.push(`  ${i + 1}. ${p.title}${p.description ? ` — ${p.description}` : ''} [${p.status}]`)
-      )
-    }
-
-    if (monthlyCommitments.length > 0) {
-      contextParts.push(`\nMonthly commitments:`)
-      monthlyCommitments.forEach((c, i) =>
-        contextParts.push(`  ${i + 1}. ${c.title}${c.description ? ` — ${c.description}` : ''} [${c.status}]`)
-      )
-    }
-
-    if (pastPreps.length > 0) {
-      contextParts.push(`\nRecent past prep briefs for ${member.name} (for continuity):`)
-      for (const pp of pastPreps) {
-        const preview = pp.content.length > 500 ? pp.content.slice(0, 500) + '...' : pp.content
-        contextParts.push(`--- Prep from ${pp.prep_date} (${pp.source}) ---`)
-        contextParts.push(preview)
-      }
-    }
-
-    // Zoom recordings context
-    const zoomRecordings = (zoomRecordingsRes.data ?? []) as Array<{
-      id: string; topic: string | null; start_time: string;
-      duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
-    }>
-    if (toolEnabled('zoom') && zoomRecordings.length > 0) {
-      contextParts.push(`\nRecent Zoom meetings with ${member.name}:`)
-      let transcriptsIncluded = 0
-      for (const rec of zoomRecordings) {
-        const date = new Date(rec.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        const dur = rec.duration_minutes ? `${rec.duration_minutes}min` : 'unknown duration'
-        contextParts.push(`  - "${rec.topic ?? 'Untitled'}" (${date}, ${dur})`)
-        if (rec.ai_summary) {
-          const preview = rec.ai_summary.length > 500 ? rec.ai_summary.slice(0, 500) + '...' : rec.ai_summary
-          contextParts.push(`    Summary: ${preview}`)
-        }
-        if (rec.has_transcript && transcriptsIncluded < 3) {
-          const { data: transcript } = await supabase
-            .from('cos_zoom_transcripts')
-            .select('content')
-            .eq('recording_id', rec.id)
-            .maybeSingle()
-          if (transcript?.content) {
-            const excerpt = (transcript.content as string).slice(0, 500)
-            contextParts.push(`    Transcript excerpt: "${excerpt}..."`)
-            transcriptsIncluded++
-          }
-        }
-      }
-      dataSources.push('zoom_recordings')
-    }
-
-    // Slack messages context
-    const slackMessages = (slackMessagesRes.data ?? []) as Array<{
-      content: string; sender_name: string | null; channel_name: string | null;
-      is_dm: boolean; message_date: string;
-    }>
-    if (toolEnabled('slack') && slackMessages.length > 0) {
-      const dmMessages = slackMessages.filter(m => m.is_dm)
-      const channelMessages = slackMessages.filter(m => !m.is_dm)
-
-      if (dmMessages.length > 0) {
-        contextParts.push(`\nRecent Slack DMs with ${member.name}:`)
-        for (const msg of dmMessages.slice(0, 8)) {
-          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          const sender = msg.sender_name ?? 'unknown'
-          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
-          contextParts.push(`  - [${date}] ${sender}: "${preview}"`)
-        }
-      }
-
-      if (channelMessages.length > 0) {
-        contextParts.push(`\nRecent Slack channel messages from ${member.name}:`)
-        for (const msg of channelMessages.slice(0, 5)) {
-          const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          const channel = msg.channel_name ? `#${msg.channel_name}` : 'channel'
-          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
-          contextParts.push(`  - [${date}] in ${channel}: "${preview}"`)
-        }
-      }
-
-      dataSources.push('slack_messages')
-    }
-
-    // ── StackOne enrichment (HRIS, ticketing, CRM) ────────────────────────
-    if (toolEnabled('stackone') && member.email) {
-      try {
-        const s1Config = await getStackOneConfig(supabase, userId)
-        if (s1Config) {
-          const enrichment = await fetchStackOneEnrichment(
-            s1Config.apiKey,
-            s1Config.accounts,
-            member.email,
-            member.name,
-          )
-          if (enrichment.sections.length > 0) {
-            contextParts.push(`\nExternal system data for ${member.name}:`)
-            contextParts.push(...enrichment.sections)
-            dataSources.push(...enrichment.sourcesUsed)
-          }
-        }
-      } catch (err) {
-        console.warn('StackOne enrichment failed (non-fatal):', err)
-      }
-    }
-
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
+
+CRITICAL — THREE-TIER SOURCE DISCIPLINE:
+
+Tier 1 — PRIMARY SIGNAL (any section marked "=== RECENT ... ==="):
+Direct communications with this person — Zoom transcripts, Slack DMs, emails. Every talking point should be traceable to something concrete here, to a pending action item, or to the person's stated accountabilities. Quote directly where useful.
+
+Tier 2 — TEAM WORK CONTEXT (sections marked "=== THIS QUARTER'S PRIORITIES ===" and "=== THIS MONTH'S COMMITMENTS ===", and any external system data NOT marked as primary signal):
+The team's active deliverables and workflow data. Use to discuss progress, blockers, and alignment — these ARE relevant to a direct report's 1:1. However, do not assume this specific person owns an item unless Tier 1 data or their accountabilities confirms it.
+
+Tier 3 — BACKGROUND ONLY (section marked "=== BACKGROUND CONTEXT ==="):
+The manager's org-level priorities. Do NOT project them onto this person without direct evidence. Do NOT generate questions like "Does [person] own any part of [initiative]?" or "Where does [person] fit in [project]?" — this wastes meeting time and breaks trust.
+
+If there is no Tier 1 signal for this person, restrict the brief strictly to: (a) follow-ups on pending action items, (b) items within their accountabilities, (c) standing discussion topics, and (d) Tier 2 commitments they may contribute to. Do not invent additional content.
 
 Output structure:
 - Use ## headings for each topic section (NOT # — skip H1)
 - Under each heading, use bullet points (- ) for specific items
 - Keep it focused: 3-6 topic sections, each with 2-4 bullets
 - Prioritize: blockers and escalations first, then alignment items, then check-ins
-- Reference specific priorities, commitments, or actions by name
+- Reference specific things said or done — quote from Slack/transcripts where useful
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
 - If there are FORGOTTEN COMMITMENTS (marked with ⚠), always include a dedicated "Stale commitments" section near the top — these are trust-eroding items that need explicit follow-up. Suggest a specific question to address each one.
 - If there are STALE TOPICS (marked with ⚠), consider whether to raise them ("We haven't discussed X in a while — is it resolved or still relevant?")
 - If recurring themes are provided, use them to add depth — these are the threads that define this relationship
-- If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
-- If Slack messages are provided, note any recent topics, requests, or decisions from those conversations
 - If external system data is provided (HRIS, tickets, CRM), weave relevant context naturally — mention upcoming PTO, blocked tickets, or deal activity where it helps prepare talking points
 
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
