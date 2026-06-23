@@ -7,17 +7,40 @@ export interface PrepToolDef {
   label: string;
   description: string;
   /** Credential/integration key used to determine whether it's connected. */
-  connectionKey: 'zoom' | 'slack' | 'stackone';
+  connectionKey: 'zoom' | 'slack' | 'gmail' | 'stackone';
+  /**
+   * Default signal tier for this tool's context in the 1:1 prep prompt.
+   *   1 = primary signal  (direct comms with the person — Slack, Zoom, Gmail)
+   *   2 = team/workflow   (CRM deals, HRIS, ticketing — work signal but not direct comms)
+   *   3 = background only (org-level context, projection risk if misused)
+   * Users can override per-tool via cos_prep_schedule.tool_tiers.
+   */
+  defaultTier: 1 | 2 | 3;
 }
 
 /** Tools whose data is actually gathered by generate-1on1-prep today. */
 export const PREP_TOOLS: PrepToolDef[] = [
-  { id: 'zoom',     label: 'Zoom',            description: 'Recent recordings, transcripts & AI summaries', connectionKey: 'zoom' },
-  { id: 'slack',    label: 'Slack',           description: 'Recent DMs and channel messages',               connectionKey: 'slack' },
-  { id: 'stackone', label: 'CRM & HR data',   description: 'HRIS, ticketing and CRM context via StackOne',  connectionKey: 'stackone' },
+  { id: 'zoom',     label: 'Zoom',           description: 'Recent recordings, transcripts & AI summaries', connectionKey: 'zoom',      defaultTier: 1 },
+  { id: 'slack',    label: 'Slack',          description: 'Recent DMs and channel messages',               connectionKey: 'slack',     defaultTier: 1 },
+  { id: 'gmail',    label: 'Gmail',          description: 'Recent email threads with this person',         connectionKey: 'gmail',     defaultTier: 1 },
+  { id: 'stackone', label: 'CRM & HR data',  description: 'HRIS, ticketing and CRM context via StackOne',  connectionKey: 'stackone',  defaultTier: 2 },
 ];
 
 export const PREP_TOOL_IDS = PREP_TOOLS.map(t => t.id);
+
+/**
+ * Resolve the effective tier for a tool, respecting per-user overrides.
+ * `toolTierOverrides` is the `cos_prep_schedule.tool_tiers` JSONB value.
+ */
+export function resolveToolTier(
+  toolId: string,
+  toolTierOverrides: Record<string, number> | null | undefined,
+): 1 | 2 | 3 {
+  const override = toolTierOverrides?.[toolId]
+  if (override === 1 || override === 2 || override === 3) return override
+  const def = PREP_TOOLS.find(t => t.id === toolId)
+  return def?.defaultTier ?? 2
+}
 
 /**
  * The effective toolset for a member's prep: a per-member override wins over the
