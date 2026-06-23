@@ -265,6 +265,94 @@ serve(async (req) => {
       monthlyCommitments = (comRes.data ?? []) as typeof monthlyCommitments
     }
 
+    // ── Live Slack fetch (DMs with this specific member) ──────────────────
+    // Fetches fresh DMs directly from the Slack API so prep uses real signal
+    // even when the background sync hasn't run recently. Falls back to the
+    // pre-synced cos_slack_messages table if credentials are unavailable.
+    let freshSlackMessages: Array<{
+      content: string; sender_name: string | null; channel_name: string | null;
+      is_dm: boolean; message_date: string;
+    }> = []
+
+    if (toolEnabled('slack') && member.email) {
+      try {
+        const { data: slackCreds } = await supabase
+          .from('user_slack_credentials')
+          .select('access_token, slack_user_id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (slackCreds?.access_token) {
+          const slackToken = slackCreds.access_token as string
+          const mySlackId = (slackCreds.slack_user_id as string | null) ?? ''
+          const oldest14d = String(Math.floor((Date.now() - 14 * 86_400_000) / 1000))
+
+          const slackGet = async (method: string, params: Record<string, string>): Promise<Record<string, unknown>> => {
+            const url = new URL(`https://slack.com/api/${method}`)
+            for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+            const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${slackToken}` } })
+            return r.json() as Promise<Record<string, unknown>>
+          }
+
+          // Resolve member's Slack user ID from their email
+          const lookupRes = await slackGet('users.lookupByEmail', { email: member.email })
+          const memberSlackId = lookupRes.ok
+            ? ((lookupRes.user as { id?: string } | null)?.id ?? null)
+            : null
+
+          if (memberSlackId) {
+            // Find the DM conversation channel
+            const convListRes = await slackGet('conversations.list', { types: 'im', limit: '200' })
+            const dmChannel = convListRes.ok && Array.isArray(convListRes.channels)
+              ? (convListRes.channels as Array<{ id: string; is_im: boolean; user?: string }>)
+                  .find(ch => ch.is_im && ch.user === memberSlackId)
+              : null
+
+            if (dmChannel) {
+              const histRes = await slackGet('conversations.history', {
+                channel: dmChannel.id,
+                oldest: oldest14d,
+                limit: '30',
+              })
+
+              if (histRes.ok && Array.isArray(histRes.messages)) {
+                for (const msg of histRes.messages as Array<{ type: string; ts: string; user?: string; text: string }>) {
+                  if (msg.type !== 'message' || !msg.text || msg.text.length < 5) continue
+
+                  // Resolve sender name without an extra API call: match against known IDs
+                  const senderName = msg.user === memberSlackId
+                    ? member.name
+                    : msg.user === mySlackId
+                      ? 'You'
+                      : (msg.user ?? null)
+                  const messageDate = new Date(parseFloat(msg.ts) * 1000).toISOString()
+                  const content = msg.text.slice(0, 2000)
+
+                  freshSlackMessages.push({ content, sender_name: senderName, channel_name: null, is_dm: true, message_date: messageDate })
+
+                  // Upsert into table for future syncs — fire-and-forget
+                  supabase.from('cos_slack_messages').upsert({
+                    user_id: userId,
+                    team_member_id: member.id,
+                    channel_id: dmChannel.id,
+                    channel_name: null,
+                    message_ts: msg.ts,
+                    sender_slack_id: msg.user ?? null,
+                    sender_name: senderName,
+                    content,
+                    is_dm: true,
+                    message_date: messageDate,
+                  }, { onConflict: 'user_id,channel_id,message_ts' }).then(() => {}).catch(() => {})
+                }
+              }
+            }
+          }
+        }
+      } catch (slackLiveFetchErr) {
+        console.warn('Live Slack fetch failed (non-fatal):', (slackLiveFetchErr as Error).message)
+      }
+    }
+
     const priorities = (prioritiesRes.data ?? []) as Array<{ text: string; category: string; notes: string | null }>
     const pendingActions = (actionsRes.data ?? []) as Array<{ text: string; created_at: string; due_date: string | null }>
     const accountabilities = (accountabilitiesRes.data ?? []) as Array<{ text: string }>
@@ -286,6 +374,8 @@ serve(async (req) => {
     if (forgottenItems.length > 0) dataSources.push('forgotten_commitments')
 
     // ── Build prompt ───────────────────────────────────────────────────────
+    // Order: real signal first (Slack, Zoom), then commitments/accountabilities,
+    // then relationship memory, then user's own priorities as background-only.
 
     const contextParts: string[] = []
 
@@ -297,96 +387,20 @@ serve(async (req) => {
       contextParts.push(`Context about ${member.name}: ${member.context_notes}`)
     }
 
-    if (accountabilities.length > 0) {
-      contextParts.push(`\n${member.name}'s accountabilities:`)
-      accountabilities.forEach(a => contextParts.push(`  - ${a.text}`))
-    }
-
-    if (topics.length > 0) {
-      contextParts.push(`\nStanding discussion topics for ${member.name}:`)
-      topics.forEach(t => contextParts.push(`  - ${t.text}`))
-    }
-
-    if (pendingActions.length > 0) {
-      contextParts.push(`\nPending action items from previous 1:1s:`)
-      pendingActions.forEach(a => {
-        const dueLabel = a.due_date ? ` [due ${a.due_date}]` : ''
-        contextParts.push(`  - ${a.text}${dueLabel}`)
-      })
-    }
-
-    // ── Relationship Memory context ───────────────────────────────────────
-    if (forgottenItems.length > 0) {
-      contextParts.push(`\n⚠ FORGOTTEN COMMITMENTS — these action items have been pending for a long time and were never resolved:`)
-      for (const item of forgottenItems) {
-        const dueLabel = item.due_date ? `, due ${item.due_date}` : ''
-        contextParts.push(`  - [${item.urgency.toUpperCase()}] ${item.text} (${item.days_pending} days pending${dueLabel})`)
-      }
-    }
-
-    const staleTopics = relTopics.filter(t => t.status === 'stale')
-    if (staleTopics.length > 0) {
-      contextParts.push(`\n⚠ STALE TOPICS — discussed before but dropped off recently:`)
-      staleTopics.forEach(t => contextParts.push(`  - "${t.topic}" (last discussed ${t.last_mentioned_at}, mentioned ${t.mention_count}x total)`))
-    }
-
-    const recurringTopics = relTopics.filter(t => t.status === 'active' && t.mention_count >= 3)
-    if (recurringTopics.length > 0) {
-      contextParts.push(`\nRecurring themes in this relationship (topics that come up often):`)
-      recurringTopics.forEach(t => contextParts.push(`  - "${t.topic}" (${t.mention_count}x, sentiment: ${t.sentiment})`))
-    }
-
-    const categoryBuckets: Record<string, string[]> = {}
-    for (const p of priorities) {
-      const cat = p.category ?? 'other'
-      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
-      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
-    }
-    if (Object.keys(categoryBuckets).length > 0) {
-      contextParts.push(`\nMy current priorities:`)
-      for (const [cat, items] of Object.entries(categoryBuckets)) {
-        contextParts.push(`  ${cat.replace('_', ' ')}:`)
-        items.forEach(i => contextParts.push(`    - ${i}`))
-      }
-    }
-
-    if (quarterlyPriorities.length > 0) {
-      contextParts.push(`\nQuarterly priorities:`)
-      quarterlyPriorities.forEach((p, i) =>
-        contextParts.push(`  ${i + 1}. ${p.title}${p.description ? ` — ${p.description}` : ''} [${p.status}]`)
-      )
-    }
-
-    if (monthlyCommitments.length > 0) {
-      contextParts.push(`\nMonthly commitments:`)
-      monthlyCommitments.forEach((c, i) =>
-        contextParts.push(`  ${i + 1}. ${c.title}${c.description ? ` — ${c.description}` : ''} [${c.status}]`)
-      )
-    }
-
-    if (pastPreps.length > 0) {
-      contextParts.push(`\nRecent past prep briefs for ${member.name} (for continuity):`)
-      for (const pp of pastPreps) {
-        const preview = pp.content.length > 500 ? pp.content.slice(0, 500) + '...' : pp.content
-        contextParts.push(`--- Prep from ${pp.prep_date} (${pp.source}) ---`)
-        contextParts.push(preview)
-      }
-    }
-
-    // Zoom recordings context
+    // ── 1. Primary signal: Zoom recordings and transcripts ────────────────
     const zoomRecordings = (zoomRecordingsRes.data ?? []) as Array<{
       id: string; topic: string | null; start_time: string;
       duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
     }>
     if (toolEnabled('zoom') && zoomRecordings.length > 0) {
-      contextParts.push(`\nRecent Zoom meetings with ${member.name}:`)
+      contextParts.push(`\n=== RECENT MEETINGS WITH ${member.name.toUpperCase()} ===`)
       let transcriptsIncluded = 0
       for (const rec of zoomRecordings) {
         const date = new Date(rec.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         const dur = rec.duration_minutes ? `${rec.duration_minutes}min` : 'unknown duration'
         contextParts.push(`  - "${rec.topic ?? 'Untitled'}" (${date}, ${dur})`)
         if (rec.ai_summary) {
-          const preview = rec.ai_summary.length > 500 ? rec.ai_summary.slice(0, 500) + '...' : rec.ai_summary
+          const preview = rec.ai_summary.length > 600 ? rec.ai_summary.slice(0, 600) + '...' : rec.ai_summary
           contextParts.push(`    Summary: ${preview}`)
         }
         if (rec.has_transcript && transcriptsIncluded < 3) {
@@ -396,7 +410,7 @@ serve(async (req) => {
             .eq('recording_id', rec.id)
             .maybeSingle()
           if (transcript?.content) {
-            const excerpt = (transcript.content as string).slice(0, 500)
+            const excerpt = (transcript.content as string).slice(0, 1000)
             contextParts.push(`    Transcript excerpt: "${excerpt}..."`)
             transcriptsIncluded++
           }
@@ -405,31 +419,32 @@ serve(async (req) => {
       dataSources.push('zoom_recordings')
     }
 
-    // Slack messages context
-    const slackMessages = (slackMessagesRes.data ?? []) as Array<{
-      content: string; sender_name: string | null; channel_name: string | null;
-      is_dm: boolean; message_date: string;
-    }>
+    // ── 2. Primary signal: Slack messages ─────────────────────────────────
+    // Use live-fetched DMs if available; fall back to pre-synced table.
+    const slackMessages = freshSlackMessages.length > 0
+      ? freshSlackMessages
+      : (slackMessagesRes.data ?? []) as typeof freshSlackMessages
+
     if (toolEnabled('slack') && slackMessages.length > 0) {
       const dmMessages = slackMessages.filter(m => m.is_dm)
       const channelMessages = slackMessages.filter(m => !m.is_dm)
 
       if (dmMessages.length > 0) {
-        contextParts.push(`\nRecent Slack DMs with ${member.name}:`)
-        for (const msg of dmMessages.slice(0, 8)) {
+        contextParts.push(`\n=== RECENT SLACK DMs WITH ${member.name.toUpperCase()} ===`)
+        for (const msg of dmMessages.slice(0, 10)) {
           const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
           const sender = msg.sender_name ?? 'unknown'
-          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
+          const preview = msg.content.length > 300 ? msg.content.slice(0, 300) + '...' : msg.content
           contextParts.push(`  - [${date}] ${sender}: "${preview}"`)
         }
       }
 
       if (channelMessages.length > 0) {
-        contextParts.push(`\nRecent Slack channel messages from ${member.name}:`)
-        for (const msg of channelMessages.slice(0, 5)) {
+        contextParts.push(`\n=== RECENT SLACK CHANNEL MESSAGES FROM ${member.name.toUpperCase()} ===`)
+        for (const msg of channelMessages.slice(0, 7)) {
           const date = new Date(msg.message_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
           const channel = msg.channel_name ? `#${msg.channel_name}` : 'channel'
-          const preview = msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content
+          const preview = msg.content.length > 300 ? msg.content.slice(0, 300) + '...' : msg.content
           contextParts.push(`  - [${date}] in ${channel}: "${preview}"`)
         }
       }
@@ -437,7 +452,7 @@ serve(async (req) => {
       dataSources.push('slack_messages')
     }
 
-    // ── StackOne enrichment (HRIS, ticketing, CRM) ────────────────────────
+    // ── 3. External system data (HRIS, ticketing, CRM) ────────────────────
     if (toolEnabled('stackone') && member.email) {
       try {
         const s1Config = await getStackOneConfig(supabase, userId)
@@ -459,21 +474,109 @@ serve(async (req) => {
       }
     }
 
+    // ── 4. Concrete commitments and accountabilities ───────────────────────
+    if (pendingActions.length > 0) {
+      contextParts.push(`\nPending action items from previous 1:1s with ${member.name}:`)
+      pendingActions.forEach(a => {
+        const dueLabel = a.due_date ? ` [due ${a.due_date}]` : ''
+        contextParts.push(`  - ${a.text}${dueLabel}`)
+      })
+    }
+
+    if (accountabilities.length > 0) {
+      contextParts.push(`\n${member.name}'s accountabilities:`)
+      accountabilities.forEach(a => contextParts.push(`  - ${a.text}`))
+    }
+
+    if (topics.length > 0) {
+      contextParts.push(`\nStanding discussion topics for ${member.name}:`)
+      topics.forEach(t => contextParts.push(`  - ${t.text}`))
+    }
+
+    // ── 5. Relationship memory ─────────────────────────────────────────────
+    if (forgottenItems.length > 0) {
+      contextParts.push(`\n⚠ FORGOTTEN COMMITMENTS — these action items have been pending for a long time and were never resolved:`)
+      for (const item of forgottenItems) {
+        const dueLabel = item.due_date ? `, due ${item.due_date}` : ''
+        contextParts.push(`  - [${item.urgency.toUpperCase()}] ${item.text} (${item.days_pending} days pending${dueLabel})`)
+      }
+    }
+
+    const staleTopics = relTopics.filter(t => t.status === 'stale')
+    if (staleTopics.length > 0) {
+      contextParts.push(`\n⚠ STALE TOPICS — discussed before but dropped off recently:`)
+      staleTopics.forEach(t => contextParts.push(`  - "${t.topic}" (last discussed ${t.last_mentioned_at}, mentioned ${t.mention_count}x total)`))
+    }
+
+    const recurringTopics = relTopics.filter(t => t.status === 'active' && t.mention_count >= 3)
+    if (recurringTopics.length > 0) {
+      contextParts.push(`\nRecurring themes in this relationship (topics that come up often):`)
+      recurringTopics.forEach(t => contextParts.push(`  - "${t.topic}" (${t.mention_count}x, sentiment: ${t.sentiment})`))
+    }
+
+    // ── 6. Past preps (for continuity) ────────────────────────────────────
+    if (pastPreps.length > 0) {
+      contextParts.push(`\nRecent past prep briefs for ${member.name} (for continuity):`)
+      for (const pp of pastPreps) {
+        const preview = pp.content.length > 400 ? pp.content.slice(0, 400) + '...' : pp.content
+        contextParts.push(`--- Prep from ${pp.prep_date} (${pp.source}) ---`)
+        contextParts.push(preview)
+      }
+    }
+
+    // ── 7. Background context: user's own priorities ───────────────────────
+    // These are org-level priorities. The model must NOT project them onto the
+    // member unless the signal above explicitly connects them.
+    const categoryBuckets: Record<string, string[]> = {}
+    for (const p of priorities) {
+      const cat = p.category ?? 'other'
+      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
+      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
+    }
+    const hasBackgroundContext = Object.keys(categoryBuckets).length > 0 || quarterlyPriorities.length > 0 || monthlyCommitments.length > 0
+    if (hasBackgroundContext) {
+      contextParts.push(`\n=== BACKGROUND CONTEXT (user's priorities — reference ONLY if there is direct evidence above connecting ${member.name} to these) ===`)
+    }
+    if (Object.keys(categoryBuckets).length > 0) {
+      contextParts.push(`My current priorities:`)
+      for (const [cat, items] of Object.entries(categoryBuckets)) {
+        contextParts.push(`  ${cat.replace('_', ' ')}:`)
+        items.forEach(i => contextParts.push(`    - ${i}`))
+      }
+    }
+
+    if (quarterlyPriorities.length > 0) {
+      contextParts.push(`Quarterly priorities:`)
+      quarterlyPriorities.forEach((p, i) =>
+        contextParts.push(`  ${i + 1}. ${p.title}${p.description ? ` — ${p.description}` : ''} [${p.status}]`)
+      )
+    }
+
+    if (monthlyCommitments.length > 0) {
+      contextParts.push(`Monthly commitments:`)
+      monthlyCommitments.forEach((c, i) =>
+        contextParts.push(`  ${i + 1}. ${c.title}${c.description ? ` — ${c.description}` : ''} [${c.status}]`)
+      )
+    }
+
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
+
+CRITICAL — SOURCE DISCIPLINE:
+- The sections marked "=== RECENT MEETINGS ===" and "=== RECENT SLACK DMs ===" are your PRIMARY source. Every talking point must be traceable to something concrete in those sections, to a pending action item, or to the person's stated accountabilities.
+- The section marked "=== BACKGROUND CONTEXT ===" contains the user's org-level priorities. Do NOT assume this person is involved in any of them unless the Slack messages, transcripts, or accountabilities above explicitly name them. Do NOT generate questions like "Does [person] own any part of [initiative]?" or "Where does [person] fit in [project]?" — this wastes meeting time and breaks trust.
+- If there are no Slack messages and no Zoom transcripts for this person, restrict the brief strictly to: (a) follow-ups on pending action items, (b) items within their accountabilities, (c) standing discussion topics. Do not invent additional content.
 
 Output structure:
 - Use ## headings for each topic section (NOT # — skip H1)
 - Under each heading, use bullet points (- ) for specific items
 - Keep it focused: 3-6 topic sections, each with 2-4 bullets
 - Prioritize: blockers and escalations first, then alignment items, then check-ins
-- Reference specific priorities, commitments, or actions by name
+- Reference specific things said or done — quote from Slack/transcripts where useful
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
 - If there are FORGOTTEN COMMITMENTS (marked with ⚠), always include a dedicated "Stale commitments" section near the top — these are trust-eroding items that need explicit follow-up. Suggest a specific question to address each one.
 - If there are STALE TOPICS (marked with ⚠), consider whether to raise them ("We haven't discussed X in a while — is it resolved or still relevant?")
 - If recurring themes are provided, use them to add depth — these are the threads that define this relationship
-- If Zoom meeting transcript excerpts are provided, reference key discussion points or decisions from those meetings
-- If Slack messages are provided, note any recent topics, requests, or decisions from those conversations
 - If external system data is provided (HRIS, tickets, CRM), weave relevant context naturally — mention upcoming PTO, blocked tickets, or deal activity where it helps prepare talking points
 
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
