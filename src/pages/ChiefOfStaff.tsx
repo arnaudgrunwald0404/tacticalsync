@@ -556,8 +556,8 @@ export default function ChiefOfStaff() {
           <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
 
             <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
-            <TabsTrigger value="dci">Daily Check-in</TabsTrigger>
-            <TabsTrigger value="team">1:1s</TabsTrigger>
+            <TabsTrigger value="dci">Daily Brief</TabsTrigger>
+            <TabsTrigger value="team">Meetings</TabsTrigger>
           </TabsList>
         </div>
         <div id="team-toolbar-slot" className="flex items-center mt-6 mb-8" />
