@@ -465,10 +465,52 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
   );
 }
 
-// ── Meetings — Card 3: Tools ──────────────────────────────────────────────────
+// ── Meetings — Card 3: Tools (merged global + per-person) ────────────────────
 
-function MeetingsToolsCard({ draft, update }: { draft: PrepScheduleConfig; update: Patch }) {
+function MeetingsToolsCard({
+  draft, update, userId,
+}: {
+  draft: PrepScheduleConfig;
+  update: Patch;
+  userId: string | null;
+}) {
   const [newChannel, setNewChannel] = useState('');
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [recurringMemberIds, setRecurringMemberIds] = useState<Set<string>>(new Set());
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const { toast } = useToast();
+  const { recurringGroups } = useUpcomingMeetingGroups();
+
+  useEffect(() => {
+    if (!userId) { setLoadingMembers(false); return; }
+    (async () => {
+      const [membersRes, eventsRes] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('cos_team_members').select('id, name, email, agent_overrides').eq('user_id', userId).order('name'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('cos_one_on_one_events').select('team_member_id, recurring_event_id').eq('user_id', userId),
+      ]);
+      // Members with at least one recurring 1:1 are "relationships" → shown individually
+      const recurring = new Set<string>(
+        (eventsRes.data ?? [])
+          .filter((e: { recurring_event_id: string | null }) => !!e.recurring_event_id)
+          .map((e: { team_member_id: string }) => e.team_member_id)
+      );
+      setRecurringMemberIds(recurring);
+      // Sort: recurring 1:1 members first (alpha), then the rest (alpha)
+      const sorted = [...(membersRes.data ?? [])].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+        const aRec = recurring.has(a.id as string);
+        const bRec = recurring.has(b.id as string);
+        if (aRec !== bRec) return aRec ? -1 : 1;
+        return ((a.name || a.email || '') as string).localeCompare((b.name || b.email || '') as string);
+      });
+      setMembers(sorted.map((m: Record<string, unknown>) => ({
+        ...m,
+        agent_overrides: (m.agent_overrides as Record<string, unknown>) ?? {},
+      } as TeamMember)));
+      setLoadingMembers(false);
+    })();
+  }, [userId]);
 
   const toggleTool = (id: string) =>
     update({
@@ -486,34 +528,59 @@ function MeetingsToolsCard({ draft, update }: { draft: PrepScheduleConfig; updat
   const removeChannel = (ch: string) =>
     update({ slack_channels: draft.slack_channels.filter(c => c !== ch) });
 
+  const getMemberExtras = (m: TeamMember): Set<string> => {
+    const override = m.agent_overrides.prep_tools as string[] | null | undefined;
+    if (!Array.isArray(override) || override.length === 0) return new Set();
+    const defaultSet = new Set(draft.prep_tools);
+    return new Set(override.filter(t => !defaultSet.has(t)));
+  };
+
+  const toggleExtra = async (m: TeamMember, toolId: string, checked: boolean) => {
+    const currentExtras = getMemberExtras(m);
+    if (checked) currentExtras.add(toolId); else currentExtras.delete(toolId);
+    const newPrepTools = currentExtras.size === 0 ? null : [...draft.prep_tools, ...currentExtras];
+    const newOverrides = { ...m.agent_overrides, prep_tools: newPrepTools };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('cos_team_members').update({ agent_overrides: newOverrides }).eq('id', m.id);
+    if (error) {
+      toast({ title: 'Failed to update', description: String(error), variant: 'destructive' });
+      return;
+    }
+    setMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, agent_overrides: newOverrides } : mb));
+  };
+
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Tools</CardTitle></CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-[11px] text-muted-foreground">
-          Data sources gathered for every prep. Add per-person extras in the Advanced section below.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {PREP_TOOLS.map(tool => {
-            const on = draft.prep_tools.includes(tool.id);
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                title={tool.description}
-                onClick={() => toggleTool(tool.id)}
-                className={cn(
-                  'px-3 py-1 rounded-full text-xs border transition-colors',
-                  on ? 'bg-primary text-primary-foreground border-primary'
-                     : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                )}
-              >
-                {tool.label}
-              </button>
-            );
-          })}
+        {/* Global toggles */}
+        <div>
+          <p className="text-[11px] text-muted-foreground mb-2">
+            Data sources gathered for every prep. Toggle off to disable globally.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {PREP_TOOLS.map(tool => {
+              const on = draft.prep_tools.includes(tool.id);
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  title={tool.description}
+                  onClick={() => toggleTool(tool.id)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs border transition-colors',
+                    on ? 'bg-primary text-primary-foreground border-primary'
+                       : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  {tool.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
+        {/* Slack channels */}
         <div className="space-y-2 border-t pt-3">
           <label className="text-xs font-medium">Slack channels to include</label>
           <div className="flex flex-wrap gap-1.5">
@@ -538,6 +605,149 @@ function MeetingsToolsCard({ draft, update }: { draft: PrepScheduleConfig; updat
               <Plus className="h-3 w-3" /> Add
             </Button>
           </div>
+        </div>
+
+        {/* Per-person matrix + group meetings */}
+        <div className="border-t pt-3">
+          <p className="text-[11px] text-muted-foreground mb-3">
+            Add integration-specific tools for each 1:1 relationship. Non-recurring 1:1s and group meetings use global defaults.
+          </p>
+          {loadingMembers ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left pb-1 pr-6 text-xs text-muted-foreground min-w-[160px]" />
+                    <th
+                      colSpan={PREP_TOOLS.length}
+                      className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
+                    >
+                      Default — all meetings
+                    </th>
+                    {EXTRA_TOOLS.length > 0 && (
+                      <th
+                        colSpan={EXTRA_TOOLS.length}
+                        className="pb-1 pl-6 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
+                      >
+                        Additional per person
+                      </th>
+                    )}
+                  </tr>
+                  <tr>
+                    <th className="pb-3 text-left text-xs font-medium text-muted-foreground pr-6">Meeting / Person</th>
+                    {PREP_TOOLS.map(t => (
+                      <th key={t.id} className="pb-3 px-3 text-center text-xs font-medium whitespace-nowrap">{t.label}</th>
+                    ))}
+                    {EXTRA_TOOLS.map(t => (
+                      <th key={t.id} className="pb-3 px-3 pl-6 text-center text-xs font-medium whitespace-nowrap">{t.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Section A: recurring 1:1 relationships — configurable per person */}
+                  {members.filter(m => recurringMemberIds.has(m.id)).map((m, i) => {
+                    const extras = getMemberExtras(m);
+                    return (
+                      <tr key={m.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
+                        <td className="py-2.5 pr-6">
+                          <span className="font-medium text-sm">{m.name || m.email || 'Unknown'}</span>
+                          <span className="ml-1.5 text-[9px] text-primary/60 uppercase tracking-wide">recurring 1:1</span>
+                        </td>
+                        {PREP_TOOLS.map(t => (
+                          <td key={t.id} className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center" title="Default — always included">
+                              <div className="h-4 w-4 rounded border border-primary/40 bg-primary/10 flex items-center justify-center">
+                                <Lock className="h-2.5 w-2.5 text-primary/60" />
+                              </div>
+                            </div>
+                          </td>
+                        ))}
+                        {EXTRA_TOOLS.map(t => (
+                          <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                            <Checkbox
+                              checked={extras.has(t.id)}
+                              onCheckedChange={(v) => toggleExtra(m, t.id, v as boolean)}
+                              className="mx-auto"
+                              title={t.description}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+
+                  {/* Section B: non-recurring 1:1s — one aggregate row, global defaults only */}
+                  <tr>
+                    <td colSpan={1 + PREP_TOOLS.length + EXTRA_TOOLS.length} className="pt-4 pb-1">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Non-recurring 1:1s</p>
+                    </td>
+                  </tr>
+                  <tr className="border-t border-border/40">
+                    <td className="py-2.5 pr-6">
+                      <span className="font-medium text-sm text-muted-foreground">One-off 1:1 meetings</span>
+                      <p className="text-[10px] text-muted-foreground/60">Uses global default tools</p>
+                    </td>
+                    {PREP_TOOLS.map(t => (
+                      <td key={t.id} className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center" title="Inherits global defaults">
+                          <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
+                            <Lock className="h-2.5 w-2.5 text-muted-foreground/40" />
+                          </div>
+                        </div>
+                      </td>
+                    ))}
+                    {EXTRA_TOOLS.map(t => (
+                      <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                        <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
+                      </td>
+                    ))}
+                  </tr>
+
+                  {/* Section C: group meetings in scope */}
+                  {draft.included_group_series.length > 0 && (
+                    <>
+                      <tr>
+                        <td colSpan={1 + PREP_TOOLS.length + EXTRA_TOOLS.length} className="pt-4 pb-1">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Group meetings in scope</p>
+                        </td>
+                      </tr>
+                      {draft.included_group_series.map((seriesKey, i) => {
+                        const group = recurringGroups.find(g => g.key === seriesKey);
+                        return (
+                          <tr key={seriesKey} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
+                            <td className="py-2.5 pr-6">
+                              <span className="font-medium text-sm text-muted-foreground">
+                                {group?.title ?? seriesKey}
+                              </span>
+                              {group && (
+                                <p className="text-[10px] text-muted-foreground/60">{group.attendeeCount} attendees · global tools</p>
+                              )}
+                            </td>
+                            {PREP_TOOLS.map(t => (
+                              <td key={t.id} className="py-2.5 px-3 text-center">
+                                <div className="flex items-center justify-center" title="Inherits global defaults">
+                                  <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
+                                    <Lock className="h-2.5 w-2.5 text-muted-foreground/40" />
+                                  </div>
+                                </div>
+                              </td>
+                            ))}
+                            {EXTRA_TOOLS.map(t => (
+                              <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                                <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -652,140 +862,6 @@ function MeetingsLogsCard({ logs, userId, onRefresh }: {
   );
 }
 
-// ── Meetings — Card 5: Tools (Advanced) ──────────────────────────────────────
-
-function MeetingsAdvancedToolsCard({ draft, userId }: { draft: PrepScheduleConfig; userId: string | null }) {
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [loadingMembers, setLoadingMembers] = useState(true);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (!userId) { setLoadingMembers(false); return; }
-    (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase as any)
-        .from('cos_team_members')
-        .select('id, name, email, agent_overrides')
-        .eq('user_id', userId)
-        .order('name');
-      setMembers((data ?? []).map((m: Record<string, unknown>) => ({
-        ...m,
-        agent_overrides: (m.agent_overrides as Record<string, unknown>) ?? {},
-      })));
-      setLoadingMembers(false);
-    })();
-  }, [userId]);
-
-  // Extra tools currently enabled for a member (beyond global defaults)
-  const getMemberExtras = (m: TeamMember): Set<string> => {
-    const override = m.agent_overrides.prep_tools as string[] | null | undefined;
-    if (!Array.isArray(override) || override.length === 0) return new Set();
-    const defaultSet = new Set(draft.prep_tools);
-    return new Set(override.filter(t => !defaultSet.has(t)));
-  };
-
-  const toggleExtra = async (m: TeamMember, toolId: string, checked: boolean) => {
-    const currentExtras = getMemberExtras(m);
-    if (checked) currentExtras.add(toolId); else currentExtras.delete(toolId);
-    // Store full effective toolset: global defaults + selected extras (or null to use global)
-    const newPrepTools = currentExtras.size === 0 ? null : [...draft.prep_tools, ...currentExtras];
-    const newOverrides = { ...m.agent_overrides, prep_tools: newPrepTools };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any)
-      .from('cos_team_members')
-      .update({ agent_overrides: newOverrides })
-      .eq('id', m.id);
-    if (error) {
-      toast({ title: 'Failed to update', description: String(error), variant: 'destructive' });
-      return;
-    }
-    setMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, agent_overrides: newOverrides } : mb));
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Tools (Advanced)</CardTitle>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          Default tools run for all members and cannot be removed. Add integration-specific tools for individuals.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {loadingMembers ? (
-          <p className="text-sm text-muted-foreground">Loading team members…</p>
-        ) : members.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No team members found. Add 1:1 partners to configure per-person tools.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left pb-1 pr-6 font-medium text-xs text-muted-foreground min-w-[140px]" />
-                  <th
-                    colSpan={PREP_TOOLS.length}
-                    className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
-                  >
-                    Default — all members
-                  </th>
-                  {EXTRA_TOOLS.length > 0 && (
-                    <th
-                      colSpan={EXTRA_TOOLS.length}
-                      className="pb-1 pl-6 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
-                    >
-                      Additional per person
-                    </th>
-                  )}
-                </tr>
-                <tr>
-                  <th className="pb-3 text-left text-xs font-medium text-muted-foreground pr-6">Member</th>
-                  {PREP_TOOLS.map(t => (
-                    <th key={t.id} className="pb-3 px-3 text-center text-xs font-medium whitespace-nowrap">
-                      {t.label}
-                    </th>
-                  ))}
-                  {EXTRA_TOOLS.map(t => (
-                    <th key={t.id} className="pb-3 px-3 pl-6 text-center text-xs font-medium whitespace-nowrap">
-                      {t.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m, i) => {
-                  const extras = getMemberExtras(m);
-                  return (
-                    <tr key={m.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
-                      <td className="py-2.5 pr-6 font-medium text-sm">{m.name || m.email || 'Unknown'}</td>
-                      {PREP_TOOLS.map(t => (
-                        <td key={t.id} className="py-2.5 px-3 text-center">
-                          <div className="flex items-center justify-center" title="Default — always included">
-                            <div className="h-4 w-4 rounded border border-primary/40 bg-primary/10 flex items-center justify-center">
-                              <Lock className="h-2.5 w-2.5 text-primary/60" />
-                            </div>
-                          </div>
-                        </td>
-                      ))}
-                      {EXTRA_TOOLS.map(t => (
-                        <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
-                          <Checkbox
-                            checked={extras.has(t.id)}
-                            onCheckedChange={(v) => toggleExtra(m, t.id, v as boolean)}
-                            className="mx-auto"
-                            title={t.description}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 // ── Daily Brief — Card 1: Schedule + Manual Run ───────────────────────────────
 
@@ -1000,10 +1076,9 @@ export function MeetingsPrepPanel() {
     <div className="space-y-4">
       <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
       <MeetingsScopeCard draft={draft} update={update} />
-      <MeetingsToolsCard draft={draft} update={update} />
+      <MeetingsToolsCard draft={draft} update={update} userId={userId} />
       <MeetingsToolTiersCard draft={draft} update={update} />
       <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
-      <MeetingsAdvancedToolsCard draft={draft} userId={userId} />
       <Button onClick={save} disabled={saving} className="gap-1.5">
         {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
         Save
@@ -1043,9 +1118,8 @@ export default function CosPrepSchedulePanel() {
         </div>
         <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
         <MeetingsScopeCard draft={draft} update={update} />
-        <MeetingsToolsCard draft={draft} update={update} />
+        <MeetingsToolsCard draft={draft} update={update} userId={userId} />
         <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
-        <MeetingsAdvancedToolsCard draft={draft} userId={userId} />
       </section>
 
       <section className="space-y-4">
