@@ -2,8 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
 
-export type RoleTag = 'admin' | 'elt' | 'xlt' | 'user';
-export const ALL_ROLE_TAGS: RoleTag[] = ['admin', 'elt', 'xlt', 'user'];
+export type RoleTag = 'admin' | 'elt' | 'xlt' | 'user' | 'test_user';
+export const ALL_ROLE_TAGS: RoleTag[] = ['admin', 'elt', 'xlt', 'user', 'test_user'];
 
 interface RolesState {
   isAdmin: boolean;

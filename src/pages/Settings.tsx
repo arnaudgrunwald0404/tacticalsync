@@ -1624,14 +1624,15 @@ const Settings = () => {
   };
 
   const ROLE_TAG_COLORS: Record<RoleTag, string> = {
-    admin: 'bg-red-50 text-red-700',
-    elt:   'bg-purple-50 text-purple-700',
-    xlt:   'bg-blue-50 text-blue-700',
-    user:  'bg-gray-100 text-gray-600',
+    admin:     'bg-red-50 text-red-700',
+    elt:       'bg-purple-50 text-purple-700',
+    xlt:       'bg-blue-50 text-blue-700',
+    user:      'bg-gray-100 text-gray-600',
+    test_user: 'bg-amber-50 text-amber-700',
   };
 
   const ROLE_TAG_LABELS: Record<RoleTag, string> = {
-    admin: 'Admin', elt: 'ELT', xlt: 'XLT', user: 'User',
+    admin: 'Admin', elt: 'ELT', xlt: 'XLT', user: 'User', test_user: 'Test User',
   };
 
   const toggleRoleTag = async (userId: string, tag: RoleTag) => {
