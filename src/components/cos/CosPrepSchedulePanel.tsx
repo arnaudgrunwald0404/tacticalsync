@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1072,18 +1073,45 @@ function BriefLogsCard({ userId }: { userId: string | null }) {
 export function MeetingsPrepPanel() {
   const { draft, update, saving, save, runningPrep, runPrepNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
   if (loading || !draft) return null;
-  return (
-    <div className="space-y-4">
-      <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
-      <MeetingsScopeCard draft={draft} update={update} />
-      <MeetingsToolsCard draft={draft} update={update} userId={userId} />
-      <MeetingsToolTiersCard draft={draft} update={update} />
-      <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
+
+  const SaveButton = () => (
+    <div className="pt-2">
       <Button onClick={save} disabled={saving} className="gap-1.5">
         {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
         Save
       </Button>
     </div>
+  );
+
+  return (
+    <Tabs defaultValue="schedule">
+      <TabsList className="mb-4">
+        <TabsTrigger value="schedule">Schedule</TabsTrigger>
+        <TabsTrigger value="scope">Scope</TabsTrigger>
+        <TabsTrigger value="tools">Tools</TabsTrigger>
+        <TabsTrigger value="logs">Logs</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="schedule" className="space-y-4">
+        <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
+        <SaveButton />
+      </TabsContent>
+
+      <TabsContent value="scope" className="space-y-4">
+        <MeetingsScopeCard draft={draft} update={update} />
+        <SaveButton />
+      </TabsContent>
+
+      <TabsContent value="tools" className="space-y-4">
+        <MeetingsToolsCard draft={draft} update={update} userId={userId} />
+        <MeetingsToolTiersCard draft={draft} update={update} />
+        <SaveButton />
+      </TabsContent>
+
+      <TabsContent value="logs">
+        <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
