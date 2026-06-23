@@ -3953,9 +3953,9 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       email: event.attendee_email,
     });
     if (error) {
-      toast({ title: 'Failed to add team member', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to add to relationships', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: `${name} included in prep` });
+      toast({ title: `${name} added to your relationships` });
       loadCalendarState();
     }
   }, [toast, loadCalendarState]);

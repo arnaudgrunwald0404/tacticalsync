@@ -1048,7 +1048,7 @@ function UpNextHeroEvent({
           {onIncludeInPrep && (
             <DropdownMenuItem onClick={() => onIncludeInPrep(event)} className="gap-2">
               <UserPlus className="h-4 w-4" />
-              Include in prep
+              Add to my relationships
             </DropdownMenuItem>
           )}
           {onRunPrep && isNonRecurring && (
@@ -1132,7 +1132,7 @@ function PrepCompanionPanel({
             <div>
               <p className="text-sm font-semibold">Contact not linked</p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Add {firstName} to your team in Settings to enable AI-generated prep, action tracking, and shared context.
+                Add {firstName} to your relationships in Settings to enable AI-generated prep, action tracking, and shared context.
               </p>
             </div>
           </div>
@@ -1308,7 +1308,7 @@ function UpcomingEventCard({
           {onIncludeInPrep && (
             <DropdownMenuItem onClick={() => onIncludeInPrep(event)} className="gap-2">
               <UserPlus className="h-4 w-4" />
-              Include in prep
+              Add to my relationships
             </DropdownMenuItem>
           )}
           {onRunPrep && isNonRecurring && (
