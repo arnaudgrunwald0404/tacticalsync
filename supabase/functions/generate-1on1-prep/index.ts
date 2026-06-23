@@ -524,47 +524,54 @@ serve(async (req) => {
       }
     }
 
-    // ── 7. Background context: user's own priorities ───────────────────────
-    // These are org-level priorities. The model must NOT project them onto the
-    // member unless the signal above explicitly connects them.
-    const categoryBuckets: Record<string, string[]> = {}
-    for (const p of priorities) {
-      const cat = p.category ?? 'other'
-      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
-      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
-    }
-    const hasBackgroundContext = Object.keys(categoryBuckets).length > 0 || quarterlyPriorities.length > 0 || monthlyCommitments.length > 0
-    if (hasBackgroundContext) {
-      contextParts.push(`\n=== BACKGROUND CONTEXT (user's priorities — reference ONLY if there is direct evidence above connecting ${member.name} to these) ===`)
-    }
-    if (Object.keys(categoryBuckets).length > 0) {
-      contextParts.push(`My current priorities:`)
-      for (const [cat, items] of Object.entries(categoryBuckets)) {
-        contextParts.push(`  ${cat.replace('_', ' ')}:`)
-        items.forEach(i => contextParts.push(`    - ${i}`))
-      }
-    }
-
+    // ── 7. Team work context: quarterly priorities and monthly commitments ───
+    // These represent the team's active work — relevant for discussing progress,
+    // blockers, and alignment with a direct report. Not org-level background.
     if (quarterlyPriorities.length > 0) {
-      contextParts.push(`Quarterly priorities:`)
+      contextParts.push(`\n=== THIS QUARTER'S PRIORITIES (team work — use to discuss progress and blockers with ${member.name}) ===`)
       quarterlyPriorities.forEach((p, i) =>
         contextParts.push(`  ${i + 1}. ${p.title}${p.description ? ` — ${p.description}` : ''} [${p.status}]`)
       )
     }
 
     if (monthlyCommitments.length > 0) {
-      contextParts.push(`Monthly commitments:`)
+      contextParts.push(`\n=== THIS MONTH'S COMMITMENTS (team work — use to discuss progress and blockers with ${member.name}) ===`)
       monthlyCommitments.forEach((c, i) =>
         contextParts.push(`  ${i + 1}. ${c.title}${c.description ? ` — ${c.description}` : ''} [${c.status}]`)
       )
     }
 
+    // ── 8. Background context: user's general priorities ──────────────────
+    // Org-level priorities the manager tracks. Do NOT project onto this person
+    // without direct evidence from Slack/Zoom/accountabilities.
+    const categoryBuckets: Record<string, string[]> = {}
+    for (const p of priorities) {
+      const cat = p.category ?? 'other'
+      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
+      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
+    }
+    if (Object.keys(categoryBuckets).length > 0) {
+      contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
+      for (const [cat, items] of Object.entries(categoryBuckets)) {
+        contextParts.push(`  ${cat.replace('_', ' ')}:`)
+        items.forEach(i => contextParts.push(`    - ${i}`))
+      }
+    }
+
     const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
-CRITICAL — SOURCE DISCIPLINE:
-- The sections marked "=== RECENT MEETINGS ===" and "=== RECENT SLACK DMs ===" are your PRIMARY source. Every talking point must be traceable to something concrete in those sections, to a pending action item, or to the person's stated accountabilities.
-- The section marked "=== BACKGROUND CONTEXT ===" contains the user's org-level priorities. Do NOT assume this person is involved in any of them unless the Slack messages, transcripts, or accountabilities above explicitly name them. Do NOT generate questions like "Does [person] own any part of [initiative]?" or "Where does [person] fit in [project]?" — this wastes meeting time and breaks trust.
-- If there are no Slack messages and no Zoom transcripts for this person, restrict the brief strictly to: (a) follow-ups on pending action items, (b) items within their accountabilities, (c) standing discussion topics. Do not invent additional content.
+CRITICAL — THREE-TIER SOURCE DISCIPLINE:
+
+Tier 1 — PRIMARY (sections marked "=== RECENT MEETINGS ===" and "=== RECENT SLACK DMs ==="):
+Every talking point should be traceable to something concrete here, to a pending action item, or to the person's stated accountabilities. Quote from Slack/transcripts where useful.
+
+Tier 2 — TEAM WORK CONTEXT (sections marked "=== THIS QUARTER'S PRIORITIES ===" and "=== THIS MONTH'S COMMITMENTS ==="):
+These are the team's active deliverables. Use them to discuss progress, blockers, and alignment — they ARE relevant to a direct report's 1:1. However, do not assume this specific person owns a commitment unless their accountabilities or Tier 1 data confirms it.
+
+Tier 3 — BACKGROUND ONLY (section marked "=== BACKGROUND CONTEXT ==="):
+The manager's org-level priorities. Do NOT project them onto this person without direct evidence. Do NOT generate questions like "Does [person] own any part of [initiative]?" or "Where does [person] fit in [project]?" — this wastes meeting time and breaks trust.
+
+If there are no Slack messages and no Zoom transcripts for this person, restrict the brief strictly to: (a) follow-ups on pending action items, (b) items within their accountabilities, (c) standing discussion topics, and (d) relevant quarterly/monthly commitments they may contribute to. Do not invent additional content.
 
 Output structure:
 - Use ## headings for each topic section (NOT # — skip H1)
