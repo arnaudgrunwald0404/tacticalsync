@@ -28,6 +28,13 @@ export const PREP_TOOLS: PrepToolDef[] = [
 
 export const PREP_TOOL_IDS = PREP_TOOLS.map(t => t.id);
 
+/** Optional per-person tools beyond the global default set. */
+export const EXTRA_TOOLS: PrepToolDef[] = [
+  { id: 'cleargo',    label: 'ClearGO',    description: '1:1 prep packs from ClearGO',        connectionKey: 'stackone', defaultTier: 2 },
+  { id: 'jira',       label: 'Jira',       description: 'Issues and projects via StackOne',   connectionKey: 'stackone', defaultTier: 2 },
+  { id: 'salesforce', label: 'Salesforce', description: 'CRM pipeline via StackOne',          connectionKey: 'stackone', defaultTier: 2 },
+];
+
 /**
  * Resolve the effective tier for a tool, respecting per-user overrides.
  * `toolTierOverrides` is the `cos_prep_schedule.tool_tiers` JSONB value.
