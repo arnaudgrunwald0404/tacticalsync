@@ -79,6 +79,7 @@ interface OneOnOnesViewProps {
   onSyncCalendar: () => void;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
+  runningPrepEventIds?: Set<string>;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
@@ -274,6 +275,7 @@ export function OneOnOnesView({
   onSyncCalendar,
   onIncludeInPrep,
   onRunPrep,
+  runningPrepEventIds,
   onExcludeFromCalendar,
   toolbarPortalId,
   viewToggle,
@@ -568,13 +570,13 @@ export function OneOnOnesView({
               >
                 {showHero ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} heroQuotes={heroQuotes} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} heroQuotes={heroQuotes} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
                     {events.length === 1 ? (
                       <PrepCompanionPanel event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
                     ) : (
                       <div className="flex flex-col gap-3">
                         {events.slice(1).map(ev => (
-                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
                         ))}
                       </div>
                     )}
@@ -582,7 +584,7 @@ export function OneOnOnesView({
                 ) : (
                   <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                     {events.map(ev => (
-                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
                     ))}
                   </div>
                 )}
@@ -946,7 +948,7 @@ function eventDisplayInfo(event: UpcomingOneOnOneEvent) {
 // ── Hero card (calendar-driven) ─────────────────────────────────────────────
 
 function UpNextHeroEvent({
-  event, onOpen, loading, heroQuotes, onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
+  event, onOpen, loading, heroQuotes, onIncludeInPrep, onRunPrep, runningPrepEventIds, onExcludeFromCalendar,
 }: {
   event: UpcomingOneOnOneEvent;
   onOpen: (m: OneOnOneMember) => void;
@@ -954,6 +956,7 @@ function UpNextHeroEvent({
   heroQuotes: Record<string, MemberQuote>;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
+  runningPrepEventIds?: Set<string>;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
   if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
@@ -961,10 +964,11 @@ function UpNextHeroEvent({
   const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
   const start = new Date(event.start_time);
   const isUnmatched = !event.team_member;
+  const isRunningPrep = runningPrepEventIds?.has(event.id) ?? false;
 
   const heroClasses = cn(
     'relative rounded-xl overflow-hidden shadow-lg text-white text-left transition-shadow hover:shadow-xl h-full w-full',
-    isUnmatched && 'opacity-60',
+    (isUnmatched && !isRunningPrep) && 'opacity-60',
     loading && 'opacity-60 cursor-not-allowed',
   );
 
@@ -1005,7 +1009,11 @@ function UpNextHeroEvent({
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/60">
             <Repeat className="h-3.5 w-3.5" /> {relStyle.label}
           </span>
-          {event.prep_available ? (
+          {isRunningPrep ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white/70">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Prepping…
+            </span>
+          ) : event.prep_available ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
               <Sparkles className="h-3.5 w-3.5" /> Prep ready
             </span>
@@ -1025,12 +1033,12 @@ function UpNextHeroEvent({
 
   const isNonRecurring = !event.recurring_event_id;
 
-  if (isUnmatched && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
+  if ((isUnmatched || isRunningPrep) && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        <DropdownMenuTrigger asChild disabled={isRunningPrep}>
           <button
-            className={cn(heroClasses, 'cursor-pointer')}
+            className={cn(heroClasses, isRunningPrep ? 'cursor-wait' : 'cursor-pointer')}
             style={{ background: 'linear-gradient(135deg, #042a55 0%, #0a3f7a 55%, #0760c6 130%)' }}
           >
             {heroContent}
@@ -1214,13 +1222,14 @@ function GroupMeetingEventCard({ event }: { event: UpcomingOneOnOneEvent }) {
 // ── Upcoming event card (calendar-driven) ───────────────────────────────────
 
 function UpcomingEventCard({
-  event, onOpen, loading, onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
+  event, onOpen, loading, onIncludeInPrep, onRunPrep, runningPrepEventIds, onExcludeFromCalendar,
 }: {
   event: UpcomingOneOnOneEvent;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
   onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
+  runningPrepEventIds?: Set<string>;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
   if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
@@ -1228,6 +1237,7 @@ function UpcomingEventCard({
   const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
   const start = new Date(event.start_time);
   const isUnmatched = !event.team_member;
+  const isRunningPrep = runningPrepEventIds?.has(event.id) ?? false;
 
   const cardContent = (
     <>
@@ -1249,7 +1259,12 @@ function UpcomingEventCard({
               <span className={cn('w-[5px] h-[5px] rounded-full', relStyle.dotColor)} />
               {relStyle.short}
             </span>
-            {event.prep_available ? (
+            {isRunningPrep ? (
+              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-muted-foreground">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                Prepping…
+              </span>
+            ) : event.prep_available ? (
               <Badge className="text-[9px] font-semibold uppercase tracking-wide border-0 bg-emerald-50 text-emerald-700 gap-1">
                 <Sparkles className="h-2.5 w-2.5" />
                 Prep ready
@@ -1275,17 +1290,17 @@ function UpcomingEventCard({
     'relative flex items-stretch text-left rounded-lg border border-border bg-card overflow-hidden w-full',
     'shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-    isUnmatched && 'opacity-60',
+    (isUnmatched && !isRunningPrep) && 'opacity-60',
     loading && 'opacity-60 cursor-not-allowed',
   );
 
   const isNonRecurring = !event.recurring_event_id;
 
-  if (isUnmatched && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
+  if ((isUnmatched || isRunningPrep) && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className={cn(cardClasses, 'cursor-pointer')}>
+        <DropdownMenuTrigger asChild disabled={isRunningPrep}>
+          <button className={cn(cardClasses, isRunningPrep ? 'cursor-wait' : 'cursor-pointer')}>
             {cardContent}
           </button>
         </DropdownMenuTrigger>

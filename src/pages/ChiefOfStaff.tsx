@@ -3551,6 +3551,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [refreshingPrep, setRefreshingPrep] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
+  const [runningPrepEventIds, setRunningPrepEventIds] = useState<Set<string>>(new Set());
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [zoomConnected, setZoomConnected] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
@@ -3967,29 +3968,38 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     const name = event.attendee_name?.includes('@')
       ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
       : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
-    const { data: inserted, error } = await db.from('cos_team_members').insert({
-      user_id: user.id,
-      name,
-      role: '',
-      relationship_type: 'collaborator',
-      email: event.attendee_email,
-    }).select().single();
-    if (error) {
-      toast({ title: 'Failed to start prep', description: error.message, variant: 'destructive' });
-      return;
+    setRunningPrepEventIds(prev => new Set([...prev, event.id]));
+    try {
+      const { data: inserted, error } = await db.from('cos_team_members').insert({
+        user_id: user.id,
+        name,
+        role: '',
+        relationship_type: 'collaborator',
+        email: event.attendee_email,
+      }).select().single();
+      if (error) {
+        toast({ title: 'Failed to start prep', description: error.message, variant: 'destructive' });
+        return;
+      }
+      await loadCalendarState();
+      await generatePrepForMember({
+        id: inserted.id,
+        user_id: user.id,
+        name,
+        email: event.attendee_email ?? null,
+        role: '',
+        relationship_type: 'collaborator',
+        context_notes: null,
+        last_1on1_date: null,
+        reports_to_id: null,
+      }, { force: false, setBusy: () => {} });
+    } finally {
+      setRunningPrepEventIds(prev => {
+        const next = new Set(prev);
+        next.delete(event.id);
+        return next;
+      });
     }
-    void loadCalendarState();
-    void openPrep({
-      id: inserted.id,
-      user_id: user.id,
-      name,
-      email: event.attendee_email ?? null,
-      role: '',
-      relationship_type: 'collaborator',
-      context_notes: null,
-      last_1on1_date: null,
-      reports_to_id: null,
-    });
   };
 
   const showOneOnOneOnboarding = !loadingInitial
@@ -4091,6 +4101,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           onSyncCalendar={handleSyncCalendar}
           onIncludeInPrep={handleIncludeInPrep}
           onRunPrep={handleRunPrep}
+          runningPrepEventIds={runningPrepEventIds}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />
