@@ -6,7 +6,11 @@ ALTER TABLE user_slack_credentials
   ADD COLUMN IF NOT EXISTS sync_channels text[] NOT NULL DEFAULT '{}';
 
 -- Expose the column in the existing public view (recreate it).
-CREATE OR REPLACE VIEW user_slack_credentials_public
+-- DROP + recreate so we can add sync_channels without a column-order conflict
+-- (CREATE OR REPLACE VIEW only allows appending columns, not inserting mid-list).
+DROP VIEW IF EXISTS user_slack_credentials_public;
+
+CREATE VIEW user_slack_credentials_public
 WITH (security_invoker = false, security_barrier = true) AS
   SELECT
     user_id,
@@ -16,10 +20,10 @@ WITH (security_invoker = false, security_barrier = true) AS
     slack_email,
     last_sync_at,
     last_sync_status,
-    sync_channels,
     created_at,
     updated_at,
-    (access_token IS NOT NULL) AS connected
+    (access_token IS NOT NULL) AS connected,
+    sync_channels
   FROM user_slack_credentials
   WHERE user_id = auth.uid();
 

@@ -60,11 +60,18 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-    if (userErr || !userData?.user) {
-      return jsonResponse({ error: 'invalid_token' }, 401)
+    // Service-role key + x-supabase-user-id header — cron/batch invocation.
+    let userId: string
+    const overrideUserId = req.headers.get('x-supabase-user-id')
+    if (overrideUserId && jwt === serviceRoleKey) {
+      userId = overrideUserId
+    } else {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+      if (userErr || !userData?.user) {
+        return jsonResponse({ error: 'invalid_token' }, 401)
+      }
+      userId = userData.user.id
     }
-    const userId = userData.user.id
 
     // Parse optional params: days to sync, extra channel names to include.
     let days = 7
