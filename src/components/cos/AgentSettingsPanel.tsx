@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -319,7 +319,31 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
             </div>
           </SettingsGroup>
 
-          {/* ── Group 3: When it contacts you ─────────────────────────────── */}
+          {/* ── Group 3: Slack actions ────────────────────────────────────── */}
+          {slackConnected && (
+            <SettingsGroup
+              title="Slack actions"
+              description="Use these slash commands from any Slack channel or DM to send items straight into TacticalSync."
+              icon={Hash}
+            >
+              <div className="flex items-start gap-3 px-3 py-3 rounded-md border border-border bg-background">
+                <div className="flex-shrink-0 mt-0.5 h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center">
+                  <Slack className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">/add-to-my-lists</code>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5">Active</Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Run this command from Slack to capture a thought, link, or note and send it directly to your <span className="font-medium text-foreground">My Lists</span> inbox — without leaving the conversation.
+                  </p>
+                </div>
+              </div>
+            </SettingsGroup>
+          )}
+
+          {/* ── Group 4: When it contacts you ─────────────────────────────── */}
           <SettingsGroup
             title="When it contacts you"
             description="Control delivery channel, timing, and quiet hours."
