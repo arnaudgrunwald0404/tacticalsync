@@ -23,7 +23,7 @@ import {
   type PrepScheduleConfig,
 } from '@/hooks/usePrepScheduleConfig';
 import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
-import { PREP_TOOLS, EXTRA_TOOLS } from '@/lib/prepTools';
+import { PREP_TOOLS, EXTRA_TOOLS, resolveToolTier } from '@/lib/prepTools';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -105,6 +105,105 @@ function LastRunLine({ at, status, detail }: { at: string | null; status: string
   );
 }
 
+// ── Tool tier matrix ─────────────────────────────────────────────────────────
+
+const TIER_LABELS: Record<1 | 2 | 3, { label: string; description: string }> = {
+  1: { label: 'Tier 1',  description: 'Primary signal — direct comms with this person' },
+  2: { label: 'Tier 2',  description: 'Team/workflow context — work signal, not direct comms' },
+  3: { label: 'Tier 3',  description: 'Background only — org context, never projected onto person' },
+};
+
+function MeetingsToolTiersCard({
+  draft, update,
+}: {
+  draft: PrepScheduleConfig;
+  update: Patch;
+}) {
+  const allTools = [...PREP_TOOLS, ...EXTRA_TOOLS];
+  const toolTiers = draft.tool_tiers ?? {};
+
+  const setTier = (toolId: string, tier: 1 | 2 | 3) => {
+    update({ tool_tiers: { ...toolTiers, [toolId]: tier } });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Tool Tiers</CardTitle>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Set the signal tier for each data source. Tier 1 talking points must trace directly to that
+          source. Tier 3 sources are never projected onto the person without direct evidence.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left pb-3 pr-6 text-xs font-medium text-muted-foreground min-w-[140px]">
+                  Tool
+                </th>
+                {([1, 2, 3] as const).map(tier => (
+                  <th key={tier} className="pb-3 px-4 text-center">
+                    <div className="text-xs font-medium">{TIER_LABELS[tier].label}</div>
+                    <div className="text-[10px] text-muted-foreground font-normal max-w-[120px] mx-auto leading-tight mt-0.5">
+                      {TIER_LABELS[tier].description}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {allTools.map((tool, i) => {
+                const effectiveTier = resolveToolTier(tool.id, toolTiers);
+                const isDefault = !toolTiers[tool.id];
+                return (
+                  <tr key={tool.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
+                    <td className="py-2.5 pr-6">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-sm">{tool.label}</span>
+                        {isDefault && (
+                          <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">default</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{tool.description}</p>
+                    </td>
+                    {([1, 2, 3] as const).map(tier => (
+                      <td key={tier} className="py-2.5 px-4 text-center">
+                        <button
+                          type="button"
+                          title={TIER_LABELS[tier].description}
+                          onClick={() => setTier(tool.id, tier)}
+                          className={cn(
+                            'h-5 w-5 rounded-full border-2 mx-auto flex items-center justify-center transition-colors',
+                            effectiveTier === tier
+                              ? 'border-primary bg-primary'
+                              : 'border-border bg-background hover:border-primary/50'
+                          )}
+                        >
+                          {effectiveTier === tier && (
+                            <div className="h-2 w-2 rounded-full bg-primary-foreground" />
+                          )}
+                        </button>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center gap-1.5 mt-3 pt-3 border-t">
+          <Lock className="h-3 w-3 text-muted-foreground/60" />
+          <p className="text-[10px] text-muted-foreground">
+            Tier overrides are saved with your schedule. Reset a tool to its default by selecting its highlighted tier.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Shared panel state ────────────────────────────────────────────────────────
 
 function usePanelState() {
@@ -152,6 +251,7 @@ function usePanelState() {
       always_include: d.always_include,
       included_group_series: d.included_group_series,
       prep_tools: d.prep_tools,
+      tool_tiers: d.tool_tiers,
       sync_zoom_before: d.prep_tools.includes('zoom'),
       sync_slack_before: d.prep_tools.includes('slack'),
       enrich_stackone: d.prep_tools.includes('stackone'),
@@ -901,6 +1001,7 @@ export function MeetingsPrepPanel() {
       <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
       <MeetingsScopeCard draft={draft} update={update} />
       <MeetingsToolsCard draft={draft} update={update} />
+      <MeetingsToolTiersCard draft={draft} update={update} />
       <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
       <MeetingsAdvancedToolsCard draft={draft} userId={userId} />
       <Button onClick={save} disabled={saving} className="gap-1.5">
