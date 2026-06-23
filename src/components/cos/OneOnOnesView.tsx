@@ -78,6 +78,7 @@ interface OneOnOnesViewProps {
   syncing: boolean;
   onSyncCalendar: () => void;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
@@ -272,6 +273,7 @@ export function OneOnOnesView({
   syncing,
   onSyncCalendar,
   onIncludeInPrep,
+  onRunPrep,
   onExcludeFromCalendar,
   toolbarPortalId,
   viewToggle,
@@ -566,13 +568,13 @@ export function OneOnOnesView({
               >
                 {showHero ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} heroQuotes={heroQuotes} onIncludeInPrep={onIncludeInPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} heroQuotes={heroQuotes} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
                     {events.length === 1 ? (
                       <PrepCompanionPanel event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
                     ) : (
                       <div className="flex flex-col gap-3">
                         {events.slice(1).map(ev => (
-                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
                         ))}
                       </div>
                     )}
@@ -580,7 +582,7 @@ export function OneOnOnesView({
                 ) : (
                   <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                     {events.map(ev => (
-                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
+                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
                     ))}
                   </div>
                 )}
@@ -944,13 +946,14 @@ function eventDisplayInfo(event: UpcomingOneOnOneEvent) {
 // ── Hero card (calendar-driven) ─────────────────────────────────────────────
 
 function UpNextHeroEvent({
-  event, onOpen, loading, heroQuotes, onIncludeInPrep, onExcludeFromCalendar,
+  event, onOpen, loading, heroQuotes, onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
 }: {
   event: UpcomingOneOnOneEvent;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   heroQuotes: Record<string, MemberQuote>;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
   if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
@@ -1020,7 +1023,9 @@ function UpNextHeroEvent({
     </>
   );
 
-  if (isUnmatched && (onIncludeInPrep || onExcludeFromCalendar)) {
+  const isNonRecurring = !event.recurring_event_id;
+
+  if (isUnmatched && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -1038,7 +1043,13 @@ function UpNextHeroEvent({
               Include in prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && (
+          {onRunPrep && isNonRecurring && (
+            <DropdownMenuItem onClick={() => onRunPrep(event)} className="gap-2">
+              <Play className="h-4 w-4" />
+              Run the prep
+            </DropdownMenuItem>
+          )}
+          {onExcludeFromCalendar && !isNonRecurring && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar
@@ -1203,12 +1214,13 @@ function GroupMeetingEventCard({ event }: { event: UpcomingOneOnOneEvent }) {
 // ── Upcoming event card (calendar-driven) ───────────────────────────────────
 
 function UpcomingEventCard({
-  event, onOpen, loading, onIncludeInPrep, onExcludeFromCalendar,
+  event, onOpen, loading, onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
 }: {
   event: UpcomingOneOnOneEvent;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
   if (event.attendee_count > 1) return <GroupMeetingEventCard event={event} />;
@@ -1267,7 +1279,9 @@ function UpcomingEventCard({
     loading && 'opacity-60 cursor-not-allowed',
   );
 
-  if (isUnmatched && (onIncludeInPrep || onExcludeFromCalendar)) {
+  const isNonRecurring = !event.recurring_event_id;
+
+  if (isUnmatched && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -1282,7 +1296,13 @@ function UpcomingEventCard({
               Include in prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && (
+          {onRunPrep && isNonRecurring && (
+            <DropdownMenuItem onClick={() => onRunPrep(event)} className="gap-2">
+              <Play className="h-4 w-4" />
+              Run the prep
+            </DropdownMenuItem>
+          )}
+          {onExcludeFromCalendar && !isNonRecurring && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar

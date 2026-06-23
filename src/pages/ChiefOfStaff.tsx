@@ -3954,10 +3954,43 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     if (error) {
       toast({ title: 'Failed to add team member', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: `${name} added to your team` });
+      toast({ title: `${name} included in prep` });
       loadCalendarState();
     }
   }, [toast, loadCalendarState]);
+
+  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const name = event.attendee_name?.includes('@')
+      ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
+      : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
+    const { data: inserted, error } = await db.from('cos_team_members').insert({
+      user_id: user.id,
+      name,
+      role: '',
+      relationship_type: 'collaborator',
+      email: event.attendee_email,
+    }).select().single();
+    if (error) {
+      toast({ title: 'Failed to start prep', description: error.message, variant: 'destructive' });
+      return;
+    }
+    void loadCalendarState();
+    void openPrep({
+      id: inserted.id,
+      user_id: user.id,
+      name,
+      email: event.attendee_email ?? null,
+      role: '',
+      relationship_type: 'collaborator',
+      context_notes: null,
+      last_1on1_date: null,
+      reports_to_id: null,
+    });
+  };
 
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected
@@ -4057,6 +4090,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           syncing={syncing}
           onSyncCalendar={handleSyncCalendar}
           onIncludeInPrep={handleIncludeInPrep}
+          onRunPrep={handleRunPrep}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />
