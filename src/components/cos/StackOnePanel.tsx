@@ -22,42 +22,19 @@ interface StackOneAccount {
   updated_at?: string;
 }
 
-type PanelState = 'loading' | 'setup' | 'connected';
-type ConnectorCategory = 'hris' | 'ticketing' | 'crm';
-
-interface ProviderInfo {
+interface ConnectorProfile {
   id: string;
-  name: string;
-  category: ConnectorCategory;
+  provider: string;
+  provider_name?: string;
+  name?: string;
+  label?: string;
+  category?: string;
+  enabled?: boolean;
+  active?: boolean;
 }
 
-const PROVIDER_CATALOG: ProviderInfo[] = [
-  { id: 'bamboohr',       name: 'BambooHR',         category: 'hris' },
-  { id: 'workday',        name: 'Workday',           category: 'hris' },
-  { id: 'gusto',          name: 'Gusto',             category: 'hris' },
-  { id: 'rippling',       name: 'Rippling',          category: 'hris' },
-  { id: 'hibob',          name: 'HiBob',             category: 'hris' },
-  { id: 'personio',       name: 'Personio',          category: 'hris' },
-  { id: 'deel',           name: 'Deel',              category: 'hris' },
-  { id: 'remote',         name: 'Remote',            category: 'hris' },
-  { id: 'adp',            name: 'ADP',               category: 'hris' },
-  { id: 'ukg',            name: 'UKG',               category: 'hris' },
-  { id: 'jira',           name: 'Jira',              category: 'ticketing' },
-  { id: 'asana',          name: 'Asana',             category: 'ticketing' },
-  { id: 'linear',         name: 'Linear',            category: 'ticketing' },
-  { id: 'monday',         name: 'Monday.com',        category: 'ticketing' },
-  { id: 'clickup',        name: 'ClickUp',           category: 'ticketing' },
-  { id: 'trello',         name: 'Trello',            category: 'ticketing' },
-  { id: 'shortcut',       name: 'Shortcut',          category: 'ticketing' },
-  { id: 'github',         name: 'GitHub Issues',     category: 'ticketing' },
-  { id: 'salesforce',     name: 'Salesforce',        category: 'crm' },
-  { id: 'hubspot',        name: 'HubSpot',           category: 'crm' },
-  { id: 'pipedrive',      name: 'Pipedrive',         category: 'crm' },
-  { id: 'zoho',           name: 'Zoho CRM',          category: 'crm' },
-  { id: 'close',          name: 'Close',             category: 'crm' },
-  { id: 'copper',         name: 'Copper',            category: 'crm' },
-  { id: 'apollo',         name: 'Apollo.io',         category: 'crm' },
-];
+type PanelState = 'loading' | 'setup' | 'connected';
+type ConnectorCategory = 'hris' | 'ticketing' | 'crm';
 
 const CATEGORY_META: Record<ConnectorCategory, { label: string; badgeClass: string; initClass: string }> = {
   hris:      { label: 'HRIS',      badgeClass: 'bg-blue-50 text-blue-700',       initClass: 'bg-blue-100 text-blue-700' },
@@ -67,6 +44,15 @@ const CATEGORY_META: Record<ConnectorCategory, { label: string; badgeClass: stri
 
 function providerInitials(name: string): string {
   return name.split(/[\s.]+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
+function normalizeCategory(raw?: string): ConnectorCategory | null {
+  if (!raw) return null;
+  const c = raw.toLowerCase();
+  if (c === 'hris' || c === 'ats') return 'hris';
+  if (c === 'ticketing' || c === 'project_management') return 'ticketing';
+  if (c === 'crm') return 'crm';
+  return null;
 }
 
 function guessCategory(provider: string): ConnectorCategory | null {
@@ -80,15 +66,28 @@ function guessCategory(provider: string): ConnectorCategory | null {
   return null;
 }
 
+function profileCategory(profile: ConnectorProfile): ConnectorCategory | null {
+  return normalizeCategory(profile.category) ?? guessCategory(profile.provider);
+}
+
+function profileDisplayName(profile: ConnectorProfile): string {
+  return profile.provider_name ?? profile.name ?? profile.label
+    ?? profile.provider.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function accountDisplayName(account: StackOneAccount): string {
+  return account.provider_name ?? account.provider?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) ?? account.id;
+}
+
+function accountCategory(account: StackOneAccount): ConnectorCategory | null {
+  return guessCategory(account.provider);
+}
+
 function statusClass(status?: string): string {
   if (status === 'active') return 'bg-emerald-50 text-emerald-700';
   if (status === 'error') return 'bg-red-50 text-red-700';
   if (status === 'suspended') return 'bg-amber-50 text-amber-700';
   return 'bg-gray-100 text-gray-600';
-}
-
-function providerDisplay(account: StackOneAccount): string {
-  return account.provider_name || account.provider?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || account.id;
 }
 
 export default function StackOnePanel() {
@@ -98,27 +97,12 @@ export default function StackOnePanel() {
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<StackOneAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [connectorProfiles, setConnectorProfiles] = useState<ConnectorProfile[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
   const [hubToken, setHubToken] = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
-
-  const loadState = useCallback(async () => {
-    const { data } = await (supabase as unknown as SupabaseClient)
-      .from('cos_mcp_integrations')
-      .select('is_connected')
-      .eq('integration_key', 'stackone')
-      .maybeSingle();
-
-    if (data?.is_connected) {
-      setState('connected');
-      fetchAccounts();
-    } else {
-      setState('setup');
-    }
-  }, []);
-
-  useEffect(() => { loadState(); }, [loadState]);
 
   const fetchAccounts = async () => {
     setLoadingAccounts(true);
@@ -139,6 +123,41 @@ export default function StackOnePanel() {
     }
   };
 
+  const fetchProfiles = async () => {
+    setLoadingProfiles(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('stackone-proxy', {
+        body: { action: 'list_connector_profiles' },
+      });
+      if (error) throw error;
+      if (data?.status === 'ok') {
+        setConnectorProfiles(data.profiles ?? []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch connector profiles:', err);
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
+
+  const loadState = useCallback(async () => {
+    const { data } = await (supabase as unknown as SupabaseClient)
+      .from('cos_mcp_integrations')
+      .select('is_connected')
+      .eq('integration_key', 'stackone')
+      .maybeSingle();
+
+    if (data?.is_connected) {
+      setState('connected');
+      fetchAccounts();
+      fetchProfiles();
+    } else {
+      setState('setup');
+    }
+  }, []);
+
+  useEffect(() => { loadState(); }, [loadState]);
+
   const handleSaveKey = async () => {
     if (!apiKey.trim()) {
       toast({ title: 'API key required', variant: 'destructive' });
@@ -155,6 +174,7 @@ export default function StackOnePanel() {
         setApiKey('');
         setState('connected');
         fetchAccounts();
+        fetchProfiles();
       } else {
         toast({
           title: 'Connection failed',
@@ -179,6 +199,7 @@ export default function StackOnePanel() {
       toast({ title: 'StackOne disconnected' });
       setState('setup');
       setAccounts([]);
+      setConnectorProfiles([]);
     } catch (err) {
       toast({ title: 'Error', description: String(err), variant: 'destructive' });
     } finally {
@@ -285,7 +306,12 @@ export default function StackOnePanel() {
   const connectedProviderIds = new Set(
     accounts.map(a => a.provider?.toLowerCase().replace(/[^a-z0-9]/g, ''))
   );
-  const availableProviders = PROVIDER_CATALOG.filter(p => !connectedProviderIds.has(p.id));
+
+  const availableProfiles = connectorProfiles.filter(p => {
+    const key = p.provider?.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return !connectedProviderIds.has(key);
+  });
+
   const catalogCategories: ConnectorCategory[] = ['hris', 'ticketing', 'crm'];
 
   return (
@@ -307,11 +333,11 @@ export default function StackOnePanel() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={fetchAccounts}
-                disabled={loadingAccounts}
+                onClick={() => { fetchAccounts(); fetchProfiles(); }}
+                disabled={loadingAccounts || loadingProfiles}
                 className="gap-1.5"
               >
-                <RefreshCw className={cn('h-3.5 w-3.5', loadingAccounts && 'animate-spin')} />
+                <RefreshCw className={cn('h-3.5 w-3.5', (loadingAccounts || loadingProfiles) && 'animate-spin')} />
                 Refresh
               </Button>
               <Button
@@ -372,9 +398,9 @@ export default function StackOnePanel() {
               </TableHeader>
               <TableBody>
                 {accounts.map(account => {
-                  const cat = guessCategory(account.provider);
+                  const cat = accountCategory(account);
                   const meta = cat ? CATEGORY_META[cat] : null;
-                  const initials = providerInitials(providerDisplay(account));
+                  const name = accountDisplayName(account);
                   return (
                     <TableRow key={account.id}>
                       <TableCell>
@@ -383,10 +409,10 @@ export default function StackOnePanel() {
                             'inline-flex h-7 w-7 items-center justify-center rounded text-[11px] font-bold flex-shrink-0',
                             meta ? meta.initClass : 'bg-gray-100 text-gray-600',
                           )}>
-                            {initials}
+                            {providerInitials(name)}
                           </span>
                           <div>
-                            <p className="font-medium text-sm leading-tight">{providerDisplay(account)}</p>
+                            <p className="font-medium text-sm leading-tight">{name}</p>
                             <p className="text-[11px] text-muted-foreground font-mono">{account.id.slice(0, 12)}…</p>
                           </div>
                         </div>
@@ -415,68 +441,100 @@ export default function StackOnePanel() {
         )}
       </div>
 
-      {/* Available connectors catalog */}
+      {/* Available connectors catalog — sourced from StackOne connector profiles */}
       <div>
         <div className="mb-4">
           <h3 className="text-sm font-semibold">Available Connectors</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click any connector to link it. StackOne supports 200+ providers across all categories.
+            Connectors configured for your organization. Click any to link it.
           </p>
         </div>
 
-        <div className="space-y-5">
-          {catalogCategories.map(cat => {
-            const providers = availableProviders.filter(p => p.category === cat);
-            const meta = CATEGORY_META[cat];
-            return (
-              <div key={cat}>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  {meta.label}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {providers.map(provider => (
-                    <button
-                      key={provider.id}
-                      onClick={() => handleAddConnector([cat])}
-                      disabled={creatingSession}
-                      className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/50 transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <span className={cn(
-                        'inline-flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold flex-shrink-0',
-                        meta.initClass,
-                      )}>
-                        {providerInitials(provider.name)}
-                      </span>
-                      <span className="font-medium text-sm">{provider.name}</span>
-                      <Plus className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => handleAddConnector([cat])}
-                    disabled={creatingSession}
-                    className="flex items-center gap-1.5 rounded-md border border-dashed bg-background px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors disabled:opacity-50"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Browse all {meta.label}
-                  </button>
+        {loadingProfiles ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading available connectors…
+          </div>
+        ) : connectorProfiles.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No connector profiles configured for this account.
+              </p>
+            </CardContent>
+          </Card>
+        ) : availableProfiles.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-2">
+            All configured connectors are already linked.
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {catalogCategories.map(cat => {
+              const profiles = availableProfiles.filter(p => profileCategory(p) === cat);
+              if (profiles.length === 0) return null;
+              const meta = CATEGORY_META[cat];
+              return (
+                <div key={cat}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    {meta.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {profiles.map(profile => {
+                      const name = profileDisplayName(profile);
+                      return (
+                        <button
+                          key={profile.id}
+                          onClick={() => handleAddConnector([cat])}
+                          disabled={creatingSession}
+                          className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/50 transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <span className={cn(
+                            'inline-flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold flex-shrink-0',
+                            meta.initClass,
+                          )}>
+                            {providerInitials(name)}
+                          </span>
+                          <span className="font-medium">{name}</span>
+                          <Plus className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
 
-          {availableProviders.length === 0 && (
-            <p className="text-sm text-muted-foreground py-2">
-              All common connectors are already linked.{' '}
-              <button
-                onClick={() => handleAddConnector()}
-                disabled={creatingSession}
-                className="underline hover:text-foreground"
-              >
-                Browse all 200+ connectors
-              </button>
-            </p>
-          )}
-        </div>
+            {/* Profiles whose category didn't map to hris/ticketing/crm */}
+            {(() => {
+              const uncategorized = availableProfiles.filter(p => profileCategory(p) === null);
+              if (uncategorized.length === 0) return null;
+              return (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Other</p>
+                  <div className="flex flex-wrap gap-2">
+                    {uncategorized.map(profile => {
+                      const name = profileDisplayName(profile);
+                      return (
+                        <button
+                          key={profile.id}
+                          onClick={() => handleAddConnector()}
+                          disabled={creatingSession}
+                          className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/50 transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold flex-shrink-0 bg-gray-100 text-gray-600">
+                            {providerInitials(name)}
+                          </span>
+                          <span className="font-medium">{name}</span>
+                          <Plus className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {/* StackOne Hub Dialog */}
