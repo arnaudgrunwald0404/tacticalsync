@@ -42,6 +42,8 @@ import { CoverageMap } from '@/components/cos/CoverageMap';
 import { GroupMeetingCoverage } from '@/components/cos/GroupMeetingCoverage';
 import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
+import { GroupMeetingPrepDrawer } from '@/components/cos/GroupMeetingPrepDrawer';
+import type { GroupMeeting, GroupParticipant, GroupMeetingSource } from '@/hooks/useGroupMeetings';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
 import PrepSetupWizard from '@/components/cos/PrepSetupWizard';
@@ -3546,6 +3548,12 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     source: 'cleargo' | 'static' | 'ai_generated';
     generatedAt: string;
   } | null>(null);
+  const [groupPrepSheet, setGroupPrepSheet] = useState<{
+    meeting: GroupMeeting;
+    content: string;
+    generatedAt: string;
+  } | null>(null);
+  const [groupGenerating, setGroupGenerating] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
@@ -3937,6 +3945,80 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     await generatePrepForMember(prepSheet.member, { force: true, setBusy: setAiGenerating });
   };
 
+  // ── Group meeting prep ──────────────────────────────────────────────────
+  // Re-load a single group meeting with its roster and sources (used after
+  // promoting an untracked participant so the drawer reflects the change).
+  const reloadGroupMeeting = useCallback(async (meetingId: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const [mRes, pRes, sRes] = await Promise.all([
+      db.from('cos_group_meetings').select('*').eq('id', meetingId).maybeSingle(),
+      db.from('cos_group_meeting_participants').select('*').eq('group_meeting_id', meetingId),
+      db.from('cos_group_meeting_sources').select('*').eq('group_meeting_id', meetingId),
+    ]);
+    if (!mRes.data) return;
+    const merged: GroupMeeting = {
+      ...(mRes.data as GroupMeeting),
+      participants: (pRes.data ?? []) as GroupParticipant[],
+      sources: (sRes.data ?? []) as GroupMeetingSource[],
+    };
+    setGroupPrepSheet(prev => (prev && prev.meeting.id === meetingId ? { ...prev, meeting: merged } : prev));
+  }, []);
+
+  const generateGroupBrief = useCallback(async (meetingId: string, force: boolean) => {
+    setGroupGenerating(true);
+    try {
+      const res = await supabase.functions.invoke('generate-group-brief', {
+        body: { group_meeting_id: meetingId, force_regenerate: force },
+      });
+      if (res.error) throw res.error;
+      const data = res.data as { content?: string; generated_at?: string; cached?: boolean };
+      if (!data?.content) throw new Error('No content returned');
+      setGroupPrepSheet(prev =>
+        prev && prev.meeting.id === meetingId
+          ? { ...prev, content: data.content!, generatedAt: data.generated_at ?? new Date().toISOString() }
+          : prev,
+      );
+      toast({ title: data.cached ? 'Brief loaded' : 'Brief generated' });
+    } catch (err) {
+      toast({ title: 'Brief generation failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setGroupGenerating(false);
+    }
+  }, [toast]);
+
+  // Open the group prep drawer: show a stored brief if one exists, otherwise
+  // open empty and kick off generation.
+  const openGroupPrep = useCallback(async (meeting: GroupMeeting) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      let existing: { content: string; generated_at: string | null } | null = null;
+      if (user) {
+        const { data } = await db
+          .from('cos_one_on_one_prep')
+          .select('content, generated_at')
+          .eq('user_id', user.id)
+          .eq('group_meeting_id', meeting.id)
+          .eq('status', 'ready')
+          .order('prep_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existing = (data as { content: string; generated_at: string | null } | null) ?? null;
+      }
+
+      if (existing?.content) {
+        setGroupPrepSheet({ meeting, content: existing.content, generatedAt: existing.generated_at ?? new Date().toISOString() });
+      } else {
+        setGroupPrepSheet({ meeting, content: '', generatedAt: new Date().toISOString() });
+        void generateGroupBrief(meeting.id, false);
+      }
+    } catch (err) {
+      toast({ title: 'Could not open prep', description: String(err), variant: 'destructive' });
+    }
+  }, [generateGroupBrief, toast]);
+
   const handleIncludeInPrep = useCallback(async (event: UpcomingOneOnOneEvent) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -4102,6 +4184,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           onIncludeInPrep={handleIncludeInPrep}
           onRunPrep={handleRunPrep}
           runningPrepEventIds={runningPrepEventIds}
+          onOpenGroupPrep={openGroupPrep}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />
@@ -4141,6 +4224,17 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         onRefresh={refreshPrep}
         onShare={sharePrep}
         onAiGenerate={aiGeneratePrep}
+      />
+
+      <GroupMeetingPrepDrawer
+        open={!!groupPrepSheet}
+        meeting={groupPrepSheet?.meeting ?? null}
+        content={groupPrepSheet?.content ?? ''}
+        generatedAt={groupPrepSheet?.generatedAt ?? new Date().toISOString()}
+        generating={groupGenerating}
+        onClose={() => setGroupPrepSheet(null)}
+        onRefresh={() => { if (groupPrepSheet) void generateGroupBrief(groupPrepSheet.meeting.id, true); }}
+        onMeetingChanged={() => { if (groupPrepSheet) void reloadGroupMeeting(groupPrepSheet.meeting.id); }}
       />
 
     </>

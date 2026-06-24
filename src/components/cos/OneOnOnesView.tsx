@@ -81,6 +81,7 @@ interface OneOnOnesViewProps {
   onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
   runningPrepEventIds?: Set<string>;
   onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
+  onOpenGroupPrep?: (meeting: import('@/hooks/useGroupMeetings').GroupMeeting) => void;
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
 }
@@ -277,6 +278,7 @@ export function OneOnOnesView({
   onRunPrep,
   runningPrepEventIds,
   onExcludeFromCalendar,
+  onOpenGroupPrep,
   toolbarPortalId,
   viewToggle,
 }: OneOnOnesViewProps) {
@@ -546,7 +548,7 @@ export function OneOnOnesView({
       )}
 
       {/* Recurring group meetings (you + 2 or more others) */}
-      <GroupMeetingsManager heading="Group meetings" hideWhenEmpty defaultShowDiscovered={false} />
+      <GroupMeetingsManager heading="Group meetings" hideWhenEmpty defaultShowDiscovered={false} onOpenPrep={onOpenGroupPrep} />
 
       {/* Calendar-driven: dynamic featured sections */}
       {hasUpcoming && (
