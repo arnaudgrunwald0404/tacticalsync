@@ -1,7 +1,7 @@
 echo "🧪 Running tests before push..."
 
 # Run unit tests (fast)
-npm run test -- --run
+npm run test -- --run < /dev/null
 
 # Optionally run E2E tests (slower - comment out if too slow)
 # npm run test:e2e
