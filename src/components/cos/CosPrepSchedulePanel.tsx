@@ -566,6 +566,7 @@ function useStackOneConnections(): StackOneConnections {
   return result;
 }
 
+
 const CORE_TOOL_IDS = ['zoom', 'slack', 'gmail'];
 
 function MeetingsToolsCard({
@@ -579,6 +580,8 @@ function MeetingsToolsCard({
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [recurringMemberIds, setRecurringMemberIds] = useState<Set<string>>(new Set());
   const [loadingMembers, setLoadingMembers] = useState(true);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [salesforceConnected, setSalesforceConnected] = useState(false);
   const { toast } = useToast();
   const { recurringGroups } = useUpcomingMeetingGroups();
   const { gmailConnected, salesforceConnected, dynamicTools } = useStackOneConnections();
@@ -595,6 +598,44 @@ function MeetingsToolsCard({
   const perPersonToolDefs = [
     ...availableTools.filter(t => !CORE_TOOL_IDS.includes(t.id)),
     ...dynamicTools,
+  ];
+
+  // Both Gmail and Salesforce are provisioned via StackOne connector profiles.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: s1Data } = await supabase.functions.invoke('stackone-proxy', {
+          body: { action: 'list_connector_profiles' },
+        });
+        const profiles = (s1Data?.profiles ?? []) as Array<{ provider?: string; category?: string }>;
+        setGmailConnected(profiles.some(p => {
+          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return provider === 'gmail' || provider.includes('gmail') || provider.includes('google');
+        }));
+        setSalesforceConnected(profiles.some(p => {
+          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const category = (p.category ?? '').toLowerCase();
+          return provider === 'salesforce' || provider.includes('salesforce') || category === 'crm';
+        }));
+      } catch {
+        setGmailConnected(false);
+        setSalesforceConnected(false);
+      }
+    })();
+  }, []);
+
+  const availableTools = PREP_TOOLS.filter(tool => {
+    if (tool.connectionKey === 'gmail') return gmailConnected;
+    if (tool.connectionKey === 'salesforce') return salesforceConnected;
+    return true;
+  });
+
+  // Core comms tools stay in the "Default — all meetings" section (global toggles).
+  // Everything else moves to "Additional per person" (select-all + per-row checkboxes).
+  const coreTools = availableTools.filter(t => CORE_TOOL_IDS.includes(t.id));
+  const perPersonToolDefs = [
+    ...availableTools.filter(t => !CORE_TOOL_IDS.includes(t.id)),
+    ...EXTRA_TOOLS,
   ];
 
   useEffect(() => {
