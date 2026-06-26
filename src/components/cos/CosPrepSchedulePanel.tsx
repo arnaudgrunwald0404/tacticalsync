@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, Save, Clock, Play, Square, Plus, X,
   CheckCircle, AlertTriangle, XCircle, Video, MessageSquare,
-  Brain, CalendarClock, Repeat, Star, Lock,
+  Brain, CalendarClock, Repeat, Star, Lock, Calendar, ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,12 @@ import {
 } from '@/hooks/usePrepScheduleConfig';
 import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
 import { PREP_TOOLS, EXTRA_TOOLS, resolveToolTier } from '@/lib/prepTools';
+import {
+  CalendarSyncRules,
+  RelationshipType,
+  DEFAULT_SYNC_RULES,
+} from '@/lib/calendar/matchEventToMember';
+import { AgentSettingsPanel } from '@/components/cos/AgentSettingsPanel';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -211,12 +217,12 @@ function usePanelState() {
   const { toast } = useToast();
   const { config, userId, loading, refetch, saveConfig } = usePrepScheduleConfig();
   const [draft, setDraft] = useState<PrepScheduleConfig | null>(null);
-  const [saving, setSaving] = useState(false);
   const [runningPrep, setRunningPrep] = useState(false);
   const [runningBrief, setRunningBrief] = useState(false);
   const [prepLogs, setPrepLogs] = useState<BatchLog[]>([]);
+  const isDirty = useRef(false);
 
-  useEffect(() => { if (config) setDraft(config); }, [config]);
+  useEffect(() => { if (config) { isDirty.current = false; setDraft(config); } }, [config]);
 
   const loadPrepLogs = useCallback(async (uid: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -237,6 +243,7 @@ function usePanelState() {
   useEffect(() => { if (userId) loadPrepLogs(userId); }, [userId, loadPrepLogs]);
 
   const update: Patch = useCallback((patch) => {
+    isDirty.current = true;
     setDraft(d => (d ? { ...d, ...patch } : d));
   }, []);
 
@@ -255,7 +262,7 @@ function usePanelState() {
       tool_tiers: d.tool_tiers,
       sync_zoom_before: d.prep_tools.includes('zoom'),
       sync_slack_before: d.prep_tools.includes('slack'),
-      enrich_stackone: d.prep_tools.includes('stackone'),
+      enrich_stackone: d.prep_tools.includes('salesforce') || d.prep_tools.includes('stackone'),
       slack_channels: d.slack_channels,
       dci_enabled: d.dci_enabled,
       dci_sources: d.dci_sources,
@@ -265,13 +272,11 @@ function usePanelState() {
     });
   }, [saveConfig, toast]);
 
-  const save = async () => {
-    if (!draft) return;
-    setSaving(true);
-    const ok = await persistDraft(draft);
-    if (ok) toast({ title: 'Settings saved' });
-    setSaving(false);
-  };
+  useEffect(() => {
+    if (!draft || !isDirty.current) return;
+    const timer = setTimeout(() => { persistDraft(draft); }, 800);
+    return () => clearTimeout(timer);
+  }, [draft, persistDraft]);
 
   const runPrepNow = async () => {
     if (!draft) return;
@@ -308,24 +313,24 @@ function usePanelState() {
   };
 
   return {
-    draft, update, saving, save,
+    draft, update,
     runningPrep, runPrepNow,
     runningBrief, runBriefNow,
     prepLogs, loadPrepLogs, userId, loading,
   };
 }
 
-// ── Meetings — Card 1: Schedule + Manual Run ──────────────────────────────────
+// ── Meetings — Card 1: Schedule ───────────────────────────────────────────────
 
-function MeetingsScheduleCard({ draft, update, running, onRunNow }: {
-  draft: PrepScheduleConfig; update: Patch; running: boolean; onRunNow: () => void;
+function MeetingsScheduleCard({ draft, update }: {
+  draft: PrepScheduleConfig; update: Patch;
 }) {
   const tzOptions = Array.from(new Set([getBrowserTimezone(), draft.timezone, ...COMMON_TIMEZONES]));
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Clock className="h-4 w-4" /> Schedule + Manual Run
+          <Clock className="h-4 w-4" /> Schedule
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -366,24 +371,39 @@ function MeetingsScheduleCard({ draft, update, running, onRunNow }: {
         <p className="text-[11px] text-muted-foreground">
           Runs at {formatHourLabel(draft.run_hour_local)} in {draft.timezone}. This schedule is shared with Daily Brief.
         </p>
-
-        <div className="border-t pt-3 space-y-3">
-          <LastRunLine
-            at={draft.last_run_at}
-            status={draft.last_run_status}
-            detail={draft.last_run_preps_generated != null ? `${draft.last_run_preps_generated} prep(s)` : undefined}
-          />
-          <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
-            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Run now
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ── Meetings — Card 2: Scope ──────────────────────────────────────────────────
+// ── Meetings — Card 2: Manual Run ─────────────────────────────────────────────
+
+function MeetingsManualRunCard({ draft, running, onRunNow }: {
+  draft: PrepScheduleConfig; running: boolean; onRunNow: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Play className="h-4 w-4" /> Manual Run
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <LastRunLine
+          at={draft.last_run_at}
+          status={draft.last_run_status}
+          detail={draft.last_run_preps_generated != null ? `${draft.last_run_preps_generated} prep(s)` : undefined}
+        />
+        <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          Run now
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Meetings — Scope columns ──────────────────────────────────────────────────
 
 function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; update: Patch }) {
   const { recurringOneOnOnes, oneOffOneOnOnes, recurringGroups, loading } = useUpcomingMeetingGroups();
@@ -396,52 +416,65 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
     });
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Scope</CardTitle></CardHeader>
-      <CardContent className="space-y-5">
-        <div className="space-y-1.5">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Column 1: Recurring 1:1s */}
+      <Card>
+        <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium">Recurring 1:1s</span>
+            <CardTitle className="text-sm font-medium">Recurring 1:1s</CardTitle>
             <Badge variant="secondary" className="text-[10px] h-4 px-1.5">auto-included</Badge>
           </div>
-          <p className="text-[11px] text-muted-foreground">Your regular 1:1s are always prepped.</p>
+        </CardHeader>
+        <CardContent>
           {loading ? (
             <p className="text-[11px] text-muted-foreground">Loading…</p>
           ) : recurringOneOnOnes.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">No recurring 1:1s in the next 60 days.</p>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="space-y-1.5">
               {recurringOneOnOnes.map(m => (
-                <Badge key={m.key} variant="outline" className="bg-background gap-1">
-                  <Repeat className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-xs">{m.attendeeLabel}</span>
-                </Badge>
+                <div key={m.key} className="flex items-center gap-1.5">
+                  <Repeat className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm">{m.attendeeLabel}</span>
+                </div>
               ))}
             </div>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        {!loading && oneOffOneOnOnes.length > 0 && (
-          <div className="space-y-1.5 border-t pt-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium">One-off 1:1s</span>
-              <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-800 hover:bg-amber-100">high-value</Badge>
-            </div>
-            <p className="text-[11px] text-muted-foreground">One-time 1:1s are included by default.</p>
-            <div className="flex flex-wrap gap-1.5">
+      {/* Column 2: One-off 1:1s */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-medium">One-off 1:1s</CardTitle>
+            <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-800 hover:bg-amber-100">high-value</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-[11px] text-muted-foreground">Loading…</p>
+          ) : oneOffOneOnOnes.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">None in the next 60 days.</p>
+          ) : (
+            <div className="space-y-1.5">
               {oneOffOneOnOnes.map(m => (
-                <Badge key={m.key} variant="outline" className="bg-background gap-1">
-                  <Star className="h-3 w-3 text-amber-500" />
-                  <span className="text-xs">{m.attendeeLabel}</span>
-                </Badge>
+                <div key={m.key} className="flex items-center gap-1.5">
+                  <Star className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                  <span className="text-sm">{m.attendeeLabel}</span>
+                </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </CardContent>
+      </Card>
 
-        <div className="space-y-1.5 border-t pt-3">
-          <span className="text-xs font-medium">Group meetings (opt-in)</span>
-          <p className="text-[11px] text-muted-foreground">Pick recurring group meetings to also prep.</p>
+      {/* Column 3: Group meetings (opt-in) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Group meetings (opt-in)</CardTitle>
+        </CardHeader>
+        <CardContent>
           {loading ? (
             <p className="text-[11px] text-muted-foreground">Loading…</p>
           ) : recurringGroups.length === 0 ? (
@@ -454,19 +487,23 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
                     checked={draft.included_group_series.includes(m.key)}
                     onCheckedChange={() => toggleGroupSeries(m.key)}
                   />
-                  <span className="text-sm">{m.title}</span>
-                  <span className="text-[11px] text-muted-foreground">{m.attendeeCount} attendees</span>
+                  <div>
+                    <p className="text-sm">{m.title}</p>
+                    <p className="text-[11px] text-muted-foreground">{m.attendeeCount} attendees</p>
+                  </div>
                 </label>
               ))}
             </div>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 // ── Meetings — Card 3: Tools (merged global + per-person) ────────────────────
+
+const CORE_TOOL_IDS = ['zoom', 'slack', 'gmail'];
 
 function MeetingsToolsCard({
   draft, update, userId,
@@ -479,8 +516,48 @@ function MeetingsToolsCard({
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [recurringMemberIds, setRecurringMemberIds] = useState<Set<string>>(new Set());
   const [loadingMembers, setLoadingMembers] = useState(true);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [salesforceConnected, setSalesforceConnected] = useState(false);
   const { toast } = useToast();
   const { recurringGroups } = useUpcomingMeetingGroups();
+
+  // Both Gmail and Salesforce are provisioned via StackOne connector profiles.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: s1Data } = await supabase.functions.invoke('stackone-proxy', {
+          body: { action: 'list_connector_profiles' },
+        });
+        const profiles = (s1Data?.profiles ?? []) as Array<{ provider?: string; category?: string }>;
+        setGmailConnected(profiles.some(p => {
+          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return provider === 'gmail' || provider.includes('gmail') || provider.includes('google');
+        }));
+        setSalesforceConnected(profiles.some(p => {
+          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const category = (p.category ?? '').toLowerCase();
+          return provider === 'salesforce' || provider.includes('salesforce') || category === 'crm';
+        }));
+      } catch {
+        setGmailConnected(false);
+        setSalesforceConnected(false);
+      }
+    })();
+  }, []);
+
+  const availableTools = PREP_TOOLS.filter(tool => {
+    if (tool.connectionKey === 'gmail') return gmailConnected;
+    if (tool.connectionKey === 'salesforce') return salesforceConnected;
+    return true;
+  });
+
+  // Core comms tools stay in the "Default — all meetings" section (global toggles).
+  // Everything else moves to "Additional per person" (select-all + per-row checkboxes).
+  const coreTools = availableTools.filter(t => CORE_TOOL_IDS.includes(t.id));
+  const perPersonToolDefs = [
+    ...availableTools.filter(t => !CORE_TOOL_IDS.includes(t.id)),
+    ...EXTRA_TOOLS,
+  ];
 
   useEffect(() => {
     if (!userId) { setLoadingMembers(false); return; }
@@ -491,14 +568,12 @@ function MeetingsToolsCard({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).from('cos_one_on_one_events').select('team_member_id, recurring_event_id').eq('user_id', userId),
       ]);
-      // Members with at least one recurring 1:1 are "relationships" → shown individually
       const recurring = new Set<string>(
         (eventsRes.data ?? [])
           .filter((e: { recurring_event_id: string | null }) => !!e.recurring_event_id)
           .map((e: { team_member_id: string }) => e.team_member_id)
       );
       setRecurringMemberIds(recurring);
-      // Sort: recurring 1:1 members first (alpha), then the rest (alpha)
       const sorted = [...(membersRes.data ?? [])].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
         const aRec = recurring.has(a.id as string);
         const bRec = recurring.has(b.id as string);
@@ -550,39 +625,31 @@ function MeetingsToolsCard({
     setMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, agent_overrides: newOverrides } : mb));
   };
 
+  const recurringMembers = members.filter(m => recurringMemberIds.has(m.id));
+
+  // For PREP_TOOLS in the per-person section (e.g. Salesforce), "select all" = global toggle.
+  // For EXTRA_TOOLS (ClearGO, Jira), "select all" = all recurring members have it.
+  const isToolGlobal = (toolId: string) => PREP_TOOLS.some(p => p.id === toolId);
+
+  const isSelectAllOn = (toolId: string): boolean => {
+    if (isToolGlobal(toolId)) return draft.prep_tools.includes(toolId);
+    return recurringMembers.length > 0 && recurringMembers.every(m => getMemberExtras(m).has(toolId));
+  };
+
+  const handleSelectAll = async (toolId: string) => {
+    if (isToolGlobal(toolId)) { toggleTool(toolId); return; }
+    const allOn = recurringMembers.every(m => getMemberExtras(m).has(toolId));
+    await Promise.all(recurringMembers.map(m => toggleExtra(m, toolId, !allOn)));
+  };
+
+  const totalCols = 1 + coreTools.length + perPersonToolDefs.length;
+
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Tools</CardTitle></CardHeader>
       <CardContent className="space-y-4">
-        {/* Global toggles */}
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-2">
-            Data sources gathered for every prep. Toggle off to disable globally.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {PREP_TOOLS.map(tool => {
-              const on = draft.prep_tools.includes(tool.id);
-              return (
-                <button
-                  key={tool.id}
-                  type="button"
-                  title={tool.description}
-                  onClick={() => toggleTool(tool.id)}
-                  className={cn(
-                    'px-3 py-1 rounded-full text-xs border transition-colors',
-                    on ? 'bg-primary text-primary-foreground border-primary'
-                       : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                  )}
-                >
-                  {tool.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Slack channels */}
-        <div className="space-y-2 border-t pt-3">
+        <div className="space-y-2">
           <label className="text-xs font-medium">Slack channels to include</label>
           <div className="flex flex-wrap gap-1.5">
             {draft.slack_channels.map(ch => (
@@ -608,10 +675,10 @@ function MeetingsToolsCard({
           </div>
         </div>
 
-        {/* Per-person matrix + group meetings */}
+        {/* Per-person matrix */}
         <div className="border-t pt-3">
           <p className="text-[11px] text-muted-foreground mb-3">
-            Add integration-specific tools for each 1:1 relationship. Non-recurring 1:1s and group meetings use global defaults.
+            Click a core source to toggle it globally. Click a per-person column header to enable or disable it for all recurring 1:1 relationships at once.
           </p>
           {loadingMembers ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
@@ -621,15 +688,17 @@ function MeetingsToolsCard({
                 <thead>
                   <tr>
                     <th className="text-left pb-1 pr-6 text-xs text-muted-foreground min-w-[160px]" />
-                    <th
-                      colSpan={PREP_TOOLS.length}
-                      className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
-                    >
-                      Default — all meetings
-                    </th>
-                    {EXTRA_TOOLS.length > 0 && (
+                    {coreTools.length > 0 && (
                       <th
-                        colSpan={EXTRA_TOOLS.length}
+                        colSpan={coreTools.length}
+                        className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
+                      >
+                        Default — all meetings
+                      </th>
+                    )}
+                    {perPersonToolDefs.length > 0 && (
+                      <th
+                        colSpan={perPersonToolDefs.length}
                         className="pb-1 pl-6 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
                       >
                         Additional per person
@@ -638,17 +707,49 @@ function MeetingsToolsCard({
                   </tr>
                   <tr>
                     <th className="pb-3 text-left text-xs font-medium text-muted-foreground pr-6">Meeting / Person</th>
-                    {PREP_TOOLS.map(t => (
-                      <th key={t.id} className="pb-3 px-3 text-center text-xs font-medium whitespace-nowrap">{t.label}</th>
-                    ))}
-                    {EXTRA_TOOLS.map(t => (
-                      <th key={t.id} className="pb-3 px-3 pl-6 text-center text-xs font-medium whitespace-nowrap">{t.label}</th>
-                    ))}
+                    {coreTools.map(t => {
+                      const on = draft.prep_tools.includes(t.id);
+                      return (
+                        <th key={t.id} className="pb-3 px-3 text-center">
+                          <button
+                            type="button"
+                            title={`${on ? 'Disable' : 'Enable'} ${t.label} for all meetings`}
+                            onClick={() => toggleTool(t.id)}
+                            className={cn(
+                              'px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap',
+                              on ? 'bg-primary text-primary-foreground border-primary'
+                                 : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                            )}
+                          >
+                            {t.label}
+                          </button>
+                        </th>
+                      );
+                    })}
+                    {perPersonToolDefs.map(t => {
+                      const on = isSelectAllOn(t.id);
+                      return (
+                        <th key={t.id} className="pb-3 px-3 pl-6 text-center">
+                          <button
+                            type="button"
+                            title={`${on ? 'Deselect' : 'Select'} ${t.label} for all recurring 1:1s`}
+                            onClick={() => handleSelectAll(t.id)}
+                            className={cn(
+                              'px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap',
+                              on ? 'bg-primary text-primary-foreground border-primary'
+                                 : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                            )}
+                          >
+                            {t.label}
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Section A: recurring 1:1 relationships — configurable per person */}
-                  {members.filter(m => recurringMemberIds.has(m.id)).map((m, i) => {
+                  {/* Section A: recurring 1:1 relationships */}
+                  {recurringMembers.map((m, i) => {
                     const extras = getMemberExtras(m);
                     return (
                       <tr key={m.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
@@ -656,32 +757,51 @@ function MeetingsToolsCard({
                           <span className="font-medium text-sm">{m.name || m.email || 'Unknown'}</span>
                           <span className="ml-1.5 text-[9px] text-primary/60 uppercase tracking-wide">recurring 1:1</span>
                         </td>
-                        {PREP_TOOLS.map(t => (
-                          <td key={t.id} className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center" title="Default — always included">
-                              <div className="h-4 w-4 rounded border border-primary/40 bg-primary/10 flex items-center justify-center">
-                                <Lock className="h-2.5 w-2.5 text-primary/60" />
+                        {coreTools.map(t => {
+                          const on = draft.prep_tools.includes(t.id);
+                          return (
+                            <td key={t.id} className="py-2.5 px-3 text-center">
+                              <div className="flex items-center justify-center" title={on ? 'Included via global toggle' : 'Excluded via global toggle'}>
+                                <div className={cn('h-4 w-4 rounded border flex items-center justify-center',
+                                  on ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/30')}>
+                                  <Lock className={cn('h-2.5 w-2.5', on ? 'text-primary/60' : 'text-muted-foreground/40')} />
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                        ))}
-                        {EXTRA_TOOLS.map(t => (
-                          <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
-                            <Checkbox
-                              checked={extras.has(t.id)}
-                              onCheckedChange={(v) => toggleExtra(m, t.id, v as boolean)}
-                              className="mx-auto"
-                              title={t.description}
-                            />
-                          </td>
-                        ))}
+                            </td>
+                          );
+                        })}
+                        {perPersonToolDefs.map(t => {
+                          if (isToolGlobal(t.id)) {
+                            const on = draft.prep_tools.includes(t.id);
+                            return (
+                              <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                                <div className="flex items-center justify-center" title={on ? 'Enabled for all via column toggle' : 'Disabled for all via column toggle'}>
+                                  <div className={cn('h-4 w-4 rounded border flex items-center justify-center',
+                                    on ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/30')}>
+                                    <Lock className={cn('h-2.5 w-2.5', on ? 'text-primary/60' : 'text-muted-foreground/40')} />
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                              <Checkbox
+                                checked={extras.has(t.id)}
+                                onCheckedChange={(v) => toggleExtra(m, t.id, v as boolean)}
+                                className="mx-auto"
+                                title={t.description}
+                              />
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
 
-                  {/* Section B: non-recurring 1:1s — one aggregate row, global defaults only */}
+                  {/* Section B: non-recurring 1:1s — global defaults only */}
                   <tr>
-                    <td colSpan={1 + PREP_TOOLS.length + EXTRA_TOOLS.length} className="pt-4 pb-1">
+                    <td colSpan={totalCols} className="pt-4 pb-1">
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Non-recurring 1:1s</p>
                     </td>
                   </tr>
@@ -690,7 +810,7 @@ function MeetingsToolsCard({
                       <span className="font-medium text-sm text-muted-foreground">One-off 1:1 meetings</span>
                       <p className="text-[10px] text-muted-foreground/60">Uses global default tools</p>
                     </td>
-                    {PREP_TOOLS.map(t => (
+                    {coreTools.map(t => (
                       <td key={t.id} className="py-2.5 px-3 text-center">
                         <div className="flex items-center justify-center" title="Inherits global defaults">
                           <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
@@ -699,7 +819,7 @@ function MeetingsToolsCard({
                         </div>
                       </td>
                     ))}
-                    {EXTRA_TOOLS.map(t => (
+                    {perPersonToolDefs.map(t => (
                       <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
                         <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
                       </td>
@@ -710,7 +830,7 @@ function MeetingsToolsCard({
                   {draft.included_group_series.length > 0 && (
                     <>
                       <tr>
-                        <td colSpan={1 + PREP_TOOLS.length + EXTRA_TOOLS.length} className="pt-4 pb-1">
+                        <td colSpan={totalCols} className="pt-4 pb-1">
                           <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Group meetings in scope</p>
                         </td>
                       </tr>
@@ -726,7 +846,7 @@ function MeetingsToolsCard({
                                 <p className="text-[10px] text-muted-foreground/60">{group.attendeeCount} attendees · global tools</p>
                               )}
                             </td>
-                            {PREP_TOOLS.map(t => (
+                            {coreTools.map(t => (
                               <td key={t.id} className="py-2.5 px-3 text-center">
                                 <div className="flex items-center justify-center" title="Inherits global defaults">
                                   <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
@@ -735,7 +855,7 @@ function MeetingsToolsCard({
                                 </div>
                               </td>
                             ))}
-                            {EXTRA_TOOLS.map(t => (
+                            {perPersonToolDefs.map(t => (
                               <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
                                 <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
                               </td>
@@ -864,16 +984,16 @@ function MeetingsLogsCard({ logs, userId, onRefresh }: {
 }
 
 
-// ── Daily Brief — Card 1: Schedule + Manual Run ───────────────────────────────
+// ── Daily Brief — Card 1: Schedule ───────────────────────────────────────────
 
-function BriefScheduleCard({ draft, update, running, onRunNow }: {
-  draft: PrepScheduleConfig; update: Patch; running: boolean; onRunNow: () => void;
+function BriefScheduleCard({ draft, update }: {
+  draft: PrepScheduleConfig; update: Patch;
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Clock className="h-4 w-4" /> Schedule + Manual Run
+          <Clock className="h-4 w-4" /> Schedule
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -890,13 +1010,29 @@ function BriefScheduleCard({ draft, update, running, onRunNow }: {
           Runs at {formatHourLabel(draft.run_hour_local)} in {draft.timezone}
           {' '}(schedule configured under Settings › Chief of Staff › Meetings).
         </p>
-        <div className="border-t pt-3 space-y-3">
-          <LastRunLine at={draft.dci_last_run_at} status={draft.dci_last_run_status} />
-          <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
-            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Run now
-          </Button>
-        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Daily Brief — Card 2: Manual Run ─────────────────────────────────────────
+
+function BriefManualRunCard({ draft, running, onRunNow }: {
+  draft: PrepScheduleConfig; running: boolean; onRunNow: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Play className="h-4 w-4" /> Manual Run
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <LastRunLine at={draft.dci_last_run_at} status={draft.dci_last_run_status} />
+        <Button variant="outline" onClick={onRunNow} disabled={running} className="gap-1.5">
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          Run now
+        </Button>
       </CardContent>
     </Card>
   );
@@ -948,25 +1084,7 @@ function BriefSourcesCard({ draft, update }: { draft: PrepScheduleConfig; update
           </p>
         </div>
 
-        <label className="flex items-center gap-3 border-t pt-3">
-          <Switch checked={draft.dci_slack_dm} onCheckedChange={v => update({ dci_slack_dm: v })} />
-          <span className="text-sm">Send end-of-day brief to Slack DM</span>
-        </label>
 
-        {draft.dci_sources.includes('slack') && (
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Your Slack member ID (optional)</label>
-            <Input
-              value={draft.slack_user_id ?? ''}
-              onChange={e => update({ slack_user_id: e.target.value || null })}
-              placeholder="e.g. U01234ABCDE"
-              className="h-9 text-sm font-mono w-48"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Find it in Slack: click your name → Copy member ID.
-            </p>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -1070,18 +1188,148 @@ function BriefLogsCard({ userId }: { userId: string | null }) {
 
 // ── Exported panels ───────────────────────────────────────────────────────────
 
+// ── Meetings — Card: Inclusion rules (from calendar settings) ────────────────
+
+function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCalendar?: () => void }) {
+  const { toast } = useToast();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [draftRules, setDraftRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
+  const [savingRules, setSavingRules] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const [credsRes, settingsRes] = await Promise.all([
+        db.from('user_calendar_credentials_public').select('connected').maybeSingle(),
+        db.from('cos_settings').select('calendar_sync_rules').eq('user_id', user.id).maybeSingle(),
+      ]);
+      setCalendarConnected(Boolean(credsRes.data?.connected));
+      if (settingsRes.data?.calendar_sync_rules) {
+        setDraftRules({ ...DEFAULT_SYNC_RULES, ...(settingsRes.data.calendar_sync_rules as Partial<CalendarSyncRules>) });
+      }
+    })();
+  }, []);
+
+  const saveRules = async () => {
+    if (!userId) return;
+    setSavingRules(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from('cos_settings').upsert(
+        { user_id: userId, calendar_sync_rules: draftRules, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      );
+      if (error) throw error;
+      toast({ title: 'Inclusion rules saved' });
+    } catch (err) {
+      toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingRules(false);
+    }
+  };
+
+  if (calendarConnected === null) return null;
+
+  if (!calendarConnected) {
+    return (
+      <Card>
+        <CardContent className="py-8 flex flex-col items-center gap-3 text-center">
+          <Calendar className="h-8 w-8 text-muted-foreground/40" />
+          <div>
+            <p className="text-sm font-medium">Calendar not connected</p>
+            <p className="text-[11px] text-muted-foreground mt-1 max-w-[280px]">
+              Connect Google Calendar to configure which relationships and meeting titles are included in prep.
+            </p>
+          </div>
+          {onNavigateToCalendar ? (
+            <Button size="sm" variant="outline" onClick={onNavigateToCalendar} className="gap-1.5 mt-1">
+              <ExternalLink className="h-3.5 w-3.5" /> Set up Calendar
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Inclusion rules</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-[11px] text-muted-foreground">
+          True 1:1s (you + one other person) are tracked automatically. Meetings with three or more
+          people appear under Group meetings for you to opt in individually.
+        </p>
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium">Include people I track as…</p>
+          {(Object.entries({
+            direct_report: 'Direct reports',
+            boss:          'My boss',
+            peer:          'Peers',
+            skip_level:    'My org (skip-levels)',
+            stakeholder:   'Other stakeholders',
+            external:      'Externals',
+          }) as Array<[RelationshipType, string]>).map(([rt, label]) => (
+            <label key={rt} className="flex items-center gap-2 text-sm">
+              <Switch
+                checked={draftRules.include_relationship_types.includes(rt)}
+                onCheckedChange={c =>
+                  setDraftRules(r => ({
+                    ...r,
+                    include_relationship_types: c
+                      ? Array.from(new Set([...r.include_relationship_types, rt])) as RelationshipType[]
+                      : r.include_relationship_types.filter(x => x !== rt),
+                  }))
+                }
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Title must match (regex, optional)</label>
+          <Input
+            value={draftRules.include_titles_regex ?? ''}
+            onChange={e => setDraftRules(r => ({ ...r, include_titles_regex: e.target.value || null }))}
+            placeholder="e.g. 1:1|sync|catch.?up"
+            className="h-9 text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">Title must NOT match (regex, optional)</label>
+          <Input
+            value={draftRules.exclude_titles_regex ?? ''}
+            onChange={e => setDraftRules(r => ({ ...r, exclude_titles_regex: e.target.value || null }))}
+            placeholder="e.g. interview|standup"
+            className="h-9 text-sm"
+          />
+        </div>
+
+        <div className="pt-2">
+          <Button size="sm" onClick={saveRules} disabled={savingRules} className="gap-1.5">
+            {savingRules ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save rules
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Exported panels ───────────────────────────────────────────────────────────
+
 export function MeetingsPrepPanel() {
-  const { draft, update, saving, save, runningPrep, runPrepNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
+  const { draft, update, runningPrep, runPrepNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
   if (loading || !draft) return null;
 
-  const SaveButton = () => (
-    <div className="pt-2">
-      <Button onClick={save} disabled={saving} className="gap-1.5">
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-        Save
-      </Button>
-    </div>
-  );
+  const latestLogHasError = prepLogs.length > 0 &&
+    (prepLogs[0].status === 'failed' || (prepLogs[0].errors?.length ?? 0) > 0);
 
   return (
     <Tabs defaultValue="schedule">
@@ -1089,23 +1337,32 @@ export function MeetingsPrepPanel() {
         <TabsTrigger value="schedule">Schedule</TabsTrigger>
         <TabsTrigger value="scope">Scope</TabsTrigger>
         <TabsTrigger value="tools">Tools</TabsTrigger>
-        <TabsTrigger value="logs">Logs</TabsTrigger>
+        <TabsTrigger value="agent">Agent</TabsTrigger>
+        <TabsTrigger value="logs" className="relative">
+          Logs
+          {latestLogHasError && (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+          )}
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="schedule" className="space-y-4">
-        <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
-        <SaveButton />
+        <MeetingsScheduleCard draft={draft} update={update} />
+        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} />
       </TabsContent>
 
       <TabsContent value="scope" className="space-y-4">
         <MeetingsScopeCard draft={draft} update={update} />
-        <SaveButton />
+        <MeetingsInclusionRulesCard />
       </TabsContent>
 
       <TabsContent value="tools" className="space-y-4">
         <MeetingsToolsCard draft={draft} update={update} userId={userId} />
         <MeetingsToolTiersCard draft={draft} update={update} />
-        <SaveButton />
+      </TabsContent>
+
+      <TabsContent value="agent">
+        <AgentSettingsPanel />
       </TabsContent>
 
       <TabsContent value="logs">
@@ -1116,25 +1373,36 @@ export function MeetingsPrepPanel() {
 }
 
 export function DailyBriefPanel() {
-  const { draft, update, saving, save, runningBrief, runBriefNow, userId, loading } = usePanelState();
+  const { draft, update, runningBrief, runBriefNow, userId, loading } = usePanelState();
   if (loading || !draft) return null;
   return (
-    <div className="space-y-4">
-      <BriefScheduleCard draft={draft} update={update} running={runningBrief} onRunNow={runBriefNow} />
-      <BriefSourcesCard draft={draft} update={update} />
-      <BriefLogsCard userId={userId} />
-      <Button onClick={save} disabled={saving} className="gap-1.5">
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-        Save
-      </Button>
-    </div>
+    <Tabs defaultValue="schedule">
+      <TabsList className="mb-4">
+        <TabsTrigger value="schedule">Schedule</TabsTrigger>
+        <TabsTrigger value="sources">Sources</TabsTrigger>
+        <TabsTrigger value="logs">Logs</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="schedule" className="space-y-4">
+        <BriefScheduleCard draft={draft} update={update} />
+        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} />
+      </TabsContent>
+
+      <TabsContent value="sources">
+        <BriefSourcesCard draft={draft} update={update} />
+      </TabsContent>
+
+      <TabsContent value="logs">
+        <BriefLogsCard userId={userId} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
 // ── Default export (legacy — both sections on one page) ───────────────────────
 
 export default function CosPrepSchedulePanel() {
-  const { draft, update, saving, save, runningPrep, runPrepNow, runningBrief, runBriefNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
+  const { draft, update, runningPrep, runPrepNow, runningBrief, runBriefNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
   if (loading || !draft) return null;
   return (
     <div className="space-y-10">
@@ -1144,7 +1412,8 @@ export default function CosPrepSchedulePanel() {
             <CalendarClock className="h-4 w-4" /> Meetings
           </h3>
         </div>
-        <MeetingsScheduleCard draft={draft} update={update} running={runningPrep} onRunNow={runPrepNow} />
+        <MeetingsScheduleCard draft={draft} update={update} />
+        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} />
         <MeetingsScopeCard draft={draft} update={update} />
         <MeetingsToolsCard draft={draft} update={update} userId={userId} />
         <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
@@ -1156,15 +1425,11 @@ export default function CosPrepSchedulePanel() {
             <Brain className="h-4 w-4" /> Daily Brief
           </h3>
         </div>
-        <BriefScheduleCard draft={draft} update={update} running={runningBrief} onRunNow={runBriefNow} />
+        <BriefScheduleCard draft={draft} update={update} />
+        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} />
         <BriefSourcesCard draft={draft} update={update} />
         <BriefLogsCard userId={userId} />
       </section>
-
-      <Button onClick={save} disabled={saving} className="gap-1.5">
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-        Save
-      </Button>
     </div>
   );
 }

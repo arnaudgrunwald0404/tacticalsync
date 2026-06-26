@@ -1079,7 +1079,7 @@ function DciTabContent({
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
       <div className="grid grid-cols-[2fr_5fr] gap-3 items-stretch">
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 h-full">
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
             {(() => {
               // Weekly data
@@ -1136,60 +1136,64 @@ function DciTabContent({
                     </button>
                   </div>
 
-                  {/* Items */}
+                  {/* Items — always 3 rows so dividers align with the daily columns */}
                   <div className="flex-1 flex flex-col divide-y divide-border/50">
-                    {tierItems.length === 0 ? (
-                      <div className="flex-1 flex items-center justify-center">
-                        <span className="text-[10px] text-muted-foreground/40">No {cfg.sub.toLowerCase()} set</span>
-                      </div>
-                    ) : tierItems.map((item, rowIdx) => {
+                    {Array.from({ length: 3 }, (_, rowIdx) => {
+                      const item = tierItems[rowIdx] ?? null;
                       const weeklyObjKey = ['weekly_obj_1', 'weekly_obj_2', 'weekly_obj_3'][rowIdx] as 'weekly_obj_1' | 'weekly_obj_2' | 'weekly_obj_3';
                       const canEditWeeklyObj = carouselTier === 'weekly' && !previewWeekly && hasWeeklyObjsSet && weeklyObjectivesLog;
+                      if (!item) {
+                        return (
+                          <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-center justify-center">
+                            <span className="text-[10px] text-muted-foreground/30">—</span>
+                          </div>
+                        );
+                      }
                       return (
-                      <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
-                        <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
-                          {rowIdx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          {canEditWeeklyObj ? (
-                            <DciEditableText
-                              value={item.text}
-                              onSave={(newText) => onUpdateLog(weeklyObjectivesLog!.id, { [weeklyObjKey]: newText || null })}
-                              className="text-xs leading-snug font-medium"
-                              placeholder="Add objective..."
-                            />
-                          ) : (
-                          <span className={cn(
-                            'text-xs leading-snug font-medium',
-                            carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
-                          )}>
-                            {item.text}
+                        <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
+                          <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
+                            {rowIdx + 1}
                           </span>
-                          )}
-                          {/* Weekly: show activities */}
-                          {carouselTier === 'weekly' && (
-                            <DciEditableActivities
-                              activities={item.activities}
-                              canEdit={canEditWeeklyObj}
-                              onSave={(newActs) => {
-                                const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
-                                onUpdateLog(weeklyObjectivesLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
-                              }}
-                            />
-                          )}
-                          {/* Quarterly/Monthly: show description */}
-                          {item.description && carouselTier !== 'weekly' && (
-                            <p className="mt-0.5 text-[10px] text-muted-foreground/70 leading-snug">{item.description}</p>
-                          )}
-                          {/* Status dot for quarterly/monthly */}
-                          {item.status && carouselTier !== 'weekly' && (
-                            <span className="inline-flex items-center gap-1 mt-1">
-                              <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[item.status] ?? 'bg-muted-foreground/30')} />
-                              <span className="text-[9px] text-muted-foreground capitalize">{item.status?.replace('_', ' ')}</span>
-                            </span>
-                          )}
+                          <div className="min-w-0">
+                            {canEditWeeklyObj ? (
+                              <DciEditableText
+                                value={item.text}
+                                onSave={(newText) => onUpdateLog(weeklyObjectivesLog!.id, { [weeklyObjKey]: newText || null })}
+                                className="text-xs leading-snug font-medium"
+                                placeholder="Add objective..."
+                              />
+                            ) : (
+                              <span className={cn(
+                                'text-xs leading-snug font-medium',
+                                carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
+                              )}>
+                                {item.text}
+                              </span>
+                            )}
+                            {/* Weekly: show activities */}
+                            {carouselTier === 'weekly' && (
+                              <DciEditableActivities
+                                activities={item.activities}
+                                canEdit={!!canEditWeeklyObj}
+                                onSave={(newActs) => {
+                                  const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
+                                  onUpdateLog(weeklyObjectivesLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
+                                }}
+                              />
+                            )}
+                            {/* Quarterly/Monthly: show description */}
+                            {item.description && carouselTier !== 'weekly' && (
+                              <p className="mt-0.5 text-[10px] text-muted-foreground/70 leading-snug">{item.description}</p>
+                            )}
+                            {/* Status dot for quarterly/monthly */}
+                            {item.status && carouselTier !== 'weekly' && (
+                              <span className="inline-flex items-center gap-1 mt-1">
+                                <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[item.status] ?? 'bg-muted-foreground/30')} />
+                                <span className="text-[9px] text-muted-foreground capitalize">{item.status?.replace('_', ' ')}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -1211,8 +1215,8 @@ function DciTabContent({
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-5 divide-x divide-border">
+        <CardContent className="p-0 h-full">
+          <div className="grid grid-cols-5 divide-x divide-border h-full">
             {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
@@ -3580,7 +3584,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
-        .gte('start_time', new Date().toISOString())
+        .gte('end_time', new Date().toISOString())
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
       db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),

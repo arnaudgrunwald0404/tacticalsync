@@ -14,17 +14,18 @@ const NAV_ITEMS = [
   { id: "user-management-users",       label: "Users",             group: "User Management" },
   { id: "user-management-domains",     label: "Domains",           group: "User Management" },
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
-  { id: "strategy-cycles",              label: "Strategy Cycles",   group: "RCDO" },
+  { id: "strategy-cycles",             label: "Strategy Cycles",   group: "RCDO" },
   { id: "configure-my-lists",          label: "My Lists",          group: "Chief of Staff" },
-  { id: "meetings-prep",              label: "Meetings",           group: "Chief of Staff" },
+  { id: "prep-schedule",               label: "Daily Brief",       group: "Chief of Staff" },
+  { id: "meetings-prep",               label: "Meetings",          group: "Chief of Staff" },
   { id: "agent-settings",              label: "Agent",             group: "Chief of Staff" },
-  { id: "prep-schedule",               label: "Daily Brief",       group: "Daily Brief" },
-  { id: "calendar-sync",               label: "Calendar",          group: "Meetings" },
-  { id: "zoom-sync",                   label: "Zoom",              group: "Meetings" },
-  { id: "slack-sync",                  label: "Slack",             group: "Meetings" },
-  { id: "integration-cleargo",         label: "ClearGo",           group: "Meetings" },
-  { id: "integration-stackone",       label: "StackOne",          group: "Integrations" },
+  { id: "calendar-sync",               label: "Calendar",          group: "Integrations" },
+  { id: "zoom-sync",                   label: "Zoom",              group: "Integrations" },
+  { id: "slack-sync",                  label: "Slack",             group: "Integrations" },
+  { id: "integration-cleargo",         label: "ClearGo",           group: "Integrations" },
+  { id: "integration-stackone",        label: "StackOne",          group: "Integrations" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },
+  { id: "testing-mode",                label: "Role Preview",      group: null },
 ];
 
 const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions }) => {
@@ -33,6 +34,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
   const visibleItems = NAV_ITEMS.filter(item => {
     if (item.group === "User Management" && !showAdminManagement) return false;
     if (item.id === "user-management-permissions" && !canManagePermissions) return false;
+    if (item.id === "testing-mode" && !isTestUser) return false;
     return true;
   });
 
@@ -69,21 +71,6 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
           );
         })}
 
-        {isTestUser && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onSectionChange("testing-mode")}
-            className={cn(
-              "font-body justify-start flex-shrink-0 lg:w-full whitespace-nowrap",
-              activeSection === "testing-mode"
-                ? "bg-copper text-white hover:bg-copper-hover font-medium"
-                : "text-[#4A5D5F] hover:bg-[#E8EDEC] hover:text-cast-iron"
-            )}
-          >
-            Role Preview
-          </Button>
-        )}
       </div>
     </nav>
   );

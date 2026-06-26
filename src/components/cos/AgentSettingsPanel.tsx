@@ -340,6 +340,21 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
                   </p>
                 </div>
               </div>
+
+              <div className="flex items-start gap-3 px-3 py-3 rounded-md border border-border bg-background">
+                <div className="flex-shrink-0 mt-0.5 h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center">
+                  <Slack className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">/add-to-1on1 @name topic</code>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5">Active</Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Queue a topic for an upcoming 1:1 — mention <span className="font-medium text-foreground">@name</span> and describe the topic. It will surface in the prep brief for that meeting.
+                  </p>
+                </div>
+              </div>
             </SettingsGroup>
           )}
 
