@@ -1077,7 +1077,7 @@ function DciTabContent({
       )}
 
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
-      <div className="grid grid-cols-[2fr_5fr] gap-3 items-stretch">
+      <div className="grid grid-cols-[230px_minmax(0,1fr)] gap-3 items-stretch">
       <Card>
         <CardContent className="p-0 h-full">
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
