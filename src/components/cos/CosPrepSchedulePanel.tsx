@@ -269,6 +269,8 @@ function usePanelState() {
       dci_instructions: d.dci_instructions || null,
       dci_slack_dm: d.dci_slack_dm,
       slack_user_id: d.slack_user_id || null,
+      dci_run_hour_local: d.dci_run_hour_local,
+      dci_timezone: d.dci_timezone,
     });
   }, [saveConfig, toast]);
 
@@ -989,6 +991,7 @@ function MeetingsLogsCard({ logs, userId, onRefresh }: {
 function BriefScheduleCard({ draft, update }: {
   draft: PrepScheduleConfig; update: Patch;
 }) {
+  const tzOptions = Array.from(new Set([getBrowserTimezone(), draft.dci_timezone, ...COMMON_TIMEZONES]));
   return (
     <Card>
       <CardHeader>
@@ -1006,9 +1009,33 @@ function BriefScheduleCard({ draft, update }: {
             </p>
           </div>
         </label>
+
+        <div className="flex flex-wrap gap-4">
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Run at</label>
+            <Select value={String(draft.dci_run_hour_local)} onValueChange={v => update({ dci_run_hour_local: parseInt(v) })}>
+              <SelectTrigger className="w-40 h-9 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <SelectItem key={i} value={String(i)}>{formatHourLabel(i)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Timezone</label>
+            <Select value={draft.dci_timezone} onValueChange={v => update({ dci_timezone: v })}>
+              <SelectTrigger className="w-56 h-9 text-sm font-mono"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {tzOptions.map(tz => (
+                  <SelectItem key={tz} value={tz} className="font-mono text-xs">{tz}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <p className="text-[11px] text-muted-foreground">
-          Runs at {formatHourLabel(draft.run_hour_local)} in {draft.timezone}
-          {' '}(schedule configured under Settings › Chief of Staff › Meetings).
+          Runs at {formatHourLabel(draft.dci_run_hour_local)} in {draft.dci_timezone}.
         </p>
       </CardContent>
     </Card>

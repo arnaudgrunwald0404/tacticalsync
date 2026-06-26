@@ -1215,8 +1215,8 @@ function DciTabContent({
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="p-0 h-full">
-          <div className="grid grid-cols-5 divide-x divide-border h-full">
+        <CardContent className="p-0 h-full overflow-x-auto">
+          <div className="flex divide-x divide-border h-full min-w-max">
             {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
@@ -1234,7 +1234,7 @@ function DciTabContent({
                 <div
                   key={day.date}
                   className={cn(
-                    'flex flex-col',
+                    'flex flex-col w-64 flex-shrink-0',
                     isTodayCol && 'bg-copper/[0.03]',
                     isFuture && 'opacity-40',
                   )}
