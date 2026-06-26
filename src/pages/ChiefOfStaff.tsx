@@ -4046,8 +4046,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   }, [toast, loadCalendarState]);
 
-  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -4087,6 +4086,32 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       });
     }
   };
+
+  const handleExcludeFromCalendar = useCallback(async (event: UpcomingOneOnOneEvent) => {
+    const email = event.attendee_email;
+    if (!email) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data: settingsRow } = await db.from('cos_settings')
+      .select('calendar_sync_rules')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const syncRules = settingsRow?.calendar_sync_rules as { exclude_emails?: string[] } | null;
+    const excludeEmails = [...(syncRules?.exclude_emails ?? [])];
+    const normalised = email.toLowerCase();
+    if (!excludeEmails.includes(normalised)) excludeEmails.push(normalised);
+    await db.from('cos_settings').upsert(
+      { user_id: user.id, calendar_sync_rules: { ...(syncRules ?? {}), exclude_emails: excludeEmails } },
+      { onConflict: 'user_id' },
+    );
+    setUpcomingEvents(prev => prev.filter(e => e.id !== event.id));
+    const name = event.attendee_name?.includes('@')
+      ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
+      : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
+    toast({ title: `${name} excluded from calendar` });
+  }, [toast]);
 
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected
@@ -4188,6 +4213,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           onIncludeInPrep={handleIncludeInPrep}
           onRunPrep={handleRunPrep}
           runningPrepEventIds={runningPrepEventIds}
+          onExcludeFromCalendar={handleExcludeFromCalendar}
           onOpenGroupPrep={openGroupPrep}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
