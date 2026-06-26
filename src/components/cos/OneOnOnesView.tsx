@@ -4,7 +4,7 @@ import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomor
 import {
   Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
   ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
-  Search, X, AlertTriangle, Repeat, UserPlus, EyeOff, Users,
+  Search, X, AlertTriangle, Repeat, UserPlus, EyeOff, Users, History,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -73,6 +73,7 @@ interface OneOnOnesViewProps {
   loadingInitial?: boolean;
   onViewPrep: (member: OneOnOneMember) => void;
   upcomingEvents: UpcomingOneOnOneEvent[];
+  pastEvents?: UpcomingOneOnOneEvent[];
   calendarConnected: boolean;
   lastSyncAt: string | null;
   syncing: boolean;
@@ -270,6 +271,7 @@ export function OneOnOnesView({
   loadingInitial = false,
   onViewPrep,
   upcomingEvents,
+  pastEvents = [],
   calendarConnected,
   lastSyncAt,
   syncing,
@@ -284,6 +286,8 @@ export function OneOnOnesView({
 }: OneOnOnesViewProps) {
   const [search, setSearch] = useState('');
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
+  const [pastSearch, setPastSearch] = useState('');
+  const [pastExpanded, setPastExpanded] = useState(false);
   const scheduled = useMemo(() => bucketise(members), [members]);
 
   useEffect(() => {
@@ -443,6 +447,16 @@ export function OneOnOnesView({
   }, [eventsByDate, q]);
 
   const filteredDates = useMemo(() => [...filteredEventsByDate.keys()].sort(), [filteredEventsByDate]);
+
+  const filteredPastEvents = useMemo(() => {
+    const q = pastSearch.trim().toLowerCase();
+    if (!q) return pastEvents;
+    return pastEvents.filter(ev => {
+      const name = (ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '').toLowerCase();
+      const title = (ev.title ?? '').toLowerCase();
+      return name.includes(q) || title.includes(q);
+    });
+  }, [pastEvents, pastSearch]);
 
   const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
 
@@ -722,6 +736,62 @@ export function OneOnOnesView({
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Past meetings */}
+      {pastEvents.length > 0 && (
+        <section className="border-t border-border pt-6">
+          <button
+            onClick={() => setPastExpanded(v => !v)}
+            className="flex items-center gap-2.5 w-full text-left group"
+          >
+            <History className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
+              Past meetings
+            </span>
+            <span className="text-[11px] font-bold text-muted-foreground bg-muted rounded-full px-2.5 py-0.5 border border-border">
+              {pastEvents.length}
+            </span>
+            {pastExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+            )}
+          </button>
+
+          {pastExpanded && (
+            <div className="mt-4 space-y-4">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search past meetings…"
+                  value={pastSearch}
+                  onChange={e => setPastSearch(e.target.value)}
+                  className="w-full pl-8 pr-8 py-1.5 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {pastSearch && (
+                  <button
+                    onClick={() => setPastSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {filteredPastEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No past meetings match your search.</p>
+              ) : (
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filteredPastEvents.map(ev => (
+                    <PastEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );
@@ -1059,7 +1129,7 @@ function UpNextHeroEvent({
               Run the prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && (
+          {onExcludeFromCalendar && isNonRecurring && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar
@@ -1319,7 +1389,7 @@ function UpcomingEventCard({
               Run the prep
             </DropdownMenuItem>
           )}
-          {onExcludeFromCalendar && (
+          {onExcludeFromCalendar && isNonRecurring && (
             <DropdownMenuItem onClick={() => onExcludeFromCalendar(event)} className="gap-2 text-destructive focus:text-destructive">
               <EyeOff className="h-4 w-4" />
               Exclude from calendar
@@ -1337,6 +1407,52 @@ function UpcomingEventCard({
       className={cn(cardClasses, isUnmatched && 'cursor-not-allowed')}
     >
       {cardContent}
+    </button>
+  );
+}
+
+// ── Past event card ───────────────────────────────────────────────────────
+
+function PastEventCard({
+  event, onOpen, loading,
+}: {
+  event: UpcomingOneOnOneEvent;
+  onOpen: (m: OneOnOneMember) => void;
+  loading: boolean;
+}) {
+  const { displayName, displayRole, relStyle } = eventDisplayInfo(event);
+  const start = new Date(event.start_time);
+  const isUnmatched = !event.team_member;
+
+  return (
+    <button
+      onClick={() => { if (event.team_member) onOpen(event.team_member); }}
+      disabled={loading || isUnmatched}
+      className={cn(
+        'relative flex items-stretch text-left rounded-lg border border-border bg-card overflow-hidden w-full',
+        'shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        isUnmatched && 'opacity-50 cursor-not-allowed',
+        loading && 'opacity-60 cursor-not-allowed',
+      )}
+    >
+      <span className={cn('absolute left-0 top-0 bottom-0 w-1 opacity-40', relStyle.rail)} aria-hidden />
+      <div className="flex items-center gap-3 p-3 pl-4 w-full">
+        <div className={cn(
+          'h-8 w-8 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 text-xs opacity-70',
+          relStyle.avatarBg,
+        )}>
+          {initials(displayName)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm leading-tight truncate text-foreground/80">{displayName}</div>
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{displayRole}</p>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <div className="text-[11px] font-semibold text-muted-foreground">{format(start, 'MMM d')}</div>
+          <div className="text-[10px] text-muted-foreground/70">{format(start, 'h:mm a')}</div>
+        </div>
+      </div>
     </button>
   );
 }

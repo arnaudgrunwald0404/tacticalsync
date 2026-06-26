@@ -40,9 +40,12 @@ export interface PrepScheduleConfig {
   slack_user_id: string | null;
   dci_last_run_at: string | null;
   dci_last_run_status: string | null;
-  // Shared schedule
+  // Meetings prep schedule
   run_hour_local: number;
   timezone: string;
+  // Daily Brief schedule (independent from meetings prep)
+  dci_run_hour_local: number;
+  dci_timezone: string;
 }
 
 export const DEFAULT_PREP_SCHEDULE: PrepScheduleConfig = {
@@ -68,6 +71,8 @@ export const DEFAULT_PREP_SCHEDULE: PrepScheduleConfig = {
   dci_last_run_status: null,
   run_hour_local: 8,
   timezone: 'UTC',
+  dci_run_hour_local: 17,
+  dci_timezone: 'UTC',
 };
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -99,6 +104,9 @@ function mapRow(data: Record<string, unknown> | null): PrepScheduleConfig {
     // run_hour_local supersedes the deprecated run_hour_utc; fall back for old rows.
     run_hour_local: (data.run_hour_local as number) ?? (data.run_hour_utc as number) ?? d.run_hour_local,
     timezone: (data.timezone as string) || d.timezone,
+    // DCI schedule falls back to the shared schedule for existing rows that predate this column.
+    dci_run_hour_local: (data.dci_run_hour_local as number) ?? (data.run_hour_local as number) ?? d.dci_run_hour_local,
+    dci_timezone: (data.dci_timezone as string) || (data.timezone as string) || d.dci_timezone,
   };
 }
 
