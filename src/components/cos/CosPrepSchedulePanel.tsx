@@ -667,7 +667,7 @@ function MeetingsToolsCard({
   const recurringMembers = members.filter(m => recurringMemberIds.has(m.id));
 
   // For PREP_TOOLS in the per-person section (e.g. Salesforce), "select all" = global toggle.
-  // For EXTRA_TOOLS (ClearGO, Jira), "select all" = all recurring members have it.
+  // For dynamic StackOne tools, "select all" = all recurring members have it.
   const isToolGlobal = (toolId: string) => PREP_TOOLS.some(p => p.id === toolId);
 
   const isSelectAllOn = (toolId: string): boolean => {
