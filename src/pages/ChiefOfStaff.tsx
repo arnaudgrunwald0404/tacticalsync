@@ -1234,7 +1234,7 @@ function DciTabContent({
                 <div
                   key={day.date}
                   className={cn(
-                    'flex flex-col w-64 flex-shrink-0',
+                    'flex flex-col w-80 flex-shrink-0',
                     isTodayCol && 'bg-copper/[0.03]',
                     isFuture && 'opacity-40',
                   )}
