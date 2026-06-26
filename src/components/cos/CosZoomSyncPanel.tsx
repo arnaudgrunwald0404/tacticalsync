@@ -48,8 +48,8 @@ export default function CosZoomSyncPanel() {
     // Handle OAuth callback: Zoom redirects back with ?code=...
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    const zoomCallback = params.get('zoom');
-    if (code && zoomCallback === 'connected') {
+    const zoomState = params.get('state');
+    if (code && zoomState === 'zoom_connected') {
       window.history.replaceState(null, '', `${window.location.pathname}?section=zoom-sync`);
       setConnecting(true);
       (async () => {
@@ -86,9 +86,9 @@ export default function CosZoomSyncPanel() {
       toast({ title: 'Zoom not configured', description: 'VITE_ZOOM_CLIENT_ID is not set.', variant: 'destructive' });
       return;
     }
-    const redirectUri = `${window.location.origin}/settings?section=zoom-sync&zoom=connected`;
+    const redirectUri = `${window.location.origin}/settings`;
     const scopes = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary meeting:read:list_past_instances';
-    const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(ZOOM_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
+    const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(ZOOM_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=zoom_connected`;
     window.location.href = url;
   };
 
