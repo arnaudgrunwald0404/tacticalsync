@@ -44,6 +44,92 @@ interface DciBriefSetupBannerProps {
 }
 
 // ---------------------------------------------------------------------------
+// SourcesAndInstructions — extracted to avoid remount-on-keystroke
+// ---------------------------------------------------------------------------
+
+function SourcesAndInstructions({
+  compact,
+  sources,
+  instructions,
+  onToggleSource,
+  onInstructionsChange,
+}: {
+  compact?: boolean;
+  sources: string[];
+  instructions: string;
+  onToggleSource: (key: string) => void;
+  onInstructionsChange: (value: string) => void;
+}) {
+  const renderSourceGroup = (keys: string[]) =>
+    ALL_SOURCES.filter(s => keys.includes(s.key)).map(src => {
+      const Icon = src.icon;
+      const checked = sources.includes(src.key);
+      const isAlwaysOn = 'alwaysOn' in src && src.alwaysOn;
+      return (
+        <label
+          key={src.key}
+          className={cn(
+            'flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors',
+            checked
+              ? 'border-primary/30 bg-primary/[0.03]'
+              : 'border-transparent bg-muted/30 hover:bg-muted/50',
+            isAlwaysOn && 'opacity-70 cursor-default',
+          )}
+        >
+          <Checkbox
+            checked={checked}
+            onCheckedChange={() => !isAlwaysOn && onToggleSource(src.key)}
+            disabled={isAlwaysOn}
+            className="shrink-0"
+          />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+            <span className="text-xs font-medium">{src.label}</span>
+          </div>
+        </label>
+      );
+    });
+
+  return (
+    <div className={cn('space-y-4', compact && 'space-y-3')}>
+      {/* Source checkboxes */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Data sources
+        </p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0">
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">In TacticalSync</p>
+            <div className="space-y-1">{renderSourceGroup(INTERNAL_SOURCE_KEYS)}</div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">External</p>
+            <div className="space-y-1">{renderSourceGroup(EXTERNAL_SOURCE_KEYS)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Custom instructions */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Guidance for the AI
+        </p>
+        <Textarea
+          value={instructions}
+          onChange={e => onInstructionsChange(e.target.value)}
+          placeholder="e.g. Focus on launch readiness and engineering blockers. Always include ClearGO migration status. My DCI standup is at 9am."
+          className="min-h-[60px] text-xs resize-none"
+          rows={2}
+        />
+        <p className="text-[10px] text-muted-foreground/60">
+          Optional. These instructions are appended to every brief generation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -233,77 +319,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     localStorage.setItem('dci-brief-banner-dismissed', 'true');
   };
 
-  // ── Shared: Source picker + Instructions ────────────────────────────────
-
-  const SourcesAndInstructions = ({ compact }: { compact?: boolean }) => {
-    const renderSourceGroup = (keys: string[]) =>
-      ALL_SOURCES.filter(s => keys.includes(s.key)).map(src => {
-        const Icon = src.icon;
-        const checked = sources.includes(src.key);
-        const isAlwaysOn = 'alwaysOn' in src && src.alwaysOn;
-        return (
-          <label
-            key={src.key}
-            className={cn(
-              'flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors',
-              checked
-                ? 'border-primary/30 bg-primary/[0.03]'
-                : 'border-transparent bg-muted/30 hover:bg-muted/50',
-              isAlwaysOn && 'opacity-70 cursor-default',
-            )}
-          >
-            <Checkbox
-              checked={checked}
-              onCheckedChange={() => !isAlwaysOn && toggleSource(src.key)}
-              disabled={isAlwaysOn}
-              className="shrink-0"
-            />
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="text-xs font-medium">{src.label}</span>
-            </div>
-          </label>
-        );
-      });
-
-    return (
-    <div className={cn('space-y-4', compact && 'space-y-3')}>
-      {/* Source checkboxes */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Data sources
-        </p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0">
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">In TacticalSync</p>
-            <div className="space-y-1">{renderSourceGroup(INTERNAL_SOURCE_KEYS)}</div>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide pb-0.5">External</p>
-            <div className="space-y-1">{renderSourceGroup(EXTERNAL_SOURCE_KEYS)}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Custom instructions */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Guidance for the AI
-        </p>
-        <Textarea
-          value={instructions}
-          onChange={e => setInstructions(e.target.value)}
-          placeholder="e.g. Focus on launch readiness and engineering blockers. Always include ClearGO migration status. My DCI standup is at 9am."
-          className="min-h-[60px] text-xs resize-none"
-          rows={2}
-        />
-        <p className="text-[10px] text-muted-foreground/60">
-          Optional. These instructions are appended to every brief generation.
-        </p>
-      </div>
-    </div>
-    );
-  };
 
   // ── Render: Loading / Dismissed ─────────────────────────────────────────
 
@@ -403,7 +418,13 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
         {showSettings && (
           <Card className="mt-2 border-emerald-200/50 dark:border-emerald-800/50">
             <CardContent className="py-4 px-5 space-y-4">
-              <SourcesAndInstructions compact />
+              <SourcesAndInstructions
+                compact
+                sources={sources}
+                instructions={instructions}
+                onToggleSource={toggleSource}
+                onInstructionsChange={setInstructions}
+              />
 
               {/* Slack DM toggle */}
               {hasSlackConnected && (
@@ -458,7 +479,12 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
             {/* Expanded customization */}
             {showCustomize && (
               <div className="rounded-lg border bg-muted/20 p-4">
-                <SourcesAndInstructions />
+                <SourcesAndInstructions
+                  sources={sources}
+                  instructions={instructions}
+                  onToggleSource={toggleSource}
+                  onInstructionsChange={setInstructions}
+                />
 
                 {/* Slack DM toggle */}
                 {hasSlackConnected && (

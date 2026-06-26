@@ -1214,9 +1214,9 @@ function DciTabContent({
 
         </CardContent>
       </Card>
-      <Card>
-        <CardContent className="p-0 h-full">
-          <div className="grid grid-cols-5 divide-x divide-border h-full">
+      <Card className="min-w-0">
+        <CardContent className="p-0 h-full overflow-x-auto">
+          <div className="flex divide-x divide-border h-full min-w-max">
             {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
@@ -1234,7 +1234,7 @@ function DciTabContent({
                 <div
                   key={day.date}
                   className={cn(
-                    'flex flex-col',
+                    'flex flex-col w-80 flex-shrink-0',
                     isTodayCol && 'bg-copper/[0.03]',
                     isFuture && 'opacity-40',
                   )}
@@ -3563,6 +3563,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [refreshingPrep, setRefreshingPrep] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
+  const [pastEvents, setPastEvents] = useState<UpcomingOneOnOneEvent[]>([]);
   const [runningPrepEventIds, setRunningPrepEventIds] = useState<Set<string>>(new Set());
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [zoomConnected, setZoomConnected] = useState(false);
@@ -3584,7 +3585,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
-        .gte('end_time', new Date().toISOString())
+        .gte('start_time', new Date(Date.now() - 90 * 86_400_000).toISOString())
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
       db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
@@ -3750,7 +3751,9 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         return !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase());
       });
 
-    setUpcomingEvents(events);
+    const nowIso = new Date().toISOString();
+    setUpcomingEvents(events.filter(e => e.end_time >= nowIso));
+    setPastEvents([...events.filter(e => e.end_time < nowIso)].reverse());
     setCalendarConnected(Boolean(credsRes.data?.connected));
     setZoomConnected(Boolean(zoomCredsRes?.data?.connected));
     setSlackConnected(Boolean(slackCredsRes?.data?.connected));
@@ -4046,8 +4049,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
   }, [toast, loadCalendarState]);
 
-  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -4087,6 +4089,32 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       });
     }
   };
+
+  const handleExcludeFromCalendar = useCallback(async (event: UpcomingOneOnOneEvent) => {
+    const email = event.attendee_email;
+    if (!email) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data: settingsRow } = await db.from('cos_settings')
+      .select('calendar_sync_rules')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const syncRules = settingsRow?.calendar_sync_rules as { exclude_emails?: string[] } | null;
+    const excludeEmails = [...(syncRules?.exclude_emails ?? [])];
+    const normalised = email.toLowerCase();
+    if (!excludeEmails.includes(normalised)) excludeEmails.push(normalised);
+    await db.from('cos_settings').upsert(
+      { user_id: user.id, calendar_sync_rules: { ...(syncRules ?? {}), exclude_emails: excludeEmails } },
+      { onConflict: 'user_id' },
+    );
+    setUpcomingEvents(prev => prev.filter(e => e.id !== event.id));
+    const name = event.attendee_name?.includes('@')
+      ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
+      : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
+    toast({ title: `${name} excluded from calendar` });
+  }, [toast]);
 
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected
@@ -4181,6 +4209,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           loadingInitial={loadingInitial}
           onViewPrep={openPrep}
           upcomingEvents={upcomingEvents}
+          pastEvents={pastEvents}
           calendarConnected={calendarConnected}
           lastSyncAt={lastSyncAt}
           syncing={syncing}
@@ -4188,6 +4217,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           onIncludeInPrep={handleIncludeInPrep}
           onRunPrep={handleRunPrep}
           runningPrepEventIds={runningPrepEventIds}
+          onExcludeFromCalendar={handleExcludeFromCalendar}
           onOpenGroupPrep={openGroupPrep}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}

@@ -43,6 +43,7 @@ const CATEGORY_META: Record<ConnectorCategory, { label: string; badgeClass: stri
 };
 
 function providerInitials(name: string): string {
+  if (!name) return '?';
   return name.split(/[\s.]+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
@@ -55,7 +56,8 @@ function normalizeCategory(raw?: string): ConnectorCategory | null {
   return null;
 }
 
-function guessCategory(provider: string): ConnectorCategory | null {
+function guessCategory(provider?: string): ConnectorCategory | null {
+  if (!provider) return null;
   const p = provider.toLowerCase().replace(/[^a-z0-9]/g, '');
   const hris = new Set(['bamboohr','workday','gusto','adp','rippling','hibob','personio','namely','paylocity','paycom','sage','successfactors','ukg','zenefits','factorial','humaans','deel','remote','oyster']);
   const ticketing = new Set(['jira','asana','linear','monday','clickup','shortcut','trello','notion','height','github','gitlab','azuredevops','basecamp']);
@@ -72,7 +74,8 @@ function profileCategory(profile: ConnectorProfile): ConnectorCategory | null {
 
 function profileDisplayName(profile: ConnectorProfile): string {
   return profile.provider_name ?? profile.name ?? profile.label
-    ?? profile.provider.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    ?? profile.provider?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    ?? profile.id;
 }
 
 function accountDisplayName(account: StackOneAccount): string {
@@ -304,11 +307,14 @@ export default function StackOnePanel() {
   }
 
   const connectedProviderIds = new Set(
-    accounts.map(a => a.provider?.toLowerCase().replace(/[^a-z0-9]/g, ''))
+    accounts
+      .filter(a => a.provider)
+      .map(a => a.provider.toLowerCase().replace(/[^a-z0-9]/g, ''))
   );
 
   const availableProfiles = connectorProfiles.filter(p => {
-    const key = p.provider?.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!p.provider) return true;
+    const key = p.provider.toLowerCase().replace(/[^a-z0-9]/g, '');
     return !connectedProviderIds.has(key);
   });
 

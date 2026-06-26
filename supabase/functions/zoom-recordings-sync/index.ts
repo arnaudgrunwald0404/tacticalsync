@@ -481,51 +481,101 @@ serve(async (req) => {
 
                 if (matchedInstance) {
                   const encodedUuid = encodeURIComponent(encodeURIComponent(matchedInstance.uuid))
-                  const summaryUrl = `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`
-                  const summaryRes = await fetch(summaryUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                  })
 
-                  if (summaryRes.ok) {
-                    const summaryData = await summaryRes.json() as {
-                      meeting_id?: number
-                      meeting_uuid?: string
-                      meeting_topic?: string
-                      meeting_start_time?: string
-                      summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
-                    }
-
-                    const summaryText = (summaryData.summary_details ?? [])
-                      .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
-                      .join('\n\n')
-
-                    if (summaryText) {
-                      const row = {
-                        user_id: userId,
-                        team_member_id: (calEvent.team_member_id as string) ?? null,
-                        zoom_meeting_id: zoomId,
-                        zoom_meeting_uuid: matchedInstance.uuid,
-                        topic: summaryData.meeting_topic ?? (calEvent.title as string) ?? null,
-                        start_time: summaryData.meeting_start_time ?? matchedInstance.startTime ?? (calEvent.start_time as string),
-                        duration_minutes: null,
-                        participant_emails: [] as string[],
-                        participant_names: [] as string[],
-                        has_transcript: false,
-                        recording_files: [] as unknown[],
-                        ai_summary: summaryText,
-                        last_synced_at: new Date().toISOString(),
+                  // Try AI Companion transcript first (requires meeting:read:meeting_transcript scope).
+                  let transcriptContent: string | null = null
+                  try {
+                    const transcriptListRes = await fetch(
+                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_transcripts`,
+                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    )
+                    if (transcriptListRes.ok) {
+                      const transcriptListData = await transcriptListRes.json() as {
+                        meeting_transcripts?: Array<{ download_url?: string; status?: string }>
                       }
-                      const { error: upsertErr } = await supabase
+                      const transcriptFile = (transcriptListData.meeting_transcripts ?? [])
+                        .find(f => f.download_url && (!f.status || f.status === 'completed'))
+                      if (transcriptFile?.download_url) {
+                        const tRes = await fetch(transcriptFile.download_url, {
+                          headers: { 'Authorization': `Bearer ${accessToken}` },
+                        })
+                        if (tRes.ok) transcriptContent = await tRes.text()
+                      }
+                    } else {
+                      console.warn(`Calendar discovery: meeting_transcripts returned ${transcriptListRes.status} for ${matchedInstance.uuid}`)
+                    }
+                  } catch (tErr) {
+                    console.warn(`Calendar discovery: transcript fetch failed for ${matchedInstance.uuid}:`, (tErr as Error).message)
+                  }
+
+                  // Also try meeting summary for high-level recap text.
+                  let summaryText: string | null = null
+                  let meetingTopic: string | null = null
+                  let meetingStartTime: string | null = null
+                  try {
+                    const summaryRes = await fetch(
+                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`,
+                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    )
+                    if (summaryRes.ok) {
+                      const summaryData = await summaryRes.json() as {
+                        meeting_topic?: string
+                        meeting_start_time?: string
+                        summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
+                      }
+                      meetingTopic = summaryData.meeting_topic ?? null
+                      meetingStartTime = summaryData.meeting_start_time ?? null
+                      summaryText = (summaryData.summary_details ?? [])
+                        .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
+                        .join('\n\n') || null
+                    } else {
+                      console.warn(`Calendar discovery: meeting_summary returned ${summaryRes.status} for ${matchedInstance.uuid}`)
+                    }
+                  } catch (sErr) {
+                    console.warn(`Calendar discovery: summary fetch failed for ${matchedInstance.uuid}:`, (sErr as Error).message)
+                  }
+
+                  const row = {
+                    user_id: userId,
+                    team_member_id: (calEvent.team_member_id as string) ?? null,
+                    zoom_meeting_id: zoomId,
+                    zoom_meeting_uuid: matchedInstance.uuid,
+                    topic: meetingTopic ?? (calEvent.title as string) ?? null,
+                    start_time: meetingStartTime ?? matchedInstance.startTime ?? (calEvent.start_time as string),
+                    duration_minutes: null,
+                    participant_emails: [] as string[],
+                    participant_names: [] as string[],
+                    has_transcript: !!transcriptContent,
+                    recording_files: [] as unknown[],
+                    ai_summary: summaryText ?? null,
+                    last_synced_at: new Date().toISOString(),
+                  }
+                  const { error: upsertErr } = await supabase
+                    .from('cos_zoom_recordings')
+                    .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+                  if (!upsertErr) {
+                    calendarDiscovered++
+                    synced++
+
+                    if (transcriptContent) {
+                      const { data: newRec } = await supabase
                         .from('cos_zoom_recordings')
-                        .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
-                      if (!upsertErr) {
-                        calendarDiscovered++
-                        synced++
-                        console.log(`Calendar discovery: stored meeting summary for ${zoomId} (instance ${matchedInstance.uuid})`)
+                        .select('id')
+                        .eq('user_id', userId)
+                        .eq('zoom_meeting_uuid', matchedInstance.uuid)
+                        .single()
+                      if (newRec) {
+                        const wordCount = transcriptContent.split(/\s+/).length
+                        await supabase.from('cos_zoom_transcripts').insert({
+                          recording_id: newRec.id,
+                          user_id: userId,
+                          content: transcriptContent,
+                          content_type: 'vtt',
+                          word_count: wordCount,
+                        })
+                        transcriptsFetched++
                       }
                     }
-                  } else {
-                    console.warn(`Calendar discovery: meeting summary returned ${summaryRes.status} for instance ${matchedInstance.uuid}`)
                   }
                 } else {
                   console.warn(`Calendar discovery: no matching instance found for meeting ${zoomId} near ${calEvent.start_time}`)
@@ -668,6 +718,98 @@ serve(async (req) => {
       }
     }
 
+    // ── Zoom Docs meeting notes sync ─────────────────────────────────────────
+    // AI Companion stores meeting transcripts as Zoom Docs (type=notes).
+    // The cloud recordings API misses these entirely, so we list them directly.
+    // Requires docs:read:file scope.
+    let docsDiscovered = 0
+
+    try {
+      const docsUrl = new URL('https://api.zoom.us/v2/docs')
+      docsUrl.searchParams.set('type', 'notes')
+      docsUrl.searchParams.set('page_size', '100')
+
+      const docsRes = await fetch(docsUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+
+      if (docsRes.ok) {
+        const docsData = await docsRes.json() as {
+          docs?: Array<{ file_id: string; title: string; create_time?: string }>
+        }
+
+        const docUuids = (docsData.docs ?? []).map(d => `doc:${d.file_id}`)
+        const { data: existingDocRecs } = await supabase
+          .from('cos_zoom_recordings')
+          .select('zoom_meeting_uuid')
+          .eq('user_id', userId)
+          .in('zoom_meeting_uuid', docUuids)
+        const alreadySyncedDocs = new Set(
+          (existingDocRecs ?? []).map(r => r.zoom_meeting_uuid as string)
+        )
+
+        for (const doc of docsData.docs ?? []) {
+          const docUuid = `doc:${doc.file_id}`
+          if (alreadySyncedDocs.has(docUuid)) continue
+
+          // Parse "2026-06-25 11:31(GMT-7:00)" from title
+          const dateMatch = doc.title.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?:\(GMT([+-]\d+:\d+)\))?/)
+          let startTime: string
+          if (dateMatch) {
+            const tzOffset = dateMatch[3] ?? '-07:00'
+            startTime = `${dateMatch[1]}T${dateMatch[2]}:00${tzOffset}`
+          } else {
+            startTime = doc.create_time ?? new Date().toISOString()
+          }
+
+          const startDate = new Date(startTime)
+          if (isNaN(startDate.getTime()) || startDate < from || startDate > to) continue
+
+          // Match a team member by name in the title (case-insensitive).
+          // Strip the date suffix first so date digits don't confuse matching.
+          const titleCore = doc.title.replace(/\d{4}-\d{2}-\d{2}.*$/, '').toLowerCase()
+          let matchedMember: MinimalMember | null = null
+          for (const member of members) {
+            const firstName = member.name.split(' ')[0].toLowerCase()
+            const fullName = member.name.toLowerCase()
+            if (titleCore.includes(fullName) || titleCore.includes(firstName)) {
+              matchedMember = member
+              break
+            }
+          }
+          if (!matchedMember) continue
+
+          const row = {
+            user_id: userId,
+            team_member_id: matchedMember.id,
+            zoom_meeting_id: docUuid,
+            zoom_meeting_uuid: docUuid,
+            topic: doc.title,
+            start_time: startTime,
+            duration_minutes: null,
+            participant_emails: [] as string[],
+            participant_names: [] as string[],
+            has_transcript: false,
+            recording_files: [] as unknown[],
+            last_synced_at: new Date().toISOString(),
+          }
+
+          const { error: upsertErr } = await supabase
+            .from('cos_zoom_recordings')
+            .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+
+          if (!upsertErr) {
+            docsDiscovered++
+            synced++
+          }
+        }
+      } else {
+        console.warn(`Zoom Docs sync: API returned ${docsRes.status}`)
+      }
+    } catch (docsErr) {
+      console.warn(`Zoom Docs sync failed:`, (docsErr as Error).message)
+    }
+
     // Mark success.
     await supabase
       .from('user_zoom_credentials')
@@ -678,6 +820,7 @@ serve(async (req) => {
       synced,
       transcripts_fetched: transcriptsFetched,
       calendar_discovered: calendarDiscovered,
+      docs_discovered: docsDiscovered,
     }, 200)
   } catch (error) {
     return jsonResponse({ error: (error as Error).message }, 500)
