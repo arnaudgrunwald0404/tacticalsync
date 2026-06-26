@@ -1214,7 +1214,7 @@ function DciTabContent({
 
         </CardContent>
       </Card>
-      <Card>
+      <Card className="min-w-0">
         <CardContent className="p-0 h-full overflow-x-auto">
           <div className="flex divide-x divide-border h-full min-w-max">
             {/* ── Mon–Fri daily priority columns ── */}
@@ -1234,7 +1234,7 @@ function DciTabContent({
                 <div
                   key={day.date}
                   className={cn(
-                    'flex flex-col w-64 flex-shrink-0',
+                    'flex flex-col w-80 flex-shrink-0',
                     isTodayCol && 'bg-copper/[0.03]',
                     isFuture && 'opacity-40',
                   )}
@@ -3563,6 +3563,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [refreshingPrep, setRefreshingPrep] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingOneOnOneEvent[]>([]);
+  const [pastEvents, setPastEvents] = useState<UpcomingOneOnOneEvent[]>([]);
   const [runningPrepEventIds, setRunningPrepEventIds] = useState<Set<string>>(new Set());
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [zoomConnected, setZoomConnected] = useState(false);
@@ -3584,7 +3585,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
-        .gte('end_time', new Date().toISOString())
+        .gte('start_time', new Date(Date.now() - 90 * 86_400_000).toISOString())
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
       db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
@@ -3750,7 +3751,9 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         return !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase());
       });
 
-    setUpcomingEvents(events);
+    const nowIso = new Date().toISOString();
+    setUpcomingEvents(events.filter(e => e.end_time >= nowIso));
+    setPastEvents([...events.filter(e => e.end_time < nowIso)].reverse());
     setCalendarConnected(Boolean(credsRes.data?.connected));
     setZoomConnected(Boolean(zoomCredsRes?.data?.connected));
     setSlackConnected(Boolean(slackCredsRes?.data?.connected));
@@ -4206,6 +4209,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           loadingInitial={loadingInitial}
           onViewPrep={openPrep}
           upcomingEvents={upcomingEvents}
+          pastEvents={pastEvents}
           calendarConnected={calendarConnected}
           lastSyncAt={lastSyncAt}
           syncing={syncing}
