@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
-import { PREP_TOOLS } from '@/lib/prepTools';
+import { toolLabel } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
@@ -1288,7 +1288,7 @@ function PrepToolsCard({ memberId, memberName }: { memberId: string; memberName:
     return () => { cancelled = true; };
   }, [memberId]);
 
-  const labelFor = (id: string) => PREP_TOOLS.find(t => t.id === id)?.label ?? id;
+  const labelFor = toolLabel;
 
   const applyRec = async (rec: ToolRec) => {
     setApplying(rec.tool);

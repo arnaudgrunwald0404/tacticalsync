@@ -1077,7 +1077,7 @@ function DciTabContent({
       )}
 
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
-      <div className="grid grid-cols-[2fr_5fr] gap-3 items-stretch">
+      <div className="grid grid-cols-[230px_minmax(0,1fr)] gap-3 items-stretch">
       <Card>
         <CardContent className="p-0 h-full">
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
@@ -2913,6 +2913,8 @@ function PriorityCard({
   }, [autoEdit]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editNotes, setEditNotes] = useState(item.notes ?? '');
   const [agentQuery, setAgentQuery] = useState('');
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentReply, setAgentReply] = useState<string | null>(null);
 
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2958,11 +2960,23 @@ function PriorityCard({
     onUpdate(item.id, { notes: editNotes.trim() || null });
   };
 
-  const buildPrompt = (type: 'recommend' | 'draft' | 'custom', query?: string) => {
-    const ctx = `Priority: "${item.text}"${item.notes ? `\nContext: ${item.notes}` : ''}`;
-    if (type === 'recommend') return `${ctx}\n\nPlease recommend a concrete next step I should take on this priority today.`;
-    if (type === 'draft') return `${ctx}\n\nPlease draft a clear, professional message I can send related to this priority.`;
-    return `${ctx}\n\n${query}`;
+  const handleAgentCommand = async () => {
+    const q = agentQuery.trim();
+    if (!q || agentLoading) return;
+    setAgentLoading(true);
+    setAgentReply(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('agent-command', {
+        body: { command: q, priority_text: item.text, priority_notes: item.notes ?? undefined },
+      });
+      if (error) throw error;
+      setAgentReply((data as { reply?: string })?.reply ?? 'Done.');
+      setAgentQuery('');
+    } catch {
+      setAgentReply('Something went wrong — please try again.');
+    } finally {
+      setAgentLoading(false);
+    }
   };
 
   return (
@@ -3040,38 +3054,31 @@ function PriorityCard({
                     className="mt-1 text-sm resize-none"
                   />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('recommend'))}>
-                    💡 Recommend next step
-                  </Button>
-                  <Button variant="outline" className="h-10 text-sm" onClick={() => onCopy(buildPrompt('draft'))}>
-                    ✍️ Draft message
-                  </Button>
-                </div>
                 <div className="flex gap-2">
                   <Input
                     placeholder="Ask agent..."
                     value={agentQuery}
-                    onChange={e => setAgentQuery(e.target.value)}
+                    onChange={e => { setAgentQuery(e.target.value); setAgentReply(null); }}
                     className="h-10 text-sm"
+                    disabled={agentLoading}
                     onKeyDown={e => {
-                      if (e.key === 'Enter' && agentQuery.trim()) {
-                        onCopy(buildPrompt('custom', agentQuery.trim()));
-                        setAgentQuery('');
-                      }
+                      if (e.key === 'Enter') handleAgentCommand();
                     }}
                   />
                   <Button
                     variant="ghost"
                     className="h-10 px-3 flex-shrink-0"
-                    disabled={!agentQuery.trim()}
-                    onClick={() => {
-                      if (agentQuery.trim()) { onCopy(buildPrompt('custom', agentQuery.trim())); setAgentQuery(''); }
-                    }}
+                    disabled={!agentQuery.trim() || agentLoading}
+                    onClick={handleAgentCommand}
                   >
-                    <Send className="h-4 w-4" />
+                    {agentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
+                {agentReply && (
+                  <p className="text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2 leading-relaxed">
+                    {agentReply}
+                  </p>
+                )}
                 <div className="pt-2 border-t border-border/40 flex gap-2">
                   <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={() => onDelete(item.id)}>
                     <RotateCcw className="h-3.5 w-3.5 mr-1.5" />

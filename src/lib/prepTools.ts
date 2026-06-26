@@ -6,37 +6,80 @@ export interface PrepToolDef {
   id: string;
   label: string;
   description: string;
-  /**
-   * Credential/integration key used to determine whether it's connected.
-   * Tools with a connection key are only shown in the UI when that integration
-   * is active. `zoom` and `slack` are always shown.
-   */
-  connectionKey: 'zoom' | 'slack' | 'gmail' | 'salesforce' | 'stackone';
-  /**
-   * Default signal tier for this tool's context in the 1:1 prep prompt.
-   *   1 = primary signal  (direct comms with the person — Slack, Zoom, Gmail)
-   *   2 = team/workflow   (CRM deals, ticketing — work signal but not direct comms)
-   *   3 = background only (org-level context, projection risk if misused)
-   * Users can override per-tool via cos_prep_schedule.tool_tiers.
-   */
   defaultTier: 1 | 2 | 3;
+  /** True = "Default — all meetings" (direct comms), false = per-person workflow tool. */
+  isCore: boolean;
 }
 
-/** Tools whose data is actually gathered by generate-1on1-prep today. */
-export const PREP_TOOLS: PrepToolDef[] = [
-  { id: 'zoom',       label: 'Zoom',       description: 'Recent recordings, transcripts & AI summaries', connectionKey: 'zoom',       defaultTier: 1 },
-  { id: 'slack',      label: 'Slack',      description: 'Recent DMs and channel messages',               connectionKey: 'slack',      defaultTier: 1 },
-  { id: 'gmail',      label: 'Gmail',      description: 'Recent email threads with this person',         connectionKey: 'gmail',      defaultTier: 1 },
-  { id: 'salesforce', label: 'Salesforce', description: 'CRM pipeline and contact data via StackOne',   connectionKey: 'salesforce', defaultTier: 2 },
+/** Always-on tools that don't require StackOne. */
+export const STATIC_TOOLS: PrepToolDef[] = [
+  { id: 'zoom',  label: 'Zoom',  description: 'Recent recordings, transcripts & AI summaries', defaultTier: 1, isCore: true },
+  { id: 'slack', label: 'Slack', description: 'Recent DMs and channel messages',               defaultTier: 1, isCore: true },
 ];
 
-export const PREP_TOOL_IDS = PREP_TOOLS.map(t => t.id);
+/**
+ * Metadata for known StackOne providers.
+ * The UI derives the available tool list from live accounts via buildStackOneTools();
+ * this catalog supplies labels, descriptions, and tier defaults for recognized providers.
+ * Unknown providers fall back to a generic tier-2 non-core entry.
+ */
+export const STACKONE_PROVIDER_CATALOG: Record<string, Omit<PrepToolDef, 'id'>> = {
+  // Direct comms — tier 1, core section
+  gmail:      { label: 'Gmail',      description: 'Recent email threads with this person',   defaultTier: 1, isCore: true  },
+  gong:       { label: 'Gong',       description: 'Call recordings & AI summaries',           defaultTier: 1, isCore: true  },
+  // CRM — tier 2, per-person
+  salesforce: { label: 'Salesforce', description: 'CRM pipeline and contact data',            defaultTier: 2, isCore: false },
+  hubspot:    { label: 'HubSpot',    description: 'CRM pipeline and contact data',            defaultTier: 2, isCore: false },
+  pipedrive:  { label: 'Pipedrive',  description: 'CRM pipeline and contact data',            defaultTier: 2, isCore: false },
+  // Ticketing — tier 2, per-person
+  jira:       { label: 'Jira',       description: 'Issues and projects via StackOne',         defaultTier: 2, isCore: false },
+  linear:     { label: 'Linear',     description: 'Issues and projects via StackOne',         defaultTier: 2, isCore: false },
+  // Custom integrations — tier 2, per-person
+  cleargo:    { label: 'ClearGO',    description: '1:1 prep packs from ClearGO',              defaultTier: 2, isCore: false },
+  // HRIS — tier 3 (org context only, never projected onto the individual)
+  workday:    { label: 'Workday',    description: 'Employee org data via StackOne',           defaultTier: 3, isCore: false },
+  bamboohr:   { label: 'BambooHR',   description: 'Employee org data via StackOne',           defaultTier: 3, isCore: false },
+  adp:        { label: 'ADP',        description: 'Employee org data via StackOne',           defaultTier: 3, isCore: false },
+  rippling:   { label: 'Rippling',   description: 'Employee org data via StackOne',           defaultTier: 3, isCore: false },
+  gusto:      { label: 'Gusto',      description: 'Employee org data via StackOne',           defaultTier: 3, isCore: false },
+};
 
-/** Optional per-person tools beyond the global default set (via StackOne integrations). */
-export const EXTRA_TOOLS: PrepToolDef[] = [
-  { id: 'cleargo',    label: 'ClearGO', description: '1:1 prep packs from ClearGO',      connectionKey: 'stackone', defaultTier: 2 },
-  { id: 'jira',       label: 'Jira',    description: 'Issues and projects via StackOne', connectionKey: 'stackone', defaultTier: 2 },
-];
+/** Build the available tool list from live StackOne accounts. */
+export function buildStackOneTools(
+  accounts: Array<{ provider: string; provider_name?: string; status?: string }>,
+): PrepToolDef[] {
+  const seen = new Set<string>();
+  const tools: PrepToolDef[] = [];
+  for (const account of accounts) {
+    if (account.status && account.status !== 'active') continue;
+    const id = account.provider.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const known = STACKONE_PROVIDER_CATALOG[id];
+    tools.push({
+      id,
+      label:       known?.label       ?? account.provider_name ?? account.provider.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      description: known?.description ?? 'Data via StackOne',
+      defaultTier: known?.defaultTier ?? 2,
+      isCore:      known?.isCore      ?? false,
+    });
+  }
+  return tools;
+}
+
+/** Look up a display label for any tool id (static or StackOne catalog). */
+export function toolLabel(id: string): string {
+  return (
+    STATIC_TOOLS.find(t => t.id === id)?.label ??
+    STACKONE_PROVIDER_CATALOG[id]?.label ??
+    id
+  );
+}
+
+/** @deprecated Use STATIC_TOOLS. */
+export const PREP_TOOLS = STATIC_TOOLS;
+
+export const PREP_TOOL_IDS = STATIC_TOOLS.map(t => t.id);
 
 /**
  * Resolve the effective tier for a tool, respecting per-user overrides.
@@ -46,10 +89,12 @@ export function resolveToolTier(
   toolId: string,
   toolTierOverrides: Record<string, number> | null | undefined,
 ): 1 | 2 | 3 {
-  const override = toolTierOverrides?.[toolId]
-  if (override === 1 || override === 2 || override === 3) return override
-  const def = PREP_TOOLS.find(t => t.id === toolId)
-  return def?.defaultTier ?? 2
+  const override = toolTierOverrides?.[toolId];
+  if (override === 1 || override === 2 || override === 3) return override;
+  const staticDef = STATIC_TOOLS.find(t => t.id === toolId);
+  if (staticDef) return staticDef.defaultTier;
+  const catalogEntry = STACKONE_PROVIDER_CATALOG[toolId];
+  return catalogEntry?.defaultTier ?? 2;
 }
 
 /**
