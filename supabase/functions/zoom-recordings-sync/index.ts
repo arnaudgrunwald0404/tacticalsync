@@ -535,51 +535,47 @@ serve(async (req) => {
                     console.warn(`Calendar discovery: summary fetch failed for ${matchedInstance.uuid}:`, (sErr as Error).message)
                   }
 
-                  if (transcriptContent || summaryText) {
-                    const row = {
-                      user_id: userId,
-                      team_member_id: (calEvent.team_member_id as string) ?? null,
-                      zoom_meeting_id: zoomId,
-                      zoom_meeting_uuid: matchedInstance.uuid,
-                      topic: meetingTopic ?? (calEvent.title as string) ?? null,
-                      start_time: meetingStartTime ?? matchedInstance.startTime ?? (calEvent.start_time as string),
-                      duration_minutes: null,
-                      participant_emails: [] as string[],
-                      participant_names: [] as string[],
-                      has_transcript: !!transcriptContent,
-                      recording_files: [] as unknown[],
-                      ai_summary: summaryText ?? null,
-                      last_synced_at: new Date().toISOString(),
-                    }
-                    const { error: upsertErr } = await supabase
-                      .from('cos_zoom_recordings')
-                      .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
-                    if (!upsertErr) {
-                      calendarDiscovered++
-                      synced++
+                  const row = {
+                    user_id: userId,
+                    team_member_id: (calEvent.team_member_id as string) ?? null,
+                    zoom_meeting_id: zoomId,
+                    zoom_meeting_uuid: matchedInstance.uuid,
+                    topic: meetingTopic ?? (calEvent.title as string) ?? null,
+                    start_time: meetingStartTime ?? matchedInstance.startTime ?? (calEvent.start_time as string),
+                    duration_minutes: null,
+                    participant_emails: [] as string[],
+                    participant_names: [] as string[],
+                    has_transcript: !!transcriptContent,
+                    recording_files: [] as unknown[],
+                    ai_summary: summaryText ?? null,
+                    last_synced_at: new Date().toISOString(),
+                  }
+                  const { error: upsertErr } = await supabase
+                    .from('cos_zoom_recordings')
+                    .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+                  if (!upsertErr) {
+                    calendarDiscovered++
+                    synced++
 
-                      if (transcriptContent) {
-                        const { data: newRec } = await supabase
-                          .from('cos_zoom_recordings')
-                          .select('id')
-                          .eq('user_id', userId)
-                          .eq('zoom_meeting_uuid', matchedInstance.uuid)
-                          .single()
-                        if (newRec) {
-                          const wordCount = transcriptContent.split(/\s+/).length
-                          await supabase.from('cos_zoom_transcripts').insert({
-                            recording_id: newRec.id,
-                            user_id: userId,
-                            content: transcriptContent,
-                            content_type: 'vtt',
-                            word_count: wordCount,
-                          })
-                          transcriptsFetched++
-                        }
+                    if (transcriptContent) {
+                      const { data: newRec } = await supabase
+                        .from('cos_zoom_recordings')
+                        .select('id')
+                        .eq('user_id', userId)
+                        .eq('zoom_meeting_uuid', matchedInstance.uuid)
+                        .single()
+                      if (newRec) {
+                        const wordCount = transcriptContent.split(/\s+/).length
+                        await supabase.from('cos_zoom_transcripts').insert({
+                          recording_id: newRec.id,
+                          user_id: userId,
+                          content: transcriptContent,
+                          content_type: 'vtt',
+                          word_count: wordCount,
+                        })
+                        transcriptsFetched++
                       }
                     }
-                  } else {
-                    console.warn(`Calendar discovery: no transcript or summary for meeting ${zoomId} instance ${matchedInstance.uuid}`)
                   }
                 } else {
                   console.warn(`Calendar discovery: no matching instance found for meeting ${zoomId} near ${calEvent.start_time}`)

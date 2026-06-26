@@ -24,7 +24,7 @@ import {
   type PrepScheduleConfig,
 } from '@/hooks/usePrepScheduleConfig';
 import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
-import { PREP_TOOLS, EXTRA_TOOLS, resolveToolTier } from '@/lib/prepTools';
+import { PREP_TOOLS, type PrepToolDef, resolveToolTier } from '@/lib/prepTools';
 import {
   CalendarSyncRules,
   RelationshipType,
@@ -126,7 +126,8 @@ function MeetingsToolTiersCard({
   draft: PrepScheduleConfig;
   update: Patch;
 }) {
-  const allTools = [...PREP_TOOLS, ...EXTRA_TOOLS];
+  const { dynamicTools } = useStackOneConnections();
+  const allTools = [...PREP_TOOLS, ...dynamicTools];
   const toolTiers = draft.tool_tiers ?? {};
 
   const setTier = (toolId: string, tier: 1 | 2 | 3) => {
@@ -505,6 +506,67 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
 
 // ── Meetings — Card 3: Tools (merged global + per-person) ────────────────────
 
+type StackOneConnections = {
+  gmailConnected: boolean;
+  salesforceConnected: boolean;
+  dynamicTools: PrepToolDef[];
+};
+
+function useStackOneConnections(): StackOneConnections {
+  const [result, setResult] = useState<StackOneConnections>({
+    gmailConnected: false,
+    salesforceConnected: false,
+    dynamicTools: [],
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke('stackone-proxy', {
+          body: { action: 'list_connector_profiles' },
+        });
+        const profiles = (data?.profiles ?? []) as Array<{
+          provider?: string;
+          provider_name?: string;
+          category?: string;
+        }>;
+
+        const gmailConnected = profiles.some(p => {
+          const norm = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return norm === 'gmail' || norm.includes('gmail') || norm.includes('google');
+        });
+        const salesforceConnected = profiles.some(p => {
+          const norm = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cat = (p.category ?? '').toLowerCase();
+          return norm === 'salesforce' || norm.includes('salesforce') || cat === 'crm';
+        });
+
+        const alreadyHandled = new Set(PREP_TOOLS.map(t => t.id));
+        const seen = new Set<string>();
+        const dynamicTools: PrepToolDef[] = [];
+        for (const p of profiles) {
+          const id = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!id || alreadyHandled.has(id) || seen.has(id)) continue;
+          seen.add(id);
+          const label = p.provider_name
+            ?? p.provider?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            ?? id;
+          const cat = (p.category ?? '').toLowerCase();
+          const defaultTier: 1 | 2 | 3 = cat === 'hris' ? 3 : 2;
+          dynamicTools.push({ id, label, description: `${p.category ?? 'Data'} via StackOne`, connectionKey: 'stackone', defaultTier });
+        }
+
+        setResult({ gmailConnected, salesforceConnected, dynamicTools });
+      } catch {
+        // leave defaults
+      }
+    })();
+  }, []);
+
+  return result;
+}
+
+
 const CORE_TOOL_IDS = ['zoom', 'slack', 'gmail'];
 
 function MeetingsToolsCard({
@@ -518,34 +580,9 @@ function MeetingsToolsCard({
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [recurringMemberIds, setRecurringMemberIds] = useState<Set<string>>(new Set());
   const [loadingMembers, setLoadingMembers] = useState(true);
-  const [gmailConnected, setGmailConnected] = useState(false);
-  const [salesforceConnected, setSalesforceConnected] = useState(false);
   const { toast } = useToast();
   const { recurringGroups } = useUpcomingMeetingGroups();
-
-  // Both Gmail and Salesforce are provisioned via StackOne connector profiles.
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: s1Data } = await supabase.functions.invoke('stackone-proxy', {
-          body: { action: 'list_connector_profiles' },
-        });
-        const profiles = (s1Data?.profiles ?? []) as Array<{ provider?: string; category?: string }>;
-        setGmailConnected(profiles.some(p => {
-          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          return provider === 'gmail' || provider.includes('gmail') || provider.includes('google');
-        }));
-        setSalesforceConnected(profiles.some(p => {
-          const provider = (p.provider ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          const category = (p.category ?? '').toLowerCase();
-          return provider === 'salesforce' || provider.includes('salesforce') || category === 'crm';
-        }));
-      } catch {
-        setGmailConnected(false);
-        setSalesforceConnected(false);
-      }
-    })();
-  }, []);
+  const { gmailConnected, salesforceConnected, dynamicTools } = useStackOneConnections();
 
   const availableTools = PREP_TOOLS.filter(tool => {
     if (tool.connectionKey === 'gmail') return gmailConnected;
@@ -558,7 +595,7 @@ function MeetingsToolsCard({
   const coreTools = availableTools.filter(t => CORE_TOOL_IDS.includes(t.id));
   const perPersonToolDefs = [
     ...availableTools.filter(t => !CORE_TOOL_IDS.includes(t.id)),
-    ...EXTRA_TOOLS,
+    ...dynamicTools,
   ];
 
   useEffect(() => {
