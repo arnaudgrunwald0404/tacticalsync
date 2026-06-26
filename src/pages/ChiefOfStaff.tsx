@@ -42,6 +42,8 @@ import { CoverageMap } from '@/components/cos/CoverageMap';
 import { GroupMeetingCoverage } from '@/components/cos/GroupMeetingCoverage';
 import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
+import { GroupMeetingPrepDrawer } from '@/components/cos/GroupMeetingPrepDrawer';
+import type { GroupMeeting, GroupParticipant, GroupMeetingSource } from '@/hooks/useGroupMeetings';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
 import { OneOnOneOnboarding } from '@/components/cos/OneOnOneOnboarding';
 import PrepSetupWizard from '@/components/cos/PrepSetupWizard';
@@ -1077,7 +1079,7 @@ function DciTabContent({
       {/* ── Weekly Matrix: Objectives card + Daily card, separated ── */}
       <div className="grid grid-cols-[2fr_5fr] gap-3 items-stretch">
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 h-full">
             {/* ── Carousel: Quarterly → Monthly → Weekly ── */}
             {(() => {
               // Weekly data
@@ -1134,60 +1136,64 @@ function DciTabContent({
                     </button>
                   </div>
 
-                  {/* Items */}
+                  {/* Items — always 3 rows so dividers align with the daily columns */}
                   <div className="flex-1 flex flex-col divide-y divide-border/50">
-                    {tierItems.length === 0 ? (
-                      <div className="flex-1 flex items-center justify-center">
-                        <span className="text-[10px] text-muted-foreground/40">No {cfg.sub.toLowerCase()} set</span>
-                      </div>
-                    ) : tierItems.map((item, rowIdx) => {
+                    {Array.from({ length: 3 }, (_, rowIdx) => {
+                      const item = tierItems[rowIdx] ?? null;
                       const weeklyObjKey = ['weekly_obj_1', 'weekly_obj_2', 'weekly_obj_3'][rowIdx] as 'weekly_obj_1' | 'weekly_obj_2' | 'weekly_obj_3';
                       const canEditWeeklyObj = carouselTier === 'weekly' && !previewWeekly && hasWeeklyObjsSet && weeklyObjectivesLog;
+                      if (!item) {
+                        return (
+                          <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-center justify-center">
+                            <span className="text-[10px] text-muted-foreground/30">—</span>
+                          </div>
+                        );
+                      }
                       return (
-                      <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
-                        <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
-                          {rowIdx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          {canEditWeeklyObj ? (
-                            <DciEditableText
-                              value={item.text}
-                              onSave={(newText) => onUpdateLog(weeklyObjectivesLog!.id, { [weeklyObjKey]: newText || null })}
-                              className="text-xs leading-snug font-medium"
-                              placeholder="Add objective..."
-                            />
-                          ) : (
-                          <span className={cn(
-                            'text-xs leading-snug font-medium',
-                            carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
-                          )}>
-                            {item.text}
+                        <div key={rowIdx} className="flex-1 px-3 py-2.5 flex items-start gap-2">
+                          <span className={cn('flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5', cfg.badgeBg, cfg.badgeText)}>
+                            {rowIdx + 1}
                           </span>
-                          )}
-                          {/* Weekly: show activities */}
-                          {carouselTier === 'weekly' && (
-                            <DciEditableActivities
-                              activities={item.activities}
-                              canEdit={canEditWeeklyObj}
-                              onSave={(newActs) => {
-                                const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
-                                onUpdateLog(weeklyObjectivesLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
-                              }}
-                            />
-                          )}
-                          {/* Quarterly/Monthly: show description */}
-                          {item.description && carouselTier !== 'weekly' && (
-                            <p className="mt-0.5 text-[10px] text-muted-foreground/70 leading-snug">{item.description}</p>
-                          )}
-                          {/* Status dot for quarterly/monthly */}
-                          {item.status && carouselTier !== 'weekly' && (
-                            <span className="inline-flex items-center gap-1 mt-1">
-                              <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[item.status] ?? 'bg-muted-foreground/30')} />
-                              <span className="text-[9px] text-muted-foreground capitalize">{item.status?.replace('_', ' ')}</span>
-                            </span>
-                          )}
+                          <div className="min-w-0">
+                            {canEditWeeklyObj ? (
+                              <DciEditableText
+                                value={item.text}
+                                onSave={(newText) => onUpdateLog(weeklyObjectivesLog!.id, { [weeklyObjKey]: newText || null })}
+                                className="text-xs leading-snug font-medium"
+                                placeholder="Add objective..."
+                              />
+                            ) : (
+                              <span className={cn(
+                                'text-xs leading-snug font-medium',
+                                carouselTier === 'weekly' && previewWeekly && 'text-muted-foreground italic',
+                              )}>
+                                {item.text}
+                              </span>
+                            )}
+                            {/* Weekly: show activities */}
+                            {carouselTier === 'weekly' && (
+                              <DciEditableActivities
+                                activities={item.activities}
+                                canEdit={!!canEditWeeklyObj}
+                                onSave={(newActs) => {
+                                  const actsKey = (['weekly_obj_1_activities', 'weekly_obj_2_activities', 'weekly_obj_3_activities'] as const)[rowIdx];
+                                  onUpdateLog(weeklyObjectivesLog!.id, { [actsKey]: newActs.length > 0 ? newActs : null });
+                                }}
+                              />
+                            )}
+                            {/* Quarterly/Monthly: show description */}
+                            {item.description && carouselTier !== 'weekly' && (
+                              <p className="mt-0.5 text-[10px] text-muted-foreground/70 leading-snug">{item.description}</p>
+                            )}
+                            {/* Status dot for quarterly/monthly */}
+                            {item.status && carouselTier !== 'weekly' && (
+                              <span className="inline-flex items-center gap-1 mt-1">
+                                <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[item.status] ?? 'bg-muted-foreground/30')} />
+                                <span className="text-[9px] text-muted-foreground capitalize">{item.status?.replace('_', ' ')}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -1209,8 +1215,8 @@ function DciTabContent({
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-5 divide-x divide-border">
+        <CardContent className="p-0 h-full">
+          <div className="grid grid-cols-5 divide-x divide-border h-full">
             {/* ── Mon–Fri daily priority columns ── */}
             {weekMatrix.map((day, dayIdx) => {
               const isTodayCol = day.isToday;
@@ -3546,6 +3552,12 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     source: 'cleargo' | 'static' | 'ai_generated';
     generatedAt: string;
   } | null>(null);
+  const [groupPrepSheet, setGroupPrepSheet] = useState<{
+    meeting: GroupMeeting;
+    content: string;
+    generatedAt: string;
+  } | null>(null);
+  const [groupGenerating, setGroupGenerating] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [loadingPrep, setLoadingPrep] = useState(false);
   const [refreshingPrep, setRefreshingPrep] = useState(false);
@@ -3572,7 +3584,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
-        .gte('start_time', new Date().toISOString())
+        .gte('end_time', new Date().toISOString())
         .order('start_time', { ascending: true }),
       db.from('user_calendar_credentials_public').select('connected, last_sync_at').maybeSingle(),
       db.from('user_zoom_credentials_public').select('connected').maybeSingle().then((r: { data: unknown; error: unknown }) => r).catch(() => ({ data: null })),
@@ -3937,6 +3949,80 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     await generatePrepForMember(prepSheet.member, { force: true, setBusy: setAiGenerating });
   };
 
+  // ── Group meeting prep ──────────────────────────────────────────────────
+  // Re-load a single group meeting with its roster and sources (used after
+  // promoting an untracked participant so the drawer reflects the change).
+  const reloadGroupMeeting = useCallback(async (meetingId: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const [mRes, pRes, sRes] = await Promise.all([
+      db.from('cos_group_meetings').select('*').eq('id', meetingId).maybeSingle(),
+      db.from('cos_group_meeting_participants').select('*').eq('group_meeting_id', meetingId),
+      db.from('cos_group_meeting_sources').select('*').eq('group_meeting_id', meetingId),
+    ]);
+    if (!mRes.data) return;
+    const merged: GroupMeeting = {
+      ...(mRes.data as GroupMeeting),
+      participants: (pRes.data ?? []) as GroupParticipant[],
+      sources: (sRes.data ?? []) as GroupMeetingSource[],
+    };
+    setGroupPrepSheet(prev => (prev && prev.meeting.id === meetingId ? { ...prev, meeting: merged } : prev));
+  }, []);
+
+  const generateGroupBrief = useCallback(async (meetingId: string, force: boolean) => {
+    setGroupGenerating(true);
+    try {
+      const res = await supabase.functions.invoke('generate-group-brief', {
+        body: { group_meeting_id: meetingId, force_regenerate: force },
+      });
+      if (res.error) throw res.error;
+      const data = res.data as { content?: string; generated_at?: string; cached?: boolean };
+      if (!data?.content) throw new Error('No content returned');
+      setGroupPrepSheet(prev =>
+        prev && prev.meeting.id === meetingId
+          ? { ...prev, content: data.content!, generatedAt: data.generated_at ?? new Date().toISOString() }
+          : prev,
+      );
+      toast({ title: data.cached ? 'Brief loaded' : 'Brief generated' });
+    } catch (err) {
+      toast({ title: 'Brief generation failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setGroupGenerating(false);
+    }
+  }, [toast]);
+
+  // Open the group prep drawer: show a stored brief if one exists, otherwise
+  // open empty and kick off generation.
+  const openGroupPrep = useCallback(async (meeting: GroupMeeting) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      let existing: { content: string; generated_at: string | null } | null = null;
+      if (user) {
+        const { data } = await db
+          .from('cos_one_on_one_prep')
+          .select('content, generated_at')
+          .eq('user_id', user.id)
+          .eq('group_meeting_id', meeting.id)
+          .eq('status', 'ready')
+          .order('prep_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existing = (data as { content: string; generated_at: string | null } | null) ?? null;
+      }
+
+      if (existing?.content) {
+        setGroupPrepSheet({ meeting, content: existing.content, generatedAt: existing.generated_at ?? new Date().toISOString() });
+      } else {
+        setGroupPrepSheet({ meeting, content: '', generatedAt: new Date().toISOString() });
+        void generateGroupBrief(meeting.id, false);
+      }
+    } catch (err) {
+      toast({ title: 'Could not open prep', description: String(err), variant: 'destructive' });
+    }
+  }, [generateGroupBrief, toast]);
+
   const handleIncludeInPrep = useCallback(async (event: UpcomingOneOnOneEvent) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -4102,6 +4188,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           onIncludeInPrep={handleIncludeInPrep}
           onRunPrep={handleRunPrep}
           runningPrepEventIds={runningPrepEventIds}
+          onOpenGroupPrep={openGroupPrep}
           toolbarPortalId={toolbarPortalId}
           viewToggle={viewToggle}
         />
@@ -4141,6 +4228,17 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         onRefresh={refreshPrep}
         onShare={sharePrep}
         onAiGenerate={aiGeneratePrep}
+      />
+
+      <GroupMeetingPrepDrawer
+        open={!!groupPrepSheet}
+        meeting={groupPrepSheet?.meeting ?? null}
+        content={groupPrepSheet?.content ?? ''}
+        generatedAt={groupPrepSheet?.generatedAt ?? new Date().toISOString()}
+        generating={groupGenerating}
+        onClose={() => setGroupPrepSheet(null)}
+        onRefresh={() => { if (groupPrepSheet) void generateGroupBrief(groupPrepSheet.meeting.id, true); }}
+        onMeetingChanged={() => { if (groupPrepSheet) void reloadGroupMeeting(groupPrepSheet.meeting.id); }}
       />
 
     </>

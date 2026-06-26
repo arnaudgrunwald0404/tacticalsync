@@ -481,51 +481,105 @@ serve(async (req) => {
 
                 if (matchedInstance) {
                   const encodedUuid = encodeURIComponent(encodeURIComponent(matchedInstance.uuid))
-                  const summaryUrl = `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`
-                  const summaryRes = await fetch(summaryUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                  })
 
-                  if (summaryRes.ok) {
-                    const summaryData = await summaryRes.json() as {
-                      meeting_id?: number
-                      meeting_uuid?: string
-                      meeting_topic?: string
-                      meeting_start_time?: string
-                      summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
-                    }
-
-                    const summaryText = (summaryData.summary_details ?? [])
-                      .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
-                      .join('\n\n')
-
-                    if (summaryText) {
-                      const row = {
-                        user_id: userId,
-                        team_member_id: (calEvent.team_member_id as string) ?? null,
-                        zoom_meeting_id: zoomId,
-                        zoom_meeting_uuid: matchedInstance.uuid,
-                        topic: summaryData.meeting_topic ?? (calEvent.title as string) ?? null,
-                        start_time: summaryData.meeting_start_time ?? matchedInstance.startTime ?? (calEvent.start_time as string),
-                        duration_minutes: null,
-                        participant_emails: [] as string[],
-                        participant_names: [] as string[],
-                        has_transcript: false,
-                        recording_files: [] as unknown[],
-                        ai_summary: summaryText,
-                        last_synced_at: new Date().toISOString(),
+                  // Try AI Companion transcript first (requires meeting:read:meeting_transcript scope).
+                  let transcriptContent: string | null = null
+                  try {
+                    const transcriptListRes = await fetch(
+                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_transcripts`,
+                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    )
+                    if (transcriptListRes.ok) {
+                      const transcriptListData = await transcriptListRes.json() as {
+                        meeting_transcripts?: Array<{ download_url?: string; status?: string }>
                       }
-                      const { error: upsertErr } = await supabase
-                        .from('cos_zoom_recordings')
-                        .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
-                      if (!upsertErr) {
-                        calendarDiscovered++
-                        synced++
-                        console.log(`Calendar discovery: stored meeting summary for ${zoomId} (instance ${matchedInstance.uuid})`)
+                      const transcriptFile = (transcriptListData.meeting_transcripts ?? [])
+                        .find(f => f.status === 'completed' && f.download_url)
+                      if (transcriptFile?.download_url) {
+                        const tRes = await fetch(transcriptFile.download_url, {
+                          headers: { 'Authorization': `Bearer ${accessToken}` },
+                        })
+                        if (tRes.ok) transcriptContent = await tRes.text()
+                      }
+                    } else {
+                      console.warn(`Calendar discovery: meeting_transcripts returned ${transcriptListRes.status} for ${matchedInstance.uuid}`)
+                    }
+                  } catch (tErr) {
+                    console.warn(`Calendar discovery: transcript fetch failed for ${matchedInstance.uuid}:`, (tErr as Error).message)
+                  }
+
+                  // Also try meeting summary for high-level recap text.
+                  let summaryText: string | null = null
+                  let meetingTopic: string | null = null
+                  let meetingStartTime: string | null = null
+                  try {
+                    const summaryRes = await fetch(
+                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`,
+                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    )
+                    if (summaryRes.ok) {
+                      const summaryData = await summaryRes.json() as {
+                        meeting_topic?: string
+                        meeting_start_time?: string
+                        summary_details?: Array<{ summary_overview?: string; next_steps?: string[] }>
+                      }
+                      meetingTopic = summaryData.meeting_topic ?? null
+                      meetingStartTime = summaryData.meeting_start_time ?? null
+                      summaryText = (summaryData.summary_details ?? [])
+                        .map(d => [d.summary_overview, ...(d.next_steps ?? [])].filter(Boolean).join('\n'))
+                        .join('\n\n') || null
+                    } else {
+                      console.warn(`Calendar discovery: meeting_summary returned ${summaryRes.status} for ${matchedInstance.uuid}`)
+                    }
+                  } catch (sErr) {
+                    console.warn(`Calendar discovery: summary fetch failed for ${matchedInstance.uuid}:`, (sErr as Error).message)
+                  }
+
+                  if (transcriptContent || summaryText) {
+                    const row = {
+                      user_id: userId,
+                      team_member_id: (calEvent.team_member_id as string) ?? null,
+                      zoom_meeting_id: zoomId,
+                      zoom_meeting_uuid: matchedInstance.uuid,
+                      topic: meetingTopic ?? (calEvent.title as string) ?? null,
+                      start_time: meetingStartTime ?? matchedInstance.startTime ?? (calEvent.start_time as string),
+                      duration_minutes: null,
+                      participant_emails: [] as string[],
+                      participant_names: [] as string[],
+                      has_transcript: !!transcriptContent,
+                      recording_files: [] as unknown[],
+                      ai_summary: summaryText ?? null,
+                      last_synced_at: new Date().toISOString(),
+                    }
+                    const { error: upsertErr } = await supabase
+                      .from('cos_zoom_recordings')
+                      .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+                    if (!upsertErr) {
+                      calendarDiscovered++
+                      synced++
+
+                      if (transcriptContent) {
+                        const { data: newRec } = await supabase
+                          .from('cos_zoom_recordings')
+                          .select('id')
+                          .eq('user_id', userId)
+                          .eq('zoom_meeting_uuid', matchedInstance.uuid)
+                          .single()
+                        if (newRec) {
+                          const wordCount = transcriptContent.split(/\s+/).length
+                          await supabase.from('cos_zoom_transcripts').insert({
+                            recording_id: newRec.id,
+                            user_id: userId,
+                            content: transcriptContent,
+                            content_type: 'vtt',
+                            word_count: wordCount,
+                          })
+                          transcriptsFetched++
+                        }
                       }
                     }
                   } else {
-                    console.warn(`Calendar discovery: meeting summary returned ${summaryRes.status} for instance ${matchedInstance.uuid}`)
+                    console.warn(`Calendar discovery: no transcript or summary for meeting ${zoomId} instance ${matchedInstance.uuid}`)
                   }
                 } else {
                   console.warn(`Calendar discovery: no matching instance found for meeting ${zoomId} near ${calEvent.start_time}`)

@@ -126,6 +126,7 @@ serve(async (req) => {
       let meetingsQualified = 0
       let prepsGenerated = 0
       let prepsCached = 0
+      let groupBriefsGenerated = 0
       let calendarSynced = false
       let calendarCreated: number | null = null
       let calendarUpdated: number | null = null
@@ -149,6 +150,18 @@ serve(async (req) => {
 
         const alwaysInclude: string[] = (schedule?.always_include ?? []) as string[]
         const includedGroupSeries = new Set<string>((schedule?.included_group_series ?? []) as string[])
+
+        // Curated group meetings (cos_group_meetings) get a dedicated group brief
+        // rather than a 1:1-style prep. Load the user's included ones so we can
+        // (a) generate their briefs below and (b) skip the legacy
+        // included_group_series 1:1 path for the same recurring series.
+        const { data: includedGroupMeetings } = await supabase
+          .from('cos_group_meetings')
+          .select('id, recurrence_key')
+          .eq('user_id', userId)
+          .eq('included', true)
+        const groupMeetingRows = (includedGroupMeetings ?? []) as Array<{ id: string; recurrence_key: string }>
+        const groupMeetingRecurrenceKeys = new Set<string>(groupMeetingRows.map(g => g.recurrence_key))
         // Global default toolset (which data sources prep gathers). Falls back to
         // the deprecated booleans for rows not yet migrated.
         const globalTools: string[] = Array.isArray(schedule?.prep_tools) && schedule.prep_tools.length > 0
@@ -339,9 +352,17 @@ serve(async (req) => {
           // one-off group meetings never auto-qualify.
           const attendeeCount = event.attendee_emails?.length ?? 0
           const isOneOnOne = attendeeCount <= 1
+          // Skip the legacy 1:1-style path for any series already curated as a
+          // group meeting — those get a group brief instead (below).
+          const coveredByGroupMeeting =
+            !!event.recurring_event_id && groupMeetingRecurrenceKeys.has(event.recurring_event_id)
           if (isOneOnOne) {
             qualifyingMemberIds.add(member.id)
-          } else if (event.recurring_event_id && includedGroupSeries.has(event.recurring_event_id)) {
+          } else if (
+            !coveredByGroupMeeting &&
+            event.recurring_event_id &&
+            includedGroupSeries.has(event.recurring_event_id)
+          ) {
             qualifyingMemberIds.add(member.id)
           }
         }
@@ -413,6 +434,53 @@ serve(async (req) => {
           }
         }
 
+        // ── Step 3b: Generate group meeting briefs ───────────────────────
+        // Each included cos_group_meetings row gets a subject-centric brief.
+        for (const gm of groupMeetingRows) {
+          try {
+            // Skip if a fresh brief already exists (within 4h).
+            const { data: existingBrief } = await supabase
+              .from('cos_one_on_one_prep')
+              .select('id, generated_at')
+              .eq('user_id', userId)
+              .eq('group_meeting_id', gm.id)
+              .eq('prep_date', todayDate)
+              .eq('source', 'ai_generated')
+              .eq('status', 'ready')
+              .maybeSingle()
+
+            if (existingBrief) {
+              const age = Date.now() - new Date(existingBrief.generated_at).getTime()
+              if (age < 4 * 60 * 60 * 1000) {
+                prepsCached++
+                continue
+              }
+            }
+
+            const res = await fetch(`${supabaseUrl}/functions/v1/generate-group-brief`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                group_meeting_id: gm.id,
+                force_regenerate: false,
+                _batch_user_id: userId,
+              }),
+            })
+
+            if (res.ok) {
+              groupBriefsGenerated++
+            } else {
+              const errText = await res.text()
+              errors.push({ error: `group_brief ${gm.id}: ${errText.slice(0, 200)}` })
+            }
+          } catch (err) {
+            errors.push({ error: `group_brief ${gm.id}: ${(err as Error).message}` })
+          }
+        }
+
         } // end if (prepEnabled)
 
         // ── Step 3: Generate DCI brief (if enabled) ──────────────────────
@@ -441,11 +509,12 @@ serve(async (req) => {
         // ── Finalize log ──────────────────────────────────────────────────
 
         const status = errors.length > 0
-          ? (prepsGenerated > 0 || dciGenerated ? 'partial' : 'failed')
+          ? (prepsGenerated > 0 || groupBriefsGenerated > 0 || dciGenerated ? 'partial' : 'failed')
           : 'ok'
 
         const summaryParts: string[] = []
         if (prepsGenerated > 0) summaryParts.push(`${prepsGenerated} prep(s) generated`)
+        if (groupBriefsGenerated > 0) summaryParts.push(`${groupBriefsGenerated} group brief(s) generated`)
         if (prepsCached > 0) summaryParts.push(`${prepsCached} cached`)
         if (dciGenerated) summaryParts.push('DCI brief generated')
         if (calendarSynced) summaryParts.push(`Calendar: ${calendarCreated} new, ${calendarUpdated} updated`)

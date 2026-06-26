@@ -472,7 +472,7 @@ serve(async (req) => {
     const toolTier = (id: string): 1 | 2 | 3 => {
       const override = toolTierOverrides[id]
       if (override === 1 || override === 2 || override === 3) return override
-      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, stackone: 2 }
+      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2 }
       return defaults[id] ?? 2
     }
 
@@ -578,7 +578,7 @@ serve(async (req) => {
     }
 
     // ── 4. Tier-2 signal: External system data (HRIS, ticketing, CRM) ─────
-    if (toolEnabled('stackone') && member.email) {
+    if ((toolEnabled('salesforce') || toolEnabled('stackone')) && member.email) {
       try {
         const s1Config = await getStackOneConfig(supabase, userId)
         if (s1Config) {
@@ -589,7 +589,7 @@ serve(async (req) => {
             member.name,
           )
           if (enrichment.sections.length > 0) {
-            const tier = toolTier('stackone')
+            const tier = toolEnabled('salesforce') ? toolTier('salesforce') : toolTier('stackone')
             const sectionLabel = tier === 1
               ? `\n=== EXTERNAL SYSTEM DATA FOR ${member.name.toUpperCase()} (primary signal) ===`
               : `\nExternal system data for ${member.name}:`

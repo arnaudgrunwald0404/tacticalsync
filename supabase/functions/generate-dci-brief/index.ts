@@ -678,7 +678,7 @@ Activities:
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: finalSystemPrompt,
       messages: [{ role: 'user', content: userPromptParts.join('\n') }],
     })
@@ -713,14 +713,18 @@ Activities:
     const upsertData: Record<string, unknown> = {
       user_id: userId,
       date: todayDate,
-      priority_1: parsed.priorities[0] ?? null,
-      priority_2: parsed.priorities[1] ?? null,
-      priority_3: parsed.priorities[2] ?? null,
       topic_raised: parsed.suggested_topic || null,
       notes: parsed.brief_markdown,
       brief_markdown: parsed.brief_markdown,
       brief_generated_at: new Date().toISOString(),
       data_sources_used: dataSources,
+    }
+
+    // Only write priorities when Claude returned them; never overwrite existing with null
+    if (parsed.priorities.length > 0) {
+      upsertData.priority_1 = parsed.priorities[0] ?? null
+      upsertData.priority_2 = parsed.priorities[1] ?? null
+      upsertData.priority_3 = parsed.priorities[2] ?? null
     }
 
     // On Monday: set weekly objectives
