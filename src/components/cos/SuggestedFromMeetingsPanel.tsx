@@ -56,26 +56,29 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
   if (loading || suggestions.length === 0) return null;
 
   return (
-    <div className="mb-6 rounded-2xl border border-border/60 bg-muted/30 p-3 sm:p-5">
+    <div
+      className="mb-6 rounded-2xl border border-white/10 p-3 sm:p-5"
+      style={{ background: 'linear-gradient(135deg, #042a55 0%, #0a3f7a 55%, #0760c6 130%)' }}
+    >
       {/* Header */}
       <div className="mb-3 flex items-center gap-3 px-1">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-background shadow-sm ring-1 ring-border/50">
-          <Sparkles className="h-4 w-4 text-copper" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 shadow-sm ring-1 ring-white/20">
+          <Sparkles className="h-4 w-4 text-white" />
         </div>
-        <h3 className="text-base font-semibold text-foreground">{headerTitle(suggestions)}</h3>
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs font-medium text-muted-foreground ring-1 ring-border/50">
+        <h3 className="text-base font-semibold text-white">{headerTitle(suggestions)}</h3>
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/15 px-1.5 text-xs font-medium text-white/80 ring-1 ring-white/20">
           {suggestions.length}
         </span>
         <div className="ml-auto flex items-center gap-3">
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-50"
             title="Re-scan recent meetings"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
           </button>
-          <span className="hidden text-sm text-muted-foreground sm:inline">Add to a list or dismiss</span>
+          <span className="hidden text-sm text-white/60 sm:inline">Add to a list or dismiss</span>
         </div>
       </div>
 
@@ -87,13 +90,13 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
           return (
             <div
               key={s.id}
-              className="flex items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2.5 sm:px-4 sm:py-3"
+              className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 sm:px-4 sm:py-3"
             >
               <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', dotColor(seed))} />
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{s.title}</p>
-                <p className="truncate text-xs text-muted-foreground">{provenance(s)}</p>
+                <p className="truncate text-sm font-semibold text-white">{s.title}</p>
+                <p className="truncate text-xs text-white/60">{provenance(s)}</p>
               </div>
 
               {/* Primary: add straight to the suggested list. */}
@@ -101,7 +104,7 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
                 <Button
                   size="sm"
                   onClick={() => addToList(s.id, target.category)}
-                  className="h-8 shrink-0 gap-1 px-3"
+                  className="h-8 shrink-0 gap-1 bg-white/20 px-3 text-white hover:bg-white/30 border-0"
                   title={`Add to ${target.columnLabel} · ${target.sectionLabel}`}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -119,7 +122,7 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8 shrink-0 gap-1 px-2.5"
+                      className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
                       title="Add to a different list"
                     >
                       Add to…
@@ -143,7 +146,7 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
 
               <button
                 onClick={() => dismiss(s.id)}
-                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
                 aria-label="Dismiss suggestion"
               >
                 <X className="h-4 w-4" />

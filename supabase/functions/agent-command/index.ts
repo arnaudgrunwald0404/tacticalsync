@@ -66,8 +66,11 @@ serve(async (req) => {
     let body: {
       mode?: 'draft' | 'send'
       command?: string
-      item_text: string
+      item_text?: string
       item_notes?: string
+      // legacy field names from old frontend
+      priority_text?: string
+      priority_notes?: string
       // send mode
       target_name?: string
       target_email?: string
@@ -136,7 +139,9 @@ serve(async (req) => {
     }
 
     // ── DRAFT MODE: use AI to parse intent and draft the message ───────────
-    const { command, item_text, item_notes } = body
+    const { command } = body
+    const item_text = body.item_text ?? body.priority_text ?? ''
+    const item_notes = body.item_notes ?? body.priority_notes
     if (!command?.trim()) {
       return jsonResponse({ error: 'command_required' }, 400)
     }
