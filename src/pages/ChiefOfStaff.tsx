@@ -2915,6 +2915,7 @@ function PriorityCard({
   const [agentQuery, setAgentQuery] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentReply, setAgentReply] = useState<string | null>(null);
+  const [agentDraft, setAgentDraft] = useState<{ message: string; target_name: string; target_email: string } | null>(null);
 
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2965,13 +2966,37 @@ function PriorityCard({
     if (!q || agentLoading) return;
     setAgentLoading(true);
     setAgentReply(null);
+    setAgentDraft(null);
     try {
       const { data, error } = await supabase.functions.invoke('agent-command', {
-        body: { command: q, priority_text: item.text, priority_notes: item.notes ?? undefined },
+        body: { mode: 'draft', command: q, item_text: item.text, item_notes: item.notes ?? undefined },
       });
       if (error) throw error;
-      setAgentReply((data as { reply?: string })?.reply ?? 'Done.');
-      setAgentQuery('');
+      const result = data as { draft?: boolean; message?: string; target_name?: string; target_email?: string; reply?: string };
+      if (result.draft && result.message && result.target_name && result.target_email) {
+        setAgentDraft({ message: result.message, target_name: result.target_name, target_email: result.target_email });
+        setAgentQuery('');
+      } else {
+        setAgentReply(result.reply ?? 'Done.');
+        setAgentQuery('');
+      }
+    } catch {
+      setAgentReply('Something went wrong — please try again.');
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
+  const handleAgentSend = async () => {
+    if (!agentDraft || agentLoading) return;
+    setAgentLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('agent-command', {
+        body: { mode: 'send', item_text: item.text, ...agentDraft },
+      });
+      if (error) throw error;
+      setAgentReply((data as { reply?: string })?.reply ?? 'Sent.');
+      setAgentDraft(null);
     } catch {
       setAgentReply('Something went wrong — please try again.');
     } finally {
@@ -3074,7 +3099,27 @@ function PriorityCard({
                     {agentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
-                {agentReply && (
+                {agentDraft && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Draft message to {agentDraft.target_name}:</p>
+                    <Textarea
+                      value={agentDraft.message}
+                      onChange={e => setAgentDraft({ ...agentDraft, message: e.target.value })}
+                      rows={3}
+                      className="text-xs resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-7 text-xs" onClick={handleAgentSend} disabled={agentLoading || !agentDraft.message.trim()}>
+                        {agentLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                        Send
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAgentDraft(null)} disabled={agentLoading}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {agentReply && !agentDraft && (
                   <p className="text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2 leading-relaxed">
                     {agentReply}
                   </p>
