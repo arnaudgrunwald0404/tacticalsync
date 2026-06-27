@@ -165,10 +165,11 @@ Determine what action to take. If sending a message, draft a concise and profess
         headers: { 'Authorization': `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ users: lookupData.user.id }),
       })
-      const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
+      const openData = await openRes.json() as { ok: boolean; error?: string; channel?: { id: string } }
 
       if (!openData.ok || !openData.channel?.id) {
-        return jsonResponse({ reply: `Couldn't open a DM with ${parsed.target_name} on Slack.` }, 200)
+        console.error('conversations.open failed:', JSON.stringify(openData))
+        return jsonResponse({ reply: `Couldn't open a DM with ${parsed.target_name} on Slack. (Slack error: ${openData.error ?? 'unknown'})` }, 200)
       }
 
       const sendRes = await fetch('https://slack.com/api/chat.postMessage', {

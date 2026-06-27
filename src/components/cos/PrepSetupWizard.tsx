@@ -277,7 +277,7 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
     setConnectingSlack(true);
     const clientId = import.meta.env.VITE_SLACK_CLIENT_ID;
     const redirectUri = `${window.location.origin}/chief-of-staff?slack=connected`;
-    const scopes = 'chat:write,users:read,users:read.email,channels:read,channels:history,groups:read,groups:history,im:read,im:history';
+    const scopes = 'chat:write,users:read,users:read.email,channels:read,channels:history,groups:read,groups:history,im:read,im:history,im:write';
     const slackAuthUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     window.location.href = slackAuthUrl;
   };

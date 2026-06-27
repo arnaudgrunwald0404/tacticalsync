@@ -22,6 +22,7 @@ const SLACK_SCOPES = [
   'groups:history',
   'im:read',
   'im:history',
+  'im:write',
 ].join(',');
 
 export default function CosSlackSyncPanel() {
