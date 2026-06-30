@@ -87,7 +87,7 @@ const App = () => (
             <Route path="/dashboard/rcdo" element={<DashboardWithTabs />} />
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
-            <Route path="/chief-of-staff" element={<DashboardWithTabs />} />
+            <Route path="/chief-of-staff/*" element={<DashboardWithTabs />} />
             <Route element={<RCDODetailProvider><RCDODetailLayout /></RCDODetailProvider>}>
               <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
               <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
