@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
@@ -140,6 +140,8 @@ type CategoryKey = string;
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [userId, setUserId] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
@@ -151,7 +153,11 @@ export default function ChiefOfStaff() {
   const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
   const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('priorities');
+  const activeTab = location.pathname.includes('/daily-brief')
+    ? 'dci'
+    : location.pathname.includes('/meetings')
+    ? 'team'
+    : 'priorities';
   const { onboarding, loading: onboardingLoading, markComplete } = useOnboardingState();
   const [showWelcomeCarousel, setShowWelcomeCarousel] = useState(false);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -552,7 +558,11 @@ export default function ChiefOfStaff() {
         </SheetContent>
       </Sheet>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(tab) => {
+          if (tab === 'dci') navigate('/chief-of-staff/daily-brief');
+          else if (tab === 'team') navigate('/chief-of-staff/meetings');
+          else navigate('/chief-of-staff/my-lists');
+        }}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
           <h1 className="text-xl font-semibold whitespace-nowrap sm:mr-2">Chief of Staff</h1>
           <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
@@ -3623,7 +3633,19 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
-  const [teamView, setTeamView] = useState<'calendar' | 'map' | 'activity'>('calendar');
+  const cosNavigate = useNavigate();
+  const cosLocation = useLocation();
+  const teamView: 'calendar' | 'map' | 'activity' =
+    cosLocation.pathname.includes('/meetings/coverage')
+      ? 'map'
+      : cosLocation.pathname.includes('/meetings/activity')
+      ? 'activity'
+      : 'calendar';
+  const setTeamView = (view: 'calendar' | 'map' | 'activity') => {
+    if (view === 'map') cosNavigate('/chief-of-staff/meetings/coverage');
+    else if (view === 'activity') cosNavigate('/chief-of-staff/meetings/activity');
+    else cosNavigate('/chief-of-staff/meetings/one-on-ones');
+  };
   const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
   const [showSetupWizard, setShowSetupWizard] = useState(false);
 
@@ -3859,8 +3881,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
       didOAuthRef.current = true;
-      window.history.replaceState(null, '', window.location.pathname);
-      setActiveTab('team');
+      cosNavigate('/chief-of-staff/meetings', { replace: true });
       setCalendarJustConnected(true);
       void kickOffSync();
     }

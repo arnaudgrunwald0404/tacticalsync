@@ -87,6 +87,7 @@ interface TeamMember {
   name: string;
   email: string | null;
   agent_overrides: Record<string, unknown>;
+  relationship_type: RelationshipType | null;
 }
 
 type Patch = (patch: Partial<PrepScheduleConfig>) => void;
@@ -381,9 +382,27 @@ function MeetingsScheduleCard({ draft, update }: {
 
 // ── Meetings — Card 2: Manual Run ─────────────────────────────────────────────
 
-function MeetingsManualRunCard({ draft, running, onRunNow }: {
+function MeetingsManualRunCard({ draft, running, onRunNow, logs, userId, onRefresh }: {
   draft: PrepScheduleConfig; running: boolean; onRunNow: () => void;
+  logs: BatchLog[]; userId: string | null; onRefresh: () => void;
 }) {
+  const { toast } = useToast();
+  const [stopping, setStopping] = useState<string | null>(null);
+
+  const stopRun = async (logId: string) => {
+    if (!userId) return;
+    setStopping(logId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from('cos_prep_batch_log')
+      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+      .eq('id', logId)
+      .eq('user_id', userId);
+    toast({ title: 'Run stopped' });
+    setStopping(null);
+    onRefresh();
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -401,6 +420,76 @@ function MeetingsManualRunCard({ draft, running, onRunNow }: {
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           Run now
         </Button>
+        {logs.length > 0 && (
+          <div className="border-t pt-3 space-y-3">
+            {logs.map(log => {
+              const isRunning = log.status === 'running';
+              const duration = log.finished_at
+                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
+                : null;
+              return (
+                <div key={log.id} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusIcon status={log.status} />
+                    <span className="text-sm font-medium">
+                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {' '}
+                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
+                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
+                    {isRunning && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
+                        onClick={() => stopRun(log.id)}
+                        disabled={stopping === log.id}
+                      >
+                        {stopping === log.id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <Square className="h-3 w-3" />}
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>{log.meetings_found} meeting{log.meetings_found !== 1 ? 's' : ''} found</span>
+                    <span>{log.meetings_qualified} qualified</span>
+                    <span className="text-foreground font-medium">
+                      {log.preps_generated} prep{log.preps_generated !== 1 ? 's' : ''} generated
+                    </span>
+                    {log.preps_cached > 0 && <span>{log.preps_cached} cached</span>}
+                  </div>
+                  {(log.zoom_synced || log.slack_synced) && (
+                    <div className="flex gap-2">
+                      {log.zoom_synced && (
+                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                          <Video className="h-3 w-3" /> {log.zoom_recordings ?? 0} recordings
+                        </Badge>
+                      )}
+                      {log.slack_synced && (
+                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                          <MessageSquare className="h-3 w-3" /> {log.slack_messages ?? 0} messages
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  {log.errors.length > 0 && (
+                    <div className="bg-red-50 rounded p-2 space-y-1">
+                      {log.errors.map((err, i) => (
+                        <p key={i} className="text-xs text-red-700">
+                          {err.member_name && <span className="font-medium">{err.member_name}: </span>}
+                          {err.error}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -553,15 +642,15 @@ function MeetingsToolsCard({
 
   const availableTools = [...STATIC_TOOLS, ...dynamicTools];
 
-  const coreTools = availableTools.filter(t => t.isCore);
-  const perPersonToolDefs = availableTools.filter(t => !t.isCore);
+  const coreTools: PrepToolDef[] = [];
+  const perPersonToolDefs = availableTools;
 
   useEffect(() => {
     if (!userId) { setLoadingMembers(false); return; }
     (async () => {
       const [membersRes, eventsRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).from('cos_team_members').select('id, name, email, agent_overrides').eq('user_id', userId).order('name'),
+        (supabase as any).from('cos_team_members').select('id, name, email, agent_overrides, relationship_type').eq('user_id', userId).order('name'),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).from('cos_one_on_one_events').select('team_member_id, recurring_event_id').eq('user_id', userId),
       ]);
@@ -601,18 +690,22 @@ function MeetingsToolsCard({
   const removeChannel = (ch: string) =>
     update({ slack_channels: draft.slack_channels.filter(c => c !== ch) });
 
-  const getMemberExtras = (m: TeamMember): Set<string> => {
+  const getMemberEffective = (m: TeamMember): Set<string> => {
     const override = m.agent_overrides.prep_tools as string[] | null | undefined;
-    if (!Array.isArray(override) || override.length === 0) return new Set();
-    const defaultSet = new Set(draft.prep_tools);
-    return new Set(override.filter(t => !defaultSet.has(t)));
+    if (Array.isArray(override) && override.length > 0) return new Set(override);
+    return new Set(draft.prep_tools);
   };
 
-  const toggleExtra = async (m: TeamMember, toolId: string, checked: boolean) => {
-    const currentExtras = getMemberExtras(m);
-    if (checked) currentExtras.add(toolId); else currentExtras.delete(toolId);
-    const newPrepTools = currentExtras.size === 0 ? null : [...draft.prep_tools, ...currentExtras];
-    const newOverrides = { ...m.agent_overrides, prep_tools: newPrepTools };
+  const isMemberToolOn = (m: TeamMember, toolId: string): boolean =>
+    getMemberEffective(m).has(toolId);
+
+  const toggleMemberTool = async (m: TeamMember, toolId: string, checked: boolean) => {
+    const current = getMemberEffective(m);
+    if (checked) current.add(toolId); else current.delete(toolId);
+    const newList = [...current];
+    const globalSet = new Set(draft.prep_tools);
+    const matchesGlobal = newList.length === globalSet.size && newList.every(t => globalSet.has(t));
+    const newOverrides = { ...m.agent_overrides, prep_tools: matchesGlobal ? null : newList };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from('cos_team_members').update({ agent_overrides: newOverrides }).eq('id', m.id);
     if (error) {
@@ -624,20 +717,19 @@ function MeetingsToolsCard({
 
   const recurringMembers = members.filter(m => recurringMemberIds.has(m.id));
 
-  // Per-person tools (all StackOne) use per-member toggles, not a global switch.
-  // This check is kept for completeness — STATIC_TOOLS (Zoom/Slack) are core tools
-  // and never appear in perPersonToolDefs, so isToolGlobal always returns false here.
-  const isToolGlobal = (toolId: string) => STATIC_TOOLS.some(p => p.id === toolId);
-
-  const isSelectAllOn = (toolId: string): boolean => {
-    if (isToolGlobal(toolId)) return draft.prep_tools.includes(toolId);
-    return recurringMembers.length > 0 && recurringMembers.every(m => getMemberExtras(m).has(toolId));
-  };
+  const isSelectAllOn = (toolId: string): boolean =>
+    recurringMembers.length > 0 && recurringMembers.every(m => isMemberToolOn(m, toolId));
 
   const handleSelectAll = async (toolId: string) => {
-    if (isToolGlobal(toolId)) { toggleTool(toolId); return; }
-    const allOn = recurringMembers.every(m => getMemberExtras(m).has(toolId));
-    await Promise.all(recurringMembers.map(m => toggleExtra(m, toolId, !allOn)));
+    const allOn = isSelectAllOn(toolId);
+    const newOn = !allOn;
+    // Sync global default so non-recurring/group rows stay accurate
+    const newGlobalTools = newOn
+      ? (draft.prep_tools.includes(toolId) ? draft.prep_tools : [...draft.prep_tools, toolId])
+      : draft.prep_tools.filter(t => t !== toolId);
+    update({ prep_tools: newGlobalTools });
+    // Update per-member overrides for recurring 1:1s
+    await Promise.all(recurringMembers.map(m => toggleMemberTool(m, toolId, newOn)));
   };
 
   const totalCols = 1 + coreTools.length + perPersonToolDefs.length;
@@ -676,7 +768,7 @@ function MeetingsToolsCard({
         {/* Per-person matrix */}
         <div className="border-t pt-3">
           <p className="text-[11px] text-muted-foreground mb-3">
-            Click a core source to toggle it globally. Click a per-person column header to enable or disable it for all recurring 1:1 relationships at once.
+            Click a column header to toggle a tool for all recurring 1:1s. Click individual checkboxes to override per person.
           </p>
           {loadingMembers ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
@@ -686,22 +778,6 @@ function MeetingsToolsCard({
                 <thead>
                   <tr>
                     <th className="text-left pb-1 pr-6 text-xs text-muted-foreground min-w-[160px]" />
-                    {coreTools.length > 0 && (
-                      <th
-                        colSpan={coreTools.length}
-                        className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
-                      >
-                        Default — all meetings
-                      </th>
-                    )}
-                    {perPersonToolDefs.length > 0 && (
-                      <th
-                        colSpan={perPersonToolDefs.length}
-                        className="pb-1 pl-6 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
-                      >
-                        Additional per person
-                      </th>
-                    )}
                   </tr>
                   <tr>
                     <th className="pb-3 text-left text-xs font-medium text-muted-foreground pr-6">Meeting / Person</th>
@@ -746,56 +822,44 @@ function MeetingsToolsCard({
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Section A: recurring 1:1 relationships */}
-                  {recurringMembers.map((m, i) => {
-                    const extras = getMemberExtras(m);
-                    return (
-                      <tr key={m.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
-                        <td className="py-2.5 pr-6">
-                          <span className="font-medium text-sm">{m.name || m.email || 'Unknown'}</span>
-                          <span className="ml-1.5 text-[9px] text-primary/60 uppercase tracking-wide">recurring 1:1</span>
-                        </td>
-                        {coreTools.map(t => {
-                          const on = draft.prep_tools.includes(t.id);
-                          return (
-                            <td key={t.id} className="py-2.5 px-3 text-center">
-                              <div className="flex items-center justify-center" title={on ? 'Included via global toggle' : 'Excluded via global toggle'}>
-                                <div className={cn('h-4 w-4 rounded border flex items-center justify-center',
-                                  on ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/30')}>
-                                  <Lock className={cn('h-2.5 w-2.5', on ? 'text-primary/60' : 'text-muted-foreground/40')} />
-                                </div>
-                              </div>
+                  {/* Section A: recurring 1:1 relationships, grouped by relationship type */}
+                  {(() => {
+                    const RELATIONSHIP_GROUPS: Array<{ types: Array<RelationshipType | null>; label: string }> = [
+                      { types: ['direct_report'],               label: 'Direct reports' },
+                      { types: ['skip_level'],                  label: 'Skip levels' },
+                      { types: ['boss'],                        label: 'My manager' },
+                      { types: ['peer', 'collaborator'],        label: 'Peers' },
+                      { types: ['stakeholder', 'external', null], label: 'Others' },
+                    ];
+                    return RELATIONSHIP_GROUPS.flatMap(({ types, label }) => {
+                      const group = recurringMembers.filter(m => types.includes(m.relationship_type ?? null));
+                      if (group.length === 0) return [];
+                      return [
+                        <tr key={`grp-${label}`}>
+                          <td colSpan={totalCols} className="pt-4 pb-1">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">{label}</p>
+                          </td>
+                        </tr>,
+                        ...group.map((m, i) => (
+                          <tr key={m.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
+                            <td className="py-2.5 pr-6">
+                              <span className="font-medium text-sm">{m.name || m.email || 'Unknown'}</span>
                             </td>
-                          );
-                        })}
-                        {perPersonToolDefs.map(t => {
-                          if (isToolGlobal(t.id)) {
-                            const on = draft.prep_tools.includes(t.id);
-                            return (
-                              <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
-                                <div className="flex items-center justify-center" title={on ? 'Enabled for all via column toggle' : 'Disabled for all via column toggle'}>
-                                  <div className={cn('h-4 w-4 rounded border flex items-center justify-center',
-                                    on ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/30')}>
-                                    <Lock className={cn('h-2.5 w-2.5', on ? 'text-primary/60' : 'text-muted-foreground/40')} />
-                                  </div>
-                                </div>
+                            {perPersonToolDefs.map(t => (
+                              <td key={t.id} className="py-2.5 px-3 text-center">
+                                <Checkbox
+                                  checked={isMemberToolOn(m, t.id)}
+                                  onCheckedChange={(v) => toggleMemberTool(m, t.id, v as boolean)}
+                                  className="mx-auto"
+                                  title={t.description}
+                                />
                               </td>
-                            );
-                          }
-                          return (
-                            <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
-                              <Checkbox
-                                checked={extras.has(t.id)}
-                                onCheckedChange={(v) => toggleExtra(m, t.id, v as boolean)}
-                                className="mx-auto"
-                                title={t.description}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+                            ))}
+                          </tr>
+                        )),
+                      ];
+                    });
+                  })()}
 
                   {/* Section B: non-recurring 1:1s — global defaults only */}
                   <tr>
@@ -818,7 +882,7 @@ function MeetingsToolsCard({
                       </td>
                     ))}
                     {perPersonToolDefs.map(t => (
-                      <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                      <td key={t.id} className="py-2.5 px-3 text-center">
                         <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
                       </td>
                     ))}
@@ -854,7 +918,7 @@ function MeetingsToolsCard({
                               </td>
                             ))}
                             {perPersonToolDefs.map(t => (
-                              <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
+                              <td key={t.id} className="py-2.5 px-3 text-center">
                                 <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
                               </td>
                             ))}
@@ -875,111 +939,6 @@ function MeetingsToolsCard({
 
 // ── Meetings — Card 4: Logs ───────────────────────────────────────────────────
 
-function MeetingsLogsCard({ logs, userId, onRefresh }: {
-  logs: BatchLog[];
-  userId: string | null;
-  onRefresh: () => void;
-}) {
-  const { toast } = useToast();
-  const [stopping, setStopping] = useState<string | null>(null);
-
-  const stopRun = async (logId: string) => {
-    if (!userId) return;
-    setStopping(logId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from('cos_prep_batch_log')
-      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
-      .eq('id', logId)
-      .eq('user_id', userId);
-    toast({ title: 'Run stopped' });
-    setStopping(null);
-    onRefresh();
-  };
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Logs</CardTitle></CardHeader>
-      <CardContent>
-        {logs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No runs yet. Click "Run now" or wait for the scheduled run.</p>
-        ) : (
-          <div className="space-y-3">
-            {logs.map(log => {
-              const isRunning = log.status === 'running';
-              const duration = log.finished_at
-                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
-                : null;
-              return (
-                <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusIcon status={log.status} />
-                    <span className="text-sm font-medium">
-                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      {' '}
-                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
-                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
-                    {isRunning && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
-                        onClick={() => stopRun(log.id)}
-                        disabled={stopping === log.id}
-                      >
-                        {stopping === log.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Square className="h-3 w-3" />}
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>{log.meetings_found} meeting{log.meetings_found !== 1 ? 's' : ''} found</span>
-                    <span>{log.meetings_qualified} qualified</span>
-                    <span className="text-foreground font-medium">
-                      {log.preps_generated} prep{log.preps_generated !== 1 ? 's' : ''} generated
-                    </span>
-                    {log.preps_cached > 0 && <span>{log.preps_cached} cached</span>}
-                  </div>
-
-                  {(log.zoom_synced || log.slack_synced) && (
-                    <div className="flex gap-2">
-                      {log.zoom_synced && (
-                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                          <Video className="h-3 w-3" /> {log.zoom_recordings ?? 0} recordings
-                        </Badge>
-                      )}
-                      {log.slack_synced && (
-                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                          <MessageSquare className="h-3 w-3" /> {log.slack_messages ?? 0} messages
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-
-                  {log.errors.length > 0 && (
-                    <div className="bg-red-50 rounded p-2 space-y-1">
-                      {log.errors.map((err, i) => (
-                        <p key={i} className="text-xs text-red-700">
-                          {err.member_name && <span className="font-medium">{err.member_name}: </span>}
-                          {err.error}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 
 // ── Daily Brief — Card 1: Schedule ───────────────────────────────────────────
@@ -1040,9 +999,44 @@ function BriefScheduleCard({ draft, update }: {
 
 // ── Daily Brief — Card 2: Manual Run ─────────────────────────────────────────
 
-function BriefManualRunCard({ draft, running, onRunNow }: {
-  draft: PrepScheduleConfig; running: boolean; onRunNow: () => void;
+function BriefManualRunCard({ draft, running, onRunNow, userId }: {
+  draft: PrepScheduleConfig; running: boolean; onRunNow: () => void; userId: string | null;
 }) {
+  const [logs, setLogs] = useState<DciLog[]>([]);
+  const [stopping, setStopping] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    if (!userId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
+      .from('cos_dci_log')
+      .select('*')
+      .eq('user_id', userId)
+      .order('started_at', { ascending: false })
+      .limit(20);
+    if (!error && data) setLogs(data as DciLog[]);
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Reload after a manual run completes
+  useEffect(() => { if (!running) load(); }, [running, load]);
+
+  const stopRun = async (logId: string) => {
+    if (!userId) return;
+    setStopping(logId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from('cos_dci_log')
+      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+      .eq('id', logId)
+      .eq('user_id', userId);
+    toast({ title: 'Run stopped' });
+    setStopping(null);
+    load();
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -1056,6 +1050,47 @@ function BriefManualRunCard({ draft, running, onRunNow }: {
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           Run now
         </Button>
+        {logs.length > 0 && (
+          <div className="border-t pt-3 space-y-3">
+            {logs.map(log => {
+              const isRunning = log.status === 'running';
+              const duration = log.finished_at
+                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
+                : null;
+              return (
+                <div key={log.id} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusIcon status={log.status} />
+                    <span className="text-sm font-medium">
+                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {' '}
+                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
+                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
+                    {isRunning && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
+                        onClick={() => stopRun(log.id)}
+                        disabled={stopping === log.id}
+                      >
+                        {stopping === log.id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <Square className="h-3 w-3" />}
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+                  {log.error && (
+                    <p className="text-xs text-destructive bg-destructive/5 rounded px-2 py-1">{log.error}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1113,101 +1148,6 @@ function BriefSourcesCard({ draft, update }: { draft: PrepScheduleConfig; update
   );
 }
 
-// ── Daily Brief — Card 3: Logs ────────────────────────────────────────────────
-
-function BriefLogsCard({ userId }: { userId: string | null }) {
-  const [logs, setLogs] = useState<DciLog[]>([]);
-  const [stopping, setStopping] = useState<string | null>(null);
-  const { toast } = useToast();
-
-  const load = useCallback(async () => {
-    if (!userId) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('cos_dci_log')
-      .select('*')
-      .eq('user_id', userId)
-      .order('started_at', { ascending: false })
-      .limit(20);
-    if (!error && data) setLogs(data as DciLog[]);
-  }, [userId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const stopRun = async (logId: string) => {
-    if (!userId) return;
-    setStopping(logId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from('cos_dci_log')
-      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
-      .eq('id', logId)
-      .eq('user_id', userId);
-    toast({ title: 'Run stopped' });
-    setStopping(null);
-    load();
-  };
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Logs</CardTitle></CardHeader>
-      <CardContent>
-        {logs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No runs yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {logs.map(log => {
-              const isRunning = log.status === 'running';
-              const duration = log.finished_at
-                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
-                : null;
-              return (
-                <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusIcon status={log.status} />
-                    <span className="text-sm font-medium">
-                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      {' '}
-                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
-                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
-                    {isRunning && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
-                        onClick={() => stopRun(log.id)}
-                        disabled={stopping === log.id}
-                      >
-                        {stopping === log.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Square className="h-3 w-3" />}
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                  {(log.items_found > 0 || log.items_surfaced > 0) && (
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span>{log.items_found} items found</span>
-                      <span className="text-foreground font-medium">{log.items_surfaced} surfaced</span>
-                    </div>
-                  )}
-                  {log.summary && <p className="text-xs text-muted-foreground">{log.summary}</p>}
-                  {log.error && (
-                    <div className="bg-red-50 rounded p-2">
-                      <p className="text-xs text-red-700">{log.error}</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 // ── Exported panels ───────────────────────────────────────────────────────────
 
@@ -1351,9 +1291,6 @@ export function MeetingsPrepPanel() {
   const { draft, update, runningPrep, runPrepNow, prepLogs, loadPrepLogs, userId, loading } = usePanelState();
   if (loading || !draft) return null;
 
-  const latestLogHasError = prepLogs.length > 0 &&
-    (prepLogs[0].status === 'failed' || (prepLogs[0].errors?.length ?? 0) > 0);
-
   return (
     <Tabs defaultValue="schedule">
       <TabsList className="mb-4">
@@ -1361,17 +1298,11 @@ export function MeetingsPrepPanel() {
         <TabsTrigger value="scope">Scope</TabsTrigger>
         <TabsTrigger value="tools">Tools</TabsTrigger>
         <TabsTrigger value="agent">Agent</TabsTrigger>
-        <TabsTrigger value="logs" className="relative">
-          Logs
-          {latestLogHasError && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-          )}
-        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="schedule" className="space-y-4">
         <MeetingsScheduleCard draft={draft} update={update} />
-        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} />
+        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
       </TabsContent>
 
       <TabsContent value="scope" className="space-y-4">
@@ -1387,10 +1318,6 @@ export function MeetingsPrepPanel() {
       <TabsContent value="agent">
         <AgentSettingsPanel />
       </TabsContent>
-
-      <TabsContent value="logs">
-        <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
-      </TabsContent>
     </Tabs>
   );
 }
@@ -1403,20 +1330,15 @@ export function DailyBriefPanel() {
       <TabsList className="mb-4">
         <TabsTrigger value="schedule">Schedule</TabsTrigger>
         <TabsTrigger value="sources">Sources</TabsTrigger>
-        <TabsTrigger value="logs">Logs</TabsTrigger>
       </TabsList>
 
       <TabsContent value="schedule" className="space-y-4">
         <BriefScheduleCard draft={draft} update={update} />
-        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} />
+        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} userId={userId} />
       </TabsContent>
 
       <TabsContent value="sources">
         <BriefSourcesCard draft={draft} update={update} />
-      </TabsContent>
-
-      <TabsContent value="logs">
-        <BriefLogsCard userId={userId} />
       </TabsContent>
     </Tabs>
   );
@@ -1436,10 +1358,9 @@ export default function CosPrepSchedulePanel() {
           </h3>
         </div>
         <MeetingsScheduleCard draft={draft} update={update} />
-        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} />
+        <MeetingsManualRunCard draft={draft} running={runningPrep} onRunNow={runPrepNow} logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
         <MeetingsScopeCard draft={draft} update={update} />
         <MeetingsToolsCard draft={draft} update={update} userId={userId} />
-        <MeetingsLogsCard logs={prepLogs} userId={userId} onRefresh={() => userId && loadPrepLogs(userId)} />
       </section>
 
       <section className="space-y-4">
@@ -1449,9 +1370,8 @@ export default function CosPrepSchedulePanel() {
           </h3>
         </div>
         <BriefScheduleCard draft={draft} update={update} />
-        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} />
+        <BriefManualRunCard draft={draft} running={runningBrief} onRunNow={runBriefNow} userId={userId} />
         <BriefSourcesCard draft={draft} update={update} />
-        <BriefLogsCard userId={userId} />
       </section>
     </div>
   );
