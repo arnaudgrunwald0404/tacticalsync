@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CalendarPlus, Radar, Bot } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Radar, Bot, Users } from 'lucide-react';
 import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
@@ -397,7 +397,9 @@ export function InboxSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const isMeetings = location.pathname.startsWith('/inbox/meetings');
-  const meetingsSubView = location.pathname.includes('/meetings/coverage')
+  const meetingsSubView = location.pathname.includes('/meetings/group-coverage')
+    ? 'group-coverage'
+    : location.pathname.includes('/meetings/coverage')
     ? 'coverage'
     : location.pathname.includes('/meetings/activity')
     ? 'activity'
@@ -481,9 +483,10 @@ export function InboxSidebar({
           <>
             <SectionHeader label="Views" />
             {[
-              { sub: 'calendar', label: 'Calendar', icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
-              { sub: 'coverage', label: 'Coverage',  icon: <Radar className="h-4 w-4" />,       path: '/inbox/meetings/coverage' },
-              { sub: 'activity', label: 'Agent',     icon: <Bot className="h-4 w-4" />,         path: '/inbox/meetings/activity' },
+              { sub: 'calendar',       label: 'Calendar',       icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
+              { sub: 'coverage',       label: '1:1 coverage',   icon: <Radar className="h-4 w-4" />,        path: '/inbox/meetings/coverage' },
+              { sub: 'group-coverage', label: 'Group coverage', icon: <Users className="h-4 w-4" />,        path: '/inbox/meetings/group-coverage' },
+              { sub: 'activity',       label: 'Agent',          icon: <Bot className="h-4 w-4" />,          path: '/inbox/meetings/activity' },
             ].map(({ sub, label, icon, path }) => (
               <SidebarItem
                 key={sub}
