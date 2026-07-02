@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sparkles, Loader2, X, Clock, MessageSquare,
-  ChevronDown, ChevronUp, Settings2, Calendar, Video, ListChecks, Target, TrendingUp,
+  ChevronDown, ChevronUp, Settings2, Calendar, Video, ListChecks, TrendingUp,
   Eye, RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,14 +20,13 @@ import { formatHourLabel } from '@/hooks/usePrepScheduleConfig';
 
 const ALL_SOURCES = [
   { key: 'my_lists', label: 'My Lists', description: 'Your active priorities and flagged items', icon: ListChecks, alwaysOn: true },
-  { key: 'rcdo', label: 'RCDO Objectives', description: 'Quarterly strategy and initiatives', icon: Target },
   { key: 'calendar', label: 'Calendar', description: "Today's meetings and attendees", icon: Calendar },
+  { key: 'commitments', label: 'Commitments', description: 'Quarterly priorities and monthly goals', icon: TrendingUp },
   { key: 'slack', label: 'Slack', description: 'Recent DMs and channel messages', icon: MessageSquare },
   { key: 'zoom', label: 'Zoom', description: 'Meeting recordings and AI summaries', icon: Video },
-  { key: 'commitments', label: 'Commitments', description: 'Quarterly priorities and monthly goals', icon: TrendingUp },
 ] as const;
 
-const INTERNAL_SOURCE_KEYS = ['my_lists', 'rcdo', 'commitments'];
+const INTERNAL_SOURCE_KEYS = ['my_lists', 'commitments'];
 const EXTERNAL_SOURCE_KEYS = ['calendar', 'slack', 'zoom'];
 
 const DEFAULT_SOURCES = ALL_SOURCES.map(s => s.key);
