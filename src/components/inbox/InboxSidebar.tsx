@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { CalendarDays, CalendarPlus, Radar, Bot } from 'lucide-react';
 import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
@@ -357,7 +359,7 @@ function SectionHeader({ label }: { label: string }) {
 
 function DropGap({ active, onDrop, label }: { active: boolean; onDrop: () => void; label?: string }) {
   const [over, setOver] = useState(false);
-  if (!active) return null;
+  if (!active) return null; // eslint-disable-line -- useState must come before this return; keeping hook order valid because useState is unconditional
 
   const handlers = {
     onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(true); },
@@ -392,6 +394,14 @@ function DropGap({ active, onDrop, label }: { active: boolean; onDrop: () => voi
 export function InboxSidebar({
   tags, counts, filter, onFilterChange, onRenameTag, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, bare = false,
 }: InboxSidebarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isMeetings = location.pathname.startsWith('/inbox/meetings');
+  const meetingsSubView = location.pathname.includes('/meetings/coverage')
+    ? 'coverage'
+    : location.pathname.includes('/meetings/activity')
+    ? 'activity'
+    : 'calendar';
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingWsId, setDraggingWsId] = useState<string | null>(null);
   const isActive = (f: InboxFilterState) => JSON.stringify(f) === JSON.stringify(filter);
@@ -440,18 +450,56 @@ export function InboxSidebar({
       'h-full bg-white flex flex-col overflow-hidden',
       bare ? 'w-full' : 'w-[240px] flex-shrink-0 rounded-xl shadow-sm border border-gray-200/80',
     )}>
-      <div className="px-4 py-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Inbox className="h-5 w-5 text-gray-700" />
-          <span className="font-semibold text-gray-900 text-sm">Inbox</span>
-        </div>
+      {/* Tab switcher */}
+      <div className="flex border-b border-gray-200 flex-shrink-0">
+        <button
+          onClick={() => navigate('/inbox')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 py-3.5 text-sm font-medium transition-colors relative',
+            !isMeetings
+              ? 'text-gray-900 after:absolute after:bottom-0 after:left-4 after:right-4 after:h-0.5 after:bg-gray-900 after:rounded-full'
+              : 'text-gray-400 hover:text-gray-700',
+          )}
+        >
+          <Inbox className="h-3.5 w-3.5" />Inbox
+        </button>
+        <button
+          onClick={() => navigate('/inbox/meetings')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 py-3.5 text-sm font-medium transition-colors relative',
+            isMeetings
+              ? 'text-gray-900 after:absolute after:bottom-0 after:left-4 after:right-4 after:h-0.5 after:bg-gray-900 after:rounded-full'
+              : 'text-gray-400 hover:text-gray-700',
+          )}
+        >
+          <CalendarDays className="h-3.5 w-3.5" />Meetings
+        </button>
       </div>
 
       <div className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-        <SectionHeader label="Views" />
-        <SidebarItem label="All"           icon={<Inbox className="h-4 w-4" />} count={counts['all']}     active={isActive({ builtIn: 'all' })}     onClick={() => onFilterChange({ builtIn: 'all' })} />
-        <SidebarItem label="ASAP"          icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
-        <SidebarItem label="Waiting on me" icon={<Clock className="h-4 w-4" />} count={counts['waiting']} active={isActive({ builtIn: 'waiting' })} onClick={() => onFilterChange({ builtIn: 'waiting' })} />
+        {isMeetings ? (
+          <>
+            <SectionHeader label="Views" />
+            {[
+              { sub: 'calendar', label: 'Calendar', icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
+              { sub: 'coverage', label: 'Coverage',  icon: <Radar className="h-4 w-4" />,       path: '/inbox/meetings/coverage' },
+              { sub: 'activity', label: 'Agent',     icon: <Bot className="h-4 w-4" />,         path: '/inbox/meetings/activity' },
+            ].map(({ sub, label, icon, path }) => (
+              <SidebarItem
+                key={sub}
+                label={label}
+                icon={icon}
+                active={meetingsSubView === sub}
+                onClick={() => navigate(path)}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <SectionHeader label="Views" />
+            <SidebarItem label="All"           icon={<Inbox className="h-4 w-4" />} count={counts['all']}     active={isActive({ builtIn: 'all' })}     onClick={() => onFilterChange({ builtIn: 'all' })} />
+            <SidebarItem label="ASAP"          icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
+            <SidebarItem label="Waiting on me" icon={<Clock className="h-4 w-4" />} count={counts['waiting']} active={isActive({ builtIn: 'waiting' })} onClick={() => onFilterChange({ builtIn: 'waiting' })} />
 
         {personTags.length > 0 && (
           <>
@@ -537,17 +585,21 @@ export function InboxSidebar({
             )}
           </>
         )}
+          </>
+        )}
       </div>
 
-      <div className="px-2 py-1 border-t border-gray-200 flex-shrink-0">
-        <SidebarItem
-          label="Archive"
-          icon={<Archive className="h-4 w-4" />}
-          count={counts['archive']}
-          active={isActive({ builtIn: 'archive' })}
-          onClick={() => onFilterChange({ builtIn: 'archive' })}
-        />
-      </div>
+      {!isMeetings && (
+        <div className="px-2 py-1 border-t border-gray-200 flex-shrink-0">
+          <SidebarItem
+            label="Archive"
+            icon={<Archive className="h-4 w-4" />}
+            count={counts['archive']}
+            active={isActive({ builtIn: 'archive' })}
+            onClick={() => onFilterChange({ builtIn: 'archive' })}
+          />
+        </div>
+      )}
 
     </div>
   );

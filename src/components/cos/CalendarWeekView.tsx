@@ -87,12 +87,13 @@ function timeToTop(date: Date): number {
 // ── Event block ──────────────────────────────────────────────────────────────
 
 function EventBlock({
-  ev, onOpen, loading, runningPrepEventIds,
+  ev, onOpen, loading, runningPrepEventIds, onSelectEvent,
 }: {
   ev: Laid;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   runningPrepEventIds?: Set<string>;
+  onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
 }) {
   const start = new Date(ev.start_time);
   const end = new Date(ev.end_time);
@@ -114,7 +115,10 @@ function EventBlock({
 
   return (
     <button
-      onClick={() => { if (ev.team_member && !loading) onOpen(ev.team_member); }}
+      onClick={() => {
+        if (onSelectEvent) { onSelectEvent(ev); return; }
+        if (ev.team_member && !loading) onOpen(ev.team_member);
+      }}
       disabled={loading || (!ev.team_member && !isGroup)}
       className="absolute text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
       style={{
@@ -126,8 +130,8 @@ function EventBlock({
       }}
     >
       <div
-        className="h-full w-full rounded-md overflow-hidden flex flex-col px-1.5 py-1 transition-all hover:brightness-110 active:scale-[0.99]"
-        style={{ backgroundColor: cat.bg, borderLeft: `3px solid ${cat.dark}` }}
+        className="h-full w-full rounded-sm overflow-hidden flex flex-col px-1.5 py-1 transition-all hover:brightness-110 active:scale-[0.99]"
+        style={{ backgroundColor: cat.bg }}
       >
         {isGroup ? (
           <div className="flex items-center gap-1 min-w-0">
@@ -166,10 +170,11 @@ interface CalendarWeekViewProps {
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   runningPrepEventIds?: Set<string>;
+  onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
 }
 
 export function CalendarWeekView({
-  upcomingEvents, pastEvents = [], onOpen, loading, runningPrepEventIds,
+  upcomingEvents, pastEvents = [], onOpen, loading, runningPrepEventIds, onSelectEvent,
 }: CalendarWeekViewProps) {
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -342,6 +347,7 @@ export function CalendarWeekView({
                     onOpen={onOpen}
                     loading={loading}
                     runningPrepEventIds={runningPrepEventIds}
+                    onSelectEvent={onSelectEvent}
                   />
                 ))}
 

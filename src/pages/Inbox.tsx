@@ -125,9 +125,11 @@ function filterLabel(filter: InboxFilterState, tags: { id: string; name: string 
 export default function InboxPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [activePanel, setActivePanel] = useState<'inbox' | 'meetings'>(
-    location.pathname.startsWith('/inbox/meetings') ? 'meetings' : 'inbox',
-  );
+  // Derived from the URL so navigating between /inbox and /inbox/meetings always
+  // switches the middle view — InboxPage stays mounted across those routes, so a
+  // one-time useState initializer would go stale and leave the wrong panel showing.
+  const activePanel: 'inbox' | 'meetings' =
+    location.pathname.startsWith('/inbox/meetings') ? 'meetings' : 'inbox';
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
