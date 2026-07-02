@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
+import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -472,7 +473,7 @@ serve(async (req) => {
     const toolTier = (id: string): 1 | 2 | 3 => {
       const override = toolTierOverrides[id]
       if (override === 1 || override === 2 || override === 3) return override
-      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2 }
+      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2, cleargo: 1 }
       return defaults[id] ?? 2
     }
 
@@ -603,7 +604,24 @@ serve(async (req) => {
       }
     }
 
-    // ── 4. Concrete commitments and accountabilities ───────────────────────
+    // ── 4b. ClearGo enrichment (blockers, epics, prep pack) ───────────────
+    if (toolEnabled('cleargo') && member.email) {
+      try {
+        const cgConfig = await getClearGoConfig(supabase, userId)
+        if (cgConfig) {
+          const enrichment = await fetchClearGo1on1Context(cgConfig, member.email, member.name)
+          if (enrichment.sections.length > 0) {
+            contextParts.push(`\n=== CLEARGO DATA FOR ${member.name.toUpperCase()} ===`)
+            contextParts.push(...enrichment.sections)
+            dataSources.push(...enrichment.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        console.warn('ClearGo enrichment failed (non-fatal):', err)
+      }
+    }
+
+    // ── 5. Concrete commitments and accountabilities ───────────────────────
     if (pendingActions.length > 0) {
       contextParts.push(`\nPending action items from previous 1:1s with ${member.name}:`)
       pendingActions.forEach(a => {
@@ -688,7 +706,12 @@ serve(async (req) => {
       relTopics.length > 0 ||
       forgottenItems.length > 0
 
-    if (hasTier1Signal && priorities.length > 0) {
+    const isExternal = member.relationship_type === 'external'
+
+    // External contacts are never involved in internal org priorities.
+    // For internal members, only include priorities if there is direct
+    // communication evidence linking them to the org's work.
+    if (!isExternal && hasTier1Signal && priorities.length > 0) {
       const categoryBuckets: Record<string, string[]> = {}
       for (const p of priorities) {
         const cat = p.category ?? 'other'
@@ -706,7 +729,21 @@ serve(async (req) => {
 
     const noSignalAtAll = !hasTier1Signal && !hasTier2Signal
 
-    const systemPrompt = noSignalAtAll
+    const systemPrompt = isExternal
+      ? `You are a chief of staff assistant preparing a brief for an external meeting.
+
+This is an external contact — they are not part of the user's organization and have no involvement in internal projects, priorities, or team work.
+
+SOURCE RULE: Only use what is explicitly provided below (email threads, context notes, standing topics). Do NOT reference any internal projects, org priorities, team initiatives, or company work — none of that is relevant to an external relationship.
+
+If email threads are available, base the brief entirely on those: what was discussed, what was agreed, what needs follow-up. Quote directly from emails where useful.
+
+If this is a first meeting with no prior email history, generate 3-4 open-ended questions to establish context: what brought you together, what they're working on, what mutual value might exist.
+
+Format: use ## headings (not #), bullet points under each, keep it brief and focused.
+
+${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
+      : noSignalAtAll
       ? `You are a chief of staff assistant preparing a 1:1 meeting brief.
 
 CRITICAL: There is NO communication history, no accountabilities, no standing topics, and no prior 1:1 notes for this person. You have NO evidence of what they work on.

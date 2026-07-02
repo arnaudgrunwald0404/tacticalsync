@@ -102,7 +102,7 @@ interface CosDciLog {
   weekly_obj_3_status: DciItemStatus | null;
 }
 
-interface CosTeamMember {
+export interface CosTeamMember {
   id: string;
   user_id: string;
   name: string;
@@ -3604,7 +3604,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; toolbarPortalId?: string }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -3642,9 +3642,9 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
       ? 'activity'
       : 'calendar';
   const setTeamView = (view: 'calendar' | 'map' | 'activity') => {
-    if (view === 'map') cosNavigate('/chief-of-staff/meetings/coverage');
-    else if (view === 'activity') cosNavigate('/chief-of-staff/meetings/activity');
-    else cosNavigate('/chief-of-staff/meetings/one-on-ones');
+    if (view === 'map') cosNavigate(`${basePath}/coverage`);
+    else if (view === 'activity') cosNavigate(`${basePath}/activity`);
+    else cosNavigate(`${basePath}/one-on-ones`);
   };
   const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -3881,7 +3881,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
       didOAuthRef.current = true;
-      cosNavigate('/chief-of-staff/meetings', { replace: true });
+      cosNavigate(basePath, { replace: true });
       setCalendarJustConnected(true);
       void kickOffSync();
     }
@@ -4263,7 +4263,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         />
       ) : teamView === 'activity' ? (
         <>
-          {portalTarget ? createPortal(
+          {!hideViewToggle && (portalTarget ? createPortal(
             <div className="flex items-center gap-3 w-full">
               {viewToggle}
             </div>,
@@ -4272,7 +4272,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             <div className="flex items-center gap-3 w-full mb-6">
               {viewToggle}
             </div>
-          )}
+          ))}
           <AgentActivityFeed />
         </>
       ) : teamView === 'calendar' ? (
@@ -4292,12 +4292,13 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           runningPrepEventIds={runningPrepEventIds}
           onExcludeFromCalendar={handleExcludeFromCalendar}
           onOpenGroupPrep={openGroupPrep}
-          toolbarPortalId={toolbarPortalId}
-          viewToggle={viewToggle}
+          toolbarPortalId={hideViewToggle ? undefined : toolbarPortalId}
+          viewToggle={hideViewToggle ? undefined : viewToggle}
+          onSelectEvent={onSelectEvent}
         />
       ) : (
         <>
-          {portalTarget ? createPortal(
+          {!hideViewToggle && (portalTarget ? createPortal(
             <div className="flex items-center gap-3 w-full">
               {viewToggle}
             </div>,
@@ -4306,7 +4307,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             <div className="flex items-center gap-3 w-full mb-6">
               {viewToggle}
             </div>
-          )}
+          ))}
           <CoverageMap
             members={members}
             upcomingEvents={upcomingEvents}

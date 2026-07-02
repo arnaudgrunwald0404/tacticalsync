@@ -55,6 +55,25 @@ export function useIsDesktop(): boolean {
   return breakpoint === 'lg' || breakpoint === 'xl' || breakpoint === '2xl';
 }
 
+/**
+ * True on devices without a precise hover-capable pointer (phones, tablets).
+ * Use to reveal controls that are otherwise hover-gated, since touch users
+ * have no hover state to trigger them.
+ */
+export function useIsTouch(): boolean {
+  const [isTouch, setIsTouch] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(hover: none), (pointer: coarse)');
+    const update = () => setIsTouch(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, []);
+
+  return isTouch;
+}
+
 // Mobile-specific constants
 export const MOBILE_CONSTANTS = {
   MIN_TOUCH_TARGET: 44, // Minimum touch target size in pixels (iOS/Android guidelines)
