@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Tag, Minimize2, History, Cpu } from 'lucide-react';
+import { X, Tag, Minimize2, History, Cpu, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
 import { AgentBar } from './AgentBar';
-import type { InboxItem, InboxTag, BriefPriority, InboxItemType } from '@/types/inbox';
+import { ProjectSettingsPanel } from './ProjectSettingsPanel';
+import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings } from '@/types/inbox';
 
 const SUGGESTIONS = [
   "What needs my attention today?",
@@ -36,6 +37,10 @@ interface InboxAssistantPanelProps {
   onUpdateItem?: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onAddItem: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
   onCreateTag: (name: string, type: 'project' | 'person', color: string) => Promise<InboxTag | null>;
+  projectTag?: InboxTag | null;
+  onCloseProject?: () => void;
+  onSaveProjectSettings?: (tagId: string, settings: ProjectSettings, name: string) => Promise<void>;
+  onDeleteProjectTag?: (tagId: string) => Promise<void>;
 }
 
 // ── Default state ─────────────────────────────────────────────────────────────
@@ -128,13 +133,15 @@ function ItemDetail({
       <div className="space-y-1.5">
         <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Tags</p>
         <div className="flex flex-wrap gap-1">
-          {item.tags?.map(tag => {
+          {item.tags?.filter(tag => tag.type !== 'workstream').map(tag => {
+            const attachedWorkstream = item.tags?.find(t => t.type === 'workstream' && t.parent_id === tag.id);
             const childWorkstreams = allTags.filter(t => t.type === 'workstream' && t.parent_id === tag.id);
             return (
               <InboxTagPill
                 key={tag.id}
                 tag={tag}
                 size="xs"
+                workstreamSuffix={attachedWorkstream?.name}
                 onRemove={() => onRemoveTag(item.id, tag.id)}
                 workstreams={['project', 'person', 'folder'].includes(tag.type) ? childWorkstreams : undefined}
                 onSelectWorkstream={ws => onAddTag(item.id, ws.id)}
@@ -214,6 +221,7 @@ function ItemDetail({
 export function InboxAssistantPanel({
   item, allTags, userName, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem, onAddItem, onCreateTag,
+  projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag,
 }: InboxAssistantPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const isMobile = useIsMobile();
@@ -263,6 +271,16 @@ export function InboxAssistantPanel({
 
   return (
     <div className="w-80 flex-shrink-0 bg-white rounded-xl shadow-sm border border-gray-200/80 flex flex-col overflow-hidden">
+      {/* Project settings mode — takes over the whole panel */}
+      {projectTag && onSaveProjectSettings ? (
+        <ProjectSettingsPanel
+          tag={projectTag}
+          onClose={onCloseProject ?? (() => {})}
+          onSave={onSaveProjectSettings}
+          onDelete={onDeleteProjectTag}
+        />
+      ) : (
+        <>
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0 min-h-[48px] overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
@@ -325,19 +343,23 @@ export function InboxAssistantPanel({
           )}
         </motion.div>
       </AnimatePresence>
+        </>
+      )}
 
-      {/* Bottom bar */}
-      <div className="flex-shrink-0 border-t border-gray-100">
-        <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
-        <div className="flex items-center gap-3 px-4 py-2">
-          <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-            <History className="h-3 w-3" />History
-          </button>
-          <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-            <Cpu className="h-3 w-3" />Select Agent
-          </button>
+      {/* Bottom bar — hidden in project settings mode */}
+      {!projectTag && (
+        <div className="flex-shrink-0 border-t border-gray-100">
+          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
+          <div className="flex items-center gap-3 px-4 py-2">
+            <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+              <History className="h-3 w-3" />History
+            </button>
+            <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+              <Cpu className="h-3 w-3" />Select Agent
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

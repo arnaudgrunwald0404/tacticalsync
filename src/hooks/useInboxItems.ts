@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Database, Json } from '@/integrations/supabase/types';
 import type {
   InboxItem, InboxItemType, InboxItemStatus, InboxBucket, InboxTag, InboxTagType,
-  InboxFilterState, AgentPayload, SourceRef, BriefPriority,
+  InboxFilterState, AgentPayload, SourceRef, BriefPriority, TagSuggestion,
 } from '@/types/inbox';
 import {
   validateItemText,
@@ -30,6 +30,9 @@ const rowToItem = (r: InboxItemRow): InboxItem => ({
   workflow_status: r.workflow_status as InboxItem['workflow_status'],
   agent_payload: (r.agent_payload as AgentPayload | null) ?? null,
   source_ref: (r.source_ref as SourceRef | null) ?? null,
+  tag_suggestions: Array.isArray((r as Record<string, unknown>).tag_suggestions)
+    ? ((r as Record<string, unknown>).tag_suggestions as TagSuggestion[])
+    : [],
 });
 
 // Fetch items + their tags for a user, applying a filter
@@ -251,6 +254,37 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
     await updateItem(id, { pinned });
   }, [updateItem]);
 
+  // Accept a tag suggestion: apply the tag and remove the suggestion from the list.
+  const acceptSuggestion = useCallback(async (itemId: string, suggestion: TagSuggestion) => {
+    // Apply the tag
+    await supabase.from('inbox_item_tags').upsert({ item_id: itemId, tag_id: suggestion.tag_id }, { onConflict: 'item_id,tag_id' });
+    // Remove this suggestion from the DB array
+    const item = items.find(i => i.id === itemId);
+    const remaining = (item?.tag_suggestions ?? []).filter(s => s.tag_id !== suggestion.tag_id);
+    await supabase.from('inbox_items').update({ tag_suggestions: remaining as unknown as Json }).eq('id', itemId);
+    // Optimistic update
+    setItems(prev => prev.map(i => {
+      if (i.id !== itemId) return i;
+      const already = i.tags?.some(t => t.id === suggestion.tag_id);
+      return {
+        ...i,
+        tag_suggestions: (i.tag_suggestions ?? []).filter(s => s.tag_id !== suggestion.tag_id),
+        tags: already ? i.tags : [...(i.tags ?? []), { id: suggestion.tag_id, name: suggestion.tag_name, color: suggestion.color, type: 'project', user_id: '', member_id: null, parent_id: null, sort_order: 0, created_at: '' } as InboxTag],
+      };
+    }));
+    await load();
+  }, [items, load]);
+
+  // Dismiss a suggestion without applying the tag.
+  const dismissSuggestion = useCallback(async (itemId: string, tagId: string) => {
+    const item = items.find(i => i.id === itemId);
+    const remaining = (item?.tag_suggestions ?? []).filter(s => s.tag_id !== tagId);
+    await supabase.from('inbox_items').update({ tag_suggestions: remaining as unknown as Json }).eq('id', itemId);
+    setItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, tag_suggestions: (i.tag_suggestions ?? []).filter(s => s.tag_id !== tagId) } : i
+    ));
+  }, [items]);
+
   return {
     items,
     loading,
@@ -265,5 +299,7 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
     cycleWorkflowStatus,
     syncBriefItem,
     pinItem,
+    acceptSuggestion,
+    dismissSuggestion,
   };
 }

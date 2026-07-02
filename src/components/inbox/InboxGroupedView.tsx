@@ -12,7 +12,8 @@ import { GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { InboxItemRow } from './InboxItemRow';
-import type { InboxItem, InboxBucket, InboxTag } from '@/types/inbox';
+import type { InboxItem, InboxBucket, InboxTag, TagSuggestion } from '@/types/inbox';
+import type { TeamMember } from '@/hooks/useTeamMembers';
 
 // ── Auto-assign bucket based on tags ─────────────────────────────────────────
 
@@ -37,7 +38,8 @@ const BUCKETS: { id: InboxBucket; label: string; description: string; accent: st
 
 function SortableItem({
   item, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onUpdateItem, onOpenDrawer,
+  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, isSelected, onSelect,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
@@ -48,9 +50,15 @@ function SortableItem({
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
-  onQuickCreateTag?: (name: string) => Promise<InboxTag | null>;
+  onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
+  teamMembers?: TeamMember[];
+  onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
   onUpdateItem: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onOpenDrawer?: (item: InboxItem) => void;
+  onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
+  onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  isSelected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
 }) {
   const isTouch = useIsTouch();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -86,8 +94,14 @@ function SortableItem({
           onCycleWorkflowStatus={onCycleWorkflowStatus}
           onCreateWorkstream={onCreateWorkstream}
           onQuickCreateTag={onQuickCreateTag}
+          teamMembers={teamMembers}
+          onCreatePersonTag={onCreatePersonTag}
           onUpdateItem={onUpdateItem}
           onOpenDrawer={onOpenDrawer}
+          onAcceptSuggestion={onAcceptSuggestion}
+          onDismissSuggestion={onDismissSuggestion}
+          isSelected={isSelected}
+          onSelect={onSelect}
         />
       </div>
     </div>
@@ -98,7 +112,8 @@ function SortableItem({
 
 function BucketSection({
   bucket, items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onUpdateItem, onOpenDrawer,
+  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
 }: {
   bucket: typeof BUCKETS[number];
   items: InboxItem[];
@@ -110,9 +125,15 @@ function BucketSection({
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
-  onQuickCreateTag?: (name: string) => Promise<InboxTag | null>;
+  onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
+  teamMembers?: TeamMember[];
+  onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
   onUpdateItem: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onOpenDrawer?: (item: InboxItem) => void;
+  onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
+  onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  selectedIds?: Set<string>;
+  onSelect?: (id: string, selected: boolean) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: bucket.id });
 
@@ -146,8 +167,14 @@ function BucketSection({
               onCycleWorkflowStatus={onCycleWorkflowStatus}
               onCreateWorkstream={onCreateWorkstream}
               onQuickCreateTag={onQuickCreateTag}
+              teamMembers={teamMembers}
+              onCreatePersonTag={onCreatePersonTag}
               onUpdateItem={onUpdateItem}
               onOpenDrawer={onOpenDrawer}
+              onAcceptSuggestion={onAcceptSuggestion}
+              onDismissSuggestion={onDismissSuggestion}
+              isSelected={selectedIds?.has(item.id)}
+              onSelect={onSelect}
             />
           ))}
         </SortableContext>
@@ -177,15 +204,22 @@ interface InboxGroupedViewProps {
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
-  onQuickCreateTag?: (name: string) => Promise<InboxTag | null>;
+  onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
+  teamMembers?: TeamMember[];
+  onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
   onUpdateItem: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onMoveBucket: (itemId: string, bucket: InboxBucket) => void;
   onOpenDrawer?: (item: InboxItem) => void;
+  onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
+  onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  selectedIds?: Set<string>;
+  onSelect?: (id: string, selected: boolean) => void;
 }
 
 export function InboxGroupedView({
   items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onUpdateItem, onMoveBucket, onOpenDrawer,
+  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
 }: InboxGroupedViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -252,8 +286,14 @@ export function InboxGroupedView({
             onCycleWorkflowStatus={onCycleWorkflowStatus}
             onCreateWorkstream={onCreateWorkstream}
             onQuickCreateTag={onQuickCreateTag}
+            teamMembers={teamMembers}
+            onCreatePersonTag={onCreatePersonTag}
             onUpdateItem={onUpdateItem}
             onOpenDrawer={onOpenDrawer}
+            onAcceptSuggestion={onAcceptSuggestion}
+            onDismissSuggestion={onDismissSuggestion}
+            selectedIds={selectedIds}
+            onSelect={onSelect}
           />
         ))}
       </div>

@@ -14,6 +14,14 @@ export type InboxBucket = 'now' | 'next' | 'later';
 
 export type InboxTagType = 'project' | 'person' | 'urgency' | 'folder' | 'context' | 'workstream';
 
+export interface ProjectSettings {
+  description?: string;
+  stakeholders?: string[];
+  slack_channels?: string[];
+  recurring_meetings?: string[];
+  pinned?: boolean;
+}
+
 export interface InboxTag {
   id: string;
   user_id: string;
@@ -24,6 +32,7 @@ export interface InboxTag {
   parent_id: string | null;
   sort_order: number;
   created_at: string;
+  settings?: ProjectSettings;
 }
 
 export interface BriefPriority {
@@ -50,6 +59,13 @@ export interface SourceRef {
   id?: string;
 }
 
+export interface TagSuggestion {
+  tag_id: string;
+  tag_name: string;
+  color: string;
+  reason: string;
+}
+
 export interface InboxItem {
   id: string;
   user_id: string;
@@ -70,6 +86,7 @@ export interface InboxItem {
   workflow_status: 'Not started' | 'Work in progress' | 'Waiting on someone' | 'Blocked' | null;
   // joined
   tags?: InboxTag[];
+  tag_suggestions?: TagSuggestion[];
 }
 
 export interface InboxView {

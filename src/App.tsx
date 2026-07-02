@@ -95,6 +95,11 @@ const App = () => (
                 <InboxPage />
               </Suspense>
             } />
+            <Route path="/inbox/meetings/*" element={
+              <Suspense fallback={<PageSkeleton />}>
+                <InboxPage />
+              </Suspense>
+            } />
             <Route element={<RCDODetailProvider><RCDODetailLayout /></RCDODetailProvider>}>
               <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
               <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />

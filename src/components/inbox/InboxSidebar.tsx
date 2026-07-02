@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback } from 'react';
-import { Inbox, Zap, Clock, Archive, Hash, Folder, ChevronRight, Plus } from 'lucide-react';
+import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import type { InboxTag, InboxFilterState } from '@/types/inbox';
+import { planFolderReindex } from '@/lib/inboxValidation';
 
 interface InboxSidebarProps {
   tags: InboxTag[];
@@ -11,6 +12,9 @@ interface InboxSidebarProps {
   onFilterChange: (f: InboxFilterState) => void;
   onRenameTag: (id: string, name: string) => Promise<void>;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
+  onUpdateTag?: (id: string, patch: Partial<Pick<InboxTag, 'type' | 'parent_id' | 'sort_order'>>) => Promise<void>;
+  onEditProject?: (tag: InboxTag) => void;
+  onTogglePin?: (tag: InboxTag) => void;
   /** When true, fills its container (for use inside a mobile Sheet) instead of the fixed-width card. */
   bare?: boolean;
 }
@@ -82,7 +86,8 @@ function InlineInput({
 // ── Tag item with rename + caret for workstreams ──────────────────────────────
 
 function TagItem({
-  tag, workstreams, counts, filter, onFilterChange, onRename, onCreateWorkstream, icon, depth = 0,
+  tag, workstreams, counts, filter, onFilterChange, onRename, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, icon, depth = 0,
+  draggingId, onDragStart, onDragEnd,
 }: {
   tag: InboxTag;
   workstreams: InboxTag[];
@@ -91,15 +96,40 @@ function TagItem({
   onFilterChange: (f: InboxFilterState) => void;
   onRename: (id: string, name: string) => Promise<void>;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
+  onUpdateTag?: (id: string, patch: Partial<Pick<InboxTag, 'type' | 'parent_id' | 'sort_order'>>) => Promise<void>;
+  onEditProject?: (tag: InboxTag) => void;
+  onTogglePin?: (tag: InboxTag) => void;
   icon: React.ReactNode;
   depth?: number;
+  draggingId?: string | null;
+  onDragStart?: (id: string) => void;
+  onDragEnd?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [addingWorkstream, setAddingWorkstream] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [dropTarget, setDropTarget] = useState(false);
   const isTouch = useIsTouch();
   const showActions = hovered || isTouch;
+
+  const isDragging = draggingId === tag.id;
+  const canReceiveDrop = !isDragging && depth === 0 && onUpdateTag && draggingId;
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDropTarget(false);
+    if (!canReceiveDrop || !onUpdateTag) return;
+    const draggedId = e.dataTransfer.getData('text/plain');
+    if (!draggedId || draggedId === tag.id) return;
+
+    // Nest the dragged project under the target as a workstream. The target keeps
+    // its own type — a project stays a project (projects can hold workstreams too),
+    // a folder stays a folder.
+    if (tag.type === 'folder' || tag.type === 'project') {
+      await onUpdateTag(draggedId, { type: 'workstream', parent_id: tag.id });
+    }
+  }, [canReceiveDrop, onUpdateTag, tag.id, tag.type]);
 
   const hasWorkstreams = workstreams.length > 0;
   const isActive = JSON.stringify(filter) === JSON.stringify({ tagIds: [tag.id] });
@@ -136,11 +166,27 @@ function TagItem({
           onDoubleClick={startEdit}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
+          draggable={
+            (depth === 0 && tag.type === 'project') ||
+            (depth === 1 && tag.type === 'workstream')
+          }
+          onDragStart={e => {
+            const payload = depth === 1 ? `ws:${tag.id}` : tag.id;
+            e.dataTransfer.setData('text/plain', payload);
+            e.dataTransfer.effectAllowed = 'move';
+            onDragStart?.(tag.id);
+          }}
+          onDragEnd={() => { onDragEnd?.(); setDropTarget(false); }}
+          onDragOver={e => { if (canReceiveDrop) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTarget(true); } }}
+          onDragLeave={() => setDropTarget(false)}
+          onDrop={handleDrop}
           className={cn(
             'group w-full flex items-center gap-2 py-1.5 rounded-md text-sm transition-colors text-left',
             isTouch && 'min-h-[44px]',
             depth > 0 ? 'pr-2' : 'px-2',
             isActive ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+            isDragging && 'opacity-40',
+            dropTarget && 'ring-2 ring-blue-400 bg-blue-50 text-blue-700',
           )}
           style={{ paddingLeft: depth > 0 ? `${8 + depth * 16}px` : undefined }}
         >
@@ -162,22 +208,51 @@ function TagItem({
           <span className="text-gray-400 flex-shrink-0 w-4 flex items-center justify-center">{icon}</span>
           <span className="flex-1 truncate">{tag.name}</span>
 
-          {/* Rename / add-workstream actions — always available on touch, hover-revealed otherwise */}
+          {/* Actions — always available on touch, hover-revealed otherwise */}
           {showActions && (
             <span className="flex items-center gap-0.5 flex-shrink-0">
-              {/* Pencil — rename */}
-              <span
-                onClick={startEdit}
-                className={cn(
-                  'rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center',
-                  isTouch ? 'h-8 w-8' : 'p-0.5',
-                )}
-                title="Rename"
-              >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
-                </svg>
-              </span>
+              {/* Gear — project/folder settings; pencil — rename for others */}
+              {depth === 0 && (tag.type === 'project' || tag.type === 'folder') && onEditProject ? (
+                <>
+                  {tag.type === 'project' && (
+                    <span
+                      onClick={e => { e.stopPropagation(); onTogglePin?.(tag); }}
+                      className={cn(
+                        'rounded hover:bg-gray-200 flex items-center justify-center',
+                        isTouch ? 'h-8 w-8' : 'p-0.5',
+                        tag.settings?.pinned ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-gray-500',
+                      )}
+                      title={tag.settings?.pinned ? 'Unpin project' : 'Pin project'}
+                    >
+                      <Pin className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                  <span
+                    onClick={e => { e.stopPropagation(); onEditProject(tag); }}
+                    className={cn(
+                      'rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center',
+                      isTouch ? 'h-8 w-8' : 'p-0.5',
+                    )}
+                    title={tag.type === 'folder' ? 'Folder settings' : 'Project settings'}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </span>
+                </>
+
+              ) : (
+                <span
+                  onClick={startEdit}
+                  className={cn(
+                    'rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center',
+                    isTouch ? 'h-8 w-8' : 'p-0.5',
+                  )}
+                  title="Rename"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
+                  </svg>
+                </span>
+              )}
               {/* Plus — add workstream (only on top-level) */}
               {depth === 0 && (
                 <span
@@ -189,6 +264,19 @@ function TagItem({
                   title="Add workstream"
                 >
                   <Plus className="h-3.5 w-3.5" />
+                </span>
+              )}
+              {/* Move out — promote a workstream to a top-level folder */}
+              {depth > 0 && tag.type === 'workstream' && onUpdateTag && (
+                <span
+                  onClick={e => { e.stopPropagation(); onUpdateTag(tag.id, { type: 'folder', parent_id: null }); }}
+                  className={cn(
+                    'rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center',
+                    isTouch ? 'h-8 w-8' : 'p-0.5',
+                  )}
+                  title="Move out of folder"
+                >
+                  <FolderOutput className="h-3.5 w-3.5" />
                 </span>
               )}
             </span>
@@ -216,8 +304,12 @@ function TagItem({
               onFilterChange={onFilterChange}
               onRename={onRename}
               onCreateWorkstream={onCreateWorkstream}
+              onUpdateTag={onUpdateTag}
               icon={<span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ws.color }} />}
               depth={1}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              draggingId={draggingId}
             />
           ))}
 
@@ -258,12 +350,59 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
+// ── Drop gap — a landing zone between/around folders while dragging a project
+// or workstream. Dropping here makes the dragged tag a top-level folder at this
+// position (vs. dropping ON a row, which nests it as a workstream).
+// `label` renders a larger, self-explaining zone — used when the section is empty.
+
+function DropGap({ active, onDrop, label }: { active: boolean; onDrop: () => void; label?: string }) {
+  const [over, setOver] = useState(false);
+  if (!active) return null;
+
+  const handlers = {
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(true); },
+    onDragLeave: () => setOver(false),
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(false); onDrop(); },
+  };
+
+  if (label) {
+    return (
+      <div {...handlers} className="mx-2 my-1">
+        <div className={cn(
+          'flex items-center justify-center gap-1.5 rounded-md border border-dashed py-2.5 text-[11px] transition-colors',
+          over ? 'border-blue-400 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-400',
+        )}>
+          <FolderPlus className="h-3.5 w-3.5" />
+          {label}
+        </div>
+      </div>
+    );
+  }
+
+  // Slim gap with a generous (h-2) invisible hit area so it's easy to aim at.
+  return (
+    <div {...handlers} className="mx-2 h-2 flex items-center" aria-label="Drop to create a folder here">
+      <div className={cn('h-0.5 w-full rounded transition-colors', over ? 'bg-blue-400' : 'bg-transparent')} />
+    </div>
+  );
+}
+
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 
 export function InboxSidebar({
-  tags, counts, filter, onFilterChange, onRenameTag, onCreateWorkstream, bare = false,
+  tags, counts, filter, onFilterChange, onRenameTag, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, bare = false,
 }: InboxSidebarProps) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingWsId, setDraggingWsId] = useState<string | null>(null);
   const isActive = (f: InboxFilterState) => JSON.stringify(f) === JSON.stringify(filter);
+
+  const handleDragStart = (id: string) => {
+    // Determine if this is a workstream drag by checking tag type
+    const tag = tags.find(t => t.id === id);
+    if (tag?.type === 'workstream') setDraggingWsId(id);
+    else setDraggingId(id);
+  };
+  const handleDragEnd = () => { setDraggingId(null); setDraggingWsId(null); };
 
   const workstreamsByParent = tags
     .filter(t => t.type === 'workstream' && t.parent_id)
@@ -274,9 +413,27 @@ export function InboxSidebar({
       return acc;
     }, {});
 
-  const projectTags = tags.filter(t => t.type === 'project');
-  const personTags  = tags.filter(t => t.type === 'person');
-  const folderTags  = tags.filter(t => t.type === 'folder');
+  const bySortOrder = (a: InboxTag, b: InboxTag) => a.sort_order - b.sort_order;
+  const projectTags = tags.filter(t => t.type === 'project').sort(bySortOrder);
+  const personTags  = tags.filter(t => t.type === 'person').sort(bySortOrder);
+  const folderTags  = tags.filter(t => t.type === 'folder').sort(bySortOrder);
+
+  // A project or workstream is being dragged — show the folder landing zones.
+  const dragging = !!(draggingId || draggingWsId);
+
+  // Drop into a folder-section gap: convert the dragged project/workstream into a
+  // top-level folder and slot it at `index`, renumbering the folder group so the
+  // order is stable (and reflected optimistically). Reindex math is a pure,
+  // unit-tested helper.
+  const dropIntoFolders = async (index: number) => {
+    const draggedId = draggingId ?? draggingWsId;
+    setDraggingId(null);
+    setDraggingWsId(null);
+    if (!draggedId || !onUpdateTag) return;
+
+    const updates = planFolderReindex(folderTags, draggedId, index);
+    await Promise.all(updates.map(u => onUpdateTag(u.id, u.patch)));
+  };
 
   return (
     <div className={cn(
@@ -335,28 +492,49 @@ export function InboxSidebar({
                 onFilterChange={onFilterChange}
                 onRename={onRenameTag}
                 onCreateWorkstream={onCreateWorkstream}
+                onUpdateTag={onUpdateTag}
+                onEditProject={onEditProject}
+                onTogglePin={onTogglePin}
+                draggingId={draggingId}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
                 icon={<Hash className="h-4 w-4" style={{ color: tag.color }} />}
               />
             ))}
           </>
         )}
 
-        {folderTags.length > 0 && (
+        {(folderTags.length > 0 || dragging) && (
           <>
             <SectionHeader label="Folders" />
-            {folderTags.map(tag => (
-              <TagItem
-                key={tag.id}
-                tag={tag}
-                workstreams={workstreamsByParent[tag.id] ?? []}
-                counts={counts}
-                filter={filter}
-                onFilterChange={onFilterChange}
-                onRename={onRenameTag}
-                onCreateWorkstream={onCreateWorkstream}
-                icon={<Folder className="h-4 w-4" style={{ color: tag.color }} />}
-              />
-            ))}
+            {folderTags.length === 0 ? (
+              // No folders yet: a single, obvious landing zone that creates the first one.
+              <DropGap active={dragging} onDrop={() => dropIntoFolders(0)} label="Drop here to make a folder" />
+            ) : (
+              <>
+                <DropGap active={dragging} onDrop={() => dropIntoFolders(0)} />
+                {folderTags.map((tag, i) => (
+                  <div key={tag.id}>
+                    <TagItem
+                      tag={tag}
+                      workstreams={workstreamsByParent[tag.id] ?? []}
+                      counts={counts}
+                      filter={filter}
+                      onFilterChange={onFilterChange}
+                      onRename={onRenameTag}
+                      onCreateWorkstream={onCreateWorkstream}
+                      onUpdateTag={onUpdateTag}
+                      onEditProject={onEditProject}
+                      draggingId={draggingId}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      icon={<Folder className="h-4 w-4" style={{ color: tag.color }} />}
+                    />
+                    <DropGap active={dragging} onDrop={() => dropIntoFolders(i + 1)} />
+                  </div>
+                ))}
+              </>
+            )}
           </>
         )}
       </div>

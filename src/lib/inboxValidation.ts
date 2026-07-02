@@ -287,3 +287,46 @@ export function resolveTargetStatus(filter: InboxFilterState): InboxItemStatus {
   if (filter.builtIn === 'archive') return 'archived';
   return filter.status ?? 'open';
 }
+
+// ── Folder drag-and-drop reindexing (extracted from InboxSidebar) ─────────────
+
+/** A single tag update produced by {@link planFolderReindex}. */
+export interface FolderReindexUpdate {
+  id: string;
+  patch: { type?: 'folder'; parent_id?: null; sort_order: number };
+}
+
+/**
+ * Plan the tag updates needed to drop `draggedId` into the folder list at gap
+ * `index` (0 = before the first folder, folders.length = after the last), making
+ * it a top-level folder and renumbering the group to a contiguous 0..n-1 order.
+ *
+ * Pure and order-independent: `folders` may be in any order (it is sorted by
+ * `sort_order` internally). Returns the *minimal* set of updates — the dragged
+ * tag always gets `type`/`parent_id`/`sort_order`; an existing folder is only
+ * touched when its position actually changes. `index` is clamped into range, so
+ * a bad index degrades to top/bottom rather than throwing or dropping the tag.
+ */
+export function planFolderReindex(
+  folders: { id: string; sort_order: number }[],
+  draggedId: string,
+  index: number,
+): FolderReindexUpdate[] {
+  const ordered = [...folders].sort((a, b) => a.sort_order - b.sort_order);
+  const ids = ordered.map((f) => f.id).filter((id) => id !== draggedId);
+  const clamped = Math.max(0, Math.min(Math.trunc(index), ids.length));
+  ids.splice(clamped, 0, draggedId);
+
+  const updates: FolderReindexUpdate[] = [];
+  ids.forEach((id, i) => {
+    if (id === draggedId) {
+      updates.push({ id, patch: { type: 'folder', parent_id: null, sort_order: i } });
+    } else {
+      const existing = ordered.find((f) => f.id === id);
+      if (!existing || existing.sort_order !== i) {
+        updates.push({ id, patch: { sort_order: i } });
+      }
+    }
+  });
+  return updates;
+}

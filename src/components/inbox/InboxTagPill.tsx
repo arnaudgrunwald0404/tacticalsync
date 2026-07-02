@@ -8,6 +8,7 @@ interface InboxTagPillProps {
   tag: InboxTag;
   onRemove?: () => void;
   size?: 'sm' | 'xs';
+  workstreamSuffix?: string;
   workstreams?: InboxTag[];
   onSelectWorkstream?: (ws: InboxTag) => void;
   onCreateWorkstream?: (name: string) => Promise<void>;
@@ -22,7 +23,7 @@ function tagStyle(color: string) {
 }
 
 export function InboxTagPill({
-  tag, onRemove, size = 'sm',
+  tag, onRemove, size = 'sm', workstreamSuffix,
   workstreams, onSelectWorkstream, onCreateWorkstream,
 }: InboxTagPillProps) {
   const prefix = tag.type === 'person' ? '@' : tag.type === 'workstream' ? '›' : '#';
@@ -82,6 +83,12 @@ export function InboxTagPill({
       >
         <span className="opacity-60">{prefix}</span>
         {tag.name}
+        {workstreamSuffix && (
+          <>
+            <span className="opacity-40 mx-0.5">›</span>
+            <span>{workstreamSuffix}</span>
+          </>
+        )}
       </span>
 
       {/* Hover actions: X and › */}

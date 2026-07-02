@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
-import type { InboxTag, InboxTagType, TAG_COLORS } from '@/types/inbox';
+import type { InboxTag, InboxTagType, ProjectSettings, TAG_COLORS } from '@/types/inbox';
 import { validateTagName, validateTagColor, isTagType } from '@/lib/inboxValidation';
 
 // The generated Row is structurally identical to the domain InboxTag except that
@@ -85,6 +85,20 @@ export function useInboxTags(userId: string | null) {
     setTags(prev => prev.map(t => t.id === id ? { ...t, name: trimmed } : t));
   }, []);
 
+  const updateTag = useCallback(async (id: string, patch: Partial<Pick<InboxTag, 'type' | 'parent_id' | 'sort_order'>>) => {
+    if (patch.type !== undefined && !isTagType(patch.type)) return;
+    await supabase.from('inbox_tags').update(patch).eq('id', id);
+    setTags(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  }, []);
+
+  const saveTagSettings = useCallback(async (id: string, settings: ProjectSettings, name: string) => {
+    const nameResult = validateTagName(name);
+    const patch: Record<string, unknown> = { settings };
+    if (nameResult.ok) patch.name = nameResult.value;
+    await supabase.from('inbox_tags').update(patch).eq('id', id);
+    setTags(prev => prev.map(t => t.id === id ? { ...t, settings, ...(nameResult.ok ? { name: nameResult.value } : {}) } : t));
+  }, []);
+
   const getOrCreate = useCallback(async (
     name: string,
     type: InboxTagType,
@@ -96,5 +110,5 @@ export function useInboxTags(userId: string | null) {
     return createTag(name, type, color, memberId);
   }, [tags, createTag]);
 
-  return { tags, loading, createTag, createWorkstream, deleteTag, renameTag, getOrCreate, reload: load };
+  return { tags, loading, createTag, createWorkstream, deleteTag, renameTag, updateTag, saveTagSettings, getOrCreate, reload: load };
 }

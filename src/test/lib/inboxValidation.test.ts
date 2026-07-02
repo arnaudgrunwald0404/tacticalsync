@@ -23,6 +23,7 @@ import {
   nextWorkflowStatus,
   applyInboxClientFilters,
   resolveTargetStatus,
+  planFolderReindex,
   inboxItemInsertSchema,
   inboxTagInsertSchema,
   briefPrioritySchema,
@@ -525,5 +526,95 @@ describe('delegationRequestSchema', () => {
   it('rejects a request missing required fields', () => {
     expect(() => delegationRequestSchema.parse({ action: 'start' })).toThrow();
     expect(() => delegationRequestSchema.parse({})).toThrow();
+  });
+});
+
+// ── planFolderReindex — dropping a project/workstream into the Folders section ─
+
+describe('planFolderReindex', () => {
+  // Three existing folders at contiguous positions 0,1,2.
+  const folders = [
+    { id: 'A', sort_order: 0 },
+    { id: 'B', sort_order: 1 },
+    { id: 'C', sort_order: 2 },
+  ];
+  // The dragged tag ("P") is a project/workstream — NOT already in `folders`.
+
+  it('makes the dragged tag a top-level folder (type + parent_id cleared)', () => {
+    const updates = planFolderReindex(folders, 'P', folders.length);
+    const dragged = updates.find(u => u.id === 'P');
+    expect(dragged).toBeDefined();
+    expect(dragged!.patch.type).toBe('folder');
+    expect(dragged!.patch.parent_id).toBeNull();
+  });
+
+  it('appends at the bottom without disturbing existing folders', () => {
+    const updates = planFolderReindex(folders, 'P', 3);
+    // A/B/C keep positions 0/1/2 → no update needed for them; only P is written.
+    expect(updates).toEqual([{ id: 'P', patch: { type: 'folder', parent_id: null, sort_order: 3 } }]);
+  });
+
+  it('inserts at the top and pushes every existing folder down by one', () => {
+    const updates = planFolderReindex(folders, 'P', 0);
+    const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
+    expect(byId).toEqual({ P: 0, A: 1, B: 2, C: 3 });
+  });
+
+  it('inserts between two folders and renumbers only what moves', () => {
+    const updates = planFolderReindex(folders, 'P', 1); // between A and B
+    const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
+    // A stays at 0 (untouched); P=1, B=2, C=3.
+    expect(byId).toEqual({ P: 1, B: 2, C: 3 });
+    expect(updates.find(u => u.id === 'A')).toBeUndefined();
+  });
+
+  it('clamps an out-of-range index to the bottom rather than dropping the tag', () => {
+    const updates = planFolderReindex(folders, 'P', 999);
+    const dragged = updates.find(u => u.id === 'P');
+    expect(dragged!.patch.sort_order).toBe(3);
+  });
+
+  it('clamps a negative index to the top', () => {
+    const updates = planFolderReindex(folders, 'P', -5);
+    const dragged = updates.find(u => u.id === 'P');
+    expect(dragged!.patch.sort_order).toBe(0);
+  });
+
+  it('creates the first folder from an empty folder list', () => {
+    const updates = planFolderReindex([], 'P', 0);
+    expect(updates).toEqual([{ id: 'P', patch: { type: 'folder', parent_id: null, sort_order: 0 } }]);
+  });
+
+  it('is order-independent — unsorted input yields the same plan', () => {
+    const shuffled = [
+      { id: 'C', sort_order: 2 },
+      { id: 'A', sort_order: 0 },
+      { id: 'B', sort_order: 1 },
+    ];
+    expect(planFolderReindex(shuffled, 'P', 1)).toEqual(planFolderReindex(folders, 'P', 1));
+  });
+
+  it('normalizes sparse/duplicate sort orders into a contiguous 0..n sequence', () => {
+    const sparse = [
+      { id: 'A', sort_order: 5 },
+      { id: 'B', sort_order: 5 },   // duplicate
+      { id: 'C', sort_order: 40 },
+    ];
+    const updates = planFolderReindex(sparse, 'P', 3); // bottom
+    const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
+    // Every position becomes contiguous; P lands last at 3.
+    expect(byId.P).toBe(3);
+    const orders = updates.map(u => u.patch.sort_order).sort((a, b) => a - b);
+    expect(orders).toEqual([0, 1, 2, 3]);
+  });
+
+  it('repositions a tag that is already a folder without duplicating it', () => {
+    // Dragging existing folder C to the top: C is filtered out before splice,
+    // so it appears exactly once in the result.
+    const updates = planFolderReindex(folders, 'C', 0);
+    const cUpdates = updates.filter(u => u.id === 'C');
+    expect(cUpdates).toHaveLength(1);
+    const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
+    expect(byId).toEqual({ C: 0, A: 1, B: 2 });
   });
 });
