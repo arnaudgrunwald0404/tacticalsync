@@ -951,7 +951,7 @@ export function OneOnOnePrepDrawer({
                                   <span className="text-[14.5px] font-semibold">{inlineMd(p.heading)}</span>
                                 </div>
                                 {(p.paragraphs?.length || p.bullets?.length) ? (
-                                  <div className={cn('mt-2 space-y-1', !included && 'opacity-60')}>
+                                  <div className={cn('mt-2 space-y-1')}>
                                     {p.paragraphs?.map((para, pi) => (
                                       <p key={pi} className="text-[13px] text-muted-foreground leading-[1.5]">{inlineMd(para)}</p>
                                     ))}
