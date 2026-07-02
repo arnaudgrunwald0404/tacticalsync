@@ -133,9 +133,20 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-    if (userErr || !userData?.user) return jsonResponse({ error: 'invalid_token' }, 401)
-    const userId = userData.user.id
+    // Two auth modes:
+    // 1. User JWT — normal client call
+    // 2. Service-role key + x-supabase-user-id header — batch/cron invocation (agent-tick)
+    let userId: string
+    const overrideUserId = req.headers.get('x-supabase-user-id')
+    if (overrideUserId && jwt === serviceRoleKey) {
+      const { data: profile } = await supabase.auth.admin.getUserById(overrideUserId)
+      if (!profile?.user) return jsonResponse({ error: 'user_not_found' }, 404)
+      userId = overrideUserId
+    } else {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+      if (userErr || !userData?.user) return jsonResponse({ error: 'invalid_token' }, 401)
+      userId = userData.user.id
+    }
 
     // Optional: process a specific transcript
     let transcriptId: string | null = null
