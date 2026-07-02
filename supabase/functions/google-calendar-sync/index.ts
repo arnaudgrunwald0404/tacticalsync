@@ -328,7 +328,7 @@ serve(async (req) => {
       times: string[]
       nextStart: string | null
     }
-    const now = new Date().toISOString()
+    const nowIso = new Date().toISOString()
     const groupMeetings = new Map<string, GroupAcc>()
 
     for (const event of allEvents) {
@@ -379,7 +379,7 @@ serve(async (req) => {
         if (event.status !== 'cancelled' && event.start.dateTime) {
           acc.times.push(event.start.dateTime)
           // Track the soonest future start as next_start_at.
-          if (event.start.dateTime >= now && (!acc.nextStart || event.start.dateTime < acc.nextStart)) {
+          if (event.start.dateTime >= nowIso && (!acc.nextStart || event.start.dateTime < acc.nextStart)) {
             acc.nextStart = event.start.dateTime
           }
         }
@@ -620,7 +620,7 @@ serve(async (req) => {
             .update({
               title: acc.title,
               cadence,
-              last_seen_at: now,
+              last_seen_at: nowIso,
               next_start_at: acc.nextStart,
             })
             .eq('id', existing.id)
@@ -634,7 +634,7 @@ serve(async (req) => {
               subject: acc.title,
               included: false,
               cadence,
-              last_seen_at: now,
+              last_seen_at: nowIso,
               next_start_at: acc.nextStart,
             })
             .select('id')
