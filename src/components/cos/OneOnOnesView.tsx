@@ -86,6 +86,7 @@ interface OneOnOnesViewProps {
   onOpenGroupPrep?: (meeting: import('@/hooks/useGroupMeetings').GroupMeeting) => void;
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
+  onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
 }
 
 interface MyTodo {
@@ -284,6 +285,7 @@ export function OneOnOnesView({
   onOpenGroupPrep,
   toolbarPortalId,
   viewToggle,
+  onSelectEvent,
 }: OneOnOnesViewProps) {
   const [search, setSearch] = useState('');
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
@@ -529,6 +531,7 @@ export function OneOnOnesView({
           onOpen={onViewPrep}
           loading={loadingPrep}
           runningPrepEventIds={runningPrepEventIds}
+          onSelectEvent={onSelectEvent}
         />
       </div>
     </div>

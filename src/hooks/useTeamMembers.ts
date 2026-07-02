@@ -14,7 +14,7 @@ export function useTeamMembers(userId: string | null) {
 
   useEffect(() => {
     if (!userId) return;
-    (supabase as any)
+    supabase
       .from('cos_team_members')
       .select('id, name, email, role, relationship_type')
       .eq('user_id', userId)

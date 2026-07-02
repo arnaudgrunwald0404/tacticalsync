@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { TeamSection, type CosTeamMember } from '@/pages/ChiefOfStaff';
+import { MeetingDetailPanel } from '@/components/inbox/MeetingDetailPanel';
+import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 export function InboxMeetingsView() {
   const [members, setMembers] = useState<CosTeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState<UpcomingOneOnOneEvent | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -29,5 +32,21 @@ export function InboxMeetingsView() {
     );
   }
 
-  return <TeamSection members={members} basePath="/inbox/meetings" hideViewToggle />;
+  if (selectedEvent) {
+    return (
+      <MeetingDetailPanel
+        event={selectedEvent}
+        onBack={() => setSelectedEvent(null)}
+      />
+    );
+  }
+
+  return (
+    <TeamSection
+      members={members}
+      basePath="/inbox/meetings"
+      hideViewToggle
+      onSelectEvent={setSelectedEvent}
+    />
+  );
 }

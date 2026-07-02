@@ -3604,7 +3604,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -4294,6 +4294,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
           onOpenGroupPrep={openGroupPrep}
           toolbarPortalId={hideViewToggle ? undefined : toolbarPortalId}
           viewToggle={hideViewToggle ? undefined : viewToggle}
+          onSelectEvent={onSelectEvent}
         />
       ) : (
         <>
