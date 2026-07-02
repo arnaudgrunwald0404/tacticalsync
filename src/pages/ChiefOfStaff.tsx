@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot,
+  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot, Users,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -3635,14 +3635,17 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
   const [loadingInitial, setLoadingInitial] = useState(true);
   const cosNavigate = useNavigate();
   const cosLocation = useLocation();
-  const teamView: 'calendar' | 'map' | 'activity' =
-    cosLocation.pathname.includes('/meetings/coverage')
+  const teamView: 'calendar' | 'map' | 'group' | 'activity' =
+    cosLocation.pathname.includes('/meetings/group-coverage')
+      ? 'group'
+      : cosLocation.pathname.includes('/meetings/coverage')
       ? 'map'
       : cosLocation.pathname.includes('/meetings/activity')
       ? 'activity'
       : 'calendar';
-  const setTeamView = (view: 'calendar' | 'map' | 'activity') => {
+  const setTeamView = (view: 'calendar' | 'map' | 'group' | 'activity') => {
     if (view === 'map') cosNavigate(`${basePath}/coverage`);
+    else if (view === 'group') cosNavigate(`${basePath}/group-coverage`);
     else if (view === 'activity') cosNavigate(`${basePath}/activity`);
     else cosNavigate(`${basePath}/one-on-ones`);
   };
@@ -4231,7 +4234,19 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
         )}
       >
         <Radar className="h-3.5 w-3.5" />
-        Coverage
+        1:1 Coverage
+      </button>
+      <button
+        onClick={() => setTeamView('group')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'group'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Users className="h-3.5 w-3.5" />
+        Group Coverage
       </button>
       <button
         onClick={() => setTeamView('activity')}
@@ -4296,6 +4311,20 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
           viewToggle={hideViewToggle ? undefined : viewToggle}
           onSelectEvent={onSelectEvent}
         />
+      ) : teamView === 'group' ? (
+        <>
+          {!hideViewToggle && (portalTarget ? createPortal(
+            <div className="flex items-center gap-3 w-full">
+              {viewToggle}
+            </div>,
+            portalTarget,
+          ) : (
+            <div className="flex items-center gap-3 w-full mb-6">
+              {viewToggle}
+            </div>
+          ))}
+          <GroupMeetingCoverage />
+        </>
       ) : (
         <>
           {!hideViewToggle && (portalTarget ? createPortal(
@@ -4313,9 +4342,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
             upcomingEvents={upcomingEvents}
             onViewPrep={openPrep}
           />
-          <div className="mt-8">
-            <GroupMeetingCoverage />
-          </div>
         </>
       )}
 
