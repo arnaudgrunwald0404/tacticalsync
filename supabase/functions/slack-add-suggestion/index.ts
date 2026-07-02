@@ -88,13 +88,14 @@ serve(async (req) => {
 
     const params = new URLSearchParams(rawBody)
     const slackUserId = params.get('user_id') ?? ''
-    const text = (params.get('text') ?? '').trim()
+    const rawText = params.get('text') ?? ''
+    const items = rawText.split(';').map((s) => s.trim()).filter(Boolean)
 
     if (!slackUserId) {
       return ephemeral('Could not read your Slack user — please try again.')
     }
 
-    if (!text) {
+    if (items.length === 0) {
       return ephemeral(
         'Add something to your TacticalSync suggestions, e.g. `/add-to-my-lists follow up with Dan on pricing`.',
       )
@@ -119,22 +120,27 @@ serve(async (req) => {
 
     const { error: insertErr } = await supabase
       .from('dci_suggested_tasks')
-      .insert({
-        user_id: creds.user_id,
-        title: text,
-        source: 'Slack',
-        source_type: 'slack',
-        status: 'pending',
-        raw_context: `Added from Slack via /add-to-my-lists`,
-      })
+      .insert(
+        items.map((title) => ({
+          user_id: creds.user_id,
+          title,
+          source: 'Slack',
+          source_type: 'slack',
+          status: 'pending',
+          raw_context: `Added from Slack via /add-to-my-lists`,
+        })),
+      )
 
     if (insertErr) {
       console.error('slack-add-suggestion insert failed:', insertErr)
       return ephemeral('Something went wrong saving that — please try again.')
     }
 
+    const itemList = items.length === 1
+      ? `*${items[0]}*`
+      : items.map((t) => `• ${t}`).join('\n')
     return ephemeral(
-      `:sparkles: Added to your TacticalSync suggestions: *${text}*\nOpen <https://tacticalsync.com/chief-of-staff|the TacticalSync app> to route it to a list.`,
+      `:sparkles: Added ${items.length === 1 ? 'to' : `${items.length} items to`} your TacticalSync suggestions:\n${itemList}\nOpen <https://tacticalsync.com/chief-of-staff|the TacticalSync app> to route them to a list.`,
     )
   } catch (error) {
     console.error('slack-add-suggestion error:', error)
