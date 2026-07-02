@@ -21,6 +21,7 @@ interface AgentConfig {
   pre_stage_prep: boolean
   escalate_patterns: boolean
   recommend_format: boolean
+  post_meeting_check: boolean
   nudge_timing_hours: number
   nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
@@ -35,6 +36,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   pre_stage_prep: true,
   escalate_patterns: false,
   recommend_format: false,
+  post_meeting_check: true,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -315,6 +317,18 @@ serve(async (req) => {
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'recommend_format',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // ── Post-meeting transcript check ──────────────────────────────
+      if (config.post_meeting_check) {
+        try {
+          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'post_meeting_check',
             error: (err as Error).message,
           })
         }
@@ -860,6 +874,146 @@ async function computeFormatRecommendations(
       },
     })
   }
+}
+
+// ── Post-meeting transcript check ──────────────────────────────────────────
+//
+// Called every 30 min. Looks for 1:1 calendar events with a Zoom meeting ID
+// that started 15 min–2.5 h ago (i.e., likely just finished), syncs the Zoom
+// recording, then runs generate-meeting-suggestions to extract action items.
+// Uses dci_meeting_schedule to track which meetings have been processed so
+// each meeting is handled exactly once.
+
+async function postMeetingCheck(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userId: string,
+  config: AgentConfig,
+): Promise<void> {
+  const now = new Date()
+  const windowStart = new Date(now.getTime() - 150 * 60 * 1000) // 2.5 h ago
+  const windowEnd   = new Date(now.getTime() -  15 * 60 * 1000) // 15 min ago
+
+  // Find calendar events with a Zoom link that recently ended.
+  const { data: calEvents } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, title, start_time, zoom_meeting_id')
+    .eq('user_id', userId)
+    .not('zoom_meeting_id', 'is', null)
+    .gte('start_time', windowStart.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+    .neq('status', 'cancelled')
+
+  if (!calEvents || calEvents.length === 0) return
+
+  // Ensure each event has a dci_meeting_schedule row (insert-only; never
+  // overwrite an existing row so transcript_checked state is preserved).
+  for (const event of calEvents as Array<{
+    id: string; team_member_id: string | null; title: string | null
+    start_time: string; zoom_meeting_id: string
+  }>) {
+    const startDt = new Date(event.start_time)
+    const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000) // assume 60-min meeting
+    await supabase
+      .from('dci_meeting_schedule')
+      .upsert({
+        user_id:        userId,
+        date:           startDt.toISOString().slice(0, 10),
+        title:          event.title ?? 'Meeting',
+        start_time:     event.start_time,
+        end_time:       endDt.toISOString(),
+        zoom_meeting_id: event.zoom_meeting_id,
+        attendees:      [] as string[],
+      }, { onConflict: 'user_id,date,title,start_time', ignoreDuplicates: true })
+  }
+
+  // Find the subset that hasn't been processed yet.
+  const { data: pending } = await supabase
+    .from('dci_meeting_schedule')
+    .select('id, title')
+    .eq('user_id', userId)
+    .eq('transcript_checked', false)
+    .gte('start_time', windowStart.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  if (!pending || pending.length === 0) return
+
+  const pendingIds = (pending as Array<{ id: string; title: string }>).map(r => r.id)
+
+  // Step 1: Sync Zoom recordings for the last day.
+  let zoomSyncOk = false
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/zoom-recordings-sync`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        'x-supabase-user-id': userId,
+      },
+      body: JSON.stringify({ days: 1 }),
+    })
+    zoomSyncOk = res.ok
+    if (!res.ok) console.warn(`post_meeting_check: zoom-recordings-sync returned ${res.status}`)
+  } catch (err) {
+    console.warn('post_meeting_check: zoom sync failed:', (err as Error).message)
+  }
+
+  // Step 2: Extract action item suggestions from any new transcripts.
+  let suggestionsAdded = 0
+  if (zoomSyncOk) {
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-meeting-suggestions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': userId,
+        },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const data = await res.json() as { suggestions_added?: number }
+        suggestionsAdded = data.suggestions_added ?? 0
+      } else {
+        console.warn(`post_meeting_check: generate-meeting-suggestions returned ${res.status}`)
+      }
+    } catch (err) {
+      console.warn('post_meeting_check: suggestions extraction failed:', (err as Error).message)
+    }
+  }
+
+  // Mark schedule rows as processed.
+  await supabase
+    .from('dci_meeting_schedule')
+    .update({
+      transcript_checked:     true,
+      action_items_extracted: suggestionsAdded > 0,
+    })
+    .in('id', pendingIds)
+
+  // Notify via Slack if action items were surfaced.
+  if (suggestionsAdded > 0 && config.slack_notifications) {
+    const label = (pending as Array<{ title: string }>)[0]?.title ?? 'your recent meeting'
+    const n = suggestionsAdded
+    await sendSlackDM(
+      supabase, userId,
+      `${n} action item${n === 1 ? '' : 's'} extracted from ${label}`,
+      [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `:memo: *${n} action item${n === 1 ? '' : 's'} from ${label}*\n\nI found follow-ups from your recent meeting. Review them in your task suggestions panel.`,
+        },
+      }],
+    )
+  }
+
+  await logAgentEvent(supabase, userId, 'post_meeting_check', {
+    meetings_checked:   pendingIds.length,
+    zoom_sync_ok:       zoomSyncOk,
+    suggestions_added:  suggestionsAdded,
+  })
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

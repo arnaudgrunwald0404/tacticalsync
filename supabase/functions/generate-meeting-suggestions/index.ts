@@ -14,6 +14,28 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
+// Word-overlap similarity — used to deduplicate AI suggestions against
+// manually-created action items. Normalises both strings to word sets and
+// computes Jaccard similarity; returns true if the overlap meets the threshold.
+function normalizeWords(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3),
+  )
+}
+
+function isSimilarText(a: string, b: string, threshold = 0.5): boolean {
+  const wa = normalizeWords(a)
+  const wb = normalizeWords(b)
+  if (wa.size === 0 || wb.size === 0) return false
+  let intersection = 0
+  for (const w of wa) if (wb.has(w)) intersection++
+  const union = wa.size + wb.size - intersection
+  return union > 0 && intersection / union >= threshold
+}
+
 // Strip VTT timestamps/metadata, keeping spoken text with speaker labels.
 function stripVtt(vtt: string): string {
   return vtt
@@ -133,9 +155,20 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-    if (userErr || !userData?.user) return jsonResponse({ error: 'invalid_token' }, 401)
-    const userId = userData.user.id
+    // Two auth modes:
+    // 1. User JWT — normal client call
+    // 2. Service-role key + x-supabase-user-id header — batch/cron invocation (agent-tick)
+    let userId: string
+    const overrideUserId = req.headers.get('x-supabase-user-id')
+    if (overrideUserId && jwt === serviceRoleKey) {
+      const { data: profile } = await supabase.auth.admin.getUserById(overrideUserId)
+      if (!profile?.user) return jsonResponse({ error: 'user_not_found' }, 404)
+      userId = overrideUserId
+    } else {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+      if (userErr || !userData?.user) return jsonResponse({ error: 'invalid_token' }, 401)
+      userId = userData.user.id
+    }
 
     // Optional: process a specific transcript
     let transcriptId: string | null = null
@@ -268,6 +301,19 @@ serve(async (req) => {
         ? new Date(recording.start_time).toISOString().slice(0, 10)
         : new Date().toISOString().slice(0, 10)
 
+      // Load manually-created action items for this member so we can deduplicate
+      // AI suggestions against work the user already captured during the meeting.
+      const manualActions: Array<{ text: string }> = []
+      if (recording?.team_member_id) {
+        const { data: actions } = await supabase
+          .from('cos_meeting_actions')
+          .select('text')
+          .eq('user_id', userId)
+          .eq('member_id', recording.team_member_id)
+          .eq('status', 'pending')
+        if (actions) manualActions.push(...(actions as Array<{ text: string }>))
+      }
+
       for (const item of items) {
         const title = (item.title ?? '').trim()
         if (!title) continue
@@ -279,7 +325,7 @@ serve(async (req) => {
           ? item.urgency
           : 'this_week'
 
-        // Dedupe: skip if a pending suggestion with the same title already exists.
+        // Dedupe against pending suggestions (exact title match).
         const { data: existing } = await supabase
           .from('dci_suggested_tasks')
           .select('id')
@@ -288,6 +334,9 @@ serve(async (req) => {
           .eq('status', 'pending')
           .maybeSingle()
         if (existing) continue
+
+        // Dedupe against manually-created action items (word-overlap similarity).
+        if (manualActions.some(m => isSimilarText(m.text, title))) continue
 
         const { error: insertErr } = await supabase
           .from('dci_suggested_tasks')
