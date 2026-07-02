@@ -508,7 +508,7 @@ export function AgendaSidebar({
                             )}
                             <div className="flex-1 min-w-0 space-y-1">
                               {/* Row 1: Title and Delete */}
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-start gap-3">
                                 {isEditingAgenda ? (
                                   <>
                                     <div className="flex-1">
@@ -516,8 +516,8 @@ export function AgendaSidebar({
                                         value={htmlToPlainText(item.title || "")}
                                         onChange={(e) => actions.updateEditingItem(index, 'title', e.target.value)}
                                         placeholder="Agenda item"
-                                        className="min-h-[32px] resize-none  overflow-hidden text-sm font-medium p-1.5 focus-visible:ring-0"
-                                        rows={1}
+                                        className="min-h-[32px] resize-none overflow-hidden text-sm font-medium p-1.5 focus-visible:ring-0"
+                                        rows={2}
                                         onInput={(e) => {
                                           const target = e.target as HTMLTextAreaElement;
                                           target.style.height = 'auto';
