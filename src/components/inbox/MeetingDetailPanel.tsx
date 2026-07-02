@@ -29,11 +29,11 @@ const NOTES_FROM_LAST = [
 ];
 
 const QUESTIONS = [
-  { text: 'What's the biggest thing slowing you down right now?', tag: 'Blockers' },
+  { text: "What's the biggest thing slowing you down right now?", tag: 'Blockers' },
   { text: 'Where do you want to grow most in the next 6 months?', tag: 'Growth' },
   { text: 'How is morale on the team feeling to you?', tag: 'Team dynamics' },
   { text: 'Are you feeling overloaded, or do you have capacity?', tag: 'Workload' },
-  { text: 'What's one thing I could do better to support you?', tag: 'Feedback' },
+  { text: "What's one thing I could do better to support you?", tag: 'Feedback' },
 ];
 
 const TAG_COLORS: Record<string, string> = {
