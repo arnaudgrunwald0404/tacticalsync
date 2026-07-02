@@ -671,23 +671,58 @@ serve(async (req) => {
     }
 
     // ── 8. Background context: user's general priorities ──────────────────
-    // Org-level priorities the manager tracks. Do NOT project onto this person
-    // without direct evidence from Slack/Zoom/accountabilities.
-    const categoryBuckets: Record<string, string[]> = {}
-    for (const p of priorities) {
-      const cat = p.category ?? 'other'
-      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
-      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
-    }
-    if (Object.keys(categoryBuckets).length > 0) {
-      contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
-      for (const [cat, items] of Object.entries(categoryBuckets)) {
-        contextParts.push(`  ${cat.replace('_', ' ')}:`)
-        items.forEach(i => contextParts.push(`    - ${i}`))
+    // Org-level priorities the manager tracks. Only include if there is at least
+    // some Tier 1 signal for this specific person — otherwise the model will
+    // speculate about their involvement in projects they may not know about.
+    const hasTier1Signal =
+      slackMessages.length > 0 ||
+      zoomRecordings.length > 0 ||
+      gmailMessages.length > 0 ||
+      freshSlackMessages.length > 0 ||
+      freshGmailMessages.length > 0
+
+    const hasTier2Signal =
+      accountabilities.length > 0 ||
+      topics.length > 0 ||
+      pendingActions.length > 0 ||
+      relTopics.length > 0 ||
+      forgottenItems.length > 0
+
+    if (hasTier1Signal && priorities.length > 0) {
+      const categoryBuckets: Record<string, string[]> = {}
+      for (const p of priorities) {
+        const cat = p.category ?? 'other'
+        if (!categoryBuckets[cat]) categoryBuckets[cat] = []
+        categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
+      }
+      if (Object.keys(categoryBuckets).length > 0) {
+        contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
+        for (const [cat, items] of Object.entries(categoryBuckets)) {
+          contextParts.push(`  ${cat.replace('_', ' ')}:`)
+          items.forEach(i => contextParts.push(`    - ${i}`))
+        }
       }
     }
 
-    const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
+    const noSignalAtAll = !hasTier1Signal && !hasTier2Signal
+
+    const systemPrompt = noSignalAtAll
+      ? `You are a chief of staff assistant preparing a 1:1 meeting brief.
+
+CRITICAL: There is NO communication history, no accountabilities, no standing topics, and no prior 1:1 notes for this person. You have NO evidence of what they work on.
+
+DO NOT invent talking points. DO NOT reference any projects, initiatives, or topics — you have no basis for knowing whether they are relevant to this person.
+
+Instead, generate 3-4 open-ended relationship-building questions that work for any 1:1, focused on:
+- Checking in on what they're currently working on and any blockers
+- What support or resources they need from you
+- How they're feeling about their work
+- Any context you should know that they haven't had a chance to share
+
+Format: use ## headings (not #), bullet points under each, keep it brief.
+
+${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
+      : `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
 CRITICAL — THREE-TIER SOURCE DISCIPLINE:
 
