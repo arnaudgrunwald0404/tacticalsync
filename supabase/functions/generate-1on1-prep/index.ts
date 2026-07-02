@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
+import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -472,7 +473,7 @@ serve(async (req) => {
     const toolTier = (id: string): 1 | 2 | 3 => {
       const override = toolTierOverrides[id]
       if (override === 1 || override === 2 || override === 3) return override
-      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2 }
+      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2, cleargo: 1 }
       return defaults[id] ?? 2
     }
 
@@ -603,7 +604,24 @@ serve(async (req) => {
       }
     }
 
-    // ── 4. Concrete commitments and accountabilities ───────────────────────
+    // ── 4b. ClearGo enrichment (blockers, epics, prep pack) ───────────────
+    if (toolEnabled('cleargo') && member.email) {
+      try {
+        const cgConfig = await getClearGoConfig(supabase, userId)
+        if (cgConfig) {
+          const enrichment = await fetchClearGo1on1Context(cgConfig, member.email, member.name)
+          if (enrichment.sections.length > 0) {
+            contextParts.push(`\n=== CLEARGO DATA FOR ${member.name.toUpperCase()} ===`)
+            contextParts.push(...enrichment.sections)
+            dataSources.push(...enrichment.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        console.warn('ClearGo enrichment failed (non-fatal):', err)
+      }
+    }
+
+    // ── 5. Concrete commitments and accountabilities ───────────────────────
     if (pendingActions.length > 0) {
       contextParts.push(`\nPending action items from previous 1:1s with ${member.name}:`)
       pendingActions.forEach(a => {
