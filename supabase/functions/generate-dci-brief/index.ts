@@ -832,10 +832,27 @@ Activities:
 
     // ── Update schedule status ────────────────────────────────────────────
 
+    const finishedAt = new Date().toISOString()
     await supabase.from('cos_prep_schedule').update({
-      dci_last_run_at: new Date().toISOString(),
+      dci_last_run_at: finishedAt,
       dci_last_run_status: writeError ? 'partial' : 'ok',
     }).eq('user_id', userId)
+
+    // ── Write run audit row ───────────────────────────────────────────────
+
+    try {
+      const isBatch = jwt === serviceRoleKey && body._batch_user_id
+      await supabase.from('cos_dci_log').insert({
+        user_id: userId,
+        trigger_type: isBatch ? 'cron' : 'manual',
+        started_at: new Date(startMs).toISOString(),
+        finished_at: finishedAt,
+        status: writeError ? 'failed' : 'ok',
+        items_found: dataSources.length,
+        items_surfaced: 0,
+        error: writeError ?? null,
+      })
+    } catch { /* non-fatal */ }
 
     // ── Log generation for cost tracking ──────────────────────────────────
 
