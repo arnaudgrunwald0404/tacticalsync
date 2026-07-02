@@ -33,6 +33,8 @@ const ResetPassword = lazyWithRetry(() => import("./pages/ResetPassword"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 // Chief of Staff
 const ChiefOfStaff = lazyWithRetry(() => import("./pages/ChiefOfStaff"));
+// Inbox (experimental parallel build)
+const InboxPage = lazyWithRetry(() => import("./pages/Inbox"));
 // RCDO Module
 const StrategyHome = lazyWithRetry(() => import("./pages/StrategyHome"));
 const DODetail = lazyWithRetry(() => import("./pages/DODetail"));
@@ -88,6 +90,11 @@ const App = () => (
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
             <Route path="/chief-of-staff/*" element={<DashboardWithTabs />} />
+            <Route path="/inbox" element={
+              <Suspense fallback={<PageSkeleton />}>
+                <InboxPage />
+              </Suspense>
+            } />
             <Route element={<RCDODetailProvider><RCDODetailLayout /></RCDODetailProvider>}>
               <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
               <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
