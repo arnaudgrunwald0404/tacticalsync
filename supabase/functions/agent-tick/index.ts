@@ -156,10 +156,14 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // Validate service-role auth
+    // Auth: allow the pg_cron trigger (which posts with no Authorization header)
+    // and service-role calls. Reject only a present-but-wrong token. This mirrors
+    // daily-prep-batch's cron handling — the agent-tick-30m cron sends no auth
+    // header, and the previous strict check made every tick 401 (so the body
+    // never ran). verify_jwt is false for this function.
     const authHeader = req.headers.get('Authorization') ?? ''
     const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-    if (token !== serviceRoleKey) {
+    if (token && token !== serviceRoleKey) {
       return jsonResponse({ error: 'unauthorized' }, 401)
     }
 
