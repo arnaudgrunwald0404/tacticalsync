@@ -53,7 +53,7 @@ export function TaskRow({ task, onEdit, onDelete, onComplete, canEdit = true, ca
     <div 
       className={cn(
         // Desktop: horizontal row layout
-        "md:flex md:items-center md:gap-4",
+        "md:flex md:flex-row md:items-center md:gap-4",
         // Mobile: card layout (vertical)
         "flex flex-col gap-3 p-4 border rounded-lg hover:bg-accent/50 transition-colors",
         onEdit && "cursor-pointer"
