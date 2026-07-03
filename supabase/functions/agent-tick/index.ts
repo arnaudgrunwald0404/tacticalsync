@@ -918,11 +918,12 @@ async function postMeetingCheck(
     .lte('start_time', windowEnd.toISOString())
     .neq('status', 'cancelled')
 
-  if (!calEvents || calEvents.length === 0) return
-
-  // Ensure each event has a dci_meeting_schedule row (insert-only; never
+  // Ensure each 1:1 event has a dci_meeting_schedule row (insert-only; never
   // overwrite an existing row so transcript_checked state is preserved).
-  for (const event of calEvents as Array<{
+  // Group meetings (committees, team syncs) don't create cos_one_on_one_events,
+  // so calEvents may be empty — that's fine; we still process their transcripts
+  // below via the unprocessed-transcript path.
+  for (const event of (calEvents ?? []) as Array<{
     id: string; team_member_id: string | null; title: string | null
     start_time: string; zoom_meeting_id: string
   }>) {
@@ -950,9 +951,19 @@ async function postMeetingCheck(
     .gte('start_time', windowStart.toISOString())
     .lte('start_time', windowEnd.toISOString())
 
-  if (!pending || pending.length === 0) return
+  // Group-meeting transcripts never appear in `pending` (no 1:1 calendar event),
+  // so also check for any unprocessed transcripts. generate-meeting-suggestions
+  // handles 1:1, recurring, and group meetings alike.
+  const { count: unprocessedTranscripts } = await supabase
+    .from('cos_zoom_transcripts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('suggestions_extracted_at', null)
 
-  const pendingIds = (pending as Array<{ id: string }>).map(r => r.id)
+  const pendingRows = (pending ?? []) as Array<{ id: string; title: string; zoom_meeting_id: string | null }>
+  if (pendingRows.length === 0 && (unprocessedTranscripts ?? 0) === 0) return
+
+  const pendingIds = pendingRows.map(r => r.id)
 
   // Step 1: Sync Zoom recordings for the last day.
   let zoomSyncOk = false
@@ -1001,7 +1012,7 @@ async function postMeetingCheck(
   // until their transcript lands or they age out of the 24 h window — this is
   // what prevents slow Zoom transcripts from being permanently skipped.
   const pendingZoomIds = [...new Set(
-    (pending as Array<{ zoom_meeting_id: string | null }>)
+    pendingRows
       .map(r => r.zoom_meeting_id)
       .filter((z): z is string => !!z),
   )]
@@ -1019,7 +1030,7 @@ async function postMeetingCheck(
     )
   }
 
-  const doneIds = (pending as Array<{ id: string; zoom_meeting_id: string | null }>)
+  const doneIds = pendingRows
     .filter(r => r.zoom_meeting_id != null && transcribedZoomIds.has(r.zoom_meeting_id))
     .map(r => r.id)
 
@@ -1035,7 +1046,7 @@ async function postMeetingCheck(
 
   // Notify via Slack if action items were surfaced (suppressed during quiet hours).
   if (suggestionsAdded > 0 && config.slack_notifications && !suppressNotify) {
-    const label = (pending as Array<{ title: string }>)[0]?.title ?? 'your recent meeting'
+    const label = pendingRows[0]?.title ?? 'your recent meeting'
     const n = suggestionsAdded
     await sendSlackDM(
       supabase, userId,
