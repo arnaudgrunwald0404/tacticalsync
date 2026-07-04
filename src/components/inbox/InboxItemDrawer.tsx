@@ -18,6 +18,7 @@ interface InboxItemDrawerProps {
 }
 
 const WORKFLOW_STYLES: Record<string, string> = {
+  'Do Now':             'bg-rose-100 text-rose-700 hover:bg-rose-200',
   'Not started':        'bg-gray-100 text-gray-500 hover:bg-gray-200',
   'Work in progress':   'bg-amber-100 text-amber-700 hover:bg-amber-200',
   'Waiting on someone': 'bg-blue-100 text-blue-700 hover:bg-blue-200',

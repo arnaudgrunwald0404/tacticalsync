@@ -59,9 +59,11 @@ export const TAG_TYPES = [
   'workstream',
 ] as const satisfies readonly InboxTagType[];
 
-/** Workflow statuses, in the order the UI cycles through them. `null` means
- *  "unset" and precedes the first entry. */
+/** Workflow statuses, in the order they're displayed. `null` means "unset"
+ *  and precedes the first entry. "Do Now" is the first (most urgent) status —
+ *  it's also what the sidebar's top view filters on. */
 export const WORKFLOW_STATUSES = [
+  'Do Now',
   'Not started',
   'Work in progress',
   'Waiting on someone',
@@ -69,9 +71,10 @@ export const WORKFLOW_STATUSES = [
 ] as const;
 export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
 
-/** The order the workflow chip advances through on click. Deliberately starts
- *  at "Work in progress" — the first click on an unset item means "I've begun". */
+/** The order the workflow chip advances through on click. Starts at "Do Now" —
+ *  the first click on an unset item means "this needs to happen now". */
 export const WORKFLOW_CYCLE = [
+  'Do Now',
   'Work in progress',
   'Waiting on someone',
   'Blocked',
@@ -251,7 +254,7 @@ export function nextWorkflowStatus(current: WorkflowStatus | string | null): Wor
  * they depend on the joined tags. Pure: given the same items + filter it always
  * returns the same subset, in the same order.
  *
- *  - builtIn 'asap'    → items carrying a tag literally named "ASAP"
+ *  - builtIn 'asap'    → items with workflow_status "Do Now"
  *  - builtIn 'waiting' → agent questions that still need action
  *  - tagIds            → items carrying *every* selected tag (AND semantics)
  */
@@ -262,9 +265,7 @@ export function applyInboxClientFilters(
   let result = items;
 
   if (filter.builtIn === 'asap') {
-    result = result.filter((i) =>
-      i.tags?.some((t) => t.name.toLowerCase() === 'asap'),
-    );
+    result = result.filter((i) => i.workflow_status === 'Do Now');
   }
 
   if (filter.builtIn === 'waiting') {

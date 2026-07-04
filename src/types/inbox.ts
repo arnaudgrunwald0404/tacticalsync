@@ -83,7 +83,7 @@ export interface InboxItem {
   bucket: InboxBucket | null;
   created_at: string;
   updated_at: string;
-  workflow_status: 'Not started' | 'Work in progress' | 'Waiting on someone' | 'Blocked' | null;
+  workflow_status: 'Do Now' | 'Not started' | 'Work in progress' | 'Waiting on someone' | 'Blocked' | null;
   // joined
   tags?: InboxTag[];
   tag_suggestions?: TagSuggestion[];
@@ -104,7 +104,9 @@ export interface InboxFilterState {
   tagIds?: string[];
   types?: InboxItemType[];
   status?: InboxItemStatus;
-  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'archive' | tag-id */
+  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'archive' | tag-id.
+   *  'asap' is labeled "Do Now" in the UI and filters by workflow_status === 'Do Now'
+   *  (no longer by an ASAP tag). */
   builtIn?: 'all' | 'asap' | 'waiting' | 'archive';
 }
 

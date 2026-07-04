@@ -271,6 +271,7 @@ export function InboxItemRow({
             {revealControls ? (
               <div className="flex items-center gap-0.5">
                 {([
+                  { label: 'Do Now',              color: '#f43f5e', dot: 'bg-rose-500' },
                   { label: 'Not started',        color: '#9ca3af', dot: 'bg-gray-300' },
                   { label: 'Work in progress',   color: '#f59e0b', dot: 'bg-amber-400' },
                   { label: 'Waiting on someone', color: '#3b82f6', dot: 'bg-blue-400' },
@@ -304,6 +305,7 @@ export function InboxItemRow({
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white"
                 style={{
                   backgroundColor: {
+                    'Do Now': '#f43f5e',
                     'Not started': '#9ca3af',
                     'Work in progress': '#f59e0b',
                     'Waiting on someone': '#3b82f6',

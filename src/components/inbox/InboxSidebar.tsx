@@ -674,7 +674,7 @@ export function InboxSidebar({
           <>
             <SectionHeader label="Views" />
             <SidebarItem label="All"           icon={<Inbox className="h-4 w-4" />} count={counts['all']}     active={isActive({ builtIn: 'all' })}     onClick={() => onFilterChange({ builtIn: 'all' })} />
-            <SidebarItem label="ASAP"          icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
+            <SidebarItem label="Do Now"        icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
             <SidebarItem label="Waiting on me" icon={<Clock className="h-4 w-4" />} count={counts['waiting']} active={isActive({ builtIn: 'waiting' })} onClick={() => onFilterChange({ builtIn: 'waiting' })} />
 
         {personTags.length > 0 && (
