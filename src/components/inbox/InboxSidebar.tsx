@@ -109,7 +109,7 @@ function InlineInput({
 
 function TagItem({
   tag, workstreams, counts, filter, onFilterChange, onRename, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, icon, depth = 0,
-  draggingId, onDragStart, onDragEnd,
+  draggingId, draggingWsId, onDragStart, onDragEnd,
 }: {
   tag: InboxTag;
   workstreams: InboxTag[];
@@ -124,6 +124,7 @@ function TagItem({
   icon: React.ReactNode;
   depth?: number;
   draggingId?: string | null;
+  draggingWsId?: string | null;
   onDragStart?: (id: string) => void;
   onDragEnd?: () => void;
 }) {
@@ -135,14 +136,15 @@ function TagItem({
   const isTouch = useIsTouch();
   const showActions = hovered || isTouch;
 
-  const isDragging = draggingId === tag.id;
-  const canReceiveDrop = !isDragging && depth === 0 && onUpdateTag && draggingId;
+  const isDragging = draggingId === tag.id || draggingWsId === tag.id;
+  const canReceiveDrop = !isDragging && depth === 0 && onUpdateTag && (draggingId || draggingWsId);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setDropTarget(false);
     if (!canReceiveDrop || !onUpdateTag) return;
-    const draggedId = e.dataTransfer.getData('text/plain');
+    const raw = e.dataTransfer.getData('text/plain');
+    const draggedId = raw.startsWith('ws:') ? raw.slice(3) : raw;
     if (!draggedId || draggedId === tag.id) return;
 
     // Nest the dragged project under the target as a workstream. The target keeps
@@ -319,6 +321,7 @@ function TagItem({
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               draggingId={draggingId}
+              draggingWsId={draggingWsId}
             />
           ))}
 
@@ -615,6 +618,7 @@ export function InboxSidebar({
                       onEditProject={onEditProject}
                       onTogglePin={onTogglePin}
                       draggingId={draggingId}
+                      draggingWsId={draggingWsId}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       icon={<Hash className="h-4 w-4" style={{ color: tag.color }} />}
@@ -649,6 +653,7 @@ export function InboxSidebar({
                       onUpdateTag={onUpdateTag}
                       onEditProject={onEditProject}
                       draggingId={draggingId}
+                      draggingWsId={draggingWsId}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       icon={<Folder className="h-4 w-4" style={{ color: tag.color }} />}
