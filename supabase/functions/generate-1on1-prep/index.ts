@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
+import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -472,7 +473,7 @@ serve(async (req) => {
     const toolTier = (id: string): 1 | 2 | 3 => {
       const override = toolTierOverrides[id]
       if (override === 1 || override === 2 || override === 3) return override
-      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2 }
+      const defaults: Record<string, 1 | 2 | 3> = { zoom: 1, slack: 1, gmail: 1, salesforce: 2, stackone: 2, cleargo: 1 }
       return defaults[id] ?? 2
     }
 
@@ -603,7 +604,24 @@ serve(async (req) => {
       }
     }
 
-    // ── 4. Concrete commitments and accountabilities ───────────────────────
+    // ── 4b. ClearGo enrichment (blockers, epics, prep pack) ───────────────
+    if (toolEnabled('cleargo') && member.email) {
+      try {
+        const cgConfig = await getClearGoConfig(supabase, userId)
+        if (cgConfig) {
+          const enrichment = await fetchClearGo1on1Context(cgConfig, member.email, member.name)
+          if (enrichment.sections.length > 0) {
+            contextParts.push(`\n=== CLEARGO DATA FOR ${member.name.toUpperCase()} ===`)
+            contextParts.push(...enrichment.sections)
+            dataSources.push(...enrichment.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        console.warn('ClearGo enrichment failed (non-fatal):', err)
+      }
+    }
+
+    // ── 5. Concrete commitments and accountabilities ───────────────────────
     if (pendingActions.length > 0) {
       contextParts.push(`\nPending action items from previous 1:1s with ${member.name}:`)
       pendingActions.forEach(a => {
@@ -671,23 +689,77 @@ serve(async (req) => {
     }
 
     // ── 8. Background context: user's general priorities ──────────────────
-    // Org-level priorities the manager tracks. Do NOT project onto this person
-    // without direct evidence from Slack/Zoom/accountabilities.
-    const categoryBuckets: Record<string, string[]> = {}
-    for (const p of priorities) {
-      const cat = p.category ?? 'other'
-      if (!categoryBuckets[cat]) categoryBuckets[cat] = []
-      categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
-    }
-    if (Object.keys(categoryBuckets).length > 0) {
-      contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
-      for (const [cat, items] of Object.entries(categoryBuckets)) {
-        contextParts.push(`  ${cat.replace('_', ' ')}:`)
-        items.forEach(i => contextParts.push(`    - ${i}`))
+    // Org-level priorities the manager tracks. Only include if there is at least
+    // some Tier 1 signal for this specific person — otherwise the model will
+    // speculate about their involvement in projects they may not know about.
+    const hasTier1Signal =
+      slackMessages.length > 0 ||
+      zoomRecordings.length > 0 ||
+      gmailMessages.length > 0 ||
+      freshSlackMessages.length > 0 ||
+      freshGmailMessages.length > 0
+
+    const hasTier2Signal =
+      accountabilities.length > 0 ||
+      topics.length > 0 ||
+      pendingActions.length > 0 ||
+      relTopics.length > 0 ||
+      forgottenItems.length > 0
+
+    const isExternal = member.relationship_type === 'external'
+
+    // External contacts are never involved in internal org priorities.
+    // For internal members, only include priorities if there is direct
+    // communication evidence linking them to the org's work.
+    if (!isExternal && hasTier1Signal && priorities.length > 0) {
+      const categoryBuckets: Record<string, string[]> = {}
+      for (const p of priorities) {
+        const cat = p.category ?? 'other'
+        if (!categoryBuckets[cat]) categoryBuckets[cat] = []
+        categoryBuckets[cat].push(p.text + (p.notes ? ` (${p.notes})` : ''))
+      }
+      if (Object.keys(categoryBuckets).length > 0) {
+        contextParts.push(`\n=== BACKGROUND CONTEXT (manager's org-level priorities — reference ONLY if direct evidence above connects ${member.name} to these) ===`)
+        for (const [cat, items] of Object.entries(categoryBuckets)) {
+          contextParts.push(`  ${cat.replace('_', ' ')}:`)
+          items.forEach(i => contextParts.push(`    - ${i}`))
+        }
       }
     }
 
-    const systemPrompt = `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
+    const noSignalAtAll = !hasTier1Signal && !hasTier2Signal
+
+    const systemPrompt = isExternal
+      ? `You are a chief of staff assistant preparing a brief for an external meeting.
+
+This is an external contact — they are not part of the user's organization and have no involvement in internal projects, priorities, or team work.
+
+SOURCE RULE: Only use what is explicitly provided below (email threads, context notes, standing topics). Do NOT reference any internal projects, org priorities, team initiatives, or company work — none of that is relevant to an external relationship.
+
+If email threads are available, base the brief entirely on those: what was discussed, what was agreed, what needs follow-up. Quote directly from emails where useful.
+
+If this is a first meeting with no prior email history, generate 3-4 open-ended questions to establish context: what brought you together, what they're working on, what mutual value might exist.
+
+Format: use ## headings (not #), bullet points under each, keep it brief and focused.
+
+${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
+      : noSignalAtAll
+      ? `You are a chief of staff assistant preparing a 1:1 meeting brief.
+
+CRITICAL: There is NO communication history, no accountabilities, no standing topics, and no prior 1:1 notes for this person. You have NO evidence of what they work on.
+
+DO NOT invent talking points. DO NOT reference any projects, initiatives, or topics — you have no basis for knowing whether they are relevant to this person.
+
+Instead, generate 3-4 open-ended relationship-building questions that work for any 1:1, focused on:
+- Checking in on what they're currently working on and any blockers
+- What support or resources they need from you
+- How they're feeling about their work
+- Any context you should know that they haven't had a chance to share
+
+Format: use ## headings (not #), bullet points under each, keep it brief.
+
+${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
+      : `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
 CRITICAL — THREE-TIER SOURCE DISCIPLINE:
 
@@ -1030,6 +1102,13 @@ Return ONLY the JSON array, no markdown fences or other text.`,
     } catch (healthErr) {
       console.warn('Health score computation failed (non-fatal):', (healthErr as Error).message)
     }
+
+    // Fire-and-forget: update living relationship document
+    fetch(`${supabaseUrl}/functions/v1/consolidate-relationship-doc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+      body: JSON.stringify({ user_id: userId, team_member_id }),
+    }).catch(() => {})
 
     return jsonResponse({
       prep_id: upserted?.id,

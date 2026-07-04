@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { CalendarWeekView } from './CalendarWeekView';
 import { createPortal } from 'react-dom';
 import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomorrow, differenceInDays, startOfDay, addDays, startOfWeek } from 'date-fns';
 import {
@@ -85,6 +86,9 @@ interface OneOnOnesViewProps {
   onOpenGroupPrep?: (meeting: import('@/hooks/useGroupMeetings').GroupMeeting) => void;
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
+  onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
+  externalSearch?: string;
+  hideSearchSync?: boolean;
 }
 
 interface MyTodo {
@@ -283,8 +287,13 @@ export function OneOnOnesView({
   onOpenGroupPrep,
   toolbarPortalId,
   viewToggle,
+  onSelectEvent,
+  externalSearch,
+  hideSearchSync = false,
 }: OneOnOnesViewProps) {
-  const [search, setSearch] = useState('');
+  const [internalSearch, setInternalSearch] = useState('');
+  const search = externalSearch !== undefined ? externalSearch : internalSearch;
+  const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch;
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
   const [pastSearch, setPastSearch] = useState('');
   const [pastExpanded, setPastExpanded] = useState(false);
@@ -462,48 +471,47 @@ export function OneOnOnesView({
 
   const toolbar = (
     <div className="flex items-center gap-3 w-full">
-      {/* View toggle + Search — left side */}
       {viewToggle}
-      <div className="relative w-56">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Quick search..."
-          className="h-8 pl-8 pr-8 text-sm"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Spacer */}
+      {!hideSearchSync && (
+        <div className="relative w-56">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Quick search..."
+            className="h-8 pl-8 pr-8 text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex-1" />
-
-      {/* Sync — far right */}
-      <div className="flex items-center gap-2">
-        {lastSyncAt && (
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-            Synced {formatRelativeTime(lastSyncAt)}
-          </span>
-        )}
-        {calendarConnected ? (
-          <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
-            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Sync
-          </Button>
-        ) : (
-          <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
-            <CalendarPlus className="h-3.5 w-3.5" />
-            Connect calendar
-          </Button>
-        )}
-      </div>
+      {!hideSearchSync && (
+        <div className="flex items-center gap-2">
+          {lastSyncAt && (
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+              Synced {formatRelativeTime(lastSyncAt)}
+            </span>
+          )}
+          {calendarConnected ? (
+            <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Sync
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Connect calendar
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -517,282 +525,20 @@ export function OneOnOnesView({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4 h-full min-h-0">
       {portalTarget ? createPortal(toolbar, portalTarget) : toolbar}
 
-      {/* Central aggregation: My to-dos from 1:1s */}
-      {myTodos.length > 0 && (
-        <section className="rounded-xl border border-border bg-card overflow-hidden">
-          <button
-            onClick={() => setTodosOpen(o => !o)}
-            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
-          >
-            {todosOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-            <CheckSquare className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm">My to-dos from 1:1s</span>
-            <Badge variant="secondary" className="text-[10px]">{myTodos.length}</Badge>
-          </button>
-          {todosOpen && (
-            <div className="border-t border-border px-4 py-3">
-              <ul className="space-y-1.5">
-                {myTodos.map(t => {
-                  const sourceName = (t.notes ?? '').replace(/^From 1:1 with /i, '');
-                  return (
-                    <li key={t.id} className="flex items-start gap-2.5 group">
-                      <Checkbox
-                        id={`todo-${t.id}`}
-                        className="mt-0.5"
-                        onCheckedChange={(c) => { if (c) markTodoDone(t.id); }}
-                      />
-                      <label htmlFor={`todo-${t.id}`} className="flex-1 text-sm leading-snug cursor-pointer">
-                        {t.text}
-                        {sourceName && (
-                          <span className="ml-2 text-[10px] text-muted-foreground">
-                            ← {sourceName}
-                          </span>
-                        )}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Recurring group meetings (you + 2 or more others) */}
-      <GroupMeetingsManager heading="Group meetings" hideWhenEmpty defaultShowDiscovered={false} onOpenPrep={onOpenGroupPrep} />
-
-      {/* Calendar-driven: dynamic featured sections */}
-      {hasUpcoming && (
-        <div className="space-y-8">
-          {/* Featured sections: first 2 unique dates */}
-          {filteredDates.slice(0, 2).map((dateStr, secIdx) => {
-            const events = filteredEventsByDate.get(dateStr) ?? [];
-            if (events.length === 0) return null;
-            const dateMeta = smartDateLabel(dateStr);
-            const isFirst = secIdx === 0;
-            const showHero = isFirst && !q;
-
-            return (
-              <TimelineSection
-                key={dateStr}
-                label={dateMeta.label}
-                subtitle={dateMeta.subtitle}
-                count={events.length}
-                tone="primary"
-                bucketTone={isFirst ? 'today' : 'tomorrow'}
-              >
-                {showHero ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                    <UpNextHeroEvent event={events[0]} onOpen={onViewPrep} loading={loadingPrep} heroQuotes={heroQuotes} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
-                    {events.length === 1 ? (
-                      <PrepCompanionPanel event={events[0]} onOpen={onViewPrep} loading={loadingPrep} />
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {events.slice(1).map(ev => (
-                          <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                    {events.map(ev => (
-                      <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onRunPrep={onRunPrep} runningPrepEventIds={runningPrepEventIds} onExcludeFromCalendar={onExcludeFromCalendar} />
-                    ))}
-                  </div>
-                )}
-              </TimelineSection>
-            );
-          })}
-
-          {/* Remaining events after the 2 featured dates */}
-          {filteredDates.length > 2 && (() => {
-            const remaining = filteredDates.slice(2);
-            const allEvents = remaining.flatMap(d => filteredEventsByDate.get(d) ?? []);
-            if (allEvents.length === 0) return null;
-            const { label: remLabel, subtitle: remSub } = remainingSectionLabel(remaining);
-            return (
-              <TimelineSection
-                label={remLabel}
-                subtitle={remSub}
-                count={allEvents.length}
-                tone="muted"
-                bucketTone="muted"
-              >
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {allEvents.map(ev => (
-                    <UpcomingEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} onIncludeInPrep={onIncludeInPrep} onExcludeFromCalendar={onExcludeFromCalendar} />
-                  ))}
-                </div>
-              </TimelineSection>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Cadence-based: chronological sections (no calendar) */}
-      {!hasUpcoming && (
-        <div className="space-y-6">
-          {useRelGrouping ? (
-            REL_ORDER.map(relType => {
-              const people = membersByRelType.get(relType) ?? [];
-              if (people.length === 0) return null;
-              const style = REL_STYLE[relType] ?? DEFAULT_REL_STYLE;
-              return (
-                <TimelineSection
-                  key={relType}
-                  label={style.label}
-                  count={people.length}
-                  tone="muted"
-                  pillClassName={cn(style.chipBg, style.chipFg)}
-                >
-                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {people.map(m => (
-                      <CompactPersonCard
-                        key={m.id}
-                        member={m}
-                        pendingForThem={allPendingActions[m.id] ?? 0}
-                        onOpen={onViewPrep}
-                        loading={loadingPrep}
-                        forceStyle={m.isSkip ? REL_STYLE.skip_level : undefined}
-                      />
-                    ))}
-                  </div>
-                </TimelineSection>
-              );
-            })
-          ) : (
-            BUCKET_ORDER.map(bucket => {
-              const people = membersByBucket.get(bucket) ?? [];
-              if (people.length === 0) return null;
-              const cfg = BUCKET_CONFIG[bucket];
-              const showHero = bucket === 'today' && !q && people.length > 0;
-              const compact = bucket === 'this_week' || bucket === 'later';
-              const cols = compact
-                ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
-              return (
-                <TimelineSection
-                  key={bucket}
-                  label={cfg.label}
-                  subtitle={cfg.dateLabel()}
-                  count={people.length}
-                  tone={bucket === 'later' ? 'muted' : 'primary'}
-                  bucketTone={cfg.tone}
-                >
-                  {showHero ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                      <UpNextHero
-                        member={people[0]}
-                        pendingForThem={allPendingActions[people[0].id] ?? 0}
-                        onOpen={onViewPrep}
-                        loading={loadingPrep}
-                        heroQuotes={heroQuotes}
-                      />
-                      {people.length > 1 && (
-                        <div className="flex flex-col gap-3">
-                          {people.slice(1).map(m => (
-                            <CompactPersonCard
-                              key={m.id}
-                              member={m}
-                              pendingForThem={allPendingActions[m.id] ?? 0}
-                              onOpen={onViewPrep}
-                              loading={loadingPrep}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className={cn('grid gap-3', cols)}>
-                      {people.map(m => (
-                        <CompactPersonCard
-                          key={m.id}
-                          member={m}
-                          pendingForThem={allPendingActions[m.id] ?? 0}
-                          onOpen={onViewPrep}
-                          loading={loadingPrep}
-                          compact={compact}
-                          forceStyle={m.isSkip ? REL_STYLE.skip_level : undefined}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </TimelineSection>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {scheduled.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              No team members yet. Add people in <strong>Settings → Team</strong> to start running 1:1s here.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Past meetings */}
-      {pastEvents.length > 0 && (
-        <section className="border-t border-border pt-6">
-          <button
-            onClick={() => setPastExpanded(v => !v)}
-            className="flex items-center gap-2.5 w-full text-left group"
-          >
-            <History className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
-              Past meetings
-            </span>
-            <span className="text-[11px] font-bold text-muted-foreground bg-muted rounded-full px-2.5 py-0.5 border border-border">
-              {pastEvents.length}
-            </span>
-            {pastExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
-            )}
-          </button>
-
-          {pastExpanded && (
-            <div className="mt-4 space-y-4">
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search past meetings…"
-                  value={pastSearch}
-                  onChange={e => setPastSearch(e.target.value)}
-                  className="w-full pl-8 pr-8 py-1.5 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                {pastSearch && (
-                  <button
-                    onClick={() => setPastSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {filteredPastEvents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No past meetings match your search.</p>
-              ) : (
-                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {filteredPastEvents.map(ev => (
-                    <PastEventCard key={ev.id} event={ev} onOpen={onViewPrep} loading={loadingPrep} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+      {/* Week grid — fills available height */}
+      <div className="flex-1 min-h-0" style={{ minHeight: 480 }}>
+        <CalendarWeekView
+          upcomingEvents={upcomingEvents}
+          pastEvents={pastEvents}
+          onOpen={onViewPrep}
+          loading={loadingPrep}
+          runningPrepEventIds={runningPrepEventIds}
+          onSelectEvent={onSelectEvent}
+        />
+      </div>
     </div>
   );
 }

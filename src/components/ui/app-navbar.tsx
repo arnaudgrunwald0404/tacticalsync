@@ -10,22 +10,21 @@ export function AppNavbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { canAccess, loading } = useFeaturePermissions();
+  const { canAccess } = useFeaturePermissions();
 
-  // Derive active tab from current URL
   const activeTab =
     location.pathname.includes("/settings")
       ? "settings"
       : location.pathname.includes("/insights")
       ? "insights"
+      : location.pathname.includes("/inbox")
+      ? "inbox"
       : location.pathname.includes("/chief-of-staff")
       ? "cos"
-      : location.pathname.includes("/rcdo") // covers /rcdo/canvas and /dashboard/rcdo
+      : location.pathname.includes("/rcdo")
       ? "rcdo"
       : location.pathname.includes("/commitments")
       ? "commitments"
-      : location.pathname.includes("/my-meetings")
-      ? "main"
       : "main";
 
   const handleTabChange = (value: string) => {
@@ -34,6 +33,7 @@ export function AppNavbar() {
     else if (value === "commitments") navigate("/commitments");
     else if (value === "insights") navigate("/insights");
     else if (value === "cos") navigate("/chief-of-staff");
+    else if (value === "inbox") navigate("/inbox");
     else if (value === "settings") navigate("/settings");
   };
 
@@ -41,21 +41,20 @@ export function AppNavbar() {
     <header className="sticky top-0 z-50 border-b bg-white">
       <div className="container mx-auto px-4 py-3 sm:py-4">
         <div className="flex items-center gap-4">
-          {/* Logo — fixed, never shrinks */}
           <Logo variant="minimal" size="lg" className="flex-shrink-0" />
 
-          {/* Nav items — centered, hidden on mobile */}
           {!isMobile && (
             <div className="flex-1 flex justify-center min-w-0 overflow-hidden">
               <nav className="flex items-center gap-1">
                 {[
+                  { value: "inbox", label: "Inbox", subtitle: "β" },
                   ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff", subtitle: "Day – Week" }] : []),
                   ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments", subtitle: "Month – Quarter" }] : []),
                   ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives", subtitle: "Six months" }] : []),
                   ...(canAccess("view_meetings") ? [{ value: "main", label: "Meetings" }] : []),
                   ...(canAccess("view_insights") ? [{ value: "insights", label: "Insights" }] : []),
                   ...(canAccess("view_settings") ? [{ value: "settings", label: "Settings" }] : []),
-                ].map(({ value, label, title, subtitle }) => {
+                ].map(({ value, label, title, subtitle }: { value: string; label: string; title?: string; subtitle?: string }) => {
                   const btn = (
                     <button
                       key={value}
@@ -89,11 +88,9 @@ export function AppNavbar() {
             </div>
           )}
 
-          {/* Avatar — right-aligned */}
           <UserProfileHeader />
         </div>
       </div>
-
     </header>
   );
 }

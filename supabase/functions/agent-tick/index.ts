@@ -21,6 +21,7 @@ interface AgentConfig {
   pre_stage_prep: boolean
   escalate_patterns: boolean
   recommend_format: boolean
+  post_meeting_check: boolean
   nudge_timing_hours: number
   nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
@@ -35,6 +36,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   pre_stage_prep: true,
   escalate_patterns: false,
   recommend_format: false,
+  post_meeting_check: true,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -154,10 +156,14 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // Validate service-role auth
+    // Auth: allow the pg_cron trigger (which posts with no Authorization header)
+    // and service-role calls. Reject only a present-but-wrong token. This mirrors
+    // daily-prep-batch's cron handling — the agent-tick-30m cron sends no auth
+    // header, and the previous strict check made every tick 401 (so the body
+    // never ran). verify_jwt is false for this function.
     const authHeader = req.headers.get('Authorization') ?? ''
     const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-    if (token !== serviceRoleKey) {
+    if (token && token !== serviceRoleKey) {
       return jsonResponse({ error: 'unauthorized' }, 401)
     }
 
@@ -196,8 +202,24 @@ serve(async (req) => {
       const rawConfig = (row as { agent_config: unknown }).agent_config
       const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...(rawConfig as Partial<AgentConfig>) }
 
-      // Check quiet hours
-      if (isInQuietHours(config)) {
+      // Post-meeting transcript check runs regardless of quiet hours — it only
+      // does silent DB work (sync Zoom + extract action items). We just suppress
+      // the Slack ping during quiet hours. Running it here (before the quiet-hours
+      // skip) ensures meetings that finish in the evening are still processed.
+      const inQuiet = isInQuietHours(config)
+      if (config.post_meeting_check) {
+        try {
+          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config, inQuiet)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'post_meeting_check',
+            error: (err as Error).message,
+          })
+        }
+      }
+
+      // Check quiet hours — skip the notification-heavy handlers below.
+      if (inQuiet) {
         results.push({ user_id: userId, skipped_reason: 'quiet_hours' })
         continue
       }
@@ -860,6 +882,191 @@ async function computeFormatRecommendations(
       },
     })
   }
+}
+
+// ── Post-meeting transcript check ──────────────────────────────────────────
+//
+// Called every 30 min. Looks for 1:1 calendar events with a Zoom meeting ID
+// that started 15 min–2.5 h ago (i.e., likely just finished), syncs the Zoom
+// recording, then runs generate-meeting-suggestions to extract action items.
+// Uses dci_meeting_schedule to track which meetings have been processed so
+// each meeting is handled exactly once.
+
+async function postMeetingCheck(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userId: string,
+  config: AgentConfig,
+  suppressNotify = false,
+): Promise<void> {
+  const now = new Date()
+  // Look back 24 h (not 2.5 h): Zoom cloud transcripts frequently aren't ready
+  // within a couple hours, and meetings that end during quiet hours must still
+  // be caught later. A meeting stays eligible until its transcript arrives or it
+  // ages out of this window.
+  const windowStart = new Date(now.getTime() - 24 * 60 * 60 * 1000) // 24 h ago
+  const windowEnd   = new Date(now.getTime() -  15 * 60 * 1000)     // 15 min ago
+
+  // Find calendar events with a Zoom link that recently ended.
+  const { data: calEvents } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, title, start_time, zoom_meeting_id')
+    .eq('user_id', userId)
+    .not('zoom_meeting_id', 'is', null)
+    .gte('start_time', windowStart.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+    .neq('status', 'cancelled')
+
+  // Ensure each 1:1 event has a dci_meeting_schedule row (insert-only; never
+  // overwrite an existing row so transcript_checked state is preserved).
+  // Group meetings (committees, team syncs) don't create cos_one_on_one_events,
+  // so calEvents may be empty — that's fine; we still process their transcripts
+  // below via the unprocessed-transcript path.
+  for (const event of (calEvents ?? []) as Array<{
+    id: string; team_member_id: string | null; title: string | null
+    start_time: string; zoom_meeting_id: string
+  }>) {
+    const startDt = new Date(event.start_time)
+    const endDt   = new Date(startDt.getTime() + 60 * 60 * 1000) // assume 60-min meeting
+    await supabase
+      .from('dci_meeting_schedule')
+      .upsert({
+        user_id:        userId,
+        date:           startDt.toISOString().slice(0, 10),
+        title:          event.title ?? 'Meeting',
+        start_time:     event.start_time,
+        end_time:       endDt.toISOString(),
+        zoom_meeting_id: event.zoom_meeting_id,
+        attendees:      [] as string[],
+      }, { onConflict: 'user_id,date,title,start_time', ignoreDuplicates: true })
+  }
+
+  // Find the subset that hasn't been processed yet.
+  const { data: pending } = await supabase
+    .from('dci_meeting_schedule')
+    .select('id, title, zoom_meeting_id')
+    .eq('user_id', userId)
+    .eq('transcript_checked', false)
+    .gte('start_time', windowStart.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  // Group-meeting transcripts never appear in `pending` (no 1:1 calendar event),
+  // so also check for any unprocessed transcripts. generate-meeting-suggestions
+  // handles 1:1, recurring, and group meetings alike.
+  const { count: unprocessedTranscripts } = await supabase
+    .from('cos_zoom_transcripts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('suggestions_extracted_at', null)
+
+  const pendingRows = (pending ?? []) as Array<{ id: string; title: string; zoom_meeting_id: string | null }>
+  if (pendingRows.length === 0 && (unprocessedTranscripts ?? 0) === 0) return
+
+  const pendingIds = pendingRows.map(r => r.id)
+
+  // Step 1: Sync Zoom recordings for the last day.
+  let zoomSyncOk = false
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/zoom-recordings-sync`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        'x-supabase-user-id': userId,
+      },
+      body: JSON.stringify({ days: 1 }),
+    })
+    zoomSyncOk = res.ok
+    if (!res.ok) console.warn(`post_meeting_check: zoom-recordings-sync returned ${res.status}`)
+  } catch (err) {
+    console.warn('post_meeting_check: zoom sync failed:', (err as Error).message)
+  }
+
+  // Step 2: Extract action item suggestions from any new transcripts.
+  let suggestionsAdded = 0
+  if (zoomSyncOk) {
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-meeting-suggestions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': userId,
+        },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const data = await res.json() as { suggestions_added?: number }
+        suggestionsAdded = data.suggestions_added ?? 0
+      } else {
+        console.warn(`post_meeting_check: generate-meeting-suggestions returned ${res.status}`)
+      }
+    } catch (err) {
+      console.warn('post_meeting_check: suggestions extraction failed:', (err as Error).message)
+    }
+  }
+
+  // Only mark meetings whose Zoom transcript has actually arrived. Meetings
+  // still awaiting a transcript stay pending and are retried on later ticks
+  // until their transcript lands or they age out of the 24 h window — this is
+  // what prevents slow Zoom transcripts from being permanently skipped.
+  const pendingZoomIds = [...new Set(
+    pendingRows
+      .map(r => r.zoom_meeting_id)
+      .filter((z): z is string => !!z),
+  )]
+
+  let transcribedZoomIds = new Set<string>()
+  if (pendingZoomIds.length > 0) {
+    const { data: recs } = await supabase
+      .from('cos_zoom_recordings')
+      .select('zoom_meeting_id')
+      .eq('user_id', userId)
+      .eq('has_transcript', true)
+      .in('zoom_meeting_id', pendingZoomIds)
+    transcribedZoomIds = new Set(
+      ((recs ?? []) as Array<{ zoom_meeting_id: string }>).map(r => r.zoom_meeting_id),
+    )
+  }
+
+  const doneIds = pendingRows
+    .filter(r => r.zoom_meeting_id != null && transcribedZoomIds.has(r.zoom_meeting_id))
+    .map(r => r.id)
+
+  if (doneIds.length > 0) {
+    await supabase
+      .from('dci_meeting_schedule')
+      .update({
+        transcript_checked:     true,
+        action_items_extracted: suggestionsAdded > 0,
+      })
+      .in('id', doneIds)
+  }
+
+  // Notify via Slack if action items were surfaced (suppressed during quiet hours).
+  if (suggestionsAdded > 0 && config.slack_notifications && !suppressNotify) {
+    const label = pendingRows[0]?.title ?? 'your recent meeting'
+    const n = suggestionsAdded
+    await sendSlackDM(
+      supabase, userId,
+      `${n} action item${n === 1 ? '' : 's'} extracted from ${label}`,
+      [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `:memo: *${n} action item${n === 1 ? '' : 's'} from ${label}*\n\nI found follow-ups from your recent meeting. Review them in your task suggestions panel.`,
+        },
+      }],
+    )
+  }
+
+  await logAgentEvent(supabase, userId, 'post_meeting_check', {
+    meetings_checked:   pendingIds.length,
+    meetings_processed: doneIds.length,
+    zoom_sync_ok:       zoomSyncOk,
+    suggestions_added:  suggestionsAdded,
+  })
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -99,6 +99,11 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        "inbox-flash": {
+          "0%":   { backgroundColor: "rgb(221 214 254)" }, // violet-200
+          "60%":  { backgroundColor: "rgb(237 233 254)" }, // violet-100
+          "100%": { backgroundColor: "transparent" },
+        },
         "accordion-down": {
           from: {
             height: "0",
@@ -119,6 +124,7 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "inbox-flash": "inbox-flash 1.8s ease-out forwards",
       },
     },
   },

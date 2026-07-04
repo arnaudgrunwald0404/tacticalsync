@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot,
+  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot, Users,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -102,7 +102,7 @@ interface CosDciLog {
   weekly_obj_3_status: DciItemStatus | null;
 }
 
-interface CosTeamMember {
+export interface CosTeamMember {
   id: string;
   user_id: string;
   name: string;
@@ -140,6 +140,8 @@ type CategoryKey = string;
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [userId, setUserId] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
   const [dciLogs, setDciLogs] = useState<CosDciLog[]>([]);
@@ -151,7 +153,11 @@ export default function ChiefOfStaff() {
   const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
   const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('priorities');
+  const activeTab = location.pathname.includes('/daily-brief')
+    ? 'dci'
+    : location.pathname.includes('/meetings')
+    ? 'team'
+    : 'priorities';
   const { onboarding, loading: onboardingLoading, markComplete } = useOnboardingState();
   const [showWelcomeCarousel, setShowWelcomeCarousel] = useState(false);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -552,7 +558,11 @@ export default function ChiefOfStaff() {
         </SheetContent>
       </Sheet>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(tab) => {
+          if (tab === 'dci') navigate('/chief-of-staff/daily-brief');
+          else if (tab === 'team') navigate('/chief-of-staff/meetings');
+          else navigate('/chief-of-staff/my-lists');
+        }}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
           <h1 className="text-xl font-semibold whitespace-nowrap sm:mr-2">Chief of Staff</h1>
           <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
@@ -3594,7 +3604,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; toolbarPortalId?: string }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -3623,7 +3633,22 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
-  const [teamView, setTeamView] = useState<'calendar' | 'map' | 'activity'>('calendar');
+  const cosNavigate = useNavigate();
+  const cosLocation = useLocation();
+  const teamView: 'calendar' | 'map' | 'group' | 'activity' =
+    cosLocation.pathname.includes('/meetings/group-coverage')
+      ? 'group'
+      : cosLocation.pathname.includes('/meetings/coverage')
+      ? 'map'
+      : cosLocation.pathname.includes('/meetings/activity')
+      ? 'activity'
+      : 'calendar';
+  const setTeamView = (view: 'calendar' | 'map' | 'group' | 'activity') => {
+    if (view === 'map') cosNavigate(`${basePath}/coverage`);
+    else if (view === 'group') cosNavigate(`${basePath}/group-coverage`);
+    else if (view === 'activity') cosNavigate(`${basePath}/activity`);
+    else cosNavigate(`${basePath}/one-on-ones`);
+  };
   const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
   const [showSetupWizard, setShowSetupWizard] = useState(false);
 
@@ -3859,8 +3884,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
       didOAuthRef.current = true;
-      window.history.replaceState(null, '', window.location.pathname);
-      setActiveTab('team');
+      cosNavigate(basePath, { replace: true });
       setCalendarJustConnected(true);
       void kickOffSync();
     }
@@ -3883,6 +3907,13 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
     }
     await kickOffSync();
   }, [calendarConnected, kickOffSync, toast]);
+
+  // Push sync state up to a parent sidebar when requested (inbox/meetings context)
+  const onSyncInfoChangeRef = React.useRef(onSyncInfoChange);
+  React.useEffect(() => { onSyncInfoChangeRef.current = onSyncInfoChange; });
+  React.useEffect(() => {
+    onSyncInfoChangeRef.current?.({ lastSyncAt, syncing, calendarConnected, onSync: handleSyncCalendar });
+  }, [lastSyncAt, syncing, calendarConnected, handleSyncCalendar]);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -4210,7 +4241,19 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         )}
       >
         <Radar className="h-3.5 w-3.5" />
-        Coverage
+        1:1 Coverage
+      </button>
+      <button
+        onClick={() => setTeamView('group')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'group'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Users className="h-3.5 w-3.5" />
+        Group Coverage
       </button>
       <button
         onClick={() => setTeamView('activity')}
@@ -4242,7 +4285,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
         />
       ) : teamView === 'activity' ? (
         <>
-          {portalTarget ? createPortal(
+          {!hideViewToggle && (portalTarget ? createPortal(
             <div className="flex items-center gap-3 w-full">
               {viewToggle}
             </div>,
@@ -4251,7 +4294,7 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             <div className="flex items-center gap-3 w-full mb-6">
               {viewToggle}
             </div>
-          )}
+          ))}
           <AgentActivityFeed />
         </>
       ) : teamView === 'calendar' ? (
@@ -4271,12 +4314,15 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
           runningPrepEventIds={runningPrepEventIds}
           onExcludeFromCalendar={handleExcludeFromCalendar}
           onOpenGroupPrep={openGroupPrep}
-          toolbarPortalId={toolbarPortalId}
-          viewToggle={viewToggle}
+          toolbarPortalId={hideViewToggle ? undefined : toolbarPortalId}
+          viewToggle={hideViewToggle ? undefined : viewToggle}
+          onSelectEvent={onSelectEvent}
+          externalSearch={externalSearch}
+          hideSearchSync={!!onSyncInfoChange}
         />
-      ) : (
+      ) : teamView === 'group' ? (
         <>
-          {portalTarget ? createPortal(
+          {!hideViewToggle && (portalTarget ? createPortal(
             <div className="flex items-center gap-3 w-full">
               {viewToggle}
             </div>,
@@ -4285,15 +4331,26 @@ function TeamSection({ members, toolbarPortalId }: { members: CosTeamMember[]; t
             <div className="flex items-center gap-3 w-full mb-6">
               {viewToggle}
             </div>
-          )}
+          ))}
+          <GroupMeetingCoverage />
+        </>
+      ) : (
+        <>
+          {!hideViewToggle && (portalTarget ? createPortal(
+            <div className="flex items-center gap-3 w-full">
+              {viewToggle}
+            </div>,
+            portalTarget,
+          ) : (
+            <div className="flex items-center gap-3 w-full mb-6">
+              {viewToggle}
+            </div>
+          ))}
           <CoverageMap
             members={members}
             upcomingEvents={upcomingEvents}
             onViewPrep={openPrep}
           />
-          <div className="mt-8">
-            <GroupMeetingCoverage />
-          </div>
         </>
       )}
 

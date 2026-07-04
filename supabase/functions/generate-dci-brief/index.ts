@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { getClearGoConfig, fetchClearGoDciContext } from "../_shared/cleargo.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,7 +180,7 @@ serve(async (req) => {
       .maybeSingle()
 
     const enabledSources = new Set<string>(
-      (dciSettings?.dci_sources as string[] | null) ?? ['my_lists', 'rcdo', 'calendar', 'slack', 'zoom', 'commitments']
+      (dciSettings?.dci_sources as string[] | null) ?? ['my_lists', 'rcdo', 'calendar', 'slack', 'zoom', 'commitments', 'cleargo']
     )
     const userInstructions: string = (dciSettings?.dci_instructions as string | null) ?? ''
 
@@ -484,6 +485,24 @@ serve(async (req) => {
       zoomContext = parts.join('\n')
     }
 
+    // ── Process: ClearGo ──────────────────────────────────────────────────
+
+    let clearGoContext = ''
+    if (enabledSources.has('cleargo')) {
+      try {
+        const cgConfig = await getClearGoConfig(supabase, userId)
+        if (cgConfig) {
+          const cgResult = await fetchClearGoDciContext(cgConfig)
+          if (cgResult.sections.length > 0) {
+            clearGoContext = cgResult.sections.join('\n')
+            dataSources.push(...cgResult.sourcesUsed)
+          }
+        }
+      } catch (err) {
+        errors.push({ source: 'cleargo', error: (err as Error).message })
+      }
+    }
+
     // ── Build Claude prompt ───────────────────────────────────────────────
 
     const systemPrompt = `You are a chief of staff AI generating a Daily Check-In (DCI) brief for a VP of Product at an HR technology SaaS company. The user leads multiple product pods, reports to the CEO, and sits on the executive leadership team.
@@ -665,6 +684,12 @@ Activities:
       userPromptParts.push(zoomContext)
     }
 
+    // ClearGo
+    if (clearGoContext) {
+      userPromptParts.push('\n== CLEARGO — TEAM BLOCKERS & EPICS ==')
+      userPromptParts.push(clearGoContext)
+    }
+
     // Missing sources note
     if (errors.length > 0) {
       userPromptParts.push(`\n== UNAVAILABLE SOURCES ==`)
@@ -832,10 +857,27 @@ Activities:
 
     // ── Update schedule status ────────────────────────────────────────────
 
+    const finishedAt = new Date().toISOString()
     await supabase.from('cos_prep_schedule').update({
-      dci_last_run_at: new Date().toISOString(),
+      dci_last_run_at: finishedAt,
       dci_last_run_status: writeError ? 'partial' : 'ok',
     }).eq('user_id', userId)
+
+    // ── Write run audit row ───────────────────────────────────────────────
+
+    try {
+      const isBatch = jwt === serviceRoleKey && body._batch_user_id
+      await supabase.from('cos_dci_log').insert({
+        user_id: userId,
+        trigger_type: isBatch ? 'cron' : 'manual',
+        started_at: new Date(startMs).toISOString(),
+        finished_at: finishedAt,
+        status: writeError ? 'failed' : 'ok',
+        items_found: dataSources.length,
+        items_surfaced: 0,
+        error: writeError ?? null,
+      })
+    } catch { /* non-fatal */ }
 
     // ── Log generation for cost tracking ──────────────────────────────────
 

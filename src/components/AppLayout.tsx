@@ -46,12 +46,20 @@ export function AppLayout() {
 
   const isChiefOfStaff = location.pathname.startsWith("/chief-of-staff");
 
+  const isInbox = location.pathname.startsWith("/inbox");
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={isInbox ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
       <AppNavbar />
       {isChiefOfStaff && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
-        <Outlet />
+        {isInbox ? (
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            <Outlet />
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </Suspense>
     </div>
   );

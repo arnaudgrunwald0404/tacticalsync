@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
-import { toolLabel } from '@/lib/prepTools';
+import { toolLabel, STATIC_TOOLS, buildStackOneTools, type PrepToolDef } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
@@ -230,6 +230,7 @@ export function OneOnOnePrepDrawer({
 
   // Talking points (derived from the prep brief) + custom additions
   const [excludedPoints, setExcludedPoints] = useState<Set<string>>(new Set());
+  const [showDismissed, setShowDismissed] = useState(false);
   const [customPoints, setCustomPoints] = useState<Array<{ id: string; text: string; included: boolean }>>([]);
   const [newPoint, setNewPoint] = useState('');
   const [showAllPoints, setShowAllPoints] = useState(false);
@@ -280,8 +281,8 @@ export function OneOnOnePrepDrawer({
     setAssignInput('');
     setMineInput('');
     setNewPoint('');
-    setExcludedPoints(new Set());
     setCustomPoints([]);
+    setShowDismissed(false);
     setPickedQuestions(new Set());
     setNextMeetingUrl(null);
     setContextDraft(member.context_notes ?? '');
@@ -306,6 +307,15 @@ export function OneOnOnePrepDrawer({
       .single()
       .then(({ data }: { data: { prep_instructions: string } | null }) => {
         setFeedbackDraft(data?.prep_instructions ?? '');
+      });
+
+    db.from('cos_team_members')
+      .select('agent_overrides')
+      .eq('id', member.id)
+      .single()
+      .then(({ data }: { data: { agent_overrides: Record<string, unknown> } | null }) => {
+        const excluded = (data?.agent_overrides?.excluded_talking_points ?? []) as string[];
+        setExcludedPoints(new Set(excluded));
       });
 
     db.from('cos_zoom_recordings')
@@ -460,13 +470,15 @@ export function OneOnOnePrepDrawer({
     /^ClearGO\s+Context$/i,
     /^ClearGO\s+is\s+the\s+bi-weekly/i,
   ];
+  // Headings that are brief metadata/structure, not actual talking points
+  const NOISE_HEADINGS = /^(sources?|topics?|date|meeting|last\s+updated|context|background|references?)$/i;
   const filteredTopics = useMemo(() => {
     const isNoise = (t: TopicSection) => {
       const fullText = [t.heading, ...t.paragraphs, ...t.bullets].join(' ');
       return NOISE_PATTERNS.some(p => p.test(fullText));
     };
     // Drop pure section dividers (no body) — talking points need substance.
-    return topics.filter(t => !isNoise(t) && (t.bullets.length || t.paragraphs.length));
+    return topics.filter(t => !isNoise(t) && !NOISE_HEADINGS.test(t.heading) && (t.bullets.length || t.paragraphs.length));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topics]);
 
@@ -556,6 +568,8 @@ export function OneOnOnePrepDrawer({
         key: `tp-${i}`,
         heading: t.heading,
         why: t.paragraphs.length ? t.paragraphs.join(' ') : t.bullets.join(' · '),
+        paragraphs: t.paragraphs,
+        bullets: t.bullets,
         tier: tierOf(t),
         order: i,
       }))
@@ -567,11 +581,25 @@ export function OneOnOnePrepDrawer({
       });
   }, [filteredTopics]);
 
-  const togglePoint = (key: string) => setExcludedPoints(prev => {
-    const next = new Set(prev);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
+  const togglePoint = (key: string) => {
+    setExcludedPoints(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      const excluded = Array.from(next);
+      if (member) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('cos_team_members').select('agent_overrides').eq('id', member.id).single()
+          .then(({ data }: { data: { agent_overrides: Record<string, unknown> } | null }) => {
+            const overrides = (data?.agent_overrides ?? {}) as Record<string, unknown>;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).from('cos_team_members')
+              .update({ agent_overrides: { ...overrides, excluded_talking_points: excluded } })
+              .eq('id', member.id);
+          });
+      }
+      return next;
+    });
+  };
   const addPoint = () => {
     const text = newPoint.trim();
     if (!text) return;
@@ -905,53 +933,94 @@ export function OneOnOnePrepDrawer({
                     ) : (
                       <p className="text-[13px] text-muted-foreground italic py-6 border-t border-border/60">No talking points yet — hit AI generate to draft a brief.</p>
                     )
-                  ) : (
-                    <>
-                      {(showAllPoints ? rankedPoints : rankedPoints.slice(0, TALKING_POINTS_VISIBLE)).map(p => {
-                        const included = !excludedPoints.has(p.key);
-                        return (
-                          <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
-                            {included ? (
+                  ) : (() => {
+                      const visibleRanked = rankedPoints.filter(p => !excludedPoints.has(p.key));
+                      const dismissedRanked = rankedPoints.filter(p => excludedPoints.has(p.key));
+                      const dismissedCustom = customPoints.filter(p => !p.included);
+                      const dismissedCount = dismissedRanked.length + dismissedCustom.length;
+                      const displayRanked = showAllPoints ? visibleRanked : visibleRanked.slice(0, TALKING_POINTS_VISIBLE);
+                      const hiddenByPager = visibleRanked.length > TALKING_POINTS_VISIBLE ? visibleRanked.length - TALKING_POINTS_VISIBLE : 0;
+                      return (
+                        <>
+                          {displayRanked.map(p => (
+                            <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
                               <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
-                            ) : (
-                              <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
-                            )}
-                            <div className={cn('flex-1 min-w-0 transition-opacity', !included && 'opacity-40')}>
-                              <div className="flex items-center gap-2.5">
-                                <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', p.rankCls)}>{p.rankLabel}</span>
-                                <span className={cn('text-[14.5px] font-semibold', !included && 'line-through font-normal text-muted-foreground')}>{inlineMd(p.heading)}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2.5">
+                                  <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', p.rankCls)}>{p.rankLabel}</span>
+                                  <span className="text-[14.5px] font-semibold">{inlineMd(p.heading)}</span>
+                                </div>
+                                {(p.paragraphs?.length || p.bullets?.length) ? (
+                                  <div className={cn('mt-2 space-y-1')}>
+                                    {p.paragraphs?.map((para, pi) => (
+                                      <p key={pi} className="text-[13px] text-muted-foreground leading-[1.5]">{inlineMd(para)}</p>
+                                    ))}
+                                    {p.bullets?.map((b, bi) => (
+                                      <div key={bi} className="flex gap-2 text-[13px] text-muted-foreground leading-[1.5]">
+                                        <span className="mt-[5px] h-[5px] w-[5px] flex-shrink-0 rounded-full bg-muted-foreground/50" />
+                                        <span>{inlineMd(b)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : p.why ? (
+                                  <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{inlineMd(p.why)}</div>
+                                ) : null}
+                                <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><FileText className="h-[13px] w-[13px]" />From prep brief</span>
                               </div>
-                              {p.why && <div className={cn('text-[13px] text-muted-foreground mt-1.5 leading-[1.5]', !included && 'line-through')}>{inlineMd(p.why)}</div>}
-                              <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><FileText className="h-[13px] w-[13px]" />From prep brief</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                      {rankedPoints.length > TALKING_POINTS_VISIBLE && (
-                        <button onClick={() => setShowAllPoints(v => !v)} className="w-full flex items-center justify-center gap-1.5 py-3 text-[12.5px] font-semibold text-primary border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
-                          {showAllPoints
-                            ? <>Show fewer<ChevronUp className="h-3.5 w-3.5" /></>
-                            : <>Show {rankedPoints.length - TALKING_POINTS_VISIBLE} more<ChevronDown className="h-3.5 w-3.5" /></>}
-                        </button>
-                      )}
-                      {customPoints.map(p => (
-                        <button key={p.id} onClick={() => toggleCustomPoint(p.id)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
-                          {p.included ? (
-                            <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
-                          ) : (
-                            <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                            </button>
+                          ))}
+                          {hiddenByPager > 0 && (
+                            <button onClick={() => setShowAllPoints(v => !v)} className="w-full flex items-center justify-center gap-1.5 py-3 text-[12.5px] font-semibold text-primary border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                              {showAllPoints
+                                ? <>Show fewer<ChevronUp className="h-3.5 w-3.5" /></>
+                                : <>Show {hiddenByPager} more<ChevronDown className="h-3.5 w-3.5" /></>}
+                            </button>
                           )}
-                          <div className={cn('flex-1 min-w-0 transition-opacity', !p.included && 'opacity-40')}>
-                            <div className="flex items-center gap-2.5">
-                              <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-blue-50 text-blue-700">You</span>
-                              <span className={cn('text-[14.5px] font-semibold', !p.included && 'line-through font-normal text-muted-foreground')}>{p.text}</span>
-                            </div>
-                            <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><Plus className="h-[13px] w-[13px]" />Custom topic</span>
-                          </div>
-                        </button>
-                      ))}
-                    </>
-                  )}
+                          {customPoints.filter(p => p.included).map(p => (
+                            <button key={p.id} onClick={() => toggleCustomPoint(p.id)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                              <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-blue-50 text-blue-700">You</span>
+                                  <span className="text-[14.5px] font-semibold">{p.text}</span>
+                                </div>
+                                <span className="inline-flex items-center gap-1.5 mt-2.5 text-[11.5px] font-medium px-[9px] py-[3px] rounded-md bg-muted text-muted-foreground"><Plus className="h-[13px] w-[13px]" />Custom topic</span>
+                              </div>
+                            </button>
+                          ))}
+                          {dismissedCount > 0 && (
+                            <>
+                              <button onClick={() => setShowDismissed(v => !v)} className="w-full flex items-center gap-1.5 py-2.5 text-[12px] text-muted-foreground border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                                <EyeOff className="h-3.5 w-3.5" />
+                                {dismissedCount} dismissed
+                                {showDismissed ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+                              </button>
+                              {showDismissed && (
+                                <>
+                                  {dismissedRanked.map(p => (
+                                    <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px] opacity-50">
+                                      <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2.5">
+                                          <span className={cn('text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded', p.rankCls)}>{p.rankLabel}</span>
+                                          <span className="text-[13.5px] line-through text-muted-foreground">{inlineMd(p.heading)}</span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                  {dismissedCustom.map(p => (
+                                    <button key={p.id} onClick={() => toggleCustomPoint(p.id)} className="w-full flex gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px] opacity-50">
+                                      <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                                      <span className="text-[13.5px] line-through text-muted-foreground">{p.text}</span>
+                                    </button>
+                                  ))}
+                                </>
+                              )}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
 
                   <div className="flex items-center gap-2.5 my-2 mb-3.5 px-3 py-2.5 border border-dashed border-input rounded-md">
                     <Plus className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -1257,30 +1326,48 @@ function RecognitionBanner({ recognitions }: { recognitions: RecognitionItem[] }
 
 // ── Tool recommendations for this 1:1 (Prep right rail) ─────────────────────────
 
-interface ToolRec { tool: string; action: 'add' | 'remove'; reason: string }
 
-function PrepToolsCard({ memberId, memberName }: { memberId: string; memberName: string }) {
+function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
   const { toast } = useToast();
-  const [currentTools, setCurrentTools] = useState<string[]>([]);
-  const [recs, setRecs] = useState<ToolRec[]>([]);
+  // Effective per-member tool list (null = using global default)
+  const [perMemberTools, setPerMemberTools] = useState<string[] | null>(null);
+  // Global default tools from prep schedule
+  const [globalTools, setGlobalTools] = useState<string[]>([]);
+  // Available tool definitions (static + connected StackOne accounts)
+  const [availableTools, setAvailableTools] = useState<PrepToolDef[]>(STATIC_TOOLS);
   const [loading, setLoading] = useState(true);
-  const [applying, setApplying] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('recommend-prep-tools', {
-          body: { team_member_id: memberId },
-        });
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData.user || cancelled) return;
+        const userId = userData.user.id;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = supabase as any;
+
+        const [memberRes, scheduleRes, stackoneRes] = await Promise.all([
+          db.from('cos_team_members').select('agent_overrides').eq('id', memberId).single(),
+          db.from('cos_prep_schedule').select('prep_tools').eq('user_id', userId).maybeSingle(),
+          supabase.functions.invoke('stackone-proxy', { body: { action: 'list_accounts' } }),
+        ]);
+
         if (cancelled) return;
-        if (error) throw error;
-        const res = data as { current_tools?: string[]; recommendations?: ToolRec[] };
-        setCurrentTools(res.current_tools ?? []);
-        setRecs(res.recommendations ?? []);
+
+        const overrides = (memberRes.data?.agent_overrides ?? {}) as Record<string, unknown>;
+        const memberToolOverride = Array.isArray(overrides.prep_tools) ? overrides.prep_tools as string[] : null;
+        const globalDefault = Array.isArray(scheduleRes.data?.prep_tools) ? scheduleRes.data.prep_tools as string[] : ['zoom', 'slack'];
+
+        const accounts = (stackoneRes.data?.accounts ?? []) as Array<{ provider: string; provider_name?: string; status?: string }>;
+        const dynamicTools = buildStackOneTools(accounts);
+
+        setPerMemberTools(memberToolOverride);
+        setGlobalTools(globalDefault);
+        setAvailableTools([...STATIC_TOOLS, ...dynamicTools]);
       } catch {
-        if (!cancelled) { setCurrentTools([]); setRecs([]); }
+        // leave defaults
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1288,69 +1375,97 @@ function PrepToolsCard({ memberId, memberName }: { memberId: string; memberName:
     return () => { cancelled = true; };
   }, [memberId]);
 
-  const labelFor = toolLabel;
+  // The effective set shown in the UI: per-member override if set, else global default
+  const effectiveTools = perMemberTools ?? globalTools;
+  const isUsingGlobalDefault = perMemberTools === null;
 
-  const applyRec = async (rec: ToolRec) => {
-    setApplying(rec.tool);
-    const next = rec.action === 'add'
-      ? Array.from(new Set([...currentTools, rec.tool]))
-      : currentTools.filter(t => t !== rec.tool);
+  const toggleTool = async (toolId: string) => {
+    const current = effectiveTools;
+    const next = current.includes(toolId)
+      ? current.filter(t => t !== toolId)
+      : [...current, toolId];
+    // Optimistic update
+    setPerMemberTools(next);
+    setSaving(true);
     try {
-      // Merge into existing per-member overrides (preserve other keys).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase as any)
-        .from('cos_team_members').select('agent_overrides').eq('id', memberId).single();
+      const { data } = await (supabase as any).from('cos_team_members').select('agent_overrides').eq('id', memberId).single();
       const overrides = (data?.agent_overrides ?? {}) as Record<string, unknown>;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any).from('cos_team_members')
         .update({ agent_overrides: { ...overrides, prep_tools: next } }).eq('id', memberId);
-      setCurrentTools(next);
-      setRecs(prev => prev.filter(r => r.tool !== rec.tool));
-      toast({ title: rec.action === 'add' ? `Added ${labelFor(rec.tool)}` : `Removed ${labelFor(rec.tool)}` });
     } catch (err) {
+      // Revert on failure
+      setPerMemberTools(perMemberTools);
       toast({ title: 'Could not update tools', description: String(err), variant: 'destructive' });
     } finally {
-      setApplying(null);
+      setSaving(false);
+    }
+  };
+
+  const resetToGlobal = async () => {
+    setPerMemberTools(null);
+    setSaving(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).from('cos_team_members').select('agent_overrides').eq('id', memberId).single();
+      const overrides = (data?.agent_overrides ?? {}) as Record<string, unknown>;
+      const next = { ...overrides };
+      delete next.prep_tools;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).from('cos_team_members').update({ agent_overrides: next }).eq('id', memberId);
+    } catch (err) {
+      toast({ title: 'Could not reset tools', description: String(err), variant: 'destructive' });
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <Card className="px-[18px] py-4">
-      <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5">
-        <Wrench className="h-3.5 w-3.5" />Tools for this 1:1
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5">
+          <Wrench className="h-3.5 w-3.5" />Tools for this 1:1
+        </div>
+        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking…</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</div>
       ) : (
         <>
           <div className="flex flex-wrap gap-1.5">
-            {currentTools.length === 0 ? (
-              <span className="text-xs text-muted-foreground">Using your default tools.</span>
-            ) : currentTools.map(t => (
-              <Badge key={t} variant="outline" className="bg-background text-xs">{labelFor(t)}</Badge>
-            ))}
+            {availableTools.map(t => {
+              const on = effectiveTools.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => toggleTool(t.id)}
+                  disabled={saving}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs border transition-colors whitespace-nowrap disabled:opacity-60',
+                    on
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
-
-          {recs.length > 0 && (
-            <div className="mt-3 space-y-2 border-t pt-3">
-              <p className="text-[11px] font-medium text-muted-foreground">Suggestions</p>
-              {recs.map(rec => (
-                <div key={`${rec.action}-${rec.tool}`} className="flex items-start gap-2">
-                  <button
-                    onClick={() => applyRec(rec)}
-                    disabled={applying === rec.tool}
-                    className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50"
-                  >
-                    {applying === rec.tool
-                      ? <Loader2 className="h-3 w-3 animate-spin" />
-                      : rec.action === 'add' ? <Plus className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                    {rec.action === 'add' ? 'Add' : 'Remove'} {labelFor(rec.tool)}
-                  </button>
-                  <span className="text-[11px] text-muted-foreground leading-snug flex-1">{rec.reason}</span>
-                </div>
-              ))}
-            </div>
+          {!isUsingGlobalDefault && (
+            <button
+              onClick={resetToGlobal}
+              disabled={saving}
+              className="mt-2.5 text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Reset to global default
+            </button>
+          )}
+          {isUsingGlobalDefault && (
+            <p className="mt-2 text-[11px] text-muted-foreground">Using your global default — click to customize for this person.</p>
           )}
         </>
       )}

@@ -441,6 +441,13 @@ ${contextParts.join('\n')}`
         .eq('status', 'pending')
     }
 
+    // Fire-and-forget: update living relationship document for this group meeting
+    fetch(`${supabaseUrl}/functions/v1/consolidate-relationship-doc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+      body: JSON.stringify({ user_id: userId, group_meeting_id }),
+    }).catch(() => {})
+
     return jsonResponse({
       prep_id: upserted?.id,
       content: generatedContent,
