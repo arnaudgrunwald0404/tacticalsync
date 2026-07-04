@@ -361,7 +361,7 @@ export function OneOnOnesView({
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      const [{ data: priorities }, { data: actions }] = await Promise.all([
+      const [{ data: priorities }, { data: actions }, { data: colleagueSuggestions }] = await Promise.all([
         db.from('cos_priorities')
           .select('id, text, notes, done_at, archived_at, created_at')
           .eq('user_id', user.id)
@@ -372,11 +372,19 @@ export function OneOnOnesView({
           .select('member_id, status')
           .eq('user_id', user.id)
           .eq('status', 'pending'),
+        db.from('dci_suggested_tasks')
+          .select('assignee_member_id')
+          .eq('user_id', user.id)
+          .eq('status', 'pending')
+          .not('assignee_member_id', 'is', null),
       ]);
       setMyTodos((priorities ?? []) as MyTodo[]);
       const counts: Record<string, number> = {};
       for (const a of (actions ?? []) as Array<{ member_id: string }>) {
         counts[a.member_id] = (counts[a.member_id] ?? 0) + 1;
+      }
+      for (const s of (colleagueSuggestions ?? []) as Array<{ assignee_member_id: string }>) {
+        counts[s.assignee_member_id] = (counts[s.assignee_member_id] ?? 0) + 1;
       }
       setAllPendingActions(counts);
     }
@@ -537,6 +545,9 @@ export function OneOnOnesView({
           loading={loadingPrep}
           runningPrepEventIds={runningPrepEventIds}
           onSelectEvent={onSelectEvent}
+          onIncludeInPrep={onIncludeInPrep}
+          onRunPrep={onRunPrep}
+          onExcludeFromCalendar={onExcludeFromCalendar}
         />
       </div>
     </div>

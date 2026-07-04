@@ -1,304 +1,401 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Tag, ChevronRight, Plus, Folder, LayoutGrid } from 'lucide-react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Tag, Plus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { InboxTag } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
+/** A fixed option pinned above the column grid (e.g. "No tag — inbox only"). */
+export interface TagPickerTopOption {
+  key: string;
+  label: string;
+  onSelect: () => void;
+  highlighted?: boolean;
+}
+
 interface TagPickerDropdownProps {
   allTags: InboxTag[];
   itemTags: InboxTag[];
-  onAddTag: (tagId: string) => void;
+  /** Called with one id for a plain click, or several once "Save" is pressed
+   *  after a multi-select (Shift/Cmd-click) session. */
+  onSelectTags: (tagIds: string[]) => void | Promise<void>;
   onCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
   onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
+  /** Extra fixed choices shown above the columns when the search box is empty. */
+  topOptions?: TagPickerTopOption[];
+  /** Custom trigger element. Defaults to the dashed "Tag" pill. */
+  renderTrigger?: (state: { open: boolean; toggle: () => void }) => React.ReactNode;
 }
 
-const TYPE_ORDER: InboxTag['type'][] = ['urgency', 'project', 'person', 'folder', 'context', 'workstream'];
-const TYPE_LABEL: Record<InboxTag['type'], string> = {
-  urgency: 'Urgency', project: 'Project', person: 'Person',
-  folder: 'Folder', context: 'Context', workstream: 'Workstream',
-};
+function isMultiClick(e: React.MouseEvent): boolean {
+  return e.shiftKey || e.metaKey || e.ctrlKey;
+}
 
-export function TagPickerDropdown({ allTags, itemTags, onAddTag, onCreateTag, teamMembers = [], onCreatePersonTag }: TagPickerDropdownProps) {
+function TagRow({ tag, selected, onClick }: { tag: InboxTag; selected: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-2 rounded',
+        selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50',
+      )}
+    >
+      <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+      <span className="flex-1 truncate">{tag.name}</span>
+      {selected && <Check className="h-3 w-3 flex-shrink-0 text-blue-500" />}
+    </button>
+  );
+}
+
+function MemberRow({ member, selected, onClick }: { member: TeamMember; selected: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-2 rounded',
+        selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50',
+      )}
+    >
+      <span className="h-5 w-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
+        {member.name.charAt(0).toUpperCase()}
+      </span>
+      <span className="flex-1 truncate">{member.name}</span>
+      {selected && <Check className="h-3 w-3 flex-shrink-0 text-blue-500" />}
+    </button>
+  );
+}
+
+export function TagPickerDropdown({
+  allTags, itemTags, onSelectTags, onCreateTag, teamMembers = [], onCreatePersonTag, topOptions = [], renderTrigger,
+}: TagPickerDropdownProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [expandedParent, setExpandedParent] = useState<string | null>(null);
-  const [pickingType, setPickingType] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isMultiActive = selectedTagIds.size > 0 || selectedMemberIds.size > 0;
+
+  const resetAndClose = () => {
+    setOpen(false);
+    setQuery('');
+    setSelectedTagIds(new Set());
+    setSelectedMemberIds(new Set());
+  };
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery('');
-        setExpandedParent(null);
-      }
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      if (dropdownRef.current?.contains(target)) return;
+      resetAndClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 0);
   }, [open]);
 
-  const itemTagIds = new Set(itemTags.map(t => t.id));
+  const recomputePosition = useCallback(() => {
+    const trigger = ref.current;
+    const dropdownEl = dropdownRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const margin = 8;
+    const dropdownWidth = dropdownEl?.offsetWidth ?? 460;
+    const dropdownHeight = dropdownEl?.offsetHeight ?? 360;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
-  // Parent tags: non-workstream, not already applied
-  const parentTags = useMemo(() => {
-    const q = query.toLowerCase();
-    return allTags.filter(t => t.type !== 'workstream' && !itemTagIds.has(t.id) && (!q || t.name.toLowerCase().includes(q)));
-  }, [allTags, itemTagIds, query]);
+    // Vertical: prefer below the trigger, flip above if there isn't room and above has more space.
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    let top = spaceBelow >= dropdownHeight + margin || spaceBelow >= spaceAbove
+      ? rect.bottom + 4
+      : rect.top - dropdownHeight - 4;
+    top = Math.max(margin, Math.min(top, viewportHeight - dropdownHeight - margin));
 
-  // When a parent is expanded, show its workstreams
-  const workstreamsFor = useMemo(() => {
-    if (!expandedParent) return [];
-    const q = query.toLowerCase();
-    return allTags.filter(
-      t => t.type === 'workstream' && t.parent_id === expandedParent && !itemTagIds.has(t.id) && (!q || t.name.toLowerCase().includes(q))
-    );
-  }, [allTags, expandedParent, itemTagIds, query]);
+    // Horizontal: prefer aligning to the trigger's left edge, flip to the right edge if it would overflow.
+    let left = rect.left + dropdownWidth + margin <= viewportWidth
+      ? rect.left
+      : rect.right - dropdownWidth;
+    left = Math.max(margin, Math.min(left, viewportWidth - dropdownWidth - margin));
 
-  // Group parent tags
-  const grouped = useMemo(() => {
-    const map = new Map<InboxTag['type'], InboxTag[]>();
-    for (const t of parentTags) {
-      if (!map.has(t.type)) map.set(t.type, []);
-      map.get(t.type)!.push(t);
+    setCoords({ top, left });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
     }
-    return TYPE_ORDER.filter(k => map.has(k)).map(k => ({ type: k, tags: map.get(k)! }));
-  }, [parentTags]);
+    recomputePosition();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, query, selectedTagIds, selectedMemberIds]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('resize', recomputePosition);
+    window.addEventListener('scroll', recomputePosition, true);
+    return () => {
+      window.removeEventListener('resize', recomputePosition);
+      window.removeEventListener('scroll', recomputePosition, true);
+    };
+  }, [open, recomputePosition]);
+
+  const itemTagIds = new Set(itemTags.map(t => t.id));
+  const q = query.trim().toLowerCase();
+  const matches = (name: string) => !q || name.toLowerCase().includes(q);
+
+  const projectTags = useMemo(
+    () => allTags.filter(t => t.type === 'project' && !itemTagIds.has(t.id) && matches(t.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allTags, itemTags, q],
+  );
+  const folderTags = useMemo(
+    () => allTags.filter(t => t.type === 'folder' && !itemTagIds.has(t.id) && matches(t.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allTags, itemTags, q],
+  );
+  const personTags = useMemo(
+    () => allTags.filter(t => t.type === 'person' && !itemTagIds.has(t.id) && matches(t.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allTags, itemTags, q],
+  );
 
   // Team members not yet linked to a person inbox_tag (matched by member_id or name)
   const linkedMemberIds = new Set(allTags.filter(t => t.type === 'person' && t.member_id).map(t => t.member_id!));
   const linkedMemberNames = new Set(allTags.filter(t => t.type === 'person').map(t => t.name.toLowerCase()));
-  const unlinkedMembers = useMemo(() => {
-    const q = query.toLowerCase();
-    return teamMembers.filter(m =>
-      !linkedMemberIds.has(m.id) &&
-      !linkedMemberNames.has(m.name.toLowerCase()) &&
-      !itemTagIds.has(allTags.find(t => t.member_id === m.id)?.id ?? '') &&
-      (!q || m.name.toLowerCase().includes(q))
-    );
-  }, [teamMembers, linkedMemberIds, linkedMemberNames, itemTagIds, allTags, query]);
+  const unlinkedMembers = useMemo(() => teamMembers.filter(m =>
+    !linkedMemberIds.has(m.id) && !linkedMemberNames.has(m.name.toLowerCase()) && matches(m.name)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [teamMembers, linkedMemberIds, linkedMemberNames, q]);
 
-  const hasResults = parentTags.length > 0 || unlinkedMembers.length > 0 || (expandedParent && workstreamsFor.length > 0);
-  const canCreate = !!onCreateTag && query.trim() && !allTags.some(t => t.name.toLowerCase() === query.trim().toLowerCase());
+  const nameTaken = (type: 'project' | 'folder') =>
+    allTags.some(t => t.type === type && t.name.toLowerCase() === q);
+  const canCreateProject = !!onCreateTag && !!q && !nameTaken('project');
+  const canCreateFolder = !!onCreateTag && !!q && !nameTaken('folder');
 
-  // Flat ordered list of selectable items for keyboard nav
-  const flatOptions = useMemo(() => {
-    if (expandedParent) return workstreamsFor.map(t => ({ kind: 'tag' as const, tag: t }));
-    return [
-      ...parentTags.map(t => ({ kind: 'tag' as const, tag: t })),
-      ...unlinkedMembers.map(m => ({ kind: 'member' as const, member: m })),
-    ];
-  }, [expandedParent, parentTags, workstreamsFor, unlinkedMembers]);
-
-  const select = (tagId: string) => {
-    onAddTag(tagId);
-    setQuery('');
-    setOpen(false);
-    setExpandedParent(null);
-    setPickingType(false);
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      return next;
+    });
   };
 
-  const selectMember = async (member: TeamMember) => {
+  const toggleMember = (memberId: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId); else next.add(memberId);
+      return next;
+    });
+  };
+
+  const applyAndClose = (tagIds: string[]) => {
+    if (tagIds.length > 0) onSelectTags(tagIds);
+    resetAndClose();
+  };
+
+  const handleTagClick = (e: React.MouseEvent, tagId: string) => {
+    if (isMultiActive || isMultiClick(e)) toggleTag(tagId);
+    else applyAndClose([tagId]);
+  };
+
+  const handleMemberClick = async (e: React.MouseEvent, member: TeamMember) => {
+    if (isMultiActive || isMultiClick(e)) { toggleMember(member.id); return; }
     if (!onCreatePersonTag) return;
     const tag = await onCreatePersonTag(member);
-    if (tag) select(tag.id);
+    if (tag) applyAndClose([tag.id]);
   };
 
   const handleCreate = async (type: 'project' | 'folder') => {
     if (!onCreateTag || !query.trim()) return;
     const tag = await onCreateTag(query.trim(), type);
-    if (tag) select(tag.id);
+    if (!tag) return;
+    if (isMultiActive) {
+      setSelectedTagIds(prev => new Set(prev).add(tag.id));
+      setQuery('');
+    } else {
+      applyAndClose([tag.id]);
+    }
   };
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const memberTags = await Promise.all(
+        [...selectedMemberIds].map(id => {
+          const member = teamMembers.find(m => m.id === id);
+          return member && onCreatePersonTag ? onCreatePersonTag(member) : Promise.resolve(null);
+        }),
+      );
+      const ids = [
+        ...selectedTagIds,
+        ...memberTags.filter((t): t is InboxTag => !!t).map(t => t.id),
+      ];
+      if (ids.length > 0) await onSelectTags(ids);
+    } finally {
+      setSaving(false);
+      resetAndClose();
+    }
+  };
+
+  const toggle = () => setOpen(o => !o);
+  const selectedCount = selectedTagIds.size + selectedMemberIds.size;
 
   return (
     <div ref={ref} className="relative inline-flex">
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
-        className={cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed text-[10px] transition-colors',
-          open
-            ? 'border-red-400 bg-red-50 text-red-500'
-            : 'border-red-300 text-red-400 hover:border-red-400 hover:text-red-500 hover:bg-red-50',
-        )}
-      >
-        <Tag className="h-2.5 w-2.5" />
-        Tag
-      </button>
+      {renderTrigger ? (
+        <span onClick={e => e.stopPropagation()}>{renderTrigger({ open, toggle })}</span>
+      ) : (
+        <button
+          onClick={e => { e.stopPropagation(); toggle(); }}
+          className={cn(
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed text-[10px] transition-colors',
+            open
+              ? 'border-red-400 bg-red-50 text-red-500'
+              : 'border-red-300 text-red-400 hover:border-red-400 hover:text-red-500 hover:bg-red-50',
+          )}
+        >
+          <Tag className="h-2.5 w-2.5" />
+          Tag
+        </button>
+      )}
 
-      {open && (
+      {open && createPortal(
         <div
-          className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-56 flex flex-col"
-          style={{ maxHeight: 280 }}
+          ref={dropdownRef}
+          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-[460px] flex flex-col"
+          style={coords ? { top: coords.top, left: coords.left } : { top: -9999, left: -9999, visibility: 'hidden' }}
+          onClick={e => e.stopPropagation()}
         >
           {/* Search */}
           <div className="px-3 pt-2 pb-1 border-b border-gray-100">
             <input
               ref={inputRef}
               value={query}
-              onChange={e => { setQuery(e.target.value); setExpandedParent(null); setPickingType(false); setActiveIdx(0); }}
-              placeholder="Search tags…"
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search projects, folders, people…"
               className="w-full text-xs outline-none placeholder-gray-400"
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => {
-                if (e.key === 'Escape') { setOpen(false); setQuery(''); return; }
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  setActiveIdx(i => Math.min(i + 1, flatOptions.length - 1));
-                  return;
-                }
-                if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  setActiveIdx(i => Math.max(0, i - 1));
-                  return;
-                }
-                if (e.key === 'Tab' || e.key === 'Enter') {
-                  if (flatOptions.length > 0) {
-                    e.preventDefault();
-                    const opt = flatOptions[Math.min(activeIdx, flatOptions.length - 1)];
-                    if (opt.kind === 'tag') select(opt.tag.id);
-                    else selectMember(opt.member);
-                  } else if (e.key === 'Enter' && canCreate && !pickingType) {
-                    setPickingType(true);
-                  }
-                }
-              }}
+              onKeyDown={e => { if (e.key === 'Escape') resetAndClose(); }}
             />
           </div>
 
-          <div className="overflow-y-auto flex-1 py-1">
-            {expandedParent ? (
-              /* Workstream drill-down view */
-              <>
+          {/* Fixed top options (e.g. "No tag — inbox only") */}
+          {!q && topOptions.length > 0 && (
+            <div className="border-b border-gray-100 py-1">
+              {topOptions.map(o => (
                 <button
-                  onClick={() => setExpandedParent(null)}
-                  className="w-full text-left px-3 py-1 text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                  key={o.key}
+                  onClick={() => { o.onSelect(); resetAndClose(); }}
+                  className={cn('w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50', o.highlighted && 'font-semibold')}
                 >
-                  ← back
+                  {o.label}
                 </button>
-                {workstreamsFor.length > 0 ? workstreamsFor.map((ws, i) => (
-                  <button
-                    key={ws.id}
-                    onClick={() => select(ws.id)}
-                    onMouseEnter={() => setActiveIdx(i)}
-                    className={cn('w-full text-left px-3 py-1.5 text-xs flex items-center gap-2', i === activeIdx ? 'bg-gray-100' : 'hover:bg-gray-50')}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ws.color }} />
-                    {ws.name}
-                  </button>
+              ))}
+            </div>
+          )}
+
+          {/* Three columns */}
+          <div className="grid grid-cols-3 divide-x divide-gray-100">
+            {/* Projects */}
+            <div className="flex flex-col min-w-0">
+              <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Projects</p>
+              <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
+                {projectTags.length > 0 ? projectTags.map(tag => (
+                  <TagRow key={tag.id} tag={tag} selected={selectedTagIds.has(tag.id)} onClick={e => handleTagClick(e, tag.id)} />
                 )) : (
-                  <p className="px-3 py-2 text-xs text-gray-400">No workstreams yet</p>
+                  <p className="px-1.5 py-2 text-[11px] text-gray-300">No matches</p>
                 )}
-              </>
-            ) : (
-              /* Normal grouped view */
-              <>
-                {grouped.map(({ type, tags }) => (
-                  <div key={type}>
-                    <p className="px-3 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
-                      {TYPE_LABEL[type]}
-                    </p>
-                    {tags.map(tag => {
-                      const hasWorkstreams = allTags.some(t => t.type === 'workstream' && t.parent_id === tag.id);
-                      const flatIdx = flatOptions.findIndex(o => o.kind === 'tag' && o.tag.id === tag.id);
-                      const isActive = flatIdx === activeIdx;
-                      return (
-                        <div key={tag.id} className="flex items-center">
-                          <button
-                            onClick={() => select(tag.id)}
-                            onMouseEnter={() => setActiveIdx(flatIdx)}
-                            className={cn('flex-1 text-left px-3 py-1.5 text-xs flex items-center gap-2', isActive ? 'bg-gray-100' : 'hover:bg-gray-50')}
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
-                            {tag.name}
-                          </button>
-                          {hasWorkstreams && (
-                            <button
-                              onClick={e => { e.stopPropagation(); setExpandedParent(tag.id); }}
-                              className="pr-2 py-1.5 text-gray-300 hover:text-gray-500"
-                              title="View workstreams"
-                            >
-                              <ChevronRight className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+              </div>
+              {canCreateProject && (
+                <button
+                  onClick={() => handleCreate('project')}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-gray-500 hover:bg-gray-50 border-t border-gray-100"
+                >
+                  <Plus className="h-3 w-3" />
+                  Create "{query.trim()}"
+                </button>
+              )}
+            </div>
+
+            {/* Folders */}
+            <div className="flex flex-col min-w-0">
+              <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Folders</p>
+              <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
+                {folderTags.length > 0 ? folderTags.map(tag => (
+                  <TagRow key={tag.id} tag={tag} selected={selectedTagIds.has(tag.id)} onClick={e => handleTagClick(e, tag.id)} />
+                )) : (
+                  <p className="px-1.5 py-2 text-[11px] text-gray-300">No matches</p>
+                )}
+              </div>
+              {canCreateFolder && (
+                <button
+                  onClick={() => handleCreate('folder')}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-gray-500 hover:bg-gray-50 border-t border-gray-100"
+                >
+                  <Plus className="h-3 w-3" />
+                  Create "{query.trim()}"
+                </button>
+              )}
+            </div>
+
+            {/* People */}
+            <div className="flex flex-col min-w-0">
+              <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">People</p>
+              <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
+                {personTags.map(tag => (
+                  <TagRow key={tag.id} tag={tag} selected={selectedTagIds.has(tag.id)} onClick={e => handleTagClick(e, tag.id)} />
                 ))}
-
-                {/* Unlinked team members */}
-                {unlinkedMembers.length > 0 && (
-                  <div>
-                    <p className="px-3 pt-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
-                      People
-                    </p>
-                    {unlinkedMembers.map(m => {
-                      const flatIdx = flatOptions.findIndex(o => o.kind === 'member' && o.member.id === m.id);
-                      const isActive = flatIdx === activeIdx;
-                      return (
-                        <button
-                          key={m.id}
-                          onClick={() => selectMember(m)}
-                          onMouseEnter={() => setActiveIdx(flatIdx)}
-                          className={cn('w-full text-left px-3 py-1.5 text-xs flex items-center gap-2', isActive ? 'bg-gray-100' : 'hover:bg-gray-50')}
-                        >
-                          <span className="h-5 w-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
-                            {m.name.charAt(0).toUpperCase()}
-                          </span>
-                          <span className="flex-1 truncate">{m.name}</span>
-                          <span className="text-[10px] text-gray-300 truncate max-w-[80px]">{m.role}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                {unlinkedMembers.map(m => (
+                  <MemberRow key={m.id} member={m} selected={selectedMemberIds.has(m.id)} onClick={e => handleMemberClick(e, m)} />
+                ))}
+                {personTags.length === 0 && unlinkedMembers.length === 0 && (
+                  <p className="px-1.5 py-2 text-[11px] text-gray-300">No matches</p>
                 )}
-
-                {!hasResults && !canCreate && (
-                  <p className="px-3 py-2 text-xs text-gray-400">No tags found</p>
-                )}
-
-                {canCreate && !pickingType && (
-                  <button
-                    onClick={() => setPickingType(true)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Create "{query.trim()}"
-                  </button>
-                )}
-
-                {canCreate && pickingType && (
-                  <div className="border-t border-gray-100 pt-1">
-                    <p className="px-3 py-1 text-[10px] text-gray-400 font-medium uppercase tracking-wide">
-                      Create "{query.trim()}" as…
-                    </p>
-                    <button
-                      onClick={() => handleCreate('project')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 text-gray-400" />
-                      Project
-                    </button>
-                    <button
-                      onClick={() => handleCreate('folder')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <Folder className="h-3.5 w-3.5 text-gray-400" />
-                      Folder
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* Multi-select footer */}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+              <span className="text-[11px] text-gray-500 flex-1">{selectedCount} selected</span>
+              <button
+                onClick={() => { setSelectedTagIds(new Set()); setSelectedMemberIds(new Set()); }}
+                className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="text-[11px] font-medium text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-50 rounded px-3 py-1"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+
+          {/* Hint for how multi-select works */}
+          {selectedCount === 0 && (
+            <p className="px-3 py-1.5 text-[10px] text-gray-300 border-t border-gray-100">
+              Shift or ⌘/Ctrl-click to select several, then Save
+            </p>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
   );

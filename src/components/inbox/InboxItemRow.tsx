@@ -215,7 +215,7 @@ export function InboxItemRow({
             <TagPickerDropdown
               allTags={allTags}
               itemTags={item.tags}
-              onAddTag={tagId => onAddTag(item.id, tagId)}
+              onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
               onCreateTag={onQuickCreateTag}
               teamMembers={teamMembers}
               onCreatePersonTag={onCreatePersonTag}
@@ -224,7 +224,7 @@ export function InboxItemRow({
             <TagPickerDropdown
               allTags={allTags}
               itemTags={item.tags ?? []}
-              onAddTag={tagId => onAddTag(item.id, tagId)}
+              onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
               onCreateTag={onQuickCreateTag}
               teamMembers={teamMembers}
               onCreatePersonTag={onCreatePersonTag}

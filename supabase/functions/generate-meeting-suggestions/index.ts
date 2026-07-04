@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import Anthropic from "npm:@anthropic-ai/sdk"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -137,6 +138,102 @@ Transcript:
 ${transcript}`
 }
 
+function buildColleaguePrompt(opts: {
+  meetingLabel: string
+  participantNames: string[]
+  transcript: string
+}): string {
+  const { meetingLabel, participantNames, transcript } = opts
+  const names = participantNames.join(', ') || 'unknown'
+
+  return `You are a chief-of-staff assistant reviewing a meeting ("${meetingLabel}").
+
+Participants: ${names}
+
+Identify action items that were explicitly assigned to or owned by a PARTICIPANT (not the user/host). Only include items where it is clear from the transcript that someone other than the user is responsible.
+
+Return ONLY valid JSON — no markdown fences, no commentary:
+[
+  {
+    "assignee_name": "Exact name as it appears in the transcript",
+    "title": "Formatted as '<FirstName> to <verb> ...' (max ~8 words after the name), e.g. 'Mindy to send the updated deck'",
+    "rationale": "Brief reason it was assigned (max ~12 words)",
+    "raw_context": "The verbatim line/quote that shows the assignment (1 sentence)"
+  }
+]
+
+If there are no colleague action items, return [].
+
+Transcript:
+${transcript}`
+}
+
+// ── Tag recommendation (mirrors supabase/functions/suggest-inbox-tags) ────────
+
+interface InboxTagRow {
+  id: string
+  name: string
+  type: string
+  color: string
+}
+
+interface TagSuggestion { tag_id: string; tag_name: string; color: string; reason: string }
+
+async function suggestTagsForSuggestion(
+  anthropic: Anthropic,
+  tags: InboxTagRow[],
+  opts: { title: string; rawContext: string | null },
+): Promise<TagSuggestion[]> {
+  if (tags.length === 0) return []
+
+  const tagList = tags.map(t => `- ${t.name} (type: ${t.type}, id: ${t.id})`).join('\n')
+
+  const prompt = `You are a tagging assistant for a team productivity tool. Your job is to suggest which tags from the user's library best match a suggested task extracted from a meeting.
+
+SUGGESTED TASK
+Title: "${opts.title}"
+${opts.rawContext ? `Context quote: "${opts.rawContext}"` : ''}
+
+AVAILABLE TAGS
+${tagList}
+
+INSTRUCTIONS
+- Return at most 2 tags, ranked by confidence (most confident first).
+- Only suggest a tag if you are reasonably sure it matches.
+- If no tag fits, return an empty array.
+- Do NOT invent tags — only use IDs from the list above.
+- A project tag fits if the task is clearly about that initiative, based on its name.
+- A folder tag fits if the task's urgency or context matches the folder's purpose.
+- A person tag fits ONLY if that person is explicitly assigned the action, is its direct subject (e.g. "give feedback to X"), or is a named party to a decision. NEVER tag a person merely because the task came from a meeting or 1:1 with them.
+
+Respond with valid JSON only — no prose, no markdown fences.
+Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const raw = (message.content[0] as { type: string; text: string }).text.trim()
+    const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    const parsed = JSON.parse(jsonStr)
+    if (!Array.isArray(parsed)) return []
+
+    const tagMap = new Map(tags.map(t => [t.id, t]))
+    return parsed
+      .filter((s: { tag_id?: string }) => s.tag_id && tagMap.has(s.tag_id))
+      .slice(0, 2)
+      .map((s: { tag_id: string; reason?: string }) => {
+        const tag = tagMap.get(s.tag_id)!
+        return { tag_id: tag.id, tag_name: tag.name, color: tag.color, reason: String(s.reason ?? '').slice(0, 120) }
+      })
+  } catch (err) {
+    console.error('suggestTagsForSuggestion error:', String(err))
+    return []
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'method_not_allowed' }, 405)
@@ -146,6 +243,9 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
     if (!googleApiKey) return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const anthropic = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null
+    if (!anthropic) console.error('generate-meeting-suggestions: ANTHROPIC_API_KEY not configured, skipping tag recommendations')
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -234,6 +334,15 @@ serve(async (req) => {
       .eq('user_id', userId)
     const members = (membersRows ?? []) as Array<{ id: string; name: string }>
     const memberById = new Map(members.map(m => [m.id, m]))
+
+    // Inbox tag library for content-aware suggestion tagging (see suggestTagsForSuggestion).
+    const { data: inboxTagRows } = await supabase
+      .from('inbox_tags')
+      .select('id, name, type, color')
+      .eq('user_id', userId)
+      .in('type', ['project', 'folder', 'person'])
+      .is('parent_id', null)
+    const inboxTags = (inboxTagRows ?? []) as InboxTagRow[]
 
     let totalAdded = 0
 
@@ -338,6 +447,12 @@ serve(async (req) => {
         // Dedupe against manually-created action items (word-overlap similarity).
         if (manualActions.some(m => isSimilarText(m.text, title))) continue
 
+        // Recommend an inbox tag destination from the task's content — never
+        // from meeting attendance alone (see suggestTagsForSuggestion).
+        const tagSuggestions = anthropic
+          ? await suggestTagsForSuggestion(anthropic, inboxTags, { title, rawContext: item.raw_context ?? null })
+          : []
+
         const { error: insertErr } = await supabase
           .from('dci_suggested_tasks')
           .insert({
@@ -352,8 +467,97 @@ serve(async (req) => {
             raw_context: item.raw_context ?? null,
             member_id: recording?.team_member_id ?? null,
             recording_id: transcript.recording_id,
+            tag_suggestions: tagSuggestions,
           })
         if (!insertErr) totalAdded++
+      }
+
+      // ── Second pass: colleague-assigned action items ──────────────────────
+      // Only attempt if there are known participants to match against.
+      if (members.length > 0 && participantNames.length > 1) {
+        const colleaguePrompt = buildColleaguePrompt({
+          meetingLabel: sourceLabel,
+          participantNames,
+          transcript: truncated,
+        })
+
+        const colleagueRes = await fetch(
+          'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': googleApiKey },
+            body: JSON.stringify({ contents: [{ parts: [{ text: colleaguePrompt }] }] }),
+          },
+        )
+
+        if (colleagueRes.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cData = await colleagueRes.json() as any
+          const cRaw = cData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+          const cJson = cRaw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+
+          let cItems: Array<{ assignee_name: string; title: string; rationale?: string; raw_context?: string }> = []
+          try {
+            const parsed = JSON.parse(cJson)
+            if (Array.isArray(parsed)) cItems = parsed
+          } catch {
+            console.warn(`Failed to parse colleague suggestions JSON for transcript ${transcript.id}:`, cJson.slice(0, 200))
+          }
+
+          for (const item of cItems) {
+            const rawTitle = (item.title ?? '').trim()
+            const assigneeName = (item.assignee_name ?? '').trim().toLowerCase()
+            if (!rawTitle || !assigneeName) continue
+
+            // Fuzzy-match assignee name to a known team member.
+            const matched = members.find(m => {
+              const mn = m.name.toLowerCase()
+              const parts = mn.split(/\s+/)
+              return mn === assigneeName
+                || parts[0] === assigneeName
+                || parts[parts.length - 1] === assigneeName
+                || mn.includes(assigneeName)
+            })
+            if (!matched) continue
+
+            // Enforce "<FirstName> to <verb> ..." regardless of what the model returned.
+            const firstName = matched.name.split(/\s+/)[0]
+            const alreadyPrefixed = new RegExp(`^${firstName}\\s+to\\s+`, 'i').test(rawTitle)
+            const title = alreadyPrefixed
+              ? rawTitle
+              : `${firstName} to ${rawTitle.replace(new RegExp(`^${firstName}\\s+`, 'i'), '').replace(/^to\s+/i, '')}`
+
+            // Dedupe: skip if an identical pending suggestion already exists for this colleague.
+            const { data: existingC } = await supabase
+              .from('dci_suggested_tasks')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('assignee_member_id', matched.id)
+              .eq('title', title)
+              .eq('status', 'pending')
+              .maybeSingle()
+            if (existingC) continue
+
+            const { error: cInsertErr } = await supabase
+              .from('dci_suggested_tasks')
+              .insert({
+                user_id: userId,
+                date,
+                title,
+                source: sourceLabel,
+                source_type: sourceType,
+                urgency: 'this_week',
+                rationale: item.rationale ?? null,
+                raw_context: item.raw_context ?? null,
+                member_id: recording?.team_member_id ?? null,
+                recording_id: transcript.recording_id,
+                assignee_member_id: matched.id,
+              })
+            if (!cInsertErr) totalAdded++
+          }
+        } else {
+          console.error(`Gemini colleague pass failed for transcript ${transcript.id}:`, await colleagueRes.text())
+        }
       }
 
       await supabase
