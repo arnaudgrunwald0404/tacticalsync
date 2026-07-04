@@ -137,6 +137,36 @@ Transcript:
 ${transcript}`
 }
 
+function buildColleaguePrompt(opts: {
+  meetingLabel: string
+  participantNames: string[]
+  transcript: string
+}): string {
+  const { meetingLabel, participantNames, transcript } = opts
+  const names = participantNames.join(', ') || 'unknown'
+
+  return `You are a chief-of-staff assistant reviewing a meeting ("${meetingLabel}").
+
+Participants: ${names}
+
+Identify action items that were explicitly assigned to or owned by a PARTICIPANT (not the user/host). Only include items where it is clear from the transcript that someone other than the user is responsible.
+
+Return ONLY valid JSON — no markdown fences, no commentary:
+[
+  {
+    "assignee_name": "Exact name as it appears in the transcript",
+    "title": "Short imperative task (max ~8 words), starting with an action verb, no name prefix",
+    "rationale": "Brief reason it was assigned (max ~12 words)",
+    "raw_context": "The verbatim line/quote that shows the assignment (1 sentence)"
+  }
+]
+
+If there are no colleague action items, return [].
+
+Transcript:
+${transcript}`
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'method_not_allowed' }, 405)
@@ -354,6 +384,87 @@ serve(async (req) => {
             recording_id: transcript.recording_id,
           })
         if (!insertErr) totalAdded++
+      }
+
+      // ── Second pass: colleague-assigned action items ──────────────────────
+      // Only attempt if there are known participants to match against.
+      if (members.length > 0 && participantNames.length > 1) {
+        const colleaguePrompt = buildColleaguePrompt({
+          meetingLabel: sourceLabel,
+          participantNames,
+          transcript: truncated,
+        })
+
+        const colleagueRes = await fetch(
+          'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': googleApiKey },
+            body: JSON.stringify({ contents: [{ parts: [{ text: colleaguePrompt }] }] }),
+          },
+        )
+
+        if (colleagueRes.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cData = await colleagueRes.json() as any
+          const cRaw = cData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+          const cJson = cRaw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+
+          let cItems: Array<{ assignee_name: string; title: string; rationale?: string; raw_context?: string }> = []
+          try {
+            const parsed = JSON.parse(cJson)
+            if (Array.isArray(parsed)) cItems = parsed
+          } catch {
+            console.warn(`Failed to parse colleague suggestions JSON for transcript ${transcript.id}:`, cJson.slice(0, 200))
+          }
+
+          for (const item of cItems) {
+            const title = (item.title ?? '').trim()
+            const assigneeName = (item.assignee_name ?? '').trim().toLowerCase()
+            if (!title || !assigneeName) continue
+
+            // Fuzzy-match assignee name to a known team member.
+            const matched = members.find(m => {
+              const mn = m.name.toLowerCase()
+              const parts = mn.split(/\s+/)
+              return mn === assigneeName
+                || parts[0] === assigneeName
+                || parts[parts.length - 1] === assigneeName
+                || mn.includes(assigneeName)
+            })
+            if (!matched) continue
+
+            // Dedupe: skip if an identical pending suggestion already exists for this colleague.
+            const { data: existingC } = await supabase
+              .from('dci_suggested_tasks')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('assignee_member_id', matched.id)
+              .eq('title', title)
+              .eq('status', 'pending')
+              .maybeSingle()
+            if (existingC) continue
+
+            const { error: cInsertErr } = await supabase
+              .from('dci_suggested_tasks')
+              .insert({
+                user_id: userId,
+                date,
+                title,
+                source: sourceLabel,
+                source_type: sourceType,
+                urgency: 'this_week',
+                rationale: item.rationale ?? null,
+                raw_context: item.raw_context ?? null,
+                member_id: recording?.team_member_id ?? null,
+                recording_id: transcript.recording_id,
+                assignee_member_id: matched.id,
+              })
+            if (!cInsertErr) totalAdded++
+          }
+        } else {
+          console.error(`Gemini colleague pass failed for transcript ${transcript.id}:`, await colleagueRes.text())
+        }
       }
 
       await supabase

@@ -66,6 +66,7 @@ export function useMeetingSuggestions({
       .select('id, title, source, source_type, urgency, rationale, raw_context, suggested_category, member_id, date')
       .eq('user_id', userId)
       .eq('status', 'pending')
+      .is('assignee_member_id', null)
       .gte('date', cutoff)
       .order('date', { ascending: false });
 

@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
+import { useColleagueSuggestions } from '@/hooks/useColleagueSuggestions';
 import { toolLabel, STATIC_TOOLS, buildStackOneTools, type PrepToolDef } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
@@ -271,6 +272,12 @@ export function OneOnOnePrepDrawer({
 
   const { topics: relTopics, updateTopicStatus } = useRelationshipTopics(member?.id ?? null);
   const { commitments: forgottenItems } = useForgottenCommitments(member?.id ?? null);
+  const {
+    suggestions: colleagueSuggestions,
+    accept: acceptColleagueSuggestion,
+    dismiss: dismissColleagueSuggestion,
+    reload: reloadColleagueSuggestions,
+  } = useColleagueSuggestions(open ? (member?.id ?? null) : null);
 
   const firstName = member?.name.split(' ')[0] ?? '';
 
@@ -736,7 +743,7 @@ export function OneOnOnePrepDrawer({
     : lastLabel ? `Last met ${lastLabel}` : 'No prior 1:1 logged';
 
   const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType; badge?: number }> = [
-    { key: 'prep', label: 'Prep', icon: ListChecks },
+    { key: 'prep', label: 'Prep', icon: ListChecks, badge: colleagueSuggestions.length > 0 ? colleagueSuggestions.length : undefined },
     { key: 'past', label: 'Past 1:1s', icon: FileText, badge: pastCount || undefined },
     { key: 'ask', label: 'Ask', icon: HelpCircle },
     { key: 'timeline', label: 'Timeline', icon: History },
@@ -854,6 +861,51 @@ export function OneOnOnePrepDrawer({
                     </div>
                   </div>
                 </div>
+
+                {/* AI SUGGESTED COLLEAGUE ACTIONS */}
+                {colleagueSuggestions.length > 0 && (
+                  <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-violet-50 px-[18px] pt-[14px] pb-[14px]">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="h-[15px] w-[15px] text-indigo-500 flex-shrink-0" />
+                      <span className="text-[13px] font-semibold text-indigo-900">Suggested for {firstName}</span>
+                      <span className="ml-auto inline-flex items-center text-[11px] font-semibold px-[9px] py-[3px] rounded-full bg-indigo-100 text-indigo-700">
+                        {colleagueSuggestions.length} to review
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-indigo-700/80 mb-3">AI spotted these action items for {firstName} in your recent meetings. Accept to add to their open assignments, or dismiss.</p>
+                    <div className="flex flex-col gap-2">
+                      {colleagueSuggestions.map(s => (
+                        <div key={s.id} className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 border border-indigo-100">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-medium text-foreground leading-snug">{s.title}</div>
+                            {s.rationale && (
+                              <div className="text-[11.5px] text-muted-foreground mt-0.5">{s.rationale}</div>
+                            )}
+                            {s.source && (
+                              <div className="text-[11px] text-indigo-500 mt-1 truncate">{s.source}</div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                            <button
+                              onClick={async () => { await acceptColleagueSuggestion(s.id); reloadColleagueSuggestions(); setPastActions(prev => [{ id: 'tmp-' + s.id, text: s.title, created_at: new Date().toISOString(), due_date: null, owner: 'them', done: false }, ...prev]); }}
+                              className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                              title="Accept — add to open assignments"
+                            >
+                              <Check className="h-[13px] w-[13px]" />
+                            </button>
+                            <button
+                              onClick={() => dismissColleagueSuggestion(s.id)}
+                              className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                              title="Dismiss"
+                            >
+                              <X className="h-[13px] w-[13px]" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* OPEN COMMITMENTS */}
                 <Card className="px-[22px] pt-[18px] pb-4">
