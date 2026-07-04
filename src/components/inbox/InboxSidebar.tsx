@@ -1,11 +1,28 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CalendarPlus, Radar, Bot, Users } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, RefreshCw, Loader2, X } from 'lucide-react';
 import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import type { InboxTag, InboxFilterState } from '@/types/inbox';
 import { planFolderReindex } from '@/lib/inboxValidation';
+
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+export interface MeetingsSyncInfo {
+  lastSyncAt: string | null;
+  syncing: boolean;
+  calendarConnected: boolean;
+  onSync: () => void;
+}
 
 interface InboxSidebarProps {
   tags: InboxTag[];
@@ -19,6 +36,9 @@ interface InboxSidebarProps {
   onTogglePin?: (tag: InboxTag) => void;
   /** When true, fills its container (for use inside a mobile Sheet) instead of the fixed-width card. */
   bare?: boolean;
+  meetingsSearch?: string;
+  onMeetingsSearchChange?: (v: string) => void;
+  meetingsSyncInfo?: MeetingsSyncInfo;
 }
 
 // ── Fixed (non-editable) item ─────────────────────────────────────────────────
@@ -393,6 +413,7 @@ function DropGap({ active, onDrop, label }: { active: boolean; onDrop: () => voi
 
 export function InboxSidebar({
   tags, counts, filter, onFilterChange, onRenameTag, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, bare = false,
+  meetingsSearch = '', onMeetingsSearchChange, meetingsSyncInfo,
 }: InboxSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -496,6 +517,48 @@ export function InboxSidebar({
                 onClick={() => navigate(path)}
               />
             ))}
+
+            {/* Search */}
+            <div className="pt-3 pb-1">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <input
+                  value={meetingsSearch}
+                  onChange={e => onMeetingsSearchChange?.(e.target.value)}
+                  placeholder="Quick search…"
+                  className="w-full h-8 pl-8 pr-7 text-sm rounded-md border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-300 placeholder:text-gray-400"
+                />
+                {meetingsSearch && (
+                  <button
+                    onClick={() => onMeetingsSearchChange?.('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Sync */}
+            {meetingsSyncInfo && (
+              <div className="pt-1">
+                {meetingsSyncInfo.lastSyncAt && (
+                  <p className="text-[10px] text-gray-400 px-1 mb-1.5 truncate">
+                    Synced {formatRelativeTime(meetingsSyncInfo.lastSyncAt)}
+                  </p>
+                )}
+                <button
+                  onClick={meetingsSyncInfo.onSync}
+                  disabled={meetingsSyncInfo.syncing}
+                  className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  {meetingsSyncInfo.syncing
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <RefreshCw className="h-3.5 w-3.5" />}
+                  {meetingsSyncInfo.calendarConnected ? 'Sync' : 'Connect calendar'}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <>

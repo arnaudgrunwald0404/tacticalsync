@@ -2,6 +2,140 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 
+// ── Group meeting query handler ────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs, anthropicApiKey }: {
+  supabase: any; userId: string; group_meeting_id: string; question: string; startMs: number; anthropicApiKey: string;
+}): Promise<Response> {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+  function jsonResponse(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  const [meetingRes, participantsRes, prepsRes, actionsRes, topicsRes, relDocRes] = await Promise.all([
+    supabase.from('cos_group_meetings').select('id, title, subject, cadence, next_start_at')
+      .eq('id', group_meeting_id).eq('user_id', userId).single(),
+    supabase.from('cos_group_meeting_participants').select('name, email, team_member_id')
+      .eq('group_meeting_id', group_meeting_id),
+    supabase.from('cos_one_on_one_prep').select('content, prep_date')
+      .eq('user_id', userId).eq('group_meeting_id', group_meeting_id).eq('status', 'ready')
+      .order('prep_date', { ascending: false }).limit(10),
+    supabase.from('cos_meeting_actions').select('text, status, created_at, due_date, owner')
+      .eq('user_id', userId).eq('group_meeting_id', group_meeting_id)
+      .order('created_at', { ascending: false }).limit(30),
+    supabase.from('cos_relationship_topics').select('topic, category, sentiment, mention_count, status')
+      .eq('user_id', userId).eq('group_meeting_id', group_meeting_id)
+      .order('mention_count', { ascending: false }),
+    supabase.from('cos_relationship_documents').select('content')
+      .eq('user_id', userId).eq('group_meeting_id', group_meeting_id).maybeSingle(),
+  ])
+
+  if (meetingRes.error || !meetingRes.data) return jsonResponse({ error: 'group_meeting_not_found' }, 404)
+
+  const meeting = meetingRes.data as { id: string; title: string; subject: string | null; cadence: string | null; next_start_at: string | null }
+  const participants = (participantsRes.data ?? []) as Array<{ name: string | null; email: string | null; team_member_id: string | null }>
+  const preps = (prepsRes.data ?? []) as Array<{ content: string; prep_date: string }>
+  const actions = (actionsRes.data ?? []) as Array<{ text: string; status: string; created_at: string; due_date: string | null; owner: string | null }>
+  const topics = (topicsRes.data ?? []) as Array<{ topic: string; category: string; sentiment: string; mention_count: number; status: string }>
+  const relDocContent: string = relDocRes.data?.content ?? ''
+
+  const contextParts: string[] = []
+  contextParts.push(`# Group Meeting: ${meeting.title}`)
+  if (meeting.subject) contextParts.push(`Purpose: ${meeting.subject}`)
+  if (meeting.cadence) contextParts.push(`Cadence: ${meeting.cadence}`)
+  if (meeting.next_start_at) contextParts.push(`Next: ${meeting.next_start_at.slice(0, 10)}`)
+
+  if (relDocContent) {
+    contextParts.push(`\n## Living Meeting Brief\n${relDocContent}`)
+  }
+
+  if (participants.length > 0) {
+    contextParts.push(`\n## Participants`)
+    participants.forEach(p => contextParts.push(`- ${p.name ?? p.email ?? 'Unknown'}`))
+  }
+
+  if (topics.length > 0) {
+    contextParts.push(`\n## Recurring Topics`)
+    topics.forEach(t => {
+      const statusLabel = t.status === 'resolved' ? ' ✓' : t.status === 'stale' ? ' ⚠' : ''
+      contextParts.push(`- "${t.topic}" [${t.category}] — mentioned ${t.mention_count}x${statusLabel}`)
+    })
+  }
+
+  if (actions.length > 0) {
+    const pending = actions.filter(a => a.status === 'pending')
+    const completed = actions.filter(a => a.status === 'done')
+    if (pending.length > 0) {
+      contextParts.push(`\n## Pending Action Items`)
+      pending.forEach(a => {
+        const due = a.due_date ? ` — due ${a.due_date}` : ''
+        const owner = a.owner ? ` (${a.owner})` : ''
+        contextParts.push(`- ${a.text}${owner}${due}`)
+      })
+    }
+    if (completed.length > 0) {
+      contextParts.push(`\n## Completed Action Items`)
+      completed.slice(0, 10).forEach(a => contextParts.push(`- ${a.text}`))
+    }
+  }
+
+  if (preps.length > 0) {
+    contextParts.push(`\n## Meeting Prep History`)
+    preps.forEach(p => {
+      const preview = p.content.length > 600 ? p.content.slice(0, 600) + '...' : p.content
+      contextParts.push(`\n### ${p.prep_date}\n${preview}`)
+    })
+  }
+
+  const systemPrompt = `You are a meeting intelligence assistant. The user is asking about the group meeting "${meeting.title}".
+
+RULES:
+- Answer based ONLY on the provided data below. Do not speculate beyond what is documented.
+- Cite specific dates and prep notes when relevant.
+- If the information isn't in the data, say so clearly.
+- Be concise but thorough. Use bullet points for multiple items.
+
+${contextParts.join('\n')}`
+
+  const anthropic = new Anthropic({ apiKey: anthropicApiKey })
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1000,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: question.trim() }],
+  })
+
+  const answer = response.content
+    .filter((b: { type: string }) => b.type === 'text')
+    .map((b: { type: string; text: string }) => b.text)
+    .join('\n')
+
+  await supabase.from('prep_generation_log').insert({
+    user_id: userId,
+    group_meeting_id,
+    prep_id: null,
+    input_tokens: response.usage?.input_tokens ?? 0,
+    output_tokens: response.usage?.output_tokens ?? 0,
+    model: 'claude-sonnet-4-6',
+    duration_ms: Date.now() - startMs,
+    data_sources_used: ['group_relationship_query'],
+  })
+
+  return jsonResponse({
+    answer,
+    member_name: meeting.title,
+    context_size: { preps: preps.length, topics: topics.length, actions: actions.length },
+    token_usage: { input_tokens: response.usage?.input_tokens ?? 0, output_tokens: response.usage?.output_tokens ?? 0 },
+  }, 200)
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -62,11 +196,16 @@ serve(async (req) => {
     const userId = userData.user.id
 
     // Parse request
-    const body = await req.json() as { team_member_id: string; question: string }
-    const { team_member_id, question } = body
+    const body = await req.json() as { team_member_id?: string; group_meeting_id?: string; question: string }
+    const { team_member_id, group_meeting_id, question } = body
 
-    if (!team_member_id || !question?.trim()) {
-      return jsonResponse({ error: 'team_member_id and question are required' }, 400)
+    if ((!team_member_id && !group_meeting_id) || !question?.trim()) {
+      return jsonResponse({ error: 'team_member_id or group_meeting_id, and question are required' }, 400)
+    }
+
+    // Route to group meeting path if group_meeting_id provided
+    if (group_meeting_id) {
+      return handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs: Date.now(), anthropicApiKey })
     }
 
     // Rate limit: 10 queries per user per day
@@ -94,6 +233,7 @@ serve(async (req) => {
       allActionsRes,
       accountabilitiesRes,
       personTopicsRes,
+      relDocRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -133,6 +273,12 @@ serve(async (req) => {
         .from('cos_person_topics')
         .select('text')
         .eq('member_id', team_member_id),
+      supabase
+        .from('cos_relationship_documents')
+        .select('content')
+        .eq('user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .maybeSingle(),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -155,11 +301,16 @@ serve(async (req) => {
     }>
     const accountabilities = (accountabilitiesRes.data ?? []) as Array<{ text: string }>
     const personTopics = (personTopicsRes.data ?? []) as Array<{ text: string }>
+    const relDocContent: string = relDocRes?.data?.content ?? ''
 
     // ── Build system prompt with full relationship context ────────────────
     // This is the cacheable part — it changes slowly between queries.
 
     const contextParts: string[] = []
+
+    if (relDocContent) {
+      contextParts.push(`## Relationship Brief (auto-generated, most up-to-date summary)\n${relDocContent}`)
+    }
 
     contextParts.push(`# Relationship History: ${member.name}`)
     contextParts.push(`Role: ${member.role}`)

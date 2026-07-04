@@ -65,7 +65,21 @@ Deno.serve(async (req) => {
     if (!tags || tags.length === 0) return json({ suggestions: [] })
 
     // ── Build Claude prompt ───────────────────────────────────────────────────
-    const tagList = tags.map(t => `- ${t.name} (type: ${t.type}, id: ${t.id})`).join('\n')
+    const tagList = tags.map(t => {
+      const s = t.settings as {
+        description?: string;
+        stakeholders?: string[];
+        recurring_meetings?: string[];
+        slack_channels?: string[];
+      } | null
+
+      const lines: string[] = [`- ${t.name} (type: ${t.type}, id: ${t.id})`]
+      if (s?.description)         lines.push(`  description: ${s.description}`)
+      if (s?.stakeholders?.length)        lines.push(`  stakeholders: ${s.stakeholders.join(', ')}`)
+      if (s?.recurring_meetings?.length)  lines.push(`  recurring meetings: ${s.recurring_meetings.join(', ')}`)
+      if (s?.slack_channels?.length)      lines.push(`  slack channels: ${s.slack_channels.join(', ')}`)
+      return lines.join('\n')
+    }).join('\n')
 
     const sourceContext = (() => {
       const src = item.source_ref as { type?: string; id?: string } | null
@@ -99,9 +113,10 @@ INSTRUCTIONS
 - Only suggest a tag if you are reasonably sure it matches.
 - If no tag fits, return an empty array.
 - Do NOT invent tags — only use IDs from the list above.
-- A project or folder tag fits if the item is clearly about that initiative.
+- A project tag fits if the item is clearly about that initiative. Use the description, stakeholders, recurring meetings, and Slack channels as matching signals — not just the name.
+- A folder tag fits if the item's urgency or context matches the folder's purpose.
 - A person tag fits if the item directly involves or mentions that person.
-- For meeting insights and Zoom items, the meeting subject and keywords are strong signals.
+- For meeting insights and Zoom items, cross-reference the meeting title against recurring_meetings listed for each project.
 
 Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`

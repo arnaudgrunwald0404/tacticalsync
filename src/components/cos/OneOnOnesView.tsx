@@ -87,6 +87,8 @@ interface OneOnOnesViewProps {
   toolbarPortalId?: string;
   viewToggle?: React.ReactNode;
   onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
+  externalSearch?: string;
+  hideSearchSync?: boolean;
 }
 
 interface MyTodo {
@@ -286,8 +288,12 @@ export function OneOnOnesView({
   toolbarPortalId,
   viewToggle,
   onSelectEvent,
+  externalSearch,
+  hideSearchSync = false,
 }: OneOnOnesViewProps) {
-  const [search, setSearch] = useState('');
+  const [internalSearch, setInternalSearch] = useState('');
+  const search = externalSearch !== undefined ? externalSearch : internalSearch;
+  const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch;
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
   const [pastSearch, setPastSearch] = useState('');
   const [pastExpanded, setPastExpanded] = useState(false);
@@ -465,48 +471,47 @@ export function OneOnOnesView({
 
   const toolbar = (
     <div className="flex items-center gap-3 w-full">
-      {/* View toggle + Search — left side */}
       {viewToggle}
-      <div className="relative w-56">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Quick search..."
-          className="h-8 pl-8 pr-8 text-sm"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Spacer */}
+      {!hideSearchSync && (
+        <div className="relative w-56">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Quick search..."
+            className="h-8 pl-8 pr-8 text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex-1" />
-
-      {/* Sync — far right */}
-      <div className="flex items-center gap-2">
-        {lastSyncAt && (
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-            Synced {formatRelativeTime(lastSyncAt)}
-          </span>
-        )}
-        {calendarConnected ? (
-          <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
-            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Sync
-          </Button>
-        ) : (
-          <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
-            <CalendarPlus className="h-3.5 w-3.5" />
-            Connect calendar
-          </Button>
-        )}
-      </div>
+      {!hideSearchSync && (
+        <div className="flex items-center gap-2">
+          {lastSyncAt && (
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+              Synced {formatRelativeTime(lastSyncAt)}
+            </span>
+          )}
+          {calendarConnected ? (
+            <Button variant="outline" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Sync
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" onClick={onSyncCalendar} disabled={syncing} className="gap-1.5 h-8">
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Connect calendar
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 

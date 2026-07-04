@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Tag, Minimize2, History, Cpu, Settings2 } from 'lucide-react';
+import { X, Tag, Minimize2, History, Cpu, Bot, ArrowUp, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -9,7 +9,10 @@ import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
 import { AgentBar } from './AgentBar';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings } from '@/types/inbox';
+import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 const SUGGESTIONS = [
   "What needs my attention today?",
@@ -25,8 +28,149 @@ const WORKFLOW_STYLES: Record<string, string> = {
   'Blocked':            'bg-red-100 text-red-700 hover:bg-red-200',
 };
 
+interface ChatMsg { id: string; role: 'user' | 'agent'; text: string }
+
+const MEETING_CHIPS = ["What's overdue?", 'Recap the last meeting', 'What should I cover?', "What's their top priority?"];
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function MeetingChatPanel({ event }: { event: UpcomingOneOnOneEvent }) {
+  const member = event.team_member;
+  const name = member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
+  const firstName = name.split(' ')[0];
+  const isGroup = !member;
+
+  const [chat, setChat] = useState<ChatMsg[]>([{
+    id: 'a0',
+    role: 'agent',
+    text: isGroup
+      ? `I'm ready to help with ${name}. Ask me about open action items, past decisions, or what to cover.`
+      : `Hi — ask me anything about ${firstName}, the last 1:1, or what's still open.`,
+  }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [chat]);
+
+  const send = async (raw?: string) => {
+    const q = (raw ?? input).trim();
+    if (!q || loading) return;
+    setInput('');
+    setChat(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: q }]);
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const body = member
+        ? { team_member_id: member.id, question: q }
+        : { group_meeting_id: (event as any).group_meeting_id, question: q }; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const res = await fetch(`${supabaseUrl}/functions/v1/query-relationship-history`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { answer: string };
+      setChat(prev => [...prev, { id: 'a' + Date.now(), role: 'agent', text: data.answer }]);
+    } catch (err) {
+      setChat(prev => [...prev, {
+        id: 'a' + Date.now(), role: 'agent',
+        text: `Sorry — I couldn't reach your meeting history. ${err instanceof Error ? err.message : ''}`.trim(),
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      {/* Person / group header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60 flex-shrink-0">
+        <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+          {initials(name)}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+          <p className="text-[11px] text-gray-400">{isGroup ? 'Group meeting context' : '1:1 context'}</p>
+        </div>
+      </div>
+
+      {/* Chat messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-3 px-4 py-4">
+        {chat.map(msg => msg.role === 'agent' ? (
+          <div key={msg.id} className="flex gap-2.5 items-start max-w-[90%]">
+            <span className="w-7 h-7 flex-shrink-0 rounded-lg bg-gray-100 grid place-items-center mt-0.5">
+              <Bot className="h-3.5 w-3.5 text-gray-500" />
+            </span>
+            <div className="bg-white border border-gray-200 rounded-[4px_12px_12px_12px] px-3 py-2.5 text-sm leading-relaxed whitespace-pre-line text-gray-800">
+              {msg.text}
+            </div>
+          </div>
+        ) : (
+          <div key={msg.id} className="self-end max-w-[80%] bg-blue-600 text-white rounded-[12px_4px_12px_12px] px-3 py-2.5 text-sm leading-relaxed">
+            {msg.text}
+          </div>
+        ))}
+        {loading && (
+          <div className="flex gap-2 items-center text-gray-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="text-xs">Searching history…</span>
+          </div>
+        )}
+      </div>
+
+      {/* Quick chips */}
+      <div className="px-4 pb-2 flex gap-1.5 flex-wrap">
+        {MEETING_CHIPS.map((s, i) => (
+          <button
+            key={i}
+            onClick={() => send(s)}
+            disabled={loading}
+            className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 text-gray-600"
+          >
+            <Sparkles className="h-2.5 w-2.5 text-blue-500" />{s}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="flex-shrink-0 flex items-end gap-2 px-4 py-3 border-t border-gray-100">
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          rows={1}
+          placeholder={`Ask about ${firstName}…`}
+          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-300 resize-none max-h-[80px]"
+        />
+        <Button
+          size="icon"
+          className="h-9 w-9 rounded-xl flex-shrink-0"
+          disabled={!input.trim() || loading}
+          onClick={() => send()}
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface InboxAssistantPanelProps {
   item: InboxItem | null;
+  meetingEvent?: UpcomingOneOnOneEvent | null;
   allTags: InboxTag[];
   userName?: string;
   onClose: () => void;
@@ -222,6 +366,7 @@ export function InboxAssistantPanel({
   item, allTags, userName, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem, onAddItem, onCreateTag,
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag,
+  meetingEvent,
 }: InboxAssistantPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const isMobile = useIsMobile();
@@ -279,6 +424,14 @@ export function InboxAssistantPanel({
           onSave={onSaveProjectSettings}
           onDelete={onDeleteProjectTag}
         />
+      ) : meetingEvent ? (
+        // Meeting mode — chat panel focused on this 1:1 or group meeting
+        <>
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
+            <span className="text-sm font-semibold text-gray-900 flex-1">Meeting Assistant</span>
+          </div>
+          <MeetingChatPanel event={meetingEvent} />
+        </>
       ) : (
         <>
       {/* Header */}
