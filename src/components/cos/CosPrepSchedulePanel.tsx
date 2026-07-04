@@ -1181,6 +1181,7 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
   const [userId, setUserId] = useState<string | null>(null);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [draftRules, setDraftRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
+  const [savedRules, setSavedRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
   const [savingRules, setSavingRules] = useState(false);
 
   useEffect(() => {
@@ -1196,7 +1197,9 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
       ]);
       setCalendarConnected(Boolean(credsRes.data?.connected));
       if (settingsRes.data?.calendar_sync_rules) {
-        setDraftRules({ ...DEFAULT_SYNC_RULES, ...(settingsRes.data.calendar_sync_rules as Partial<CalendarSyncRules>) });
+        const loaded = { ...DEFAULT_SYNC_RULES, ...(settingsRes.data.calendar_sync_rules as Partial<CalendarSyncRules>) };
+        setDraftRules(loaded);
+        setSavedRules(loaded);
       }
     })();
   }, []);
@@ -1211,6 +1214,7 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
         { onConflict: 'user_id' },
       );
       if (error) throw error;
+      setSavedRules(draftRules);
       toast({ title: 'Inclusion rules saved' });
     } catch (err) {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
@@ -1298,7 +1302,7 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
         </div>
 
         <div className="pt-2">
-          <Button size="sm" onClick={saveRules} disabled={savingRules} className="gap-1.5">
+          <Button size="sm" onClick={saveRules} disabled={savingRules || JSON.stringify(draftRules) === JSON.stringify(savedRules)} className="gap-1.5">
             {savingRules ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save rules
           </Button>

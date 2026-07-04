@@ -244,9 +244,11 @@ export function OneOnOnePrepDrawer({
 
   // Settings drafts
   const [contextDraft, setContextDraft] = useState('');
+  const [contextBaseline, setContextBaseline] = useState('');
   const [savingContext, setSavingContext] = useState(false);
   const [savedContext, setSavedContext] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [feedbackBaseline, setFeedbackBaseline] = useState('');
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
@@ -293,6 +295,7 @@ export function OneOnOnePrepDrawer({
     setPickedQuestions(new Set());
     setNextMeetingUrl(null);
     setContextDraft(member.context_notes ?? '');
+    setContextBaseline(member.context_notes ?? '');
     setChat([{
       id: 'greeting',
       role: 'agent',
@@ -314,6 +317,7 @@ export function OneOnOnePrepDrawer({
       .single()
       .then(({ data }: { data: { prep_instructions: string } | null }) => {
         setFeedbackDraft(data?.prep_instructions ?? '');
+        setFeedbackBaseline(data?.prep_instructions ?? '');
       });
 
     db.from('cos_team_members')
@@ -643,6 +647,7 @@ export function OneOnOnePrepDrawer({
         .update({ context_notes: contextDraft || null })
         .eq('id', member.id);
       if (error) throw error;
+      setContextBaseline(contextDraft);
       setSavedContext(true);
       setTimeout(() => setSavedContext(false), 1800);
     } catch (err) {
@@ -662,6 +667,7 @@ export function OneOnOnePrepDrawer({
         .from('cos_prep_settings')
         .upsert({ user_id: user.id, prep_instructions: feedbackDraft }, { onConflict: 'user_id' });
       if (error) throw error;
+      setFeedbackBaseline(feedbackDraft);
       setSavedFeedback(true);
       setTimeout(() => setSavedFeedback(false), 1800);
     } catch (err) {
@@ -1300,7 +1306,7 @@ export function OneOnOnePrepDrawer({
                   placeholder={`e.g. ${firstName} cares about shipping quality over speed. Prefers async written updates.`}
                   className="text-[13.5px] leading-[1.55] resize-y" />
                 <div className="flex items-center gap-3 mt-3">
-                  <Button size="sm" variant="secondary" onClick={saveContext} disabled={savingContext}>
+                  <Button size="sm" variant="secondary" onClick={saveContext} disabled={savingContext || contextDraft === contextBaseline}>
                     {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save context
                   </Button>
                   {savedContext && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
@@ -1315,7 +1321,7 @@ export function OneOnOnePrepDrawer({
                   placeholder="e.g. Always highlight blockers first. Don't repeat unchanged items. Keep it terse."
                   className="text-[13.5px] leading-[1.55] resize-y" />
                 <div className="flex items-center gap-3 mt-3">
-                  <Button size="sm" variant="secondary" onClick={saveFeedback} disabled={savingFeedback}>
+                  <Button size="sm" variant="secondary" onClick={saveFeedback} disabled={savingFeedback || feedbackDraft === feedbackBaseline}>
                     {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save instructions
                   </Button>
                   {savedFeedback && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
