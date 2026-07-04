@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import {
   findMatchingMember,
+  matchMemberByTitle,
   DEFAULT_SYNC_RULES,
   type CalendarSyncRules,
   type MinimalMember,
@@ -104,8 +105,10 @@ serve(async (req) => {
       userId = userData.user.id
     }
 
-    // Parse + clamp days.
-    let days = 30
+    // Parse + clamp days. Defaults widened to a 90-day window (max 180) to
+    // reach back far enough to backfill older recordings on first sync;
+    // per-call overrides (e.g. agent-tick's days:1) still apply.
+    let days = 90
     try {
       const body = await req.json()
       if (typeof body?.days === 'number' && Number.isFinite(body.days)) {
@@ -115,7 +118,7 @@ serve(async (req) => {
       // empty body is fine
     }
     if (days < 1) days = 1
-    if (days > 90) days = 90
+    if (days > 180) days = 180
 
     // Load credentials.
     const { data: creds, error: credsErr } = await supabase
@@ -314,6 +317,14 @@ serve(async (req) => {
       }
       const match = findMatchingMember(syntheticEvent, members, zoomRules)
 
+      // Fallback: Zoom often doesn't return participant emails/names (the
+      // past_meetings participants API needs a scope/plan many accounts lack),
+      // so participant matching yields nothing. When that happens, match the
+      // recording's title against tracked member names (e.g. "Kristin / Arnaud",
+      // "30-min chat — Joe Pritchard"). Only resolves an unambiguous single name.
+      const titleMatchId = match ? null : matchMemberByTitle(meeting.topic, members)?.id ?? null
+      const resolvedMemberId = match?.member.id ?? titleMatchId
+
       // Check for transcript files
       const hasTranscript = (meeting.recording_files ?? []).some(
         f => f.file_type === 'TRANSCRIPT' || f.recording_type === 'audio_transcript'
@@ -321,7 +332,7 @@ serve(async (req) => {
 
       const row = {
         user_id: userId,
-        team_member_id: match?.member.id ?? null,
+        team_member_id: resolvedMemberId,
         zoom_meeting_id: String(meeting.id),
         zoom_meeting_uuid: meeting.uuid,
         topic: meeting.topic ?? null,

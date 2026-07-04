@@ -32,8 +32,9 @@ describe('MobileBottomNav', () => {
   });
 
   describe('rendering', () => {
-    it('should render all five nav items', () => {
+    it('should render all six nav items', () => {
       renderWithPath('/commitments');
+      expect(screen.getByLabelText('Inbox')).toBeInTheDocument();
       expect(screen.getByLabelText('Chief of Staff')).toBeInTheDocument();
       expect(screen.getByLabelText('Strategy')).toBeInTheDocument();
       expect(screen.getByLabelText('My Meetings')).toBeInTheDocument();
@@ -46,10 +47,10 @@ describe('MobileBottomNav', () => {
       expect(screen.getByRole('navigation')).toBeInTheDocument();
     });
 
-    it('should render five buttons', () => {
+    it('should render six buttons', () => {
       renderWithPath('/commitments');
       const buttons = screen.getAllByRole('button');
-      expect(buttons).toHaveLength(5);
+      expect(buttons).toHaveLength(6);
     });
   });
 
@@ -89,6 +90,12 @@ describe('MobileBottomNav', () => {
       const cosBtn = screen.getByLabelText('Chief of Staff');
       expect(cosBtn).toHaveClass('text-primary');
     });
+
+    it('should mark Inbox as active on /inbox', () => {
+      renderWithPath('/inbox');
+      const inboxBtn = screen.getByLabelText('Inbox');
+      expect(inboxBtn).toHaveClass('text-primary');
+    });
   });
 
   describe('navigation', () => {
@@ -125,6 +132,13 @@ describe('MobileBottomNav', () => {
       renderWithPath('/commitments');
       await user.click(screen.getByLabelText('Chief of Staff'));
       expect(mockNavigate).toHaveBeenCalledWith('/chief-of-staff');
+    });
+
+    it('should navigate to /inbox when Inbox is clicked', async () => {
+      const user = userEvent.setup();
+      renderWithPath('/commitments');
+      await user.click(screen.getByLabelText('Inbox'));
+      expect(mockNavigate).toHaveBeenCalledWith('/inbox');
     });
   });
 });
