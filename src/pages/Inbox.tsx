@@ -564,7 +564,9 @@ export default function InboxPage() {
             <InboxSuggestionsPanel
               userId={userId}
               members={teamMembers.map(m => ({ id: m.id, name: m.name }))}
+              tags={tags}
               onAddItem={handleSubmit}
+              scopeTagIds={filter.tagIds}
             />
           )}
           {itemsLoading ? (
