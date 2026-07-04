@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { CosLayoutConfig } from '@/types/cos';
 import { buildTargetOptions, resolveTarget, type TargetOption } from '@/lib/meetingSuggestions';
@@ -39,7 +39,7 @@ interface UseMeetingSuggestionsArgs {
   members: Member[];
   /** Creates the actual list item. Owned by the parent so its optimistic
    *  priorities state stays in sync. */
-  onAddToList: (category: string, title: string) => Promise<void> | void;
+  onAddToList: (tagIds: string[], title: string) => Promise<void> | void;
 }
 
 interface UseMeetingSuggestionsReturn {
@@ -48,7 +48,7 @@ interface UseMeetingSuggestionsReturn {
   refreshing: boolean;
   targetOptions: TargetOption[];
   resolve: (category: string | null | undefined) => TargetOption | undefined;
-  addToList: (id: string, category: string) => Promise<void>;
+  addToList: (id: string, tagIds: string[]) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -61,6 +61,9 @@ export function useMeetingSuggestions({
   const [suggestions, setSuggestions] = useState<MeetingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Guards against a suggestion being actioned twice (e.g. a fast double-click)
+  // before the optimistic state update has re-rendered and removed its row.
+  const pendingRef = useRef<Set<string>>(new Set());
 
   const targetOptions = buildTargetOptions(layoutConfig);
 
@@ -90,26 +93,42 @@ export function useMeetingSuggestions({
 
   useEffect(() => { load(); }, [load]);
 
-  const addToList = useCallback(async (id: string, category: string) => {
+  const addToList = useCallback(async (id: string, tagIds: string[]) => {
+    if (pendingRef.current.has(id)) return; // already being actioned — avoid a duplicate add
     const suggestion = suggestions.find(s => s.id === id);
     if (!suggestion) return;
+    pendingRef.current.add(id);
     // Optimistically drop it from the panel.
     setSuggestions(prev => prev.filter(s => s.id !== id));
-    await onAddToList(category, suggestion.title);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from('dci_suggested_tasks')
-      .update({ status: 'accepted' })
-      .eq('id', id);
+    try {
+      // Persist the status change first: if this panel unmounts/remounts (e.g. the
+      // user switches tabs) while the slower item-creation call below is still in
+      // flight, a refetch must never see this suggestion as still "pending" —
+      // otherwise it reappears and can be actioned a second time, creating a duplicate.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from('dci_suggested_tasks')
+        .update({ status: 'accepted' })
+        .eq('id', id);
+      await onAddToList(tagIds, suggestion.title);
+    } finally {
+      pendingRef.current.delete(id);
+    }
   }, [suggestions, onAddToList]);
 
   const dismiss = useCallback(async (id: string) => {
+    if (pendingRef.current.has(id)) return;
+    pendingRef.current.add(id);
     setSuggestions(prev => prev.filter(s => s.id !== id));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from('dci_suggested_tasks')
-      .update({ status: 'dismissed' })
-      .eq('id', id);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from('dci_suggested_tasks')
+        .update({ status: 'dismissed' })
+        .eq('id', id);
+    } finally {
+      pendingRef.current.delete(id);
+    }
   }, []);
 
   const refresh = useCallback(async () => {

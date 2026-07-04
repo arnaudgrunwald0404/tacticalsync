@@ -19,9 +19,12 @@ import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel'
 import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
+import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority } from '@/types/inbox';
+import { planTagGroupReindex } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 
 type SortMode = 'date' | 'grouped' | 'byProject';
@@ -163,6 +166,8 @@ export default function InboxPage() {
 
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
+  const slackChannelOptions = useSlackChannelOptions(userId);
+  const meetingOptions = useMeetingTitleOptions(userId);
 
   // Seed on first load
   useEffect(() => {
@@ -275,6 +280,14 @@ export default function InboxPage() {
     const next = { ...(tag.settings ?? {}), pinned: !tag.settings?.pinned };
     await saveTagSettings(tag.id, next, tag.name);
   }, [saveTagSettings]);
+
+  const handleConvertFolderToProject = useCallback(async (tagId: string) => {
+    const projectTags = tags.filter(t => t.type === 'project');
+    const updates = planTagGroupReindex(projectTags, tagId, projectTags.length, 'project');
+    await Promise.all(updates.map(u => updateTag(u.id, u.patch)));
+    await reloadTags();
+    setEditingProjectTag(prev => (prev && prev.id === tagId ? { ...prev, type: 'project', parent_id: null } : prev));
+  }, [tags, updateTag, reloadTags]);
 
   const handleSelect = useCallback((id: string, sel: boolean) => {
     setSelected(prev => {
@@ -567,6 +580,9 @@ export default function InboxPage() {
               tags={tags}
               onAddItem={handleSubmit}
               scopeTagIds={filter.tagIds}
+              teamMembers={teamMembers}
+              onCreateTag={handleQuickCreateTag}
+              onCreatePersonTag={handleCreatePersonTag}
             />
           )}
           {itemsLoading ? (
@@ -667,6 +683,10 @@ export default function InboxPage() {
         onCloseProject={() => setEditingProjectTag(null)}
         onSaveProjectSettings={saveTagSettings}
         onDeleteProjectTag={async (id) => { await deleteTag(id); setEditingProjectTag(null); await reloadTags(); }}
+        onConvertFolderToProject={handleConvertFolderToProject}
+        stakeholderOptions={teamMembers.map(m => m.name)}
+        slackChannelOptions={slackChannelOptions}
+        meetingOptions={meetingOptions}
         meetingEvent={selectedMeetingEvent}
       />
       </div>

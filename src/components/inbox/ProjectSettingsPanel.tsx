@@ -8,23 +8,34 @@ interface ProjectSettingsPanelProps {
   onClose: () => void;
   onSave: (tagId: string, settings: ProjectSettings, name: string) => Promise<void>;
   onDelete?: (tagId: string) => Promise<void>;
+  onConvertToProject?: (tagId: string) => Promise<void>;
+  stakeholderOptions?: string[];
+  slackChannelOptions?: string[];
+  meetingOptions?: string[];
 }
 
 function StringListEditor({
-  label, placeholder, values, onChange,
+  label, placeholder, values, onChange, suggestions,
 }: {
   label: string;
   placeholder: string;
   values: string[];
   onChange: (values: string[]) => void;
+  suggestions?: string[];
 }) {
   const [draft, setDraft] = useState('');
+  const [open, setOpen] = useState(false);
 
-  const commit = () => {
-    const trimmed = draft.trim();
+  const commit = (value?: string) => {
+    const trimmed = (value ?? draft).trim();
     if (trimmed && !values.includes(trimmed)) onChange([...values, trimmed]);
     setDraft('');
+    setOpen(false);
   };
+
+  const matches = (suggestions ?? []).filter(
+    s => !values.includes(s) && s.toLowerCase().includes(draft.trim().toLowerCase()),
+  );
 
   return (
     <div className="space-y-1.5">
@@ -41,28 +52,51 @@ function StringListEditor({
             </button>
           </div>
         ))}
-        <div className="flex items-center gap-1">
-          <input
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            placeholder={placeholder}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') setDraft(''); }}
-            className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-300 placeholder-gray-400"
-          />
-          <button
-            onClick={commit}
-            disabled={!draft.trim()}
-            className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+        <div className="relative">
+          <div className="flex items-center gap-1">
+            <input
+              value={draft}
+              onChange={e => { setDraft(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              onBlur={() => setTimeout(() => setOpen(false), 100)}
+              placeholder={placeholder}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commit(matches.length === 1 ? matches[0] : undefined); }
+                if (e.key === 'Escape') { setDraft(''); setOpen(false); }
+              }}
+              className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-300 placeholder-gray-400"
+            />
+            <button
+              onClick={() => commit()}
+              disabled={!draft.trim()}
+              className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {open && matches.length > 0 && (
+            <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-md shadow-md max-h-40 overflow-y-auto">
+              {matches.map(m => (
+                <button
+                  key={m}
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => commit(m)}
+                  className="w-full text-left px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 truncate"
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-export function ProjectSettingsPanel({ tag, onClose, onSave, onDelete }: ProjectSettingsPanelProps) {
+export function ProjectSettingsPanel({
+  tag, onClose, onSave, onDelete, onConvertToProject, stakeholderOptions, slackChannelOptions, meetingOptions,
+}: ProjectSettingsPanelProps) {
   const s = tag.settings ?? {};
   const [name, setName] = useState(tag.name);
   const [description, setDescription] = useState(s.description ?? '');
@@ -72,6 +106,14 @@ export function ProjectSettingsPanel({ tag, onClose, onSave, onDelete }: Project
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [converting, setConverting] = useState(false);
+
+  const handleConvert = async () => {
+    if (!onConvertToProject) return;
+    setConverting(true);
+    await onConvertToProject(tag.id);
+    setConverting(false);
+  };
 
   // Reset when tag changes
   useEffect(() => {
@@ -143,6 +185,7 @@ export function ProjectSettingsPanel({ tag, onClose, onSave, onDelete }: Project
               placeholder="Add name or role…"
               values={stakeholders}
               onChange={v => setStakeholders(v)}
+              suggestions={stakeholderOptions}
             />
 
             <StringListEditor
@@ -150,12 +193,14 @@ export function ProjectSettingsPanel({ tag, onClose, onSave, onDelete }: Project
               placeholder="Add channel (e.g. #project-x)…"
               values={slackChannels}
               onChange={v => setSlackChannels(v)}
+              suggestions={slackChannelOptions}
             />
 
             <StringListEditor
               label="Recurring Meetings"
               placeholder="Add meeting name…"
               values={meetings}
+              suggestions={meetingOptions}
               onChange={v => setMeetings(v)}
             />
           </>
@@ -176,6 +221,16 @@ export function ProjectSettingsPanel({ tag, onClose, onSave, onDelete }: Project
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
+
+        {tag.type === 'folder' && onConvertToProject && (
+          <button
+            onClick={handleConvert}
+            disabled={converting}
+            className="w-full py-2 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+          >
+            {converting ? 'Converting…' : 'Make this folder a project'}
+          </button>
+        )}
 
         {onDelete && !confirmDelete && (
           <button

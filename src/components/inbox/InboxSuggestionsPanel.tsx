@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
+import { TagPickerDropdown } from '@/components/inbox/TagPickerDropdown';
 import { cn } from '@/lib/utils';
 import { useMeetingSuggestions, type MeetingSuggestion } from '@/hooks/useMeetingSuggestions';
 import type { InboxItemType, InboxTag } from '@/types/inbox';
+import type { TeamMember } from '@/hooks/useTeamMembers';
 
 // Stable per-person dot color (same palette as the CoS panel)
 const DOT_COLORS = [
@@ -33,6 +32,9 @@ interface Props {
   onAddItem: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
   /** When set (viewing a project/folder), only suggestions tagged with one of these ids are shown. */
   scopeTagIds?: string[];
+  teamMembers?: TeamMember[];
+  onCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
+  onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -40,8 +42,13 @@ const COLLAPSED_COUNT = 3;
 // Top-level tags a suggestion can be routed to (mirrors suggest-inbox-tags' candidate set).
 const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 
-export function InboxSuggestionsPanel({ userId, members, tags, onAddItem, scopeTagIds }: Props) {
+export function InboxSuggestionsPanel({
+  userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
+  // Tracks rows mid-action so a second click before the optimistic removal
+  // re-renders can't fire the same add/dismiss twice.
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   // Pass null layoutConfig — we don't need CoS target lists here, just the suggestions
   const {
@@ -51,10 +58,16 @@ export function InboxSuggestionsPanel({ userId, members, tags, onAddItem, scopeT
     userId,
     layoutConfig: null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
     members,
-    onAddToList: async (tagId: string, title: string) => {
-      await onAddItem(title, 'task', tagId ? [tagId] : []);
+    onAddToList: async (tagIds: string[], title: string) => {
+      await onAddItem(title, 'task', tagIds);
     },
   });
+
+  const withBusyGuard = (id: string, run: () => Promise<void>) => {
+    if (busyIds.has(id)) return;
+    setBusyIds(prev => new Set(prev).add(id));
+    void run();
+  };
 
   const destinationTags = tags.filter(t => DESTINATION_TYPES.has(t.type) && !t.parent_id);
 
@@ -112,10 +125,14 @@ export function InboxSuggestionsPanel({ userId, members, tags, onAddItem, scopeT
         {(expanded ? scopedSuggestions : scopedSuggestions.slice(0, COLLAPSED_COUNT)).map(s => {
           const seed = s.memberName ?? s.source ?? s.id;
           const rec = recommendedTag(s);
+          const busy = busyIds.has(s.id);
           return (
             <div
               key={s.id}
-              className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
+              className={cn(
+                'flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 transition-opacity',
+                busy && 'opacity-50 pointer-events-none'
+              )}
             >
               <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', dotColor(seed))} />
 
@@ -127,7 +144,8 @@ export function InboxSuggestionsPanel({ userId, members, tags, onAddItem, scopeT
               {/* Primary: add to the recommended tag, if the AI found a genuine match. */}
               <Button
                 size="sm"
-                onClick={() => addToList(s.id, rec?.tag_id ?? '')}
+                disabled={busy}
+                onClick={() => withBusyGuard(s.id, () => addToList(s.id, rec ? [rec.tag_id] : []))}
                 className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 max-w-[200px]"
                 title={rec ? rec.reason : undefined}
               >
@@ -139,43 +157,34 @@ export function InboxSuggestionsPanel({ userId, members, tags, onAddItem, scopeT
                 <span className="truncate">{rec ? `Add to ${rec.tag_name}` : 'Add to inbox'}</span>
               </Button>
 
-              {/* Secondary: choose a different destination. */}
-              {destinationTags.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
-                      title="Add to a different tag"
-                    >
-                      Add to…
-                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-                    <DropdownMenuItem
-                      onSelect={() => addToList(s.id, '')}
-                      className={cn('text-xs', !rec && 'font-semibold')}
-                    >
-                      No tag — inbox only
-                    </DropdownMenuItem>
-                    {destinationTags.map(tag => (
-                      <DropdownMenuItem
-                        key={tag.id}
-                        onSelect={() => addToList(s.id, tag.id)}
-                        className={cn('text-xs', rec?.tag_id === tag.id && 'font-semibold')}
-                      >
-                        <span className="mr-1.5 h-2 w-2 rounded-full inline-block" style={{ backgroundColor: tag.color }} />
-                        {tag.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              {/* Secondary: choose a different destination, create a new one, or tag a
+                  colleague from your relationships who doesn't have a tag yet. */}
+              <TagPickerDropdown
+                allTags={destinationTags}
+                itemTags={[]}
+                onSelectTags={tagIds => withBusyGuard(s.id, () => addToList(s.id, tagIds))}
+                onCreateTag={onCreateTag}
+                teamMembers={teamMembers}
+                onCreatePersonTag={onCreatePersonTag}
+                topOptions={[{ key: 'none', label: 'No tag — inbox only', onSelect: () => withBusyGuard(s.id, () => addToList(s.id, [])), highlighted: !rec }]}
+                renderTrigger={({ toggle }) => (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={toggle}
+                    className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                    title="Add to a different tag"
+                  >
+                    Add to…
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                )}
+              />
 
               <button
-                onClick={() => dismiss(s.id)}
+                onClick={() => withBusyGuard(s.id, () => dismiss(s.id))}
+                disabled={busy}
                 className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
                 aria-label="Dismiss suggestion"
               >

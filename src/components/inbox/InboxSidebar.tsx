@@ -217,11 +217,11 @@ function TagItem({
             <span
               onClick={e => { e.stopPropagation(); setExpanded(x => !x); }}
               className={cn(
-                'flex-shrink-0 w-4 flex items-center justify-center rounded transition-all text-gray-300 hover:text-gray-500',
+                'flex-shrink-0 w-4 flex items-center justify-center rounded transition-all text-gray-400 hover:text-gray-600',
                 (hasWorkstreams || showActions) ? 'opacity-100' : 'opacity-0 pointer-events-none',
               )}
             >
-              <ChevronRight className={cn('h-3 w-3 transition-transform', expanded && 'rotate-90')} />
+              <ChevronRight className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')} />
             </span>
           ) : (
             <span className="w-4 flex-shrink-0" />
@@ -273,19 +273,6 @@ function TagItem({
                   <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
                   </svg>
-                </span>
-              )}
-              {/* Plus — add workstream (only on top-level) */}
-              {depth === 0 && (
-                <span
-                  onClick={startAddWorkstream}
-                  className={cn(
-                    'rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 flex items-center justify-center',
-                    isTouch ? 'h-8 w-8' : 'p-0.5',
-                  )}
-                  title="Add workstream"
-                >
-                  <Plus className="h-3.5 w-3.5" />
                 </span>
               )}
               {/* Move out — promote a workstream to a top-level folder */}

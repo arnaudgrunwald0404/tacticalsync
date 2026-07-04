@@ -185,6 +185,10 @@ interface InboxAssistantPanelProps {
   onCloseProject?: () => void;
   onSaveProjectSettings?: (tagId: string, settings: ProjectSettings, name: string) => Promise<void>;
   onDeleteProjectTag?: (tagId: string) => Promise<void>;
+  onConvertFolderToProject?: (tagId: string) => Promise<void>;
+  stakeholderOptions?: string[];
+  slackChannelOptions?: string[];
+  meetingOptions?: string[];
 }
 
 // ── Default state ─────────────────────────────────────────────────────────────
@@ -365,7 +369,8 @@ function ItemDetail({
 export function InboxAssistantPanel({
   item, allTags, userName, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem, onAddItem, onCreateTag,
-  projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag,
+  projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
+  stakeholderOptions, slackChannelOptions, meetingOptions,
   meetingEvent,
 }: InboxAssistantPanelProps) {
   const [inputValue, setInputValue] = useState('');
@@ -423,6 +428,10 @@ export function InboxAssistantPanel({
           onClose={onCloseProject ?? (() => {})}
           onSave={onSaveProjectSettings}
           onDelete={onDeleteProjectTag}
+          onConvertToProject={onConvertFolderToProject}
+          stakeholderOptions={stakeholderOptions}
+          slackChannelOptions={slackChannelOptions}
+          meetingOptions={meetingOptions}
         />
       ) : meetingEvent ? (
         // Meeting mode — chat panel focused on this 1:1 or group meeting
