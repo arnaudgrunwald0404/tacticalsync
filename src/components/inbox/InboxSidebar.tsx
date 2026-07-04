@@ -5,7 +5,7 @@ import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plu
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import type { InboxTag, InboxFilterState } from '@/types/inbox';
-import { planFolderReindex } from '@/lib/inboxValidation';
+import { planTagGroupReindex } from '@/lib/inboxValidation';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -189,7 +189,7 @@ function TagItem({
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           draggable={
-            (depth === 0 && tag.type === 'project') ||
+            (depth === 0 && (tag.type === 'project' || tag.type === 'folder')) ||
             (depth === 1 && tag.type === 'workstream')
           }
           onDragStart={e => {
@@ -451,20 +451,32 @@ export function InboxSidebar({
   const personTags  = tags.filter(t => t.type === 'person').sort(bySortOrder);
   const folderTags  = tags.filter(t => t.type === 'folder').sort(bySortOrder);
 
-  // A project or workstream is being dragged — show the folder landing zones.
+  // A folder, project, or workstream is being dragged — show the section landing zones.
   const dragging = !!(draggingId || draggingWsId);
 
-  // Drop into a folder-section gap: convert the dragged project/workstream into a
-  // top-level folder and slot it at `index`, renumbering the folder group so the
-  // order is stable (and reflected optimistically). Reindex math is a pure,
-  // unit-tested helper.
+  // Drop into a folder-section gap: convert the dragged folder/project/workstream
+  // into a top-level folder and slot it at `index`, renumbering the folder group
+  // so the order is stable (and reflected optimistically). Reindex math is a
+  // pure, unit-tested helper.
   const dropIntoFolders = async (index: number) => {
     const draggedId = draggingId ?? draggingWsId;
     setDraggingId(null);
     setDraggingWsId(null);
     if (!draggedId || !onUpdateTag) return;
 
-    const updates = planFolderReindex(folderTags, draggedId, index);
+    const updates = planTagGroupReindex(folderTags, draggedId, index, 'folder');
+    await Promise.all(updates.map(u => onUpdateTag(u.id, u.patch)));
+  };
+
+  // Drop into the Projects-section gap: convert the dragged folder/workstream
+  // into a top-level project at `index`, renumbering the project group.
+  const dropIntoProjects = async (index: number) => {
+    const draggedId = draggingId ?? draggingWsId;
+    setDraggingId(null);
+    setDraggingWsId(null);
+    if (!draggedId || !onUpdateTag) return;
+
+    const updates = planTagGroupReindex(projectTags, draggedId, index, 'project');
     await Promise.all(updates.map(u => onUpdateTag(u.id, u.patch)));
   };
 
@@ -593,28 +605,38 @@ export function InboxSidebar({
           </>
         )}
 
-        {projectTags.length > 0 && (
+        {(projectTags.length > 0 || dragging) && (
           <>
             <SectionHeader label="Projects" />
-            {projectTags.map(tag => (
-              <TagItem
-                key={tag.id}
-                tag={tag}
-                workstreams={workstreamsByParent[tag.id] ?? []}
-                counts={counts}
-                filter={filter}
-                onFilterChange={onFilterChange}
-                onRename={onRenameTag}
-                onCreateWorkstream={onCreateWorkstream}
-                onUpdateTag={onUpdateTag}
-                onEditProject={onEditProject}
-                onTogglePin={onTogglePin}
-                draggingId={draggingId}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                icon={<Hash className="h-4 w-4" style={{ color: tag.color }} />}
-              />
-            ))}
+            {projectTags.length === 0 ? (
+              // No projects yet: a single, obvious landing zone that creates the first one.
+              <DropGap active={dragging} onDrop={() => dropIntoProjects(0)} label="Drop here to make a project" />
+            ) : (
+              <>
+                <DropGap active={dragging} onDrop={() => dropIntoProjects(0)} />
+                {projectTags.map((tag, i) => (
+                  <div key={tag.id}>
+                    <TagItem
+                      tag={tag}
+                      workstreams={workstreamsByParent[tag.id] ?? []}
+                      counts={counts}
+                      filter={filter}
+                      onFilterChange={onFilterChange}
+                      onRename={onRenameTag}
+                      onCreateWorkstream={onCreateWorkstream}
+                      onUpdateTag={onUpdateTag}
+                      onEditProject={onEditProject}
+                      onTogglePin={onTogglePin}
+                      draggingId={draggingId}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      icon={<Hash className="h-4 w-4" style={{ color: tag.color }} />}
+                    />
+                    <DropGap active={dragging} onDrop={() => dropIntoProjects(i + 1)} />
+                  </div>
+                ))}
+              </>
+            )}
           </>
         )}
 

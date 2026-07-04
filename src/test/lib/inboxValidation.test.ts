@@ -24,6 +24,7 @@ import {
   applyInboxClientFilters,
   resolveTargetStatus,
   planFolderReindex,
+  planTagGroupReindex,
   inboxItemInsertSchema,
   inboxTagInsertSchema,
   briefPrioritySchema,
@@ -616,5 +617,34 @@ describe('planFolderReindex', () => {
     expect(cUpdates).toHaveLength(1);
     const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
     expect(byId).toEqual({ C: 0, A: 1, B: 2 });
+  });
+});
+
+// ── planTagGroupReindex — dropping a folder/workstream into the Projects section ─
+
+describe('planTagGroupReindex with targetType "project"', () => {
+  const projects = [
+    { id: 'A', sort_order: 0 },
+    { id: 'B', sort_order: 1 },
+  ];
+
+  it('makes the dragged tag a top-level project (type + parent_id cleared)', () => {
+    const updates = planTagGroupReindex(projects, 'F', projects.length, 'project');
+    const dragged = updates.find(u => u.id === 'F');
+    expect(dragged).toBeDefined();
+    expect(dragged!.patch.type).toBe('project');
+    expect(dragged!.patch.parent_id).toBeNull();
+  });
+
+  it('creates the first project from an empty project list', () => {
+    const updates = planTagGroupReindex([], 'F', 0, 'project');
+    expect(updates).toEqual([{ id: 'F', patch: { type: 'project', parent_id: null, sort_order: 0 } }]);
+  });
+
+  it('inserts between two projects and renumbers only what moves', () => {
+    const updates = planTagGroupReindex(projects, 'F', 1, 'project');
+    const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
+    expect(byId).toEqual({ F: 1, B: 2 });
+    expect(updates.find(u => u.id === 'A')).toBeUndefined();
   });
 });
