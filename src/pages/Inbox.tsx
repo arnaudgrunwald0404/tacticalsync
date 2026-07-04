@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Settings, CheckSquare2, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
+import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
+import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
 import { useIsDesktop, useIsMobile, useIsTouch } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -13,6 +15,7 @@ import { InboxGroupedView } from '@/components/inbox/InboxGroupedView';
 import { InboxByProjectView } from '@/components/inbox/InboxByProjectView';
 import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
 import { InboxAssistantPanel } from '@/components/inbox/InboxAssistantPanel';
+import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
 import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
@@ -136,6 +139,8 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilterState>({ builtIn: 'all' });
   const [meetingsSearch, setMeetingsSearch] = useState('');
   const [meetingsSyncInfo, setMeetingsSyncInfo] = useState<MeetingsSyncInfo | undefined>(undefined);
+  const [selectedMeetingEvent, setSelectedMeetingEvent] = useState<UpcomingOneOnOneEvent | null>(null);
+  const [meetingDetailTab, setMeetingDetailTab] = useState<MeetingDetailTab>('prep');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
@@ -335,6 +340,14 @@ export default function InboxPage() {
     <div className="flex h-full overflow-hidden bg-gray-100/80 gap-3 p-2 relative">
       {/* Sidebar — persistent column on desktop, slide-in Sheet below lg */}
       {isDesktop ? (
+        selectedMeetingEvent ? (
+          <MeetingDetailSidebarNav
+            event={selectedMeetingEvent}
+            activeTab={meetingDetailTab}
+            onTabChange={setMeetingDetailTab}
+            onBack={() => { setSelectedMeetingEvent(null); setMeetingDetailTab('prep'); }}
+          />
+        ) : (
         <InboxSidebar
           tags={tags}
           counts={counts}
@@ -348,6 +361,7 @@ export default function InboxPage() {
           onMeetingsSearchChange={setMeetingsSearch}
           meetingsSyncInfo={meetingsSyncInfo}
         />
+        )
       ) : (
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <SheetContent side="left" className="w-[280px] p-0 gap-0">
@@ -484,6 +498,10 @@ export default function InboxPage() {
             <InboxMeetingsView
               search={meetingsSearch}
               onSyncInfoChange={setMeetingsSyncInfo}
+              selectedEvent={selectedMeetingEvent}
+              onSelectEvent={e => { setSelectedMeetingEvent(e); if (e) setMeetingDetailTab('prep'); }}
+              activeTab={meetingDetailTab}
+              onTabChange={setMeetingDetailTab}
             />
           </div>
         )}
@@ -542,6 +560,13 @@ export default function InboxPage() {
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
         {activePanel === 'inbox' && <div className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+          {userId && (
+            <InboxSuggestionsPanel
+              userId={userId}
+              members={teamMembers.map(m => ({ id: m.id, name: m.name }))}
+              onAddItem={handleSubmit}
+            />
+          )}
           {itemsLoading ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
           ) : items.length === 0 ? (

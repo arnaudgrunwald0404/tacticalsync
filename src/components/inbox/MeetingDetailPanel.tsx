@@ -15,6 +15,11 @@ import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 interface MeetingDetailPanelProps {
   event: UpcomingOneOnOneEvent;
   onBack: () => void;
+  /** When true the left rail is hidden (rendered in the sidebar instead) */
+  hideSidebar?: boolean;
+  /** Controlled active tab — if provided, internal state is ignored */
+  activeTabOverride?: TabKey;
+  onTabChange?: (tab: TabKey) => void;
 }
 
 type TabKey = 'prep' | 'past' | 'ask' | 'timeline' | 'settings';
@@ -76,7 +81,7 @@ function TopicCard({ section }: { section: TopicSection }) {
   );
 }
 
-export function MeetingDetailPanel({ event, onBack }: MeetingDetailPanelProps) {
+export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeTabOverride, onTabChange }: MeetingDetailPanelProps) {
   const member = event.team_member;
   const name = member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
   const firstName = name.split(' ')[0];
@@ -86,7 +91,12 @@ export function MeetingDetailPanel({ event, onBack }: MeetingDetailPanelProps) {
   const title = event.title ?? `1:1 with ${name}`;
   const timeStr = `${format(start, 'EEE, MMM d')} · ${format(start, 'h:mm')}–${format(end, 'h:mm a')}`;
 
-  const [activeTab, setActiveTab] = useState<TabKey>('prep');
+  const [activeTabInternal, setActiveTabInternal] = useState<TabKey>('prep');
+  const activeTab = activeTabOverride ?? activeTabInternal;
+  const setActiveTab = (tab: TabKey) => {
+    setActiveTabInternal(tab);
+    onTabChange?.(tab);
+  };
 
   // Prep tab
   const [sections, setSections] = useState<TopicSection[] | null>(null);
@@ -189,9 +199,10 @@ export function MeetingDetailPanel({ event, onBack }: MeetingDetailPanelProps) {
   ];
 
   return (
-    <div className="flex h-full min-h-0 bg-gray-50 rounded-xl overflow-hidden border border-gray-200/80">
+    <div className={cn('flex h-full min-h-0 bg-gray-50 overflow-hidden', !hideSidebar && 'rounded-xl border border-gray-200/80')}>
 
-      {/* ── Left rail ──────────────────────────────────────────────────────── */}
+      {/* ── Left rail — hidden when rendered in sidebar ─────────────────────── */}
+      {!hideSidebar && (
       <div className="w-[240px] flex-shrink-0 bg-white border-r border-gray-100 flex flex-col px-5 py-4 gap-6 overflow-y-auto">
 
         <button
@@ -268,17 +279,22 @@ export function MeetingDetailPanel({ event, onBack }: MeetingDetailPanelProps) {
           </button>
         </div>
       </div>
+      )}
 
       {/* ── Main area ──────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Action buttons */}
         <div className="flex-shrink-0 flex items-center gap-2 border-b border-gray-200 bg-white px-5 py-2.5">
-          <button className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 bg-[#3d5a6e] text-white rounded-lg hover:bg-[#2f4759] transition-colors font-medium">
-            <Video className="h-3.5 w-3.5" />
-            Join call
-          </button>
-          <div className="w-px h-5 bg-gray-200 mx-0.5" />
+          {!hideSidebar && (
+            <>
+              <button className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 bg-[#3d5a6e] text-white rounded-lg hover:bg-[#2f4759] transition-colors font-medium">
+                <Video className="h-3.5 w-3.5" />
+                Join call
+              </button>
+              <div className="w-px h-5 bg-gray-200 mx-0.5" />
+            </>
+          )}
           <button className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 bg-[#3d5a6e] text-white rounded-lg hover:bg-[#2f4759] transition-colors font-medium ring-2 ring-orange-400 ring-offset-1">
             <Sparkles className="h-3.5 w-3.5 text-orange-400" />
             AI generate

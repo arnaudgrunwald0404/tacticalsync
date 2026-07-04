@@ -8,12 +8,23 @@ import type { MeetingsSyncInfo } from '@/components/inbox/InboxSidebar';
 interface InboxMeetingsViewProps {
   search?: string;
   onSyncInfoChange?: (info: MeetingsSyncInfo) => void;
+  /** Controlled selected event — lifted to parent so the sidebar can render the nav */
+  selectedEvent?: UpcomingOneOnOneEvent | null;
+  onSelectEvent?: (event: UpcomingOneOnOneEvent | null) => void;
+  /** Controlled active tab for the meeting detail panel */
+  activeTab?: import('@/components/inbox/MeetingDetailSidebarNav').MeetingDetailTab;
+  onTabChange?: (tab: import('@/components/inbox/MeetingDetailSidebarNav').MeetingDetailTab) => void;
 }
 
-export function InboxMeetingsView({ search = '', onSyncInfoChange }: InboxMeetingsViewProps) {
+export function InboxMeetingsView({ search = '', onSyncInfoChange, selectedEvent: selectedEventProp, onSelectEvent, activeTab, onTabChange }: InboxMeetingsViewProps) {
   const [members, setMembers] = useState<CosTeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedEvent, setSelectedEvent] = useState<UpcomingOneOnOneEvent | null>(null);
+  const [selectedEventInternal, setSelectedEventInternal] = useState<UpcomingOneOnOneEvent | null>(null);
+  const selectedEvent = selectedEventProp !== undefined ? selectedEventProp : selectedEventInternal;
+  const setSelectedEvent = (e: UpcomingOneOnOneEvent | null) => {
+    setSelectedEventInternal(e);
+    onSelectEvent?.(e);
+  };
 
   useEffect(() => {
     async function load() {
@@ -39,10 +50,14 @@ export function InboxMeetingsView({ search = '', onSyncInfoChange }: InboxMeetin
   }
 
   if (selectedEvent) {
+    const isControlled = selectedEventProp !== undefined;
     return (
       <MeetingDetailPanel
         event={selectedEvent}
         onBack={() => setSelectedEvent(null)}
+        hideSidebar={isControlled}
+        activeTabOverride={activeTab}
+        onTabChange={onTabChange}
       />
     );
   }
