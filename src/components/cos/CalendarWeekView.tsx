@@ -1,7 +1,13 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
-import { ChevronLeft, ChevronRight, Sparkles, Users, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Users, Loader2, Play, UserPlus, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { UpcomingOneOnOneEvent, OneOnOneMember } from './OneOnOnesView';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -88,12 +94,16 @@ function timeToTop(date: Date): number {
 
 function EventBlock({
   ev, onOpen, loading, runningPrepEventIds, onSelectEvent,
+  onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
 }: {
   ev: Laid;
   onOpen: (m: OneOnOneMember) => void;
   loading: boolean;
   runningPrepEventIds?: Set<string>;
   onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
+  onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }) {
   const start = new Date(ev.start_time);
   const end = new Date(ev.end_time);
@@ -112,6 +122,83 @@ function EventBlock({
   const isRunning = runningPrepEventIds?.has(ev.id) ?? false;
   const hasPrep = ev.prep_available;
   const short = minH < 40;
+  const isUnmatched = !ev.team_member && !isGroup;
+  const isNonRecurring = !ev.recurring_event_id;
+
+  const blockStyle: CSSProperties = {
+    top,
+    height: minH,
+    left: `calc(${colL}% + 2px)`,
+    width: `calc(${colW}% - 4px)`,
+    zIndex: 10,
+  };
+
+  const blockContent = (
+    <div
+      className="h-full w-full rounded-sm overflow-hidden flex flex-col px-1.5 py-1 transition-all hover:brightness-110 active:scale-[0.99]"
+      style={{ backgroundColor: cat.bg }}
+    >
+      {isGroup ? (
+        <div className="flex items-center gap-1 min-w-0">
+          <Users className="h-2.5 w-2.5 text-white/80 flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-white truncate leading-tight">{name}</span>
+        </div>
+      ) : (
+        <span className="text-[11px] font-semibold text-white truncate leading-tight">{name}</span>
+      )}
+
+      {!short && (
+        <span className="text-[10px] text-white/70 tabular-nums leading-tight">
+          {format(start, 'h:mm')}–{format(end, 'h:mm a')}
+        </span>
+      )}
+
+      {!short && (
+        <span className="mt-auto">
+          {isRunning ? (
+            <Loader2 className="h-2.5 w-2.5 text-white/60 animate-spin" />
+          ) : hasPrep ? (
+            <Sparkles className="h-2.5 w-2.5 text-emerald-300" />
+          ) : null}
+        </span>
+      )}
+    </div>
+  );
+
+  if ((isUnmatched || isRunning) && (onIncludeInPrep || onRunPrep || onExcludeFromCalendar)) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={isRunning}>
+          <button
+            className={cn('absolute text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1', isRunning ? 'cursor-wait' : 'cursor-pointer')}
+            style={blockStyle}
+          >
+            {blockContent}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          {onIncludeInPrep && (
+            <DropdownMenuItem onClick={() => onIncludeInPrep(ev)} className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              Add to my relationships
+            </DropdownMenuItem>
+          )}
+          {onRunPrep && isNonRecurring && (
+            <DropdownMenuItem onClick={() => onRunPrep(ev)} className="gap-2">
+              <Play className="h-4 w-4" />
+              Run the prep
+            </DropdownMenuItem>
+          )}
+          {onExcludeFromCalendar && (
+            <DropdownMenuItem onClick={() => onExcludeFromCalendar(ev)} className="gap-2 text-destructive focus:text-destructive">
+              <EyeOff className="h-4 w-4" />
+              Exclude from calendar
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   return (
     <button
@@ -121,43 +208,9 @@ function EventBlock({
       }}
       disabled={loading || (!ev.team_member && !isGroup)}
       className="absolute text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
-      style={{
-        top,
-        height: minH,
-        left: `calc(${colL}% + 2px)`,
-        width: `calc(${colW}% - 4px)`,
-        zIndex: 10,
-      }}
+      style={blockStyle}
     >
-      <div
-        className="h-full w-full rounded-sm overflow-hidden flex flex-col px-1.5 py-1 transition-all hover:brightness-110 active:scale-[0.99]"
-        style={{ backgroundColor: cat.bg }}
-      >
-        {isGroup ? (
-          <div className="flex items-center gap-1 min-w-0">
-            <Users className="h-2.5 w-2.5 text-white/80 flex-shrink-0" />
-            <span className="text-[11px] font-semibold text-white truncate leading-tight">{name}</span>
-          </div>
-        ) : (
-          <span className="text-[11px] font-semibold text-white truncate leading-tight">{name}</span>
-        )}
-
-        {!short && (
-          <span className="text-[10px] text-white/70 tabular-nums leading-tight">
-            {format(start, 'h:mm')}–{format(end, 'h:mm a')}
-          </span>
-        )}
-
-        {!short && (
-          <span className="mt-auto">
-            {isRunning ? (
-              <Loader2 className="h-2.5 w-2.5 text-white/60 animate-spin" />
-            ) : hasPrep ? (
-              <Sparkles className="h-2.5 w-2.5 text-emerald-300" />
-            ) : null}
-          </span>
-        )}
-      </div>
+      {blockContent}
     </button>
   );
 }
@@ -171,10 +224,14 @@ interface CalendarWeekViewProps {
   loading: boolean;
   runningPrepEventIds?: Set<string>;
   onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void;
+  onIncludeInPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onRunPrep?: (event: UpcomingOneOnOneEvent) => void;
+  onExcludeFromCalendar?: (event: UpcomingOneOnOneEvent) => void;
 }
 
 export function CalendarWeekView({
   upcomingEvents, pastEvents = [], onOpen, loading, runningPrepEventIds, onSelectEvent,
+  onIncludeInPrep, onRunPrep, onExcludeFromCalendar,
 }: CalendarWeekViewProps) {
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -348,6 +405,9 @@ export function CalendarWeekView({
                     loading={loading}
                     runningPrepEventIds={runningPrepEventIds}
                     onSelectEvent={onSelectEvent}
+                    onIncludeInPrep={onIncludeInPrep}
+                    onRunPrep={onRunPrep}
+                    onExcludeFromCalendar={onExcludeFromCalendar}
                   />
                 ))}
 

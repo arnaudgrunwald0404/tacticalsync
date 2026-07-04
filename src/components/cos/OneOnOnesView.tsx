@@ -545,6 +545,9 @@ export function OneOnOnesView({
           loading={loadingPrep}
           runningPrepEventIds={runningPrepEventIds}
           onSelectEvent={onSelectEvent}
+          onIncludeInPrep={onIncludeInPrep}
+          onRunPrep={onRunPrep}
+          onExcludeFromCalendar={onExcludeFromCalendar}
         />
       </div>
     </div>
