@@ -105,8 +105,10 @@ serve(async (req) => {
       userId = userData.user.id
     }
 
-    // Parse + clamp days.
-    let days = 30
+    // Parse + clamp days. Defaults widened to a 90-day window (max 180) to
+    // reach back far enough to backfill older recordings on first sync;
+    // per-call overrides (e.g. agent-tick's days:1) still apply.
+    let days = 90
     try {
       const body = await req.json()
       if (typeof body?.days === 'number' && Number.isFinite(body.days)) {
@@ -116,7 +118,7 @@ serve(async (req) => {
       // empty body is fine
     }
     if (days < 1) days = 1
-    if (days > 90) days = 90
+    if (days > 180) days = 180
 
     // Load credentials.
     const { data: creds, error: credsErr } = await supabase
