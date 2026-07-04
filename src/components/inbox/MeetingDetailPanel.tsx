@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
   ArrowLeft, CalendarDays, Sparkles, Send, Video, Loader2,
-  ListChecks, FileText, HelpCircle, History, Bot, ArrowUp, Settings, X,
+  FileText, History, Settings, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,7 +22,7 @@ interface MeetingDetailPanelProps {
   onTabChange?: (tab: TabKey) => void;
 }
 
-type TabKey = 'prep' | 'past' | 'ask' | 'timeline' | 'settings';
+type TabKey = 'prep' | 'past' | 'timeline' | 'settings';
 
 interface ZoomRec {
   id: string;
@@ -32,8 +32,6 @@ interface ZoomRec {
   has_transcript: boolean;
   ai_summary: string | null;
 }
-
-interface ChatMsg { id: string; role: 'user' | 'agent'; text: string }
 
 const QUESTIONS = [
   { text: "What's the single biggest blocker on your plate right now?", tag: 'Blockers' },
@@ -106,12 +104,6 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
   // Past 1:1s tab
   const [zoomRecs, setZoomRecs] = useState<ZoomRec[]>([]);
 
-  // Ask tab
-  const [chat, setChat] = useState<ChatMsg[]>([]);
-  const [askInput, setAskInput] = useState('');
-  const [askLoading, setAskLoading] = useState(false);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (!member?.id) { setLoadingPrep(false); return; }
     setLoadingPrep(true);
@@ -144,57 +136,13 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
       .limit(8)
       .then(({ data }: { data: ZoomRec[] | null }) => setZoomRecs(data ?? []))
       .catch(() => setZoomRecs([]));
-
-    setChat([{
-      id: 'a0',
-      role: 'agent',
-      text: `Hi — I've prepped your 1:1 with ${firstName}. Ask me anything about them, the last meeting, or what's still open.`,
-    }]);
   }, [member?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chat]);
-
   const prepAvailable = sections !== null && sections.length > 0;
-
-  const sendAsk = async (raw?: string) => {
-    const q = (raw ?? askInput).trim();
-    if (!q || askLoading || !member) return;
-    setAskInput('');
-    setChat(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: q }]);
-    setAskLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const res = await fetch(`${supabaseUrl}/functions/v1/query-relationship-history`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_member_id: member.id, question: q }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
-      }
-      const data = await res.json() as { answer: string };
-      setChat(prev => [...prev, { id: 'a' + Date.now(), role: 'agent', text: data.answer }]);
-    } catch (err) {
-      setChat(prev => [...prev, {
-        id: 'a' + Date.now(), role: 'agent',
-        text: `Sorry — I couldn't reach your relationship history just now. ${err instanceof Error ? err.message : ''}`.trim(),
-      }]);
-    } finally {
-      setAskLoading(false);
-    }
-  };
 
   const NAV_TABS: Array<{ key: TabKey; label: string; badge?: number }> = [
     { key: 'prep', label: 'Prep' },
     { key: 'past', label: 'Past 1:1s', badge: zoomRecs.length || undefined },
-    { key: 'ask', label: 'Ask' },
     { key: 'timeline', label: 'Timeline' },
   ];
 
@@ -412,58 +360,6 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
                   })}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ── Ask tab ── */}
-          {activeTab === 'ask' && (
-            <div className="h-full flex flex-col p-5">
-              <div ref={chatScrollRef} className="flex-1 overflow-y-auto flex flex-col gap-4 pb-3">
-                {chat.map(msg => msg.role === 'agent' ? (
-                  <div key={msg.id} className="flex gap-3 items-start max-w-[88%]">
-                    <span className="w-8 h-8 flex-shrink-0 rounded-lg bg-accent grid place-items-center">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </span>
-                    <div className="bg-white border border-gray-200 rounded-[4px_12px_12px_12px] px-4 py-3 text-sm leading-relaxed whitespace-pre-line">{msg.text}</div>
-                  </div>
-                ) : (
-                  <div key={msg.id} className="self-end max-w-[80%] bg-primary text-primary-foreground rounded-[12px_4px_12px_12px] px-4 py-3 text-sm leading-relaxed">{msg.text}</div>
-                ))}
-                {askLoading && (
-                  <div className="flex gap-3 items-center text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span className="text-xs">Searching your 1:1 history…</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 flex-wrap pt-1 pb-3">
-                {["What's overdue?", 'Recap the last 1:1', 'What should I cover?'].map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendAsk(s)}
-                    disabled={askLoading}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-border bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3 w-3 text-primary" />{s}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-end gap-2.5 px-3.5 py-3 bg-white border border-gray-200 rounded-xl">
-                <Bot className="h-4 w-4 text-primary mb-0.5 flex-shrink-0" />
-                <textarea
-                  value={askInput}
-                  onChange={e => setAskInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAsk(); } }}
-                  rows={1}
-                  placeholder={`Ask your agent about ${firstName}, the last 1:1, or what's overdue…`}
-                  className="flex-1 bg-transparent border-0 outline-none resize-none text-sm leading-relaxed max-h-[120px]"
-                />
-                <Button size="icon" className="h-9 w-9 rounded-lg flex-shrink-0" disabled={!askInput.trim() || askLoading} onClick={() => sendAsk()}>
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           )}
 

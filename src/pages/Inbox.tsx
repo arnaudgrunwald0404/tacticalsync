@@ -665,6 +665,7 @@ export default function InboxPage() {
         onCloseProject={() => setEditingProjectTag(null)}
         onSaveProjectSettings={saveTagSettings}
         onDeleteProjectTag={async (id) => { await deleteTag(id); setEditingProjectTag(null); await reloadTags(); }}
+        meetingEvent={selectedMeetingEvent}
       />
       </div>
     </div>

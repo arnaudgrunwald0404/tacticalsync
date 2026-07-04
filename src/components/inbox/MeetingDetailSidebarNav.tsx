@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
-export type MeetingDetailTab = 'prep' | 'past' | 'ask' | 'timeline' | 'settings';
+export type MeetingDetailTab = 'prep' | 'past' | 'timeline' | 'settings';
 
 interface Props {
   event: UpcomingOneOnOneEvent;
@@ -62,7 +62,6 @@ export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack 
   const NAV_TABS: Array<{ key: MeetingDetailTab; label: string; badge?: number }> = [
     { key: 'prep', label: 'Prep' },
     { key: 'past', label: 'Past 1:1s', badge: zoomRecsCount || undefined },
-    { key: 'ask', label: 'Ask' },
     { key: 'timeline', label: 'Timeline' },
   ];
 

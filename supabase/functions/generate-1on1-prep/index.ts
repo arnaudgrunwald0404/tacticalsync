@@ -1103,6 +1103,13 @@ Return ONLY the JSON array, no markdown fences or other text.`,
       console.warn('Health score computation failed (non-fatal):', (healthErr as Error).message)
     }
 
+    // Fire-and-forget: update living relationship document
+    fetch(`${supabaseUrl}/functions/v1/consolidate-relationship-doc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+      body: JSON.stringify({ user_id: userId, team_member_id }),
+    }).catch(() => {})
+
     return jsonResponse({
       prep_id: upserted?.id,
       content: generatedContent,
