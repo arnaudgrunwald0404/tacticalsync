@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "Board Demo Suite",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "9090", "--directory", "/private/tmp/claude-502/-Users-arnaudgrunwald-AGcodework-team-tactical-sync/10f6f56c-9cca-4731-a455-600e773958a4/scratchpad"],
+      "port": 9090
+    },
+    {
       "name": "Team Tactical Sync Dev",
       "runtimeExecutable": "/bin/zsh",
       "runtimeArgs": ["-l", "-c", "npm run dev"],

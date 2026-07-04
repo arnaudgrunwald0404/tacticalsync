@@ -3604,7 +3604,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -3907,6 +3907,13 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
     }
     await kickOffSync();
   }, [calendarConnected, kickOffSync, toast]);
+
+  // Push sync state up to a parent sidebar when requested (inbox/meetings context)
+  const onSyncInfoChangeRef = React.useRef(onSyncInfoChange);
+  React.useEffect(() => { onSyncInfoChangeRef.current = onSyncInfoChange; });
+  React.useEffect(() => {
+    onSyncInfoChangeRef.current?.({ lastSyncAt, syncing, calendarConnected, onSync: handleSyncCalendar });
+  }, [lastSyncAt, syncing, calendarConnected, handleSyncCalendar]);
 
   const sharePrep = async () => {
     if (!prepSheet) return;
@@ -4310,6 +4317,8 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
           toolbarPortalId={hideViewToggle ? undefined : toolbarPortalId}
           viewToggle={hideViewToggle ? undefined : viewToggle}
           onSelectEvent={onSelectEvent}
+          externalSearch={externalSearch}
+          hideSearchSync={!!onSyncInfoChange}
         />
       ) : teamView === 'group' ? (
         <>

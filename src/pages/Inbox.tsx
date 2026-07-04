@@ -7,7 +7,7 @@ import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { cn } from '@/lib/utils';
 import { useIsDesktop, useIsMobile, useIsTouch } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
-import { InboxSidebar } from '@/components/inbox/InboxSidebar';
+import { InboxSidebar, type MeetingsSyncInfo } from '@/components/inbox/InboxSidebar';
 import { InboxItemRow } from '@/components/inbox/InboxItemRow';
 import { InboxGroupedView } from '@/components/inbox/InboxGroupedView';
 import { InboxByProjectView } from '@/components/inbox/InboxByProjectView';
@@ -134,6 +134,8 @@ export default function InboxPage() {
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
   const [filter, setFilter] = useState<InboxFilterState>({ builtIn: 'all' });
+  const [meetingsSearch, setMeetingsSearch] = useState('');
+  const [meetingsSyncInfo, setMeetingsSyncInfo] = useState<MeetingsSyncInfo | undefined>(undefined);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
@@ -342,6 +344,9 @@ export default function InboxPage() {
           onCreateWorkstream={createWorkstream}
           onUpdateTag={updateTag}
           onEditProject={tag => { setEditingProjectTag(tag); setDrawerItem(null); }} onTogglePin={handleTogglePin}
+          meetingsSearch={meetingsSearch}
+          onMeetingsSearchChange={setMeetingsSearch}
+          meetingsSyncInfo={meetingsSyncInfo}
         />
       ) : (
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -357,6 +362,9 @@ export default function InboxPage() {
               onCreateWorkstream={createWorkstream}
               onUpdateTag={updateTag}
               onEditProject={tag => { setEditingProjectTag(tag); setDrawerItem(null); setSidebarOpen(false); }} onTogglePin={handleTogglePin}
+              meetingsSearch={meetingsSearch}
+              onMeetingsSearchChange={setMeetingsSearch}
+              meetingsSyncInfo={meetingsSyncInfo}
             />
           </SheetContent>
         </Sheet>
@@ -473,7 +481,10 @@ export default function InboxPage() {
 
         {activePanel === 'meetings' && (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <InboxMeetingsView />
+            <InboxMeetingsView
+              search={meetingsSearch}
+              onSyncInfoChange={setMeetingsSyncInfo}
+            />
           </div>
         )}
 

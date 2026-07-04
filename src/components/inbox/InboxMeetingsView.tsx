@@ -3,8 +3,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { TeamSection, type CosTeamMember } from '@/pages/ChiefOfStaff';
 import { MeetingDetailPanel } from '@/components/inbox/MeetingDetailPanel';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
+import type { MeetingsSyncInfo } from '@/components/inbox/InboxSidebar';
 
-export function InboxMeetingsView() {
+interface InboxMeetingsViewProps {
+  search?: string;
+  onSyncInfoChange?: (info: MeetingsSyncInfo) => void;
+}
+
+export function InboxMeetingsView({ search = '', onSyncInfoChange }: InboxMeetingsViewProps) {
   const [members, setMembers] = useState<CosTeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<UpcomingOneOnOneEvent | null>(null);
@@ -47,6 +53,8 @@ export function InboxMeetingsView() {
       basePath="/inbox/meetings"
       hideViewToggle
       onSelectEvent={setSelectedEvent}
+      externalSearch={search}
+      onSyncInfoChange={onSyncInfoChange}
     />
   );
 }
