@@ -373,7 +373,7 @@ export function InboxAssistantPanel({
   stakeholderOptions, slackChannelOptions, meetingOptions,
   meetingEvent,
 }: InboxAssistantPanelProps) {
-  const [inputValue, setInputValue] = useState('');
+  const [prefill, setPrefill] = useState<{ text: string; token: number }>({ text: '', token: 0 });
   const isMobile = useIsMobile();
 
   // Close on Escape when item is open
@@ -393,7 +393,7 @@ export function InboxAssistantPanel({
           className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
+          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} prefill={prefill} />
         </div>
 
         <Sheet open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -500,7 +500,7 @@ export function InboxAssistantPanel({
           ) : (
             <DefaultState
               userName={userName}
-              onSuggestion={s => setInputValue(s)}
+              onSuggestion={s => setPrefill(prev => ({ text: s, token: prev.token + 1 }))}
             />
           )}
         </motion.div>
@@ -511,7 +511,7 @@ export function InboxAssistantPanel({
       {/* Bottom bar — hidden in project settings mode */}
       {!projectTag && (
         <div className="flex-shrink-0 border-t border-gray-100">
-          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
+          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} prefill={prefill} />
           <div className="flex items-center gap-3 px-4 py-2">
             <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
               <History className="h-3 w-3" />History

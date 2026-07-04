@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
 import { useColleagueSuggestions } from '@/hooks/useColleagueSuggestions';
-import { toolLabel, STATIC_TOOLS, buildStackOneTools, type PrepToolDef } from '@/lib/prepTools';
+import { toolLabel, STATIC_TOOLS, buildStackOneTools, STACKONE_PROVIDER_CATALOG, type PrepToolDef } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
@@ -1400,10 +1400,11 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
 
-        const [memberRes, scheduleRes, stackoneRes] = await Promise.all([
+        const [memberRes, scheduleRes, stackoneRes, mcpRes] = await Promise.all([
           db.from('cos_team_members').select('agent_overrides').eq('id', memberId).single(),
           db.from('cos_prep_schedule').select('prep_tools').eq('user_id', userId).maybeSingle(),
           supabase.functions.invoke('stackone-proxy', { body: { action: 'list_accounts' } }),
+          db.from('cos_mcp_integrations').select('integration_key, is_connected').eq('user_id', userId).eq('integration_key', 'cleargo').eq('is_connected', true).maybeSingle(),
         ]);
 
         if (cancelled) return;
@@ -1414,6 +1415,10 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
 
         const accounts = (stackoneRes.data?.accounts ?? []) as Array<{ provider: string; provider_name?: string; status?: string }>;
         const dynamicTools = buildStackOneTools(accounts);
+        if (mcpRes.data && !dynamicTools.some(t => t.id === 'cleargo')) {
+          const known = STACKONE_PROVIDER_CATALOG.cleargo;
+          dynamicTools.push({ id: 'cleargo', label: known.label, description: known.description, defaultTier: known.defaultTier, isCore: known.isCore });
+        }
 
         setPerMemberTools(memberToolOverride);
         setGlobalTools(globalDefault);

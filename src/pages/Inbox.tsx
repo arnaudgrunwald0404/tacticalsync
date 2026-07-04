@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Settings, CheckSquare2, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
+import { WeekendBanner } from '@/components/WeekendBanner';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
@@ -399,6 +400,8 @@ export default function InboxPage() {
 
       {/* Main stream + drawer */}
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
+      <WeekendBanner bare />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200/80">
         {/* Top bar */}
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
@@ -664,6 +667,7 @@ export default function InboxPage() {
           )}
         </div>}
 
+      </div>
       </div>
 
       {/* Right assistant panel — always visible */}

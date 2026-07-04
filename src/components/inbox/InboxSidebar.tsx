@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, RefreshCw, Loader2, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, Loader2, X } from 'lucide-react';
 import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
@@ -504,24 +504,8 @@ export function InboxSidebar({
       <div className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
         {isMeetings ? (
           <>
-            <SectionHeader label="Views" />
-            {[
-              { sub: 'calendar',       label: 'Calendar',       icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
-              { sub: 'coverage',       label: '1:1 coverage',   icon: <Radar className="h-4 w-4" />,        path: '/inbox/meetings/coverage' },
-              { sub: 'group-coverage', label: 'Group coverage', icon: <Users className="h-4 w-4" />,        path: '/inbox/meetings/group-coverage' },
-              { sub: 'activity',       label: 'Agent',          icon: <Bot className="h-4 w-4" />,          path: '/inbox/meetings/activity' },
-            ].map(({ sub, label, icon, path }) => (
-              <SidebarItem
-                key={sub}
-                label={label}
-                icon={icon}
-                active={meetingsSubView === sub}
-                onClick={() => navigate(path)}
-              />
-            ))}
-
             {/* Search */}
-            <div className="pt-3 pb-1">
+            <div className="pb-3">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
                 <input
@@ -541,26 +525,57 @@ export function InboxSidebar({
               </div>
             </div>
 
-            {/* Sync */}
-            {meetingsSyncInfo && (
-              <div className="pt-1">
-                {meetingsSyncInfo.lastSyncAt && (
-                  <p className="text-[10px] text-gray-400 px-1 mb-1.5 truncate">
-                    Synced {formatRelativeTime(meetingsSyncInfo.lastSyncAt)}
-                  </p>
-                )}
-                <button
-                  onClick={meetingsSyncInfo.onSync}
-                  disabled={meetingsSyncInfo.syncing}
-                  className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                >
-                  {meetingsSyncInfo.syncing
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <RefreshCw className="h-3.5 w-3.5" />}
-                  {meetingsSyncInfo.calendarConnected ? 'Sync' : 'Connect calendar'}
-                </button>
-              </div>
-            )}
+            <SectionHeader label="Views" />
+            {[
+              { sub: 'calendar',       label: 'Calendar',       icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
+              { sub: 'coverage',       label: '1:1 coverage',   icon: <Radar className="h-4 w-4" />,        path: '/inbox/meetings/coverage' },
+              { sub: 'group-coverage', label: 'Group coverage', icon: <Users className="h-4 w-4" />,        path: '/inbox/meetings/group-coverage' },
+              { sub: 'activity',       label: 'Agent',          icon: <Bot className="h-4 w-4" />,          path: '/inbox/meetings/activity' },
+            ].map(({ sub, label, icon, path }) => {
+              const active = meetingsSubView === sub;
+              if (sub === 'calendar' && meetingsSyncInfo) {
+                return (
+                  <div key={sub}>
+                    <div
+                      className={cn(
+                        'w-full flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-md text-sm transition-colors',
+                        active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                      )}
+                    >
+                      <button onClick={() => navigate(path)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                        <span className="w-4 flex-shrink-0" />
+                        <span className="text-gray-400 flex-shrink-0 w-4 flex items-center justify-center">{icon}</span>
+                        <span className="flex-1 truncate">{label}</span>
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); meetingsSyncInfo.onSync(); }}
+                        disabled={meetingsSyncInfo.syncing}
+                        className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 hover:underline disabled:opacity-50 transition-colors"
+                      >
+                        {meetingsSyncInfo.syncing && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {meetingsSyncInfo.syncing
+                          ? 'Syncing…'
+                          : meetingsSyncInfo.calendarConnected ? 'Sync' : 'Connect'}
+                      </button>
+                    </div>
+                    {meetingsSyncInfo.lastSyncAt && (
+                      <p className="pl-8 pr-1 text-[10px] text-gray-400 truncate">
+                        Synced {formatRelativeTime(meetingsSyncInfo.lastSyncAt)}
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <SidebarItem
+                  key={sub}
+                  label={label}
+                  icon={icon}
+                  active={active}
+                  onClick={() => navigate(path)}
+                />
+              );
+            })}
           </>
         ) : (
           <>

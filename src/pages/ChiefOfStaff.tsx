@@ -4295,7 +4295,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-st
               {viewToggle}
             </div>
           ))}
-          <AgentActivityFeed />
+          <AgentActivityFeed className="p-4 sm:p-6" />
         </>
       ) : teamView === 'calendar' ? (
         <OneOnOnesView

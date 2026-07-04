@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   CheckSquare, Square, FileText, Zap, HelpCircle, Video, Calendar,
@@ -70,6 +70,9 @@ export function InboxItemRow({
   isSelected, onSelect, isNew,
 }: InboxItemRowProps) {
   const [hovered, setHovered] = useState(false);
+  const [editingText, setEditingText] = useState(false);
+  const [textDraft, setTextDraft] = useState(item.text);
+  const textInputRef = useRef<HTMLInputElement>(null);
   const isTouch = useIsTouch();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
@@ -87,6 +90,19 @@ export function InboxItemRow({
     .replace(' week', 'w');
 
   const isAgentItem = ['agent_nudge', 'agent_question', 'meeting_insight', 'brief_item'].includes(item.type);
+
+  const startEditText = () => {
+    setTextDraft(item.text);
+    setEditingText(true);
+  };
+
+  const commitEditText = () => {
+    const trimmed = textDraft.trim();
+    if (trimmed && trimmed !== item.text) {
+      onUpdateItem?.(item.id, { text: trimmed });
+    }
+    setEditingText(false);
+  };
 
   return (
     <div
@@ -131,14 +147,31 @@ export function InboxItemRow({
         )}
 
         {/* Main text */}
-        <button
-          className="flex-1 text-left text-sm min-w-0 break-words"
-          onClick={() => onOpenDrawer?.(item)}
-        >
-          <span className={cn(isDone && 'line-through text-gray-400')}>
-            {item.text}
-          </span>
-        </button>
+        {editingText ? (
+          <input
+            ref={textInputRef}
+            autoFocus
+            value={textDraft}
+            onChange={e => setTextDraft(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitEditText(); }
+              if (e.key === 'Escape') { e.preventDefault(); setEditingText(false); }
+            }}
+            onBlur={commitEditText}
+            className="flex-1 text-sm min-w-0 outline-none bg-white ring-1 ring-blue-300 rounded px-1 -mx-1"
+          />
+        ) : (
+          <button
+            className="flex-1 text-left text-sm min-w-0 break-words"
+            onClick={() => onOpenDrawer?.(item)}
+            onDoubleClick={e => { e.stopPropagation(); startEditText(); }}
+          >
+            <span className={cn(isDone && 'line-through text-gray-400')}>
+              {item.text}
+            </span>
+          </button>
+        )}
 
         {/* Pin indicator — right after text */}
         {item.pinned && (

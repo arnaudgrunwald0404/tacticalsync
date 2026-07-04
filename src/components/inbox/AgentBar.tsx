@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { CheckSquare, FileText, Sparkles, ArrowUp, Hash, AtSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -11,6 +11,8 @@ interface AgentBarProps {
   tags: InboxTag[];
   onSubmit: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
   onCreateTag: (name: string, type: 'project' | 'person', color: string) => Promise<InboxTag | null>;
+  /** Bumping this with a new `text` prefills and focuses the input — used by suggestion chips. */
+  prefill?: { text: string; token: number };
 }
 
 const MODE_CONFIG: Record<Mode, { label: string; icon: React.ReactNode; placeholder: string; type: InboxItemType }> = {
@@ -21,7 +23,7 @@ const MODE_CONFIG: Record<Mode, { label: string; icon: React.ReactNode; placehol
 
 const DEFAULT_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6'];
 
-export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
+export function AgentBar({ tags, onSubmit, onCreateTag, prefill }: AgentBarProps) {
   const isTouch = useIsTouch();
   const [mode, setMode] = useState<Mode>('task');
   const [text, setText] = useState('');
@@ -30,6 +32,14 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
   const [autocomplete, setAutocomplete] = useState<{ type: '#' | '@'; query: string } | null>(null);
   const [acActiveIdx, setAcActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setMode('agent');
+    setText(prefill.text);
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.token]);
 
   const handleInput = useCallback((value: string) => {
     setText(value);

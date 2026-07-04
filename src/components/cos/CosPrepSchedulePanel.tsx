@@ -24,7 +24,7 @@ import {
   type PrepScheduleConfig,
 } from '@/hooks/usePrepScheduleConfig';
 import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
-import { STATIC_TOOLS, buildStackOneTools, type PrepToolDef, resolveToolTier } from '@/lib/prepTools';
+import { STATIC_TOOLS, buildStackOneTools, STACKONE_PROVIDER_CATALOG, type PrepToolDef, resolveToolTier } from '@/lib/prepTools';
 import {
   CalendarSyncRules,
   RelationshipType,
@@ -122,12 +122,13 @@ const TIER_LABELS: Record<1 | 2 | 3, { label: string; description: string }> = {
 };
 
 function MeetingsToolTiersCard({
-  draft, update,
+  draft, update, userId,
 }: {
   draft: PrepScheduleConfig;
   update: Patch;
+  userId: string | null;
 }) {
-  const { dynamicTools } = useStackOneConnections();
+  const { dynamicTools } = useStackOneConnections(userId);
   const allTools = [...STATIC_TOOLS, ...dynamicTools];
   const toolTiers = draft.tool_tiers ?? {};
 
@@ -599,11 +600,12 @@ type StackOneConnections = {
   dynamicTools: PrepToolDef[];
 };
 
-function useStackOneConnections(): StackOneConnections {
+function useStackOneConnections(userId: string | null): StackOneConnections {
   const [dynamicTools, setDynamicTools] = useState<PrepToolDef[]>([]);
 
   useEffect(() => {
     (async () => {
+      const tools: PrepToolDef[] = [];
       try {
         const { data } = await supabase.functions.invoke('stackone-proxy', {
           body: { action: 'list_accounts' },
@@ -613,12 +615,33 @@ function useStackOneConnections(): StackOneConnections {
           provider_name?: string;
           status?: string;
         }>;
-        setDynamicTools(buildStackOneTools(accounts));
+        tools.push(...buildStackOneTools(accounts));
       } catch {
         // leave defaults
       }
+
+      if (userId) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: mcpRow } = await (supabase as any)
+            .from('cos_mcp_integrations')
+            .select('integration_key, is_connected')
+            .eq('user_id', userId)
+            .eq('integration_key', 'cleargo')
+            .eq('is_connected', true)
+            .maybeSingle();
+          if (mcpRow) {
+            const known = STACKONE_PROVIDER_CATALOG.cleargo;
+            tools.push({ id: 'cleargo', label: known.label, description: known.description, defaultTier: known.defaultTier, isCore: known.isCore });
+          }
+        } catch {
+          // leave defaults
+        }
+      }
+
+      setDynamicTools(tools);
     })();
-  }, []);
+  }, [userId]);
 
   return { dynamicTools };
 }
@@ -638,7 +661,7 @@ function MeetingsToolsCard({
   const [loadingMembers, setLoadingMembers] = useState(true);
   const { toast } = useToast();
   const { recurringGroups } = useUpcomingMeetingGroups();
-  const { dynamicTools } = useStackOneConnections();
+  const { dynamicTools } = useStackOneConnections(userId);
 
   const availableTools = [...STATIC_TOOLS, ...dynamicTools];
 
@@ -1312,7 +1335,7 @@ export function MeetingsPrepPanel() {
 
       <TabsContent value="tools" className="space-y-4">
         <MeetingsToolsCard draft={draft} update={update} userId={userId} />
-        <MeetingsToolTiersCard draft={draft} update={update} />
+        <MeetingsToolTiersCard draft={draft} update={update} userId={userId} />
       </TabsContent>
 
       <TabsContent value="agent">
