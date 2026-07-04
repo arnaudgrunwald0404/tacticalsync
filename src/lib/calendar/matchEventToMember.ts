@@ -329,6 +329,62 @@ export function recurrenceKeyForEvent(event: MinimalEvent): string {
   return `title:${normaliseTitleKey(event.summary)}`;
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Match a meeting TITLE against tracked member names — a fallback for when
+// attendee/participant data is unavailable (e.g. Zoom recordings whose
+// participant list the API doesn't return). Returns a member only when exactly
+// one tracked member is unambiguously named in the title, to avoid false
+// positives on group meetings or generic titles.
+//
+// A member matches when the title contains, as whole words:
+//   • their full name ("Jane Smith"),
+//   • both their first and last name tokens, or
+//   • their first name alone — but only if that first name is unique among the
+//     tracked members (so "Kristin / Arnaud" resolves when there's one Kristin).
+export function matchMemberByTitle(
+  title: string | null | undefined,
+  members: MinimalMember[],
+  excludeName?: string | null,
+): MinimalMember | null {
+  const text = ` ${normaliseName(title ?? '')} `;
+  if (text.trim().length === 0) return null;
+  const exclude = normaliseName(excludeName ?? '');
+
+  // First-name frequency across members, for the unique-first-name rule.
+  const firstNameCounts = new Map<string, number>();
+  for (const m of members) {
+    const first = normaliseName(m.name).split(' ')[0];
+    if (first) firstNameCounts.set(first, (firstNameCounts.get(first) ?? 0) + 1);
+  }
+
+  const hasWord = (w: string) => new RegExp(`\\b${escapeRegex(w)}\\b`).test(text);
+
+  const matched: MinimalMember[] = [];
+  for (const m of members) {
+    const full = normaliseName(m.name);
+    if (!full || full === exclude) continue;
+    const parts = full.split(' ').filter(Boolean);
+    const first = parts[0] ?? '';
+    const last = parts.length >= 2 ? parts[parts.length - 1] : '';
+
+    let hit = false;
+    if (parts.length >= 2 && text.includes(` ${full} `)) {
+      hit = true;                                              // full name as a phrase
+    } else if (first && last && last.length >= 3 && hasWord(first) && hasWord(last)) {
+      hit = true;                                              // first + last both present
+    } else if (first.length >= 3 && (firstNameCounts.get(first) ?? 0) === 1 && hasWord(first)) {
+      hit = true;                                              // unique first name alone
+    }
+    if (hit) matched.push(m);
+  }
+
+  // Only accept an unambiguous single match.
+  return matched.length === 1 ? matched[0] : null;
+}
+
 // Map a cos_team_members relationship_type to the display category used in the UI.
 const RELATIONSHIP_TO_CATEGORY: Record<string, EventCategory> = {
   direct_report: 'direct_report',
