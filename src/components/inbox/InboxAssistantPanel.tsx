@@ -22,6 +22,7 @@ const SUGGESTIONS = [
 ];
 
 const WORKFLOW_STYLES: Record<string, string> = {
+  'Do Now':             'bg-rose-100 text-rose-700 hover:bg-rose-200',
   'Not started':        'bg-gray-100 text-gray-500 hover:bg-gray-200',
   'Work in progress':   'bg-amber-100 text-amber-700 hover:bg-amber-200',
   'Waiting on someone': 'bg-blue-100 text-blue-700 hover:bg-blue-200',
@@ -186,6 +187,7 @@ interface InboxAssistantPanelProps {
   onSaveProjectSettings?: (tagId: string, settings: ProjectSettings, name: string) => Promise<void>;
   onDeleteProjectTag?: (tagId: string) => Promise<void>;
   onConvertFolderToProject?: (tagId: string) => Promise<void>;
+  onSetTagPosition?: (tagId: string, groupType: 'folder' | 'project', newPosition: number) => Promise<void>;
   stakeholderOptions?: string[];
   slackChannelOptions?: string[];
   meetingOptions?: string[];
@@ -370,6 +372,7 @@ export function InboxAssistantPanel({
   item, allTags, userName, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem, onAddItem, onCreateTag,
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
+  onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
   meetingEvent,
 }: InboxAssistantPanelProps) {
@@ -425,10 +428,12 @@ export function InboxAssistantPanel({
       {projectTag && onSaveProjectSettings ? (
         <ProjectSettingsPanel
           tag={projectTag}
+          allTags={allTags}
           onClose={onCloseProject ?? (() => {})}
           onSave={onSaveProjectSettings}
           onDelete={onDeleteProjectTag}
           onConvertToProject={onConvertFolderToProject}
+          onSetPosition={onSetTagPosition}
           stakeholderOptions={stakeholderOptions}
           slackChannelOptions={slackChannelOptions}
           meetingOptions={meetingOptions}

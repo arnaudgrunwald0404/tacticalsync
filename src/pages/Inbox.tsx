@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Settings, CheckSquare2, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu } from 'lucide-react';
@@ -114,7 +115,7 @@ async function seedDemoTags(userId: string) {
 
 const VIEW_LABELS: Record<string, string> = {
   all:     'All',
-  asap:    'ASAP',
+  asap:    'Do Now',
   waiting: 'Waiting on me',
   archive: 'Archive',
 };
@@ -184,7 +185,14 @@ export default function InboxPage() {
     })();
   }, [userId, seeded, tagsLoading, tags, reloadTags]);
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter);
+  // Counts for sidebar badges — fetch "all open" for aggregation. Created first so
+  // its setter can be passed as a mirror to the main list below: every mutation on
+  // `items` replays the same patch here, keeping counts in sync with no extra
+  // network round trip.
+  const allFilter = useMemo<InboxFilterState>(() => ({ builtIn: 'all' }), []);
+  const { items: allItems, applyExternalPatch: mirrorToAllItems } = useInboxItems(userId, allFilter);
+
+  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Sync daily brief → brief_item in inbox (once per brief load)
   const { brief } = useDciBrief();
@@ -208,22 +216,11 @@ export default function InboxPage() {
     syncBriefItem(today, priorities, summaryText);
   }, [brief, userId, syncBriefItem]);
 
-  // Counts for sidebar badges — fetch "all open" for aggregation
-  const allFilter = useMemo<InboxFilterState>(() => ({ builtIn: 'all' }), []);
-  const { items: allItems, reload: reloadAllItems } = useInboxItems(userId, allFilter);
-
-  // Keep counts in sync after mutations (mark done, archive, delete all remove items
-  // from `items` optimistically but allItems is a separate hook instance)
-  useEffect(() => {
-    if (userId) reloadAllItems();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, userId]);
-
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, archive: 0 };
     for (const item of allItems) {
       c['all']++;
-      if (item.tags?.some(t => t.name.toLowerCase() === 'asap')) c['asap']++;
+      if (item.workflow_status === 'Do Now') c['asap']++;
       if (item.type === 'agent_question' && item.agent_payload?.action_required) c['waiting']++;
       for (const tag of item.tags ?? []) {
         c[tag.id] = (c[tag.id] ?? 0) + 1;
@@ -289,6 +286,19 @@ export default function InboxPage() {
     await reloadTags();
     setEditingProjectTag(prev => (prev && prev.id === tagId ? { ...prev, type: 'project', parent_id: null } : prev));
   }, [tags, updateTag, reloadTags]);
+
+  // Move a project/folder to a new 1-based position within its own group — the
+  // same reindex math the sidebar's drag-and-drop and position badge use.
+  const handleSetTagPosition = useCallback(async (
+    tagId: string,
+    groupType: 'folder' | 'project',
+    newPosition: number,
+  ) => {
+    const group = tags.filter(t => t.type === groupType);
+    const index = Math.max(0, Math.min(Math.trunc(newPosition) - 1, group.length - 1));
+    const updates = planTagGroupReindex(group, tagId, index, groupType);
+    await Promise.all(updates.map(u => updateTag(u.id, u.patch)));
+  }, [tags, updateTag]);
 
   const handleSelect = useCallback((id: string, sel: boolean) => {
     setSelected(prev => {
@@ -641,29 +651,36 @@ export default function InboxPage() {
               onSelect={handleSelect}
             />
           ) : (
-            sortedItems.map(item => (
-              <InboxItemRow
-                key={item.id}
-                item={item}
-                allTags={tags}
-                onDone={markDone}
-                onArchive={archive}
-                onDelete={deleteItem}
-                onRemoveTag={removeTagFromItem}
-                onAddTag={addTagToItem}
-                onCycleWorkflowStatus={cycleWorkflowStatus}
-                onCreateWorkstream={createWorkstream}
-                onQuickCreateTag={handleQuickCreateTag}
-                teamMembers={teamMembers}
-                onCreatePersonTag={handleCreatePersonTag}
-                onUpdateItem={updateItem}
-                onOpenDrawer={openDrawer}
-                onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
-                onDismissSuggestion={dismissSuggestion}
-                isSelected={selected.has(item.id)}
-                onSelect={handleSelect}
-              />
-            ))
+            <AnimatePresence initial={false}>
+              {sortedItems.map(item => (
+                <motion.div
+                  key={item.id}
+                  layout="position"
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  <InboxItemRow
+                    item={item}
+                    allTags={tags}
+                    onDone={markDone}
+                    onArchive={archive}
+                    onDelete={deleteItem}
+                    onRemoveTag={removeTagFromItem}
+                    onAddTag={addTagToItem}
+                    onCycleWorkflowStatus={cycleWorkflowStatus}
+                    onCreateWorkstream={createWorkstream}
+                    onQuickCreateTag={handleQuickCreateTag}
+                    teamMembers={teamMembers}
+                    onCreatePersonTag={handleCreatePersonTag}
+                    onUpdateItem={updateItem}
+                    onOpenDrawer={openDrawer}
+                    onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
+                    onDismissSuggestion={dismissSuggestion}
+                    isSelected={selected.has(item.id)}
+                    onSelect={handleSelect}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           )}
         </div>}
 
@@ -688,6 +705,7 @@ export default function InboxPage() {
         onSaveProjectSettings={saveTagSettings}
         onDeleteProjectTag={async (id) => { await deleteTag(id); setEditingProjectTag(null); await reloadTags(); }}
         onConvertFolderToProject={handleConvertFolderToProject}
+        onSetTagPosition={handleSetTagPosition}
         stakeholderOptions={teamMembers.map(m => m.name)}
         slackChannelOptions={slackChannelOptions}
         meetingOptions={meetingOptions}
