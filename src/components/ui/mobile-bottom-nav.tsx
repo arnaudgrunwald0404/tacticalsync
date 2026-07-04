@@ -1,17 +1,21 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, BarChart3 } from "lucide-react";
+import { Target, Calendar, Briefcase, CheckSquare, ClipboardList, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRoles } from "@/hooks/useRoles";
 
 interface NavItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   path: string;
-  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
+  {
+    id: "inbox",
+    label: "Inbox",
+    icon: Inbox,
+    path: "/inbox",
+  },
   {
     id: "cos",
     label: "Chief of Staff",
@@ -42,27 +46,16 @@ const navItems: NavItem[] = [
     icon: CheckSquare,
     path: "/dashboard/rcdo/tasks-feed",
   },
-  {
-    id: "insights",
-    label: "Insights",
-    icon: BarChart3,
-    path: "/insights",
-    adminOnly: true,
-  },
 ];
 
 export function MobileBottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, isSuperAdmin } = useRoles();
-  const showAdmin = isAdmin || isSuperAdmin;
-
-  const visibleItems = navItems.filter(item => !item.adminOnly || showAdmin);
 
   const getActiveTab = (): string => {
     const path = location.pathname;
+    if (path.includes("/inbox")) return "inbox";
     if (path.includes("/chief-of-staff")) return "cos";
-    if (path.includes("/insights")) return "insights";
     if (path.includes("/dashboard/rcdo/tasks-feed")) return "tasks";
     if (path.includes("/dashboard/rcdo")) return "strategy";
     if (path.includes("/commitments")) return "commitments";
@@ -78,8 +71,8 @@ export function MobileBottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border safe-area-bottom">
-      <div className={cn("grid h-16", showAdmin ? "grid-cols-6" : "grid-cols-5")}>
-        {visibleItems.map((item) => {
+      <div className="grid h-16 grid-cols-6">
+        {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (

@@ -226,7 +226,7 @@ export function WeekendBanner() {
             </div>
           ) : (
             <div
-              className="relative p-6 rounded-2xl text-white overflow-hidden"
+              className="relative p-4 sm:p-6 rounded-2xl text-white overflow-hidden"
               style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}
             >
               <img
@@ -236,7 +236,7 @@ export function WeekendBanner() {
                 className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
                 onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-black/10 rounded-2xl" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 sm:from-black/60 sm:via-black/30 to-black/10 rounded-2xl" />
               <button
                 onClick={() => setDismissed(true)}
                 className="absolute top-3 right-3 p-1 text-white/50 hover:text-white transition-colors"
@@ -252,14 +252,14 @@ export function WeekendBanner() {
                 <p className="text-white/80 text-sm mb-4">
                   What are you up to this weekend?
                 </p>
-                <div className="flex items-center gap-2 w-2/3">
+                <div className="flex items-center gap-2 w-full sm:w-2/3">
                   <Input
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleGenerate(); }}
                     placeholder="Beach day, hiking..."
                     disabled={generating}
-                    className="bg-white/30 border-white/40 text-white font-medium placeholder:text-white/60 h-10 focus-visible:ring-white/40"
+                    className="bg-white/30 border-white/40 text-white font-medium placeholder:text-white/60 h-10 focus-visible:ring-white/40 min-w-0"
                   />
                   <button
                     onClick={() => handleGenerate()}

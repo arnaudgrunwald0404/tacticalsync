@@ -7,6 +7,7 @@ import {
   recurrenceKeyForEvent,
   passesTitleFilters,
   findMatchingMember,
+  matchMemberByTitle,
   getOtherAttendees,
   DEFAULT_SYNC_RULES,
   type CalendarSyncRules,
@@ -303,5 +304,51 @@ describe('recurrenceKeyForEvent', () => {
     const b = makeEvent({ summary: 'project x sync' });
     expect(recurrenceKeyForEvent(a)).toBe('title:project x sync');
     expect(recurrenceKeyForEvent(a)).toBe(recurrenceKeyForEvent(b));
+  });
+});
+
+describe('matchMemberByTitle', () => {
+  const members = [
+    makeMember({ id: 'kristin', name: 'Kristin Hancock' }),
+    makeMember({ id: 'joe', name: 'Joe Pritchard' }),
+    makeMember({ id: 'hamed', name: 'Hamed Ansari' }),
+    makeMember({ id: 'sarah-a', name: 'Sarah Adams' }),
+    makeMember({ id: 'sarah-b', name: 'Sarah Baker' }),
+  ];
+
+  it('matches a unique first name in the title', () => {
+    // "Kristin" is the only Kristin among members.
+    expect(matchMemberByTitle('New Year New Us: Kristin / Arnaud', members)?.id).toBe('kristin');
+  });
+
+  it('matches a full name embedded in a long title', () => {
+    const title = '30-minute chat with Arnaud - Joe Pritchard and Arnaud Grunwald | CPO';
+    expect(matchMemberByTitle(title, members)?.id).toBe('joe');
+  });
+
+  it('does not match generic/group titles with no member name', () => {
+    expect(matchMemberByTitle('PaPriCo - Monthly Packaging & Pricing Committee', members)).toBeNull();
+    expect(matchMemberByTitle('Review Roadmap potential', members)).toBeNull();
+  });
+
+  it('refuses to guess when a first name is ambiguous', () => {
+    // Two Sarahs — first name alone is not enough.
+    expect(matchMemberByTitle('Coffee with Sarah', members)).toBeNull();
+    // ...but the full name disambiguates.
+    expect(matchMemberByTitle('Coffee with Sarah Baker', members)?.id).toBe('sarah-b');
+  });
+
+  it('returns null when two different members are both named (ambiguous group)', () => {
+    expect(matchMemberByTitle('Kristin & Joe Pritchard sync', members)).toBeNull();
+  });
+
+  it('handles empty/whitespace titles', () => {
+    expect(matchMemberByTitle('', members)).toBeNull();
+    expect(matchMemberByTitle(null, members)).toBeNull();
+  });
+
+  it('avoids substring false positives (word-boundary match)', () => {
+    // "Hamed" should not match inside another word.
+    expect(matchMemberByTitle('Unhamedular planning', members)).toBeNull();
   });
 });
