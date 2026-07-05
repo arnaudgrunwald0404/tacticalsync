@@ -5,13 +5,52 @@ import type { InboxTag, ProjectSettings } from '@/types/inbox';
 
 interface ProjectSettingsPanelProps {
   tag: InboxTag;
+  allTags?: InboxTag[];
   onClose: () => void;
   onSave: (tagId: string, settings: ProjectSettings, name: string) => Promise<void>;
   onDelete?: (tagId: string) => Promise<void>;
   onConvertToProject?: (tagId: string) => Promise<void>;
+  onSetPosition?: (tagId: string, groupType: 'folder' | 'project', newPosition: number) => Promise<void>;
   stakeholderOptions?: string[];
   slackChannelOptions?: string[];
   meetingOptions?: string[];
+}
+
+// ── Position field — 1-based slot within the tag's own group (folders sort
+// among folders, projects among projects). Typing a new number reorders the
+// whole group via the same reindex math the sidebar's drag-and-drop uses.
+function PositionField({
+  position, max, onCommit,
+}: { position: number; max: number; onCommit: (newPosition: number) => void }) {
+  const [draft, setDraft] = useState(String(position));
+
+  useEffect(() => { setDraft(String(position)); }, [position]);
+
+  const commit = () => {
+    const n = parseInt(draft, 10);
+    if (Number.isFinite(n) && n !== position) onCommit(n);
+    else setDraft(String(position));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Position</p>
+      <div className="flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+          onFocus={e => e.target.select()}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+            if (e.key === 'Escape') setDraft(String(position));
+          }}
+          className="w-14 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-2.5 py-2 outline-none focus:ring-1 focus:ring-blue-300 text-center"
+        />
+        <span className="text-xs text-gray-400">of {max}</span>
+      </div>
+    </div>
+  );
 }
 
 function StringListEditor({
@@ -95,7 +134,8 @@ function StringListEditor({
 }
 
 export function ProjectSettingsPanel({
-  tag, onClose, onSave, onDelete, onConvertToProject, stakeholderOptions, slackChannelOptions, meetingOptions,
+  tag, allTags, onClose, onSave, onDelete, onConvertToProject, onSetPosition,
+  stakeholderOptions, slackChannelOptions, meetingOptions,
 }: ProjectSettingsPanelProps) {
   const s = tag.settings ?? {};
   const [name, setName] = useState(tag.name);
@@ -107,6 +147,11 @@ export function ProjectSettingsPanel({
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [converting, setConverting] = useState(false);
+
+  const siblingGroup = (allTags ?? [])
+    .filter(t => t.type === tag.type)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const position = siblingGroup.findIndex(t => t.id === tag.id) + 1;
 
   const handleConvert = async () => {
     if (!onConvertToProject) return;
@@ -165,6 +210,14 @@ export function ProjectSettingsPanel({
             className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded px-2.5 py-2 outline-none focus:ring-1 focus:ring-blue-300"
           />
         </div>
+
+        {onSetPosition && (tag.type === 'folder' || tag.type === 'project') && siblingGroup.length > 1 && position > 0 && (
+          <PositionField
+            position={position}
+            max={siblingGroup.length}
+            onCommit={newPosition => onSetPosition(tag.id, tag.type as 'folder' | 'project', newPosition)}
+          />
+        )}
 
         {tag.type !== 'folder' && (
           <>

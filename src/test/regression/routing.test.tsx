@@ -12,8 +12,6 @@ describe('Regression: Application routing', () => {
   describe('/dashboard/main redirect', () => {
     it('should define a redirect from /dashboard/main to /my-meetings in App.tsx', async () => {
       // Verify via static import that the App module defines this route
-      const source = await fetch('/src/App.tsx').catch(() => null);
-      // Instead, we check the source file directly through dynamic import analysis
       // by importing App and checking that the route config contains the redirect
       const appModule = await import('@/App');
       expect(appModule.default).toBeDefined();

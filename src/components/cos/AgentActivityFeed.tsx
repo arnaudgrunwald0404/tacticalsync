@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   Bell, BellOff, FileText, AlertTriangle, BarChart3, CheckCircle2, XCircle,
-  Bot, Clock, Loader2,
+  Bot, Clock, Loader2, Wrench, Video,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -42,6 +42,8 @@ const EVENT_META: Record<string, {
   error:               { icon: XCircle,        label: 'Error',             color: 'text-red-400' },
   feedback_received:   { icon: Bot,            label: 'Feedback',          color: 'text-primary' },
   health_score_updated:{ icon: Bot,            label: 'Health updated',    color: 'text-emerald-500' },
+  tools_recommended:   { icon: Wrench,         label: 'Tools reviewed',    color: 'text-violet-500' },
+  post_meeting_check:  { icon: Video,          label: 'Meeting check',     color: 'text-blue-500' },
 };
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -202,6 +204,15 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
               description = `${payload.format ?? 'Format'}: ${((payload.reasons as string[]) ?? []).join(', ')}`;
             } else if (entry.event_type === 'error') {
               description = `${payload.handler ?? 'unknown'}: ${payload.error ?? 'error'}`;
+            } else if (entry.event_type === 'tools_recommended') {
+              const recs = (payload.recommendations as string[]) ?? [];
+              description = recs.length > 0
+                ? `Suggested: ${recs.join(', ')}`
+                : `No new tool suggestions for ${memberName ?? 'this member'}`;
+            } else if (entry.event_type === 'post_meeting_check') {
+              const suggestions = (payload.suggestions_added as number) ?? 0;
+              const processed = (payload.meetings_processed as number) ?? 0;
+              description = `${processed} meeting(s) processed, ${suggestions} suggestion(s) added`;
             } else if (entry.event_type === 'tick_completed') {
               const parts: string[] = [];
               if (payload.actions_nudged) parts.push(`${payload.actions_nudged} nudged`);
@@ -213,7 +224,7 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
             return (
               <div
                 key={entry.id}
-                className="flex items-start gap-2.5 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors"
+                className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
               >
                 <Icon className={cn('h-3.5 w-3.5 mt-0.5 flex-shrink-0', meta.color)} />
                 <div className="flex-1 min-w-0">

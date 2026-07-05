@@ -235,11 +235,13 @@ describe('validateTagColor', () => {
 
 describe('nextWorkflowStatus', () => {
   it('treats null (unset) as advancing to the first cycle entry', () => {
-    expect(nextWorkflowStatus(null)).toBe('Work in progress');
+    expect(nextWorkflowStatus(null)).toBe('Do Now');
   });
 
   it('advances through the full cycle and wraps around', () => {
-    let s: WorkflowStatus = nextWorkflowStatus(null); // Work in progress
+    let s: WorkflowStatus = nextWorkflowStatus(null); // Do Now
+    expect(s).toBe('Do Now');
+    s = nextWorkflowStatus(s);
     expect(s).toBe('Work in progress');
     s = nextWorkflowStatus(s);
     expect(s).toBe('Waiting on someone');
@@ -248,7 +250,7 @@ describe('nextWorkflowStatus', () => {
     s = nextWorkflowStatus(s);
     expect(s).toBe('Not started');
     s = nextWorkflowStatus(s);
-    expect(s).toBe('Work in progress'); // wrapped
+    expect(s).toBe('Do Now'); // wrapped
   });
 
   it('covers every workflow status within one full cycle', () => {
@@ -262,7 +264,7 @@ describe('nextWorkflowStatus', () => {
   });
 
   it('treats an unknown/stale value as unset', () => {
-    expect(nextWorkflowStatus('garbage')).toBe('Work in progress');
+    expect(nextWorkflowStatus('garbage')).toBe('Do Now');
   });
 });
 
@@ -327,19 +329,16 @@ describe('applyInboxClientFilters', () => {
     expect(applyInboxClientFilters(items, {})).toHaveLength(2);
   });
 
-  describe("builtIn 'asap'", () => {
-    it('keeps only items carrying a tag named ASAP (case-insensitive)', () => {
-      const asapTag = tag('t-asap', 'ASAP');
-      const other = tag('t-other', 'Growth');
-      const keep = makeItem({ tags: [asapTag] });
-      const keepLower = makeItem({ tags: [tag('t2', 'asap')] });
-      const drop = makeItem({ tags: [other] });
-      const result = applyInboxClientFilters([keep, keepLower, drop], { builtIn: 'asap' });
-      expect(result).toEqual([keep, keepLower]);
+  describe("builtIn 'asap' (labeled \"Do Now\")", () => {
+    it('keeps only items with workflow_status "Do Now"', () => {
+      const keep = makeItem({ workflow_status: 'Do Now' });
+      const drop = makeItem({ workflow_status: 'Blocked' });
+      const result = applyInboxClientFilters([keep, drop], { builtIn: 'asap' });
+      expect(result).toEqual([keep]);
     });
 
-    it('drops items with no tags', () => {
-      const result = applyInboxClientFilters([makeItem({ tags: [] })], { builtIn: 'asap' });
+    it('drops items with no workflow_status', () => {
+      const result = applyInboxClientFilters([makeItem({ workflow_status: null })], { builtIn: 'asap' });
       expect(result).toHaveLength(0);
     });
   });
@@ -376,7 +375,7 @@ describe('applyInboxClientFilters', () => {
   });
 
   it('does not mutate the input array', () => {
-    const items = [makeItem({ tags: [tag('x', 'ASAP')] }), makeItem()];
+    const items = [makeItem({ workflow_status: 'Do Now' }), makeItem()];
     const copy = [...items];
     applyInboxClientFilters(items, { builtIn: 'asap' });
     expect(items).toEqual(copy);
@@ -384,10 +383,9 @@ describe('applyInboxClientFilters', () => {
 
   it('composes tag filter with a built-in view', () => {
     const a = tag('a', 'A');
-    const asapTag = tag('t-asap', 'ASAP');
-    const keep = makeItem({ tags: [a, asapTag] });
-    const dropNoAsap = makeItem({ tags: [a] });
-    const result = applyInboxClientFilters([keep, dropNoAsap], {
+    const keep = makeItem({ tags: [a], workflow_status: 'Do Now' });
+    const dropNotDoNow = makeItem({ tags: [a], workflow_status: null });
+    const result = applyInboxClientFilters([keep, dropNotDoNow], {
       builtIn: 'asap',
       tagIds: ['a'],
     });

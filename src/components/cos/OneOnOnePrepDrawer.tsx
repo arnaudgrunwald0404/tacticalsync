@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
 import { useColleagueSuggestions } from '@/hooks/useColleagueSuggestions';
-import { toolLabel, STATIC_TOOLS, buildStackOneTools, type PrepToolDef } from '@/lib/prepTools';
+import { toolLabel, STATIC_TOOLS, buildStackOneTools, STACKONE_PROVIDER_CATALOG, type PrepToolDef } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
   QuarterlyPriority, MonthlyCommitment, CommitmentQuarter, CommitmentStatus,
@@ -244,9 +244,11 @@ export function OneOnOnePrepDrawer({
 
   // Settings drafts
   const [contextDraft, setContextDraft] = useState('');
+  const [contextBaseline, setContextBaseline] = useState('');
   const [savingContext, setSavingContext] = useState(false);
   const [savedContext, setSavedContext] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [feedbackBaseline, setFeedbackBaseline] = useState('');
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
@@ -293,6 +295,7 @@ export function OneOnOnePrepDrawer({
     setPickedQuestions(new Set());
     setNextMeetingUrl(null);
     setContextDraft(member.context_notes ?? '');
+    setContextBaseline(member.context_notes ?? '');
     setChat([{
       id: 'greeting',
       role: 'agent',
@@ -314,6 +317,7 @@ export function OneOnOnePrepDrawer({
       .single()
       .then(({ data }: { data: { prep_instructions: string } | null }) => {
         setFeedbackDraft(data?.prep_instructions ?? '');
+        setFeedbackBaseline(data?.prep_instructions ?? '');
       });
 
     db.from('cos_team_members')
@@ -643,6 +647,7 @@ export function OneOnOnePrepDrawer({
         .update({ context_notes: contextDraft || null })
         .eq('id', member.id);
       if (error) throw error;
+      setContextBaseline(contextDraft);
       setSavedContext(true);
       setTimeout(() => setSavedContext(false), 1800);
     } catch (err) {
@@ -662,6 +667,7 @@ export function OneOnOnePrepDrawer({
         .from('cos_prep_settings')
         .upsert({ user_id: user.id, prep_instructions: feedbackDraft }, { onConflict: 'user_id' });
       if (error) throw error;
+      setFeedbackBaseline(feedbackDraft);
       setSavedFeedback(true);
       setTimeout(() => setSavedFeedback(false), 1800);
     } catch (err) {
@@ -1300,7 +1306,7 @@ export function OneOnOnePrepDrawer({
                   placeholder={`e.g. ${firstName} cares about shipping quality over speed. Prefers async written updates.`}
                   className="text-[13.5px] leading-[1.55] resize-y" />
                 <div className="flex items-center gap-3 mt-3">
-                  <Button size="sm" variant="secondary" onClick={saveContext} disabled={savingContext}>
+                  <Button size="sm" variant="secondary" onClick={saveContext} disabled={savingContext || contextDraft === contextBaseline}>
                     {savingContext ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save context
                   </Button>
                   {savedContext && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
@@ -1315,7 +1321,7 @@ export function OneOnOnePrepDrawer({
                   placeholder="e.g. Always highlight blockers first. Don't repeat unchanged items. Keep it terse."
                   className="text-[13.5px] leading-[1.55] resize-y" />
                 <div className="flex items-center gap-3 mt-3">
-                  <Button size="sm" variant="secondary" onClick={saveFeedback} disabled={savingFeedback}>
+                  <Button size="sm" variant="secondary" onClick={saveFeedback} disabled={savingFeedback || feedbackDraft === feedbackBaseline}>
                     {savingFeedback ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Save instructions
                   </Button>
                   {savedFeedback && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" />Saved</span>}
@@ -1400,10 +1406,11 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
 
-        const [memberRes, scheduleRes, stackoneRes] = await Promise.all([
+        const [memberRes, scheduleRes, stackoneRes, mcpRes] = await Promise.all([
           db.from('cos_team_members').select('agent_overrides').eq('id', memberId).single(),
           db.from('cos_prep_schedule').select('prep_tools').eq('user_id', userId).maybeSingle(),
           supabase.functions.invoke('stackone-proxy', { body: { action: 'list_accounts' } }),
+          db.from('cos_mcp_integrations').select('integration_key, is_connected').eq('user_id', userId).eq('integration_key', 'cleargo').eq('is_connected', true).maybeSingle(),
         ]);
 
         if (cancelled) return;
@@ -1414,6 +1421,10 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
 
         const accounts = (stackoneRes.data?.accounts ?? []) as Array<{ provider: string; provider_name?: string; status?: string }>;
         const dynamicTools = buildStackOneTools(accounts);
+        if (mcpRes.data && !dynamicTools.some(t => t.id === 'cleargo')) {
+          const known = STACKONE_PROVIDER_CATALOG.cleargo;
+          dynamicTools.push({ id: 'cleargo', label: known.label, description: known.description, defaultTier: known.defaultTier, isCore: known.isCore });
+        }
 
         setPerMemberTools(memberToolOverride);
         setGlobalTools(globalDefault);

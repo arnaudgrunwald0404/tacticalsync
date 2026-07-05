@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, RefreshCw, Loader2, X } from 'lucide-react';
-import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, Loader2, X } from 'lucide-react';
+import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import type { InboxTag, InboxFilterState } from '@/types/inbox';
@@ -105,11 +105,56 @@ function InlineInput({
   );
 }
 
+// ── Editable position badge — shows a project/folder's 1-based slot within its
+// group; typing a new number reorders the whole group via the same reindex math
+// drag-and-drop uses. A less error-prone alternative to dragging on trackpads.
+
+function PositionBadge({
+  value, max, onCommit,
+}: { value: number; max: number; onCommit: (newPosition: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  const commit = () => {
+    const n = parseInt(draft, 10);
+    setEditing(false);
+    if (Number.isFinite(n) && n !== value) onCommit(n);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+        onFocus={e => e.target.select()}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') { setDraft(String(value)); setEditing(false); }
+        }}
+        onClick={e => e.stopPropagation()}
+        className="w-5 h-5 flex-shrink-0 text-center text-[11px] font-medium rounded bg-white ring-1 ring-blue-300 outline-none"
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); setDraft(String(value)); setEditing(true); }}
+      title={`Position ${value} of ${max} — click to move`}
+      className="w-5 h-5 flex-shrink-0 flex items-center justify-center text-[11px] font-medium text-gray-400 rounded hover:bg-gray-200 hover:text-gray-600 cursor-text"
+    >
+      {value}
+    </span>
+  );
+}
+
 // ── Tag item with rename + caret for workstreams ──────────────────────────────
 
 function TagItem({
   tag, workstreams, counts, filter, onFilterChange, onRename, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, icon, depth = 0,
-  draggingId, draggingWsId, onDragStart, onDragEnd,
+  draggingId, draggingWsId, onDragStart, onDragEnd, position, groupSize, onSetPosition,
 }: {
   tag: InboxTag;
   workstreams: InboxTag[];
@@ -127,6 +172,10 @@ function TagItem({
   draggingWsId?: string | null;
   onDragStart?: (id: string) => void;
   onDragEnd?: () => void;
+  /** 1-based slot within its top-level group (projects or folders). Only set at depth 0. */
+  position?: number;
+  groupSize?: number;
+  onSetPosition?: (newPosition: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -228,6 +277,10 @@ function TagItem({
           ) : (
             <span className="w-4 flex-shrink-0" />
           )}
+
+          {depth === 0 && (tag.type === 'project' || tag.type === 'folder') && position !== undefined && groupSize !== undefined && onSetPosition ? (
+            <PositionBadge value={position} max={groupSize} onCommit={onSetPosition} />
+          ) : null}
 
           <span className="text-gray-400 flex-shrink-0 w-4 flex items-center justify-center">{icon}</span>
           <span className="flex-1 truncate">{tag.name}</span>
@@ -354,11 +407,32 @@ function TagItem({
   );
 }
 
-function SectionHeader({ label }: { label: string }) {
+function SectionHeader({ label, action }: { label: string; action?: React.ReactNode }) {
   return (
-    <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider font-semibold text-gray-400">
-      {label}
-    </p>
+    <div className="flex items-center justify-between px-3 pt-4 pb-1">
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">
+        {label}
+      </p>
+      {action}
+    </div>
+  );
+}
+
+// ── Reorder toggle — reveals position numbers on a group's rows so they can be
+// retyped to reorder; numbers are otherwise hidden and disappear again once a
+// move is saved (see `setGroupPosition`).
+function ReorderToggle({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={active ? 'Hide position numbers' : 'Show position numbers to reorder'}
+      className={cn(
+        'flex-shrink-0 h-5 w-5 flex items-center justify-center rounded transition-colors',
+        active ? 'bg-gray-200 text-gray-700' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100',
+      )}
+    >
+      <ListOrdered className="h-3 w-3" />
+    </button>
   );
 }
 
@@ -417,6 +491,8 @@ export function InboxSidebar({
     : 'calendar';
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingWsId, setDraggingWsId] = useState<string | null>(null);
+  const [showProjectPositions, setShowProjectPositions] = useState(false);
+  const [showFolderPositions, setShowFolderPositions] = useState(false);
   const isActive = (f: InboxFilterState) => JSON.stringify(f) === JSON.stringify(filter);
 
   const handleDragStart = (id: string) => {
@@ -443,6 +519,23 @@ export function InboxSidebar({
 
   // A folder, project, or workstream is being dragged — show the section landing zones.
   const dragging = !!(draggingId || draggingWsId);
+
+  // Move a project/folder to a new 1-based position within its own group, via the
+  // typed position badge (an alternative to drag-and-drop for the same reorder).
+  const setGroupPosition = async (
+    group: InboxTag[],
+    groupType: 'folder' | 'project',
+    tagId: string,
+    newPosition: number,
+  ) => {
+    if (!onUpdateTag) return;
+    const index = Math.max(0, Math.min(Math.trunc(newPosition) - 1, group.length - 1));
+    const updates = planTagGroupReindex(group, tagId, index, groupType);
+    await Promise.all(updates.map(u => onUpdateTag(u.id, u.patch)));
+    // Position numbers are shown temporarily to reorder — hide them again once saved.
+    if (groupType === 'project') setShowProjectPositions(false);
+    else setShowFolderPositions(false);
+  };
 
   // Drop into a folder-section gap: convert the dragged folder/project/workstream
   // into a top-level folder and slot it at `index`, renumbering the folder group
@@ -504,24 +597,8 @@ export function InboxSidebar({
       <div className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
         {isMeetings ? (
           <>
-            <SectionHeader label="Views" />
-            {[
-              { sub: 'calendar',       label: 'Calendar',       icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
-              { sub: 'coverage',       label: '1:1 coverage',   icon: <Radar className="h-4 w-4" />,        path: '/inbox/meetings/coverage' },
-              { sub: 'group-coverage', label: 'Group coverage', icon: <Users className="h-4 w-4" />,        path: '/inbox/meetings/group-coverage' },
-              { sub: 'activity',       label: 'Agent',          icon: <Bot className="h-4 w-4" />,          path: '/inbox/meetings/activity' },
-            ].map(({ sub, label, icon, path }) => (
-              <SidebarItem
-                key={sub}
-                label={label}
-                icon={icon}
-                active={meetingsSubView === sub}
-                onClick={() => navigate(path)}
-              />
-            ))}
-
             {/* Search */}
-            <div className="pt-3 pb-1">
+            <div className="pb-3">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
                 <input
@@ -541,32 +618,63 @@ export function InboxSidebar({
               </div>
             </div>
 
-            {/* Sync */}
-            {meetingsSyncInfo && (
-              <div className="pt-1">
-                {meetingsSyncInfo.lastSyncAt && (
-                  <p className="text-[10px] text-gray-400 px-1 mb-1.5 truncate">
-                    Synced {formatRelativeTime(meetingsSyncInfo.lastSyncAt)}
-                  </p>
-                )}
-                <button
-                  onClick={meetingsSyncInfo.onSync}
-                  disabled={meetingsSyncInfo.syncing}
-                  className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                >
-                  {meetingsSyncInfo.syncing
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <RefreshCw className="h-3.5 w-3.5" />}
-                  {meetingsSyncInfo.calendarConnected ? 'Sync' : 'Connect calendar'}
-                </button>
-              </div>
-            )}
+            <SectionHeader label="Views" />
+            {[
+              { sub: 'calendar',       label: 'Calendar',       icon: <CalendarPlus className="h-4 w-4" />, path: '/inbox/meetings' },
+              { sub: 'coverage',       label: '1:1 coverage',   icon: <Radar className="h-4 w-4" />,        path: '/inbox/meetings/coverage' },
+              { sub: 'group-coverage', label: 'Group coverage', icon: <Users className="h-4 w-4" />,        path: '/inbox/meetings/group-coverage' },
+              { sub: 'activity',       label: 'Agent',          icon: <Bot className="h-4 w-4" />,          path: '/inbox/meetings/activity' },
+            ].map(({ sub, label, icon, path }) => {
+              const active = meetingsSubView === sub;
+              if (sub === 'calendar' && meetingsSyncInfo) {
+                return (
+                  <div key={sub}>
+                    <div
+                      className={cn(
+                        'w-full flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-md text-sm transition-colors',
+                        active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                      )}
+                    >
+                      <button onClick={() => navigate(path)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                        <span className="w-4 flex-shrink-0" />
+                        <span className="text-gray-400 flex-shrink-0 w-4 flex items-center justify-center">{icon}</span>
+                        <span className="flex-1 truncate">{label}</span>
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); meetingsSyncInfo.onSync(); }}
+                        disabled={meetingsSyncInfo.syncing}
+                        className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 hover:underline disabled:opacity-50 transition-colors"
+                      >
+                        {meetingsSyncInfo.syncing && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {meetingsSyncInfo.syncing
+                          ? 'Syncing…'
+                          : meetingsSyncInfo.calendarConnected ? 'Sync' : 'Connect'}
+                      </button>
+                    </div>
+                    {meetingsSyncInfo.lastSyncAt && (
+                      <p className="pl-8 pr-1 text-[10px] text-gray-400 truncate">
+                        Synced {formatRelativeTime(meetingsSyncInfo.lastSyncAt)}
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <SidebarItem
+                  key={sub}
+                  label={label}
+                  icon={icon}
+                  active={active}
+                  onClick={() => navigate(path)}
+                />
+              );
+            })}
           </>
         ) : (
           <>
             <SectionHeader label="Views" />
             <SidebarItem label="All"           icon={<Inbox className="h-4 w-4" />} count={counts['all']}     active={isActive({ builtIn: 'all' })}     onClick={() => onFilterChange({ builtIn: 'all' })} />
-            <SidebarItem label="ASAP"          icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
+            <SidebarItem label="Do Now"        icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
             <SidebarItem label="Waiting on me" icon={<Clock className="h-4 w-4" />} count={counts['waiting']} active={isActive({ builtIn: 'waiting' })} onClick={() => onFilterChange({ builtIn: 'waiting' })} />
 
         {personTags.length > 0 && (
@@ -597,7 +705,12 @@ export function InboxSidebar({
 
         {(projectTags.length > 0 || dragging) && (
           <>
-            <SectionHeader label="Projects" />
+            <SectionHeader
+              label="Projects"
+              action={projectTags.length > 1 ? (
+                <ReorderToggle active={showProjectPositions} onClick={() => setShowProjectPositions(v => !v)} />
+              ) : undefined}
+            />
             {projectTags.length === 0 ? (
               // No projects yet: a single, obvious landing zone that creates the first one.
               <DropGap active={dragging} onDrop={() => dropIntoProjects(0)} label="Drop here to make a project" />
@@ -622,6 +735,9 @@ export function InboxSidebar({
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       icon={<Hash className="h-4 w-4" style={{ color: tag.color }} />}
+                      position={showProjectPositions ? i + 1 : undefined}
+                      groupSize={showProjectPositions ? projectTags.length : undefined}
+                      onSetPosition={showProjectPositions ? newPosition => setGroupPosition(projectTags, 'project', tag.id, newPosition) : undefined}
                     />
                     <DropGap active={dragging} onDrop={() => dropIntoProjects(i + 1)} />
                   </div>
@@ -633,7 +749,12 @@ export function InboxSidebar({
 
         {(folderTags.length > 0 || dragging) && (
           <>
-            <SectionHeader label="Folders" />
+            <SectionHeader
+              label="Folders"
+              action={folderTags.length > 1 ? (
+                <ReorderToggle active={showFolderPositions} onClick={() => setShowFolderPositions(v => !v)} />
+              ) : undefined}
+            />
             {folderTags.length === 0 ? (
               // No folders yet: a single, obvious landing zone that creates the first one.
               <DropGap active={dragging} onDrop={() => dropIntoFolders(0)} label="Drop here to make a folder" />
@@ -657,6 +778,9 @@ export function InboxSidebar({
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       icon={<Folder className="h-4 w-4" style={{ color: tag.color }} />}
+                      position={showFolderPositions ? i + 1 : undefined}
+                      groupSize={showFolderPositions ? folderTags.length : undefined}
+                      onSetPosition={showFolderPositions ? newPosition => setGroupPosition(folderTags, 'folder', tag.id, newPosition) : undefined}
                     />
                     <DropGap active={dragging} onDrop={() => dropIntoFolders(i + 1)} />
                   </div>

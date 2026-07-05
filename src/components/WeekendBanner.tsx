@@ -3,6 +3,7 @@ import { addDays, format, startOfDay } from 'date-fns';
 import { Loader2, Sun, PartyPopper, Send, ImageIcon, X, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
 
 const ART_STYLES = [
   'Monochrome', 'Color block', 'Runway', 'Risograph', 'Technicolor',
@@ -49,7 +50,7 @@ function getWeekendContext(): { mode: BannerMode; weekOf: string } {
   return { mode, weekOf };
 }
 
-export function WeekendBanner() {
+export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
   const forceDay = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('banner_day') as BannerMode | null;
@@ -180,8 +181,8 @@ export function WeekendBanner() {
 
   if (isWeekendish) {
     return (
-      <div className="container mx-auto px-6 max-w-7xl pt-6">
-        <section className="rounded-2xl overflow-hidden">
+      <div className={bare ? undefined : 'container mx-auto px-6 max-w-7xl pt-6'}>
+        <section className={cn('overflow-hidden', bare ? 'rounded-xl border border-gray-200/80' : 'rounded-2xl')}>
           {vibes?.image_url ? (
             <div className="relative">
               <img
@@ -310,8 +311,8 @@ export function WeekendBanner() {
 
   if (isMonday && vibes?.image_url && !vibes.monday_reflection) {
     return (
-      <div className="container mx-auto px-6 max-w-7xl pt-6">
-        <section className="rounded-2xl overflow-hidden">
+      <div className={bare ? undefined : 'container mx-auto px-6 max-w-7xl pt-6'}>
+        <section className={cn('overflow-hidden', bare ? 'rounded-xl border border-gray-200/80' : 'rounded-2xl')}>
           <div className="relative">
             <img
               src={vibes.image_url}

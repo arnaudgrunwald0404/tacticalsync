@@ -35,10 +35,24 @@ const rowToItem = (r: InboxItemRow): InboxItem => ({
     : [],
 });
 
-// Fetch items + their tags for a user, applying a filter
-export function useInboxItems(userId: string | null, filter: InboxFilterState) {
+type ItemsPatcher = (prev: InboxItem[]) => InboxItem[];
+
+// Fetch items + their tags for a user, applying a filter. `mirror`, if given, is
+// called with the same in-place patcher applied to every mutation (add/update/
+// remove), letting a second instance (e.g. one used only for sidebar counts)
+// stay in sync without its own network refetch.
+export function useInboxItems(
+  userId: string | null,
+  filter: InboxFilterState,
+  mirror?: (patcher: ItemsPatcher) => void,
+) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const applyPatch = useCallback((patcher: ItemsPatcher) => {
+    setItems(patcher);
+    mirror?.(patcher);
+  }, [mirror]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -127,15 +141,25 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
       .single();
     if (error || !data) return null;
 
+    const newItem = rowToItem(data);
+
     if (tagIds.length > 0) {
-      await supabase
+      const { data: tagRows } = await supabase
         .from('inbox_item_tags')
-        .insert(tagIds.map(tid => ({ item_id: data.id, tag_id: tid })));
+        .insert(tagIds.map(tid => ({ item_id: data.id, tag_id: tid })))
+        .select('inbox_tags(*)');
+      if (tagRows) {
+        newItem.tags = tagRows
+          .map(r => r.inbox_tags)
+          .filter((t): t is InboxTagRow => !!t)
+          .map(rowToTag);
+      }
     }
 
-    await load();
-    return rowToItem(data);
-  }, [userId, load]);
+    setItems(prev => applyInboxClientFilters([newItem, ...prev], filter));
+    mirror?.(prev => [newItem, ...prev]);
+    return newItem;
+  }, [userId, filter, mirror]);
 
   const updateItem = useCallback(async (id: string, patch: Partial<InboxItem>) => {
     // Guard text/body edits with the same rules as inserts. Invalid edits are
@@ -158,45 +182,50 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
       .from('inbox_items')
       .update(dbPatch)
       .eq('id', id);
-    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
-  }, []);
+    applyPatch(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  }, [applyPatch]);
 
   const markDone = useCallback(async (id: string, done: boolean) => {
     const patch = done
       ? { status: 'done', done_at: new Date().toISOString() }
       : { status: 'open', done_at: null };
     await updateItem(id, patch as Partial<InboxItem>);
-    if (done) setItems(prev => prev.filter(i => i.id !== id));
-  }, [updateItem]);
+    if (done) applyPatch(prev => prev.filter(i => i.id !== id));
+  }, [updateItem, applyPatch]);
 
   const archive = useCallback(async (id: string) => {
     await updateItem(id, { status: 'archived', archived_at: new Date().toISOString() } as Partial<InboxItem>);
-    setItems(prev => prev.filter(i => i.id !== id));
-  }, [updateItem]);
+    applyPatch(prev => prev.filter(i => i.id !== id));
+  }, [updateItem, applyPatch]);
 
   const deleteItem = useCallback(async (id: string) => {
     await supabase.from('inbox_items').delete().eq('id', id);
-    setItems(prev => prev.filter(i => i.id !== id));
-  }, []);
+    applyPatch(prev => prev.filter(i => i.id !== id));
+  }, [applyPatch]);
 
   const addTagToItem = useCallback(async (itemId: string, tagId: string) => {
+    const { data: tagRow } = await supabase
+      .from('inbox_tags')
+      .select('*')
+      .eq('id', tagId)
+      .single();
     await supabase.from('inbox_item_tags').insert({ item_id: itemId, tag_id: tagId });
-    setItems(prev => prev.map(i => {
+    applyPatch(prev => prev.map(i => {
       if (i.id !== itemId) return i;
       const already = i.tags?.some(t => t.id === tagId);
-      // Optimistic partial tag; the trailing load() replaces it with the full row.
-      return already ? i : { ...i, tags: [...(i.tags ?? []), { id: tagId } as unknown as InboxTag] };
+      if (already) return i;
+      const tag = tagRow ? rowToTag(tagRow) : ({ id: tagId } as unknown as InboxTag);
+      return { ...i, tags: [...(i.tags ?? []), tag] };
     }));
-    await load();
-  }, [load]);
+  }, [applyPatch]);
 
   const removeTagFromItem = useCallback(async (itemId: string, tagId: string) => {
     await supabase.from('inbox_item_tags').delete()
       .eq('item_id', itemId).eq('tag_id', tagId);
-    setItems(prev => prev.map(i =>
+    applyPatch(prev => prev.map(i =>
       i.id === itemId ? { ...i, tags: i.tags?.filter(t => t.id !== tagId) } : i
     ));
-  }, []);
+  }, [applyPatch]);
 
   const cycleWorkflowStatus = useCallback(async (id: string, current: string | null) => {
     await updateItem(id, { workflow_status: nextWorkflowStatus(current) });
@@ -231,11 +260,11 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
         .from('inbox_items')
         .update({ agent_payload: payload as Json, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
-      setItems(prev => prev.map(i =>
+      applyPatch(prev => prev.map(i =>
         i.id === existing.id ? { ...i, agent_payload: payload } : i,
       ));
     } else {
-      await supabase
+      const { data } = await supabase
         .from('inbox_items')
         .insert({
           user_id: userId,
@@ -245,10 +274,16 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
           bucket: 'now',
           agent_payload: payload as Json,
           source_ref: sourceRef as unknown as Json,
-        });
-      await load();
+        })
+        .select()
+        .single();
+      if (data) {
+        const newItem = rowToItem(data);
+        setItems(prev => applyInboxClientFilters([newItem, ...prev], filter));
+        mirror?.(prev => [newItem, ...prev]);
+      }
     }
-  }, [userId, load]);
+  }, [userId, filter, mirror, applyPatch]);
 
   const pinItem = useCallback(async (id: string, pinned: boolean) => {
     await updateItem(id, { pinned });
@@ -263,7 +298,7 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
     const remaining = (item?.tag_suggestions ?? []).filter(s => s.tag_id !== suggestion.tag_id);
     await supabase.from('inbox_items').update({ tag_suggestions: remaining as unknown as Json }).eq('id', itemId);
     // Optimistic update
-    setItems(prev => prev.map(i => {
+    applyPatch(prev => prev.map(i => {
       if (i.id !== itemId) return i;
       const already = i.tags?.some(t => t.id === suggestion.tag_id);
       return {
@@ -272,23 +307,25 @@ export function useInboxItems(userId: string | null, filter: InboxFilterState) {
         tags: already ? i.tags : [...(i.tags ?? []), { id: suggestion.tag_id, name: suggestion.tag_name, color: suggestion.color, type: 'project', user_id: '', member_id: null, parent_id: null, sort_order: 0, created_at: '' } as InboxTag],
       };
     }));
-    await load();
-  }, [items, load]);
+  }, [items, applyPatch]);
 
   // Dismiss a suggestion without applying the tag.
   const dismissSuggestion = useCallback(async (itemId: string, tagId: string) => {
     const item = items.find(i => i.id === itemId);
     const remaining = (item?.tag_suggestions ?? []).filter(s => s.tag_id !== tagId);
     await supabase.from('inbox_items').update({ tag_suggestions: remaining as unknown as Json }).eq('id', itemId);
-    setItems(prev => prev.map(i =>
+    applyPatch(prev => prev.map(i =>
       i.id === itemId ? { ...i, tag_suggestions: (i.tag_suggestions ?? []).filter(s => s.tag_id !== tagId) } : i
     ));
-  }, [items]);
+  }, [items, applyPatch]);
 
   return {
     items,
     loading,
     reload: load,
+    // Lets another instance of this hook mirror patches into this one (see the
+    // `mirror` param above) without a network refetch.
+    applyExternalPatch: setItems,
     addItem,
     updateItem,
     markDone,
