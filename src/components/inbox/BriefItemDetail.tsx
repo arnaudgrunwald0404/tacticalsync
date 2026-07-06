@@ -79,14 +79,30 @@ function PriorityCard({
         <span className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full', badge.className)}>
           {badge.label}
         </span>
-        {/* Drag handle */}
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-gray-200 hover:text-gray-400 transition-colors ml-auto"
-        >
-          <GripVertical className="h-3.5 w-3.5" />
-        </button>
+        <div className="ml-auto flex items-center gap-0.5">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="p-0.5 rounded text-gray-300 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Pencil className="h-2.5 w-2.5" />
+            </button>
+          )}
+          <button
+            onClick={onDelete}
+            className="p-0.5 rounded text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+          {/* Drag handle */}
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-gray-200 hover:text-gray-400 transition-colors"
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Text */}
@@ -117,24 +133,6 @@ function PriorityCard({
           {SOURCE_ICONS[priority.source] ?? '•'} {priority.reasoning}
         </p>
       )}
-
-      {/* Hover actions */}
-      <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="p-0.5 rounded bg-white shadow border border-gray-100 text-gray-400 hover:text-gray-700"
-          >
-            <Pencil className="h-2.5 w-2.5" />
-          </button>
-        )}
-        <button
-          onClick={onDelete}
-          className="p-0.5 rounded bg-white shadow border border-gray-100 text-gray-400 hover:text-red-500"
-        >
-          <X className="h-2.5 w-2.5" />
-        </button>
-      </div>
     </div>
   );
 }

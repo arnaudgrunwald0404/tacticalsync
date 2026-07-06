@@ -37,14 +37,13 @@ const BUCKETS: { id: InboxBucket; label: string; description: string; accent: st
 // ── Draggable item wrapper ────────────────────────────────────────────────────
 
 function SortableItem({
-  item, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+  item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, isSelected, onSelect,
   prioritizeMode,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
-  onDone: (id: string, done: boolean) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
@@ -88,7 +87,6 @@ function SortableItem({
         <InboxItemRow
           item={item}
           allTags={allTags}
-          onDone={onDone}
           onArchive={onArchive}
           onDelete={onDelete}
           onRemoveTag={onRemoveTag}
@@ -114,7 +112,7 @@ function SortableItem({
 // ── Drop zone section (horizontal) ───────────────────────────────────────────
 
 function BucketSection({
-  bucket, items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+  bucket, items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
   prioritizeMode,
@@ -122,7 +120,6 @@ function BucketSection({
   bucket: typeof BUCKETS[number];
   items: InboxItem[];
   allTags: InboxTag[];
-  onDone: (id: string, done: boolean) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
@@ -164,7 +161,6 @@ function BucketSection({
               key={item.id}
               item={item}
               allTags={allTags}
-              onDone={onDone}
               onArchive={onArchive}
               onDelete={onDelete}
               onRemoveTag={onRemoveTag}
@@ -203,7 +199,6 @@ function BucketSection({
 interface InboxGroupedViewProps {
   items: InboxItem[];
   allTags: InboxTag[];
-  onDone: (id: string, done: boolean) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
@@ -224,7 +219,7 @@ interface InboxGroupedViewProps {
 }
 
 export function InboxGroupedView({
-  items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+  items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
   prioritizeMode,
@@ -286,7 +281,6 @@ export function InboxGroupedView({
             bucket={bucket}
             items={grouped[bucket.id]}
             allTags={allTags}
-            onDone={onDone}
             onArchive={onArchive}
             onDelete={onDelete}
             onRemoveTag={onRemoveTag}

@@ -170,7 +170,7 @@ export default function CosCalendarSyncPanel() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                Connect Google Calendar to sync upcoming 1:1s as placeholders in the Chief of Staff tab.
+                Connect Google Calendar to sync upcoming 1:1s as placeholders in the Check-Ins tab.
               </p>
               <Button size="sm" onClick={connect} className="gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />

@@ -22,7 +22,6 @@ import type { TeamMember } from '@/hooks/useTeamMembers';
 interface InboxItemRowProps {
   item: InboxItem;
   allTags: InboxTag[];
-  onDone: (id: string, done: boolean) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
@@ -77,7 +76,7 @@ const AGENT_BG: Record<InboxItem['type'], string> = {
 };
 
 export function InboxItemRow({
-  item, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+  item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
   onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion,
   isSelected, onSelect, isNew, prioritizeMode,
@@ -173,24 +172,13 @@ export function InboxItemRow({
             </span>
           </button>
 
-          {/* Done checkbox (task) / type icon (everything else) */}
-          {item.type === 'task' ? (
-            <button
-              onClick={e => { e.stopPropagation(); onDone(item.id, !isDone); }}
-              aria-label={isDone ? 'Mark as not done' : 'Mark as done'}
-              title={isDone ? 'Mark as not done' : 'Mark as done'}
-              className={cn(
-                'flex-shrink-0 flex items-center justify-center transition-colors',
-                isDone ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500',
-              )}
-            >
-              {isDone ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-            </button>
-          ) : (
-            <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
-              {TYPE_ICON[item.type]}
-            </span>
-          )}
+          {/* Type icon — done tasks show a checked square instead of the empty one */}
+          <span className={cn(
+            'flex-shrink-0',
+            isDone ? 'text-emerald-500' : isAgentItem ? 'text-gray-400' : 'text-gray-300',
+          )}>
+            {item.type === 'task' && isDone ? <CheckSquare className="h-4 w-4" /> : TYPE_ICON[item.type]}
+          </span>
 
           {/* Main text */}
           {editingText ? (

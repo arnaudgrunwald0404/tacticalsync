@@ -38,7 +38,7 @@ const Auth = () => {
     }
     const returnTo = params.get('returnTo');
     if (returnTo) return returnTo;
-    return '/chief-of-staff';
+    return '/check-ins';
   };
 
   useEffect(() => {

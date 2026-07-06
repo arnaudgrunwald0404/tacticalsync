@@ -19,7 +19,7 @@ export function AppNavbar() {
       ? "insights"
       : location.pathname.includes("/inbox")
       ? "inbox"
-      : location.pathname.includes("/chief-of-staff")
+      : location.pathname.includes("/check-ins")
       ? "cos"
       : location.pathname.includes("/rcdo")
       ? "rcdo"
@@ -32,7 +32,7 @@ export function AppNavbar() {
     else if (value === "rcdo") navigate("/dashboard/rcdo");
     else if (value === "commitments") navigate("/commitments");
     else if (value === "insights") navigate("/insights");
-    else if (value === "cos") navigate("/chief-of-staff");
+    else if (value === "cos") navigate("/check-ins");
     else if (value === "inbox") navigate("/inbox");
     else if (value === "settings") navigate("/settings");
   };
@@ -48,7 +48,7 @@ export function AppNavbar() {
               <nav className="flex items-center gap-1">
                 {[
                   { value: "inbox", label: "Inbox", subtitle: "β" },
-                  ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Chief of Staff", subtitle: "Day – Week" }] : []),
+                  ...(canAccess("view_chief_of_staff") ? [{ value: "cos", label: "Check-Ins", subtitle: "Day – Week" }] : []),
                   ...(canAccess("view_commitments") ? [{ value: "commitments", label: "Commitments", subtitle: "Month – Quarter" }] : []),
                   ...(canAccess("view_rcdo") ? [{ value: "rcdo", label: "RCDO", title: "Rallying Cry & Defining Objectives", subtitle: "Six months" }] : []),
                   ...(canAccess("view_insights") ? [{ value: "insights", label: "Insights" }] : []),

@@ -112,10 +112,10 @@ export interface InboxFilterState {
   tagIds?: string[];
   types?: InboxItemType[];
   status?: InboxItemStatus;
-  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'archive' | tag-id.
+  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'done' | 'archive' | tag-id.
    *  'asap' is labeled "Do Now" in the UI and filters by workflow_status === 'Do Now'
    *  (no longer by an ASAP tag). */
-  builtIn?: 'all' | 'asap' | 'waiting' | 'archive';
+  builtIn?: 'all' | 'asap' | 'waiting' | 'done' | 'archive';
 }
 
 export const TAG_COLORS = [
