@@ -33,3 +33,22 @@ WHERE t.type = 'person'
   AND NOT EXISTS (
     SELECT 1 FROM inbox_item_tags it WHERE it.tag_id = t.id
   );
+
+-- One QA account had a stray manual tag-suggestion-accept linking the generic,
+-- always-untagged "Tag and file last week's postmortem doc" demo item to a
+-- New Altitude tag. Drop that link so the item matches its intended untagged
+-- seed state, then drop the tag itself since nothing else references it.
+DELETE FROM inbox_item_tags it
+USING inbox_items i, inbox_tags t
+WHERE it.item_id = i.id
+  AND it.tag_id = t.id
+  AND i.text = 'Tag and file last week''s postmortem doc'
+  AND t.type = 'project'
+  AND t.name IN ('New Altitude', 'Chrysalis', 'Rook');
+
+DELETE FROM inbox_tags t
+WHERE t.type = 'project'
+  AND t.name IN ('New Altitude', 'Chrysalis', 'Rook')
+  AND NOT EXISTS (
+    SELECT 1 FROM inbox_item_tags it WHERE it.tag_id = t.id
+  );
