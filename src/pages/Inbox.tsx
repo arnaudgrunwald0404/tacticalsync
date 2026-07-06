@@ -333,8 +333,6 @@ export default function InboxPage() {
     setSelected(prev => {
       const next = new Set(prev);
       if (sel) next.add(id); else next.delete(id);
-      if (next.size === 0) setBulkMode(false);
-      else setBulkMode(true);
       return next;
     });
   }, []);
@@ -343,13 +341,11 @@ export default function InboxPage() {
     const anyUnpinned = items.filter(i => selected.has(i.id)).some(i => !i.pinned);
     for (const id of selected) await pinItem(id, anyUnpinned);
     setSelected(new Set());
-    setBulkMode(false);
   }, [selected, items, pinItem]);
 
   const handleBulkArchive = useCallback(async () => {
     for (const id of selected) await archive(id);
     setSelected(new Set());
-    setBulkMode(false);
   }, [selected, archive]);
 
   const handleDelegateToAgent = useCallback(async () => {
@@ -366,7 +362,6 @@ export default function InboxPage() {
       });
     }
     setSelected(new Set());
-    setBulkMode(false);
     setDelegateOpen(false);
   }, [selected, userId]);
 
@@ -394,7 +389,6 @@ export default function InboxPage() {
   const applyFilter = useCallback((f: InboxFilterState) => {
     setFilter(f);
     setSelected(new Set());
-    setBulkMode(false);
     setSidebarOpen(false);
   }, []);
 
@@ -604,7 +598,7 @@ export default function InboxPage() {
             ))}
 
             <button
-              onClick={() => { setSelected(new Set()); setBulkMode(false); setDelegateOpen(false); }}
+              onClick={() => { setSelected(new Set()); setDelegateOpen(false); }}
               className="ml-auto flex-shrink-0 p-1.5 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
             >
               <X className="h-3.5 w-3.5" />
