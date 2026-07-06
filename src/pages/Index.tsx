@@ -28,7 +28,7 @@ const Index = () => {
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate("/chief-of-staff");
+        navigate("/check-ins");
       }
     });
 

@@ -140,7 +140,6 @@ type CategoryKey = string;
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const location = useLocation();
   const [userId, setUserId] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
@@ -3592,7 +3591,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -4696,7 +4695,7 @@ function SettingsSection({
       <div className="max-w-lg">
         <h2 className="text-lg font-semibold">Settings</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure labels, sections, and status options for your Chief of Staff workspace.
+          Configure labels, sections, and status options for your Check-Ins workspace.
         </p>
       </div>
 

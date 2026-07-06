@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, Loader2, X } from 'lucide-react';
-import { Inbox, Zap, Clock, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput, ListOrdered } from 'lucide-react';
+import { Inbox, Zap, Clock, CheckSquare, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import type { InboxTag, InboxFilterState } from '@/types/inbox';
@@ -791,6 +791,13 @@ export function InboxSidebar({
         )}
 
         <SectionHeader label="More" />
+        <SidebarItem
+          label="Done"
+          icon={<CheckSquare className="h-4 w-4" />}
+          count={counts['done']}
+          active={isActive({ builtIn: 'done' })}
+          onClick={() => onFilterChange({ builtIn: 'done' })}
+        />
         <SidebarItem
           label="Archive"
           icon={<Archive className="h-4 w-4" />}
