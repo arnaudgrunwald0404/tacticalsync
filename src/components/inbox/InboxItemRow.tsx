@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
-  CheckSquare, Square, FileText, Zap, HelpCircle, Video, Calendar,
+  FileText, Zap, HelpCircle, Video, Calendar,
   Check, Pin, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -44,8 +44,8 @@ interface InboxItemRowProps {
   prioritizeMode?: boolean;
 }
 
-const TYPE_ICON: Record<InboxItem['type'], React.ReactNode> = {
-  task:             <Square className="h-4 w-4" />,
+// No entry for 'task' — task rows render no type icon (see below).
+const TYPE_ICON: Partial<Record<InboxItem['type'], React.ReactNode>> = {
   note:             <FileText className="h-4 w-4" />,
   agent_nudge:      <Zap className="h-4 w-4" />,
   agent_question:   <HelpCircle className="h-4 w-4" />,
@@ -151,36 +151,38 @@ export function InboxItemRow({
       )}>
         {/* Main content — checkbox, type icon, text, pin. */}
         <div className="flex items-center gap-3 min-w-0">
-          {/* Select checkbox and type icon share one slot and never show at
-              once — for tasks the type icon is itself a checkbox glyph
-              (Square/CheckSquare), so showing both side by side on hover
-              read as two checkmarks on the same row. The select checkbox
-              swaps in for the icon instead of sitting next to it. */}
-          {isSelected || revealControls ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
-              aria-label={isSelected ? 'Deselect item' : 'Select item'}
-              className={cn(
-                'flex-shrink-0 flex items-center justify-center transition-all',
-                // Larger tap surface on touch, compact box on pointer devices.
-                isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
-              )}
-            >
-              <span className={cn(
-                'w-4 h-4 rounded border flex items-center justify-center',
-                isSelected
-                  ? 'bg-gray-900 border-gray-900 text-white'
-                  : 'border-gray-300 text-transparent hover:border-gray-500',
-              )}>
-                <Check className="h-2.5 w-2.5" strokeWidth={3} />
-              </span>
-            </button>
-          ) : (
+          {/* Multi-select checkbox — shown on hover/touch or when selected.
+              This is the only checkbox-shaped control on the row; marking a
+              task done happens via multi-select + the "Mark Done" bulk
+              action, not a per-row checkmark, so there's nothing here to
+              double up with. */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
+            aria-label={isSelected ? 'Deselect item' : 'Select item'}
+            className={cn(
+              'flex-shrink-0 flex items-center justify-center transition-all',
+              // Larger tap surface on touch, compact box on pointer devices.
+              isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
+              !isSelected && !revealControls && 'opacity-0',
+            )}
+          >
             <span className={cn(
-              'flex-shrink-0',
-              isDone ? 'text-emerald-500' : isAgentItem ? 'text-gray-400' : 'text-gray-300',
+              'w-4 h-4 rounded border flex items-center justify-center',
+              isSelected
+                ? 'bg-gray-900 border-gray-900 text-white'
+                : 'border-gray-300 text-transparent hover:border-gray-500',
             )}>
-              {item.type === 'task' && isDone ? <CheckSquare className="h-4 w-4" /> : TYPE_ICON[item.type]}
+              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+            </span>
+          </button>
+
+          {/* Type icon — tasks show no icon at all (done state reads from
+              the strikethrough/opacity on the text below), so this slot
+              never renders a checkbox-shaped glyph next to the select
+              checkbox above. */}
+          {item.type !== 'task' && (
+            <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
+              {TYPE_ICON[item.type]}
             </span>
           )}
 
