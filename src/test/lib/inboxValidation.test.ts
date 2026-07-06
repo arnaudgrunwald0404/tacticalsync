@@ -32,6 +32,7 @@ import {
   PRIORITY_TIERS,
   computePriorityDueAt,
   currentPriorityTier,
+  isAutoPinnedItem,
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxFilterState, InboxTag } from '@/types/inbox';
@@ -703,5 +704,15 @@ describe('currentPriorityTier', () => {
       const momentsLater = new Date(now.getTime() + 50);
       expect(currentPriorityTier(due, momentsLater)).toBe(tier.key);
     }
+  });
+});
+
+describe('isAutoPinnedItem', () => {
+  it('is true for brief_item (weekly priorities and daily check-ins)', () => {
+    expect(isAutoPinnedItem({ type: 'brief_item' })).toBe(true);
+  });
+
+  it.each(ITEM_TYPES.filter(t => t !== 'brief_item'))('is false for %s', (type) => {
+    expect(isAutoPinnedItem({ type })).toBe(false);
   });
 });

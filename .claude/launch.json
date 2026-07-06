@@ -13,12 +13,6 @@
       "runtimeArgs": ["-l", "-c", "npm run dev"],
       "port": 8080,
       "autoPort": true
-    },
-    {
-      "name": "Email Preview",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "9091", "--directory", "/private/tmp/claude-502/-Users-arnaudgrunwald-AGcodework-team-tactical-sync/3544eb67-690e-48c9-bc51-e5d2bf06b1a6/scratchpad"],
-      "port": 9091
     }
   ]
 }

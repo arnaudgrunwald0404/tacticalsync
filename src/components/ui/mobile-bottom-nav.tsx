@@ -18,9 +18,9 @@ const navItems: NavItem[] = [
   },
   {
     id: "cos",
-    label: "Chief of Staff",
+    label: "Check-Ins",
     icon: Briefcase,
-    path: "/chief-of-staff",
+    path: "/check-ins",
   },
   {
     id: "commitments",
@@ -49,7 +49,7 @@ export function MobileBottomNav() {
   const getActiveTab = (): string => {
     const path = location.pathname;
     if (path.includes("/inbox")) return "inbox";
-    if (path.includes("/chief-of-staff")) return "cos";
+    if (path.includes("/check-ins")) return "cos";
     if (path.includes("/dashboard/rcdo/tasks-feed")) return "tasks";
     if (path.includes("/dashboard/rcdo")) return "strategy";
     if (path.includes("/commitments")) return "commitments";

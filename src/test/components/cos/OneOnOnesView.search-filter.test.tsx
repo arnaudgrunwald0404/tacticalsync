@@ -5,7 +5,7 @@ import { startOfWeek, addDays } from 'date-fns';
 import { OneOnOnesView, type UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 // Regression test: the search box in the 1:1s calendar view (shared by
-// /inbox/meetings and /chief-of-staff) used to compute filtered event lists
+// /inbox/meetings and /check-ins) used to compute filtered event lists
 // that were never passed to CalendarWeekView, so typing had zero effect on
 // the grid. These tests pin the fix: search now filters the events rendered
 // in the week grid, and a no-results search shows an explicit empty state

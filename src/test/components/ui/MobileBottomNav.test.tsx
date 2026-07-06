@@ -35,7 +35,7 @@ describe('MobileBottomNav', () => {
     it('should render all five nav items', () => {
       renderWithPath('/commitments');
       expect(screen.getByLabelText('Inbox')).toBeInTheDocument();
-      expect(screen.getByLabelText('Chief of Staff')).toBeInTheDocument();
+      expect(screen.getByLabelText('Check-Ins')).toBeInTheDocument();
       expect(screen.getByLabelText('Strategy')).toBeInTheDocument();
       expect(screen.getByLabelText('My tasks')).toBeInTheDocument();
       expect(screen.getByLabelText('Commitments')).toBeInTheDocument();
@@ -78,9 +78,9 @@ describe('MobileBottomNav', () => {
       expect(commitmentsBtn).toHaveClass('text-primary');
     });
 
-    it('should mark CoS as active on /chief-of-staff', () => {
-      renderWithPath('/chief-of-staff');
-      const cosBtn = screen.getByLabelText('Chief of Staff');
+    it('should mark CoS as active on /check-ins', () => {
+      renderWithPath('/check-ins');
+      const cosBtn = screen.getByLabelText('Check-Ins');
       expect(cosBtn).toHaveClass('text-primary');
     });
 
@@ -113,11 +113,11 @@ describe('MobileBottomNav', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard/rcdo/tasks-feed');
     });
 
-    it('should navigate to /chief-of-staff when CoS is clicked', async () => {
+    it('should navigate to /check-ins when CoS is clicked', async () => {
       const user = userEvent.setup();
       renderWithPath('/commitments');
-      await user.click(screen.getByLabelText('Chief of Staff'));
-      expect(mockNavigate).toHaveBeenCalledWith('/chief-of-staff');
+      await user.click(screen.getByLabelText('Check-Ins'));
+      expect(mockNavigate).toHaveBeenCalledWith('/check-ins');
     });
 
     it('should navigate to /inbox when Inbox is clicked', async () => {

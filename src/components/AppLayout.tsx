@@ -44,7 +44,7 @@ export function AppLayout() {
     return <PageSkeleton />;
   }
 
-  const isChiefOfStaff = location.pathname.startsWith("/chief-of-staff");
+  const isChiefOfStaff = location.pathname.startsWith("/check-ins");
 
   const isInbox = location.pathname.startsWith("/inbox");
 

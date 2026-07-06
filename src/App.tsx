@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RoleOverrideProvider } from "@/contexts/RoleOverrideContext";
 import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
@@ -44,6 +44,13 @@ const StrategyCanvas = lazyWithRetry(() => import("./pages/StrategyCanvas"));
 const RCDOAllHands = lazyWithRetry(() => import("./pages/RCDOAllHands"));
 
 const queryClient = new QueryClient();
+
+// Backward-compat redirect: old bookmarks/Slack links pointed at /chief-of-staff.
+const LegacyChiefOfStaffRedirect = () => {
+  const location = useLocation();
+  const target = location.pathname.replace(/^\/chief-of-staff/, "/check-ins") + location.search;
+  return <Navigate to={target} replace />;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -89,7 +96,8 @@ const App = () => (
             <Route path="/dashboard/rcdo" element={<DashboardWithTabs />} />
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
-            <Route path="/chief-of-staff/*" element={<DashboardWithTabs />} />
+            <Route path="/check-ins/*" element={<DashboardWithTabs />} />
+            <Route path="/chief-of-staff/*" element={<LegacyChiefOfStaffRedirect />} />
             <Route path="/inbox" element={
               <Suspense fallback={<PageSkeleton />}>
                 <InboxPage />

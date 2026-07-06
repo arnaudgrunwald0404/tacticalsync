@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
-  Loader2, type LucideIcon,
+  Loader2, CheckSquare, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
@@ -30,7 +30,7 @@ import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
-import { planTagGroupReindex } from '@/lib/inboxValidation';
+import { planTagGroupReindex, isAutoPinnedItem } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
@@ -98,6 +98,7 @@ const VIEW_LABELS: Record<string, string> = {
   all:     'All',
   asap:    'Do Now',
   waiting: 'Waiting on me',
+  done:    'Done',
   archive: 'Archive',
 };
 
@@ -166,6 +167,12 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
         title: 'Nothing waiting on you',
         subtitle: 'Items marked Waiting on someone will show up here.',
       };
+    case 'done':
+      return {
+        icon: CheckSquare,
+        title: 'Nothing done yet',
+        subtitle: 'Items you mark done will land here.',
+      };
     case 'archive':
       return {
         icon: ArchiveIcon,
@@ -196,6 +203,7 @@ export default function InboxPage() {
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
   const [filter, setFilter] = useState<InboxFilterState>({ builtIn: 'all' });
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const [meetingsSearch, setMeetingsSearch] = useState('');
   const [meetingsSyncInfo, setMeetingsSyncInfo] = useState<MeetingsSyncInfo | undefined>(undefined);
   const [selectedMeetingEvent, setSelectedMeetingEvent] = useState<UpcomingOneOnOneEvent | null>(null);
@@ -382,7 +390,7 @@ export default function InboxPage() {
   }, [brief, userId, syncBriefItem]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, archive: 0 };
+    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: 0, archive: 0 };
     for (const item of allItems) {
       c['all']++;
       if (item.workflow_status === 'Do Now') c['asap']++;
@@ -397,8 +405,18 @@ export default function InboxPage() {
   const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
     const item = await addItem(text, type, tagIds);
     if (item?.id) {
+      // The active filter may hide what was just added (e.g. viewing "Do Now"
+      // and adding a plain task) — switch to "All" so the add is never invisible.
+      const visibleUnderCurrentFilter =
+        filter.builtIn === 'asap' ? item.workflow_status === 'Do Now' :
+        filter.builtIn === 'waiting' ? item.type === 'agent_question' && Boolean(item.agent_payload?.action_required) :
+        filter.tagIds?.length ? filter.tagIds.every(tid => tagIds.includes(tid)) :
+        true;
+      if (!visibleUnderCurrentFilter) setFilter(allFilter);
+
       setLastAddedId(item.id);
       setTimeout(() => setLastAddedId(null), 2000);
+
       // Fire tag suggestion agent async — only when item has no tags already
       if (tagIds.length === 0 && userId) {
         supabase.functions.invoke('suggest-inbox-tags', {
@@ -406,7 +424,7 @@ export default function InboxPage() {
         }).then(() => reloadItems());
       }
     }
-  }, [addItem, userId, reloadItems]);
+  }, [addItem, userId, reloadItems, filter, allFilter]);
 
   const handleCreateTag = useCallback(async (name: string, type: 'project' | 'person', color: string) => {
     return getOrCreate(name, type, color);
@@ -466,9 +484,13 @@ export default function InboxPage() {
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
 
-  // For date/grouped views: items with pending suggestions float first, then pinned-project items
+  // For date/grouped views: weekly priorities and daily check-ins float first,
+  // then items with pending suggestions, then pinned-project items
   const sortedItems = useMemo(() => {
     const base = sortMode === 'byProject' ? items : [...items].sort((a, b) => {
+      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
+      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
+      if (bPinned !== aPinned) return bPinned - aPinned;
       const aSug = (a.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       const bSug = (b.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       if (bSug !== aSug) return bSug - aSug;
@@ -478,8 +500,12 @@ export default function InboxPage() {
     });
     // Prioritize mode ranks by the informal due date (soonest first), regardless
     // of the sort mode underneath — items without one yet sort to the end.
+    // Weekly priorities and daily check-ins stay pinned to the top even here.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
+      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
+      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
+      if (bPinned !== aPinned) return bPinned - aPinned;
       const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
       const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
       return aDue - bDue;
@@ -530,6 +556,11 @@ export default function InboxPage() {
     for (const id of selected) await archive(id);
     setSelected(new Set());
   }, [selected, archive]);
+
+  const handleBulkDone = useCallback(async () => {
+    for (const id of selected) await handleItemDone(id, true);
+    setSelected(new Set());
+  }, [selected, handleItemDone]);
 
   const handleDelegateToAssistant = useCallback(async () => {
     if (!userId) return;
@@ -735,13 +766,23 @@ export default function InboxPage() {
           <div className="relative flex flex-wrap items-center gap-1 gap-y-1.5 px-3 sm:px-4 py-2 bg-gray-900 text-white flex-shrink-0">
             <span className="text-xs text-gray-400 mr-2 flex-shrink-0">{selected.size} selected</span>
 
-            {/* Archive */}
+            {/* Mark Done */}
             <button
-              onClick={handleBulkArchive}
+              onClick={handleBulkDone}
               className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />Archive
+              <CheckSquare className="h-3.5 w-3.5" />Mark Done
             </button>
+
+            {/* Archive — items already archived, or already Done, can't be archived again */}
+            {filter.builtIn !== 'archive' && filter.builtIn !== 'done' && (
+              <button
+                onClick={handleBulkArchive}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />Archive
+              </button>
+            )}
 
             {/* Delegate — with dropdown */}
             <div className="relative flex-shrink-0">
@@ -836,7 +877,6 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
@@ -854,12 +894,12 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           ) : (
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
-              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
@@ -876,6 +916,7 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           )}
         </div>}
