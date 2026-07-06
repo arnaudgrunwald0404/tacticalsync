@@ -7,9 +7,19 @@ import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { format } from 'date-fns';
 import { GripVertical, Pencil, X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { parseLocalDate } from '@/lib/dateUtils';
 import type { BriefPriority } from '@/types/inbox';
+
+/** `briefDate` is a YYYY-MM-DD string — parse as local time (never `new Date(str)`
+ *  directly) to avoid the UTC-midnight-shifts-a-day-back bug in western timezones. */
+function formatBriefDate(briefDate: string, isWeekly: boolean): string {
+  const date = parseLocalDate(briefDate);
+  if (isNaN(date.getTime())) return briefDate;
+  return isWeekly ? `Week of ${format(date, 'MMMM d')}` : format(date, 'EEEE, MMMM d');
+}
 
 const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
   cos:       { label: 'My Lists',    className: 'bg-indigo-100 text-indigo-600' },
@@ -135,9 +145,11 @@ interface BriefItemDetailProps {
   priorities: BriefPriority[];
   briefDate: string;
   onSave: (priorities: BriefPriority[]) => Promise<void>;
+  kind?: 'daily' | 'weekly';
 }
 
-export function BriefItemDetail({ priorities, briefDate, onSave }: BriefItemDetailProps) {
+export function BriefItemDetail({ priorities, briefDate, onSave, kind = 'daily' }: BriefItemDetailProps) {
+  const isWeekly = kind === 'weekly';
   const [items, setItems] = useState<BriefPriority[]>(priorities);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -184,10 +196,12 @@ export function BriefItemDetail({ priorities, briefDate, onSave }: BriefItemDeta
   return (
     <div className="pb-3 pl-2 space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Today's Priorities</span>
+        <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
+          {isWeekly ? "This Week's Priorities" : "Today's Priorities"}
+        </span>
         <span className="text-[10px] text-gray-300">· drag to reorder · top 3 selected</span>
         {saving && <span className="text-[10px] text-gray-400 italic">saving…</span>}
-        <span className="ml-auto text-[10px] text-gray-400">{briefDate}</span>
+        <span className="ml-auto text-[10px] text-gray-400">{formatBriefDate(briefDate, isWeekly)}</span>
       </div>
 
       <DndContext
@@ -231,7 +245,9 @@ export function BriefItemDetail({ priorities, briefDate, onSave }: BriefItemDeta
       </DndContext>
 
       <p className="text-[10px] text-gray-400">
-        The top 3 cards are your daily priorities · drag to reorder
+        {isWeekly
+          ? 'The top 3 cards are your priorities for the week · drag to reorder'
+          : 'The top 3 cards are your daily priorities · drag to reorder'}
       </p>
     </div>
   );

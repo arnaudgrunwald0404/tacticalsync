@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { format } from 'date-fns';
-import { AnimatePresence, motion } from 'framer-motion';
+import { format, addDays } from 'date-fns';
+import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings, CheckSquare2, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu } from 'lucide-react';
+import { Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu, Flame } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { useIsDesktop, useIsMobile, useIsTouch } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { InboxSidebar, type MeetingsSyncInfo } from '@/components/inbox/InboxSidebar';
-import { InboxItemRow } from '@/components/inbox/InboxItemRow';
 import { InboxGroupedView } from '@/components/inbox/InboxGroupedView';
 import { InboxByProjectView } from '@/components/inbox/InboxByProjectView';
 import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
@@ -29,7 +28,7 @@ import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPrio
 import { planTagGroupReindex } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 
-type SortMode = 'date' | 'grouped' | 'byProject';
+type SortMode = 'grouped' | 'byProject';
 
 // ── Seed data helper ─────────────────────────────────────────────────────────
 // Creates demo items so the page is not empty on first load
@@ -45,7 +44,6 @@ async function seedDemoItems(userId: string, tags: { id: string; name: string }[
   const rookTag = tags.find(t => t.name === 'Rook');
 
   const demoItems: Array<{ type: InboxItemType; text: string; tagNames: string[] }> = [
-    { type: 'agent_question', text: 'Daily brief: 2 items overdue. Agent question waiting.', tagNames: [] },
     { type: 'task',           text: 'Send updated timeline to the Chrysalis stakeholders', tagNames: ['Chrysalis'] },
     { type: 'task',           text: 'Follow up with Dan on the delayed vendor invoice', tagNames: ['Dan Pope'] },
     { type: 'note',           text: 'Weekly leadership brief: hiring pipeline is 2 weeks behind plan', tagNames: ['New Altitude'] },
@@ -147,9 +145,9 @@ export default function InboxPage() {
   const [selectedMeetingEvent, setSelectedMeetingEvent] = useState<UpcomingOneOnOneEvent | null>(null);
   const [meetingDetailTab, setMeetingDetailTab] = useState<MeetingDetailTab>('prep');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkMode, setBulkMode] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>('date');
+  const [sortMode, setSortMode] = useState<SortMode>('byProject');
+  const [prioritizeMode, setPrioritizeMode] = useState(false);
   const [drawerItem, setDrawerItem] = useState<InboxItem | null>(null);
   const [editingProjectTag, setEditingProjectTag] = useState<import('@/types/inbox').InboxTag | null>(null);
   const openDrawer = useCallback((item: import('@/types/inbox').InboxItem) => { setDrawerItem(item); setEditingProjectTag(null); }, []);
@@ -212,8 +210,32 @@ export default function InboxPage() {
     }));
 
     const count = brief.dailyPriorities.length;
-    const summaryText = `Daily brief · ${count} priorit${count === 1 ? 'y' : 'ies'} for today`;
+    const dayLabel = format(new Date(), 'EEEE, MMMM do');
+    const summaryText = `Daily brief · ${count} priorit${count === 1 ? 'y' : 'ies'} for ${dayLabel}`;
     syncBriefItem(today, priorities, summaryText);
+  }, [brief, userId, syncBriefItem]);
+
+  // Sync Monday's weekly priorities → a separate brief_item in inbox (once per week)
+  const syncedWeeklyDate = useRef<string | null>(null);
+  useEffect(() => {
+    if (!brief || brief.source === 'none' || !userId) return;
+    if (!brief.isMonday || brief.weeklyPriorities.length === 0) return;
+    const mondayDate = brief.weeklySourceDate ?? format(new Date(), 'yyyy-MM-dd');
+    if (syncedWeeklyDate.current === mondayDate) return;
+    syncedWeeklyDate.current = mondayDate;
+
+    const priorities: BriefPriority[] = brief.weeklyPriorities.slice(0, 5).map(p => ({
+      text: p.text,
+      source: p.source,
+      reasoning: p.reasoning,
+      origin: (p as { origin?: BriefPriority['origin'] }).origin ?? 'brief',
+      action: p.action,
+    }));
+
+    const monday = parseLocalDate(mondayDate);
+    const friday = addDays(monday, 4);
+    const summaryText = `Weekly Priorities for the week of Monday, ${format(monday, 'MMMM d')} to Friday, ${format(friday, 'MMMM d')}`;
+    syncBriefItem(mondayDate, priorities, summaryText, 'weekly');
   }, [brief, userId, syncBriefItem]);
 
   const counts = useMemo(() => {
@@ -263,8 +285,7 @@ export default function InboxPage() {
 
   // For date/grouped views: items with pending suggestions float first, then pinned-project items
   const sortedItems = useMemo(() => {
-    if (sortMode === 'byProject') return items;
-    return [...items].sort((a, b) => {
+    const base = sortMode === 'byProject' ? items : [...items].sort((a, b) => {
       const aSug = (a.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       const bSug = (b.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       if (bSug !== aSug) return bSug - aSug;
@@ -272,7 +293,15 @@ export default function InboxPage() {
       const bFloat = b.tags?.some(t => pinnedProjectIds.has(t.id)) ? 1 : 0;
       return bFloat - aFloat;
     });
-  }, [items, pinnedProjectIds, sortMode]);
+    // Prioritize mode ranks by the informal due date (soonest first), regardless
+    // of the sort mode underneath — items without one yet sort to the end.
+    if (!prioritizeMode) return base;
+    return [...base].sort((a, b) => {
+      const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
+      const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
+      return aDue - bDue;
+    });
+  }, [items, pinnedProjectIds, sortMode, prioritizeMode]);
 
   const handleTogglePin = useCallback(async (tag: import('@/types/inbox').InboxTag) => {
     const next = { ...(tag.settings ?? {}), pinned: !tag.settings?.pinned };
@@ -352,6 +381,15 @@ export default function InboxPage() {
 
   const title = filterLabel(filter, tags);
   const isArchiveView = filter.builtIn === 'archive';
+
+  // The person tag selected in the sidebar's People section, if the current
+  // filter is scoped to exactly one such tag — drives the assistant panel's
+  // person context widget (accountabilities + discussion topics).
+  const selectedPersonTag = useMemo(() => {
+    if (filter.tagIds?.length !== 1) return null;
+    const tag = tags.find(t => t.id === filter.tagIds![0]);
+    return tag?.type === 'person' ? tag : null;
+  }, [filter, tags]);
 
   const applyFilter = useCallback((f: InboxFilterState) => {
     setFilter(f);
@@ -440,46 +478,13 @@ export default function InboxPage() {
 
           {activePanel === 'inbox' && (
             <>
-          {/* Keyboard hint */}
-          <span className="hidden lg:block text-[11px] text-gray-400">
-            j/k navigate · e archive · t tag · d done
-          </span>
-
-          {/* Bulk select toggle */}
-          <button
-            onClick={() => { setBulkMode(m => !m); setSelected(new Set()); }}
-            className={cn(
-              'flex-shrink-0 flex items-center justify-center rounded transition-colors',
-              isTouch ? 'h-9 w-9' : 'p-1.5',
-              bulkMode ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100',
-            )}
-            title="Select items"
-            aria-label="Select items"
-          >
-            <CheckSquare2 className="h-4 w-4" />
-          </button>
-
           {/* Sort / group toggle — labels collapse to icons below lg */}
           <div className="flex-shrink-0 flex items-center rounded border border-gray-200 overflow-hidden text-xs">
-            <button
-              onClick={() => setSortMode('date')}
-              title="By date"
-              className={cn(
-                'flex items-center gap-1 transition-colors',
-                isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
-                sortMode === 'date'
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
-              )}
-            >
-              <AlignJustify className="h-3.5 w-3.5 lg:hidden" />
-              <span className="hidden lg:inline">By date</span>
-            </button>
             <button
               onClick={() => setSortMode('grouped')}
               title="Now / Next / Later"
               className={cn(
-                'flex items-center gap-1.5 transition-colors border-l border-gray-200',
+                'flex items-center gap-1.5 transition-colors',
                 isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
                 sortMode === 'grouped'
                   ? 'bg-gray-900 text-white'
@@ -504,6 +509,22 @@ export default function InboxPage() {
               <span className="hidden lg:inline">By Project</span>
             </button>
           </div>
+
+          {/* Prioritize toggle — reveals per-row tier pills and ranks by informal due date */}
+          <button
+            onClick={() => setPrioritizeMode(m => !m)}
+            title="Prioritize"
+            className={cn(
+              'flex-shrink-0 flex items-center gap-1.5 rounded border text-xs transition-colors',
+              isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
+              prioritizeMode
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'text-gray-500 border-gray-200 hover:text-gray-800 hover:bg-gray-50',
+            )}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">Prioritize</span>
+          </button>
 
           {/* Settings */}
           <button
@@ -533,9 +554,17 @@ export default function InboxPage() {
         )}
 
         {/* Bulk action bar — wraps to multiple rows when it can't fit */}
-        {activePanel === 'inbox' && bulkMode && selected.size > 0 && (
+        {activePanel === 'inbox' && selected.size > 0 && (
           <div className="relative flex flex-wrap items-center gap-1 gap-y-1.5 px-3 sm:px-4 py-2 bg-gray-900 text-white flex-shrink-0">
             <span className="text-xs text-gray-400 mr-2 flex-shrink-0">{selected.size} selected</span>
+
+            {/* Archive */}
+            <button
+              onClick={handleBulkArchive}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />Archive
+            </button>
 
             {/* Delegate — with dropdown */}
             <div className="relative flex-shrink-0">
@@ -562,7 +591,6 @@ export default function InboxPage() {
 
             {[
               { label: 'Pin',         icon: <Pin className="h-3.5 w-3.5" />,    onClick: handleBulkPin },
-              { label: 'Archive',     icon: <Trash2 className="h-3.5 w-3.5" />, onClick: handleBulkArchive },
               { label: 'Clone',       icon: <Copy className="h-3.5 w-3.5" />,    onClick: () => {} },
               { label: 'Make Urgent', icon: <Zap className="h-3.5 w-3.5" />,     onClick: () => {} },
             ].map(({ label, icon, onClick }) => (
@@ -628,8 +656,9 @@ export default function InboxPage() {
               onDismissSuggestion={dismissSuggestion}
               selectedIds={selected}
               onSelect={handleSelect}
+              prioritizeMode={prioritizeMode}
             />
-          ) : sortMode === 'byProject' ? (
+          ) : (
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
@@ -649,38 +678,8 @@ export default function InboxPage() {
               onDismissSuggestion={dismissSuggestion}
               selectedIds={selected}
               onSelect={handleSelect}
+              prioritizeMode={prioritizeMode}
             />
-          ) : (
-            <AnimatePresence initial={false}>
-              {sortedItems.map(item => (
-                <motion.div
-                  key={item.id}
-                  layout="position"
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <InboxItemRow
-                    item={item}
-                    allTags={tags}
-                    onDone={markDone}
-                    onArchive={archive}
-                    onDelete={deleteItem}
-                    onRemoveTag={removeTagFromItem}
-                    onAddTag={addTagToItem}
-                    onCycleWorkflowStatus={cycleWorkflowStatus}
-                    onCreateWorkstream={createWorkstream}
-                    onQuickCreateTag={handleQuickCreateTag}
-                    teamMembers={teamMembers}
-                    onCreatePersonTag={handleCreatePersonTag}
-                    onUpdateItem={updateItem}
-                    onOpenDrawer={openDrawer}
-                    onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
-                    onDismissSuggestion={dismissSuggestion}
-                    isSelected={selected.has(item.id)}
-                    onSelect={handleSelect}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
           )}
         </div>}
 
@@ -710,6 +709,8 @@ export default function InboxPage() {
         slackChannelOptions={slackChannelOptions}
         meetingOptions={meetingOptions}
         meetingEvent={selectedMeetingEvent}
+        selectedPersonTag={selectedPersonTag}
+        userId={userId}
       />
       </div>
     </div>

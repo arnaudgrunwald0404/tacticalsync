@@ -40,6 +40,7 @@ function SortableItem({
   item, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, isSelected, onSelect,
+  prioritizeMode,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
@@ -59,6 +60,7 @@ function SortableItem({
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   isSelected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
+  prioritizeMode?: boolean;
 }) {
   const isTouch = useIsTouch();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -102,6 +104,7 @@ function SortableItem({
           onDismissSuggestion={onDismissSuggestion}
           isSelected={isSelected}
           onSelect={onSelect}
+          prioritizeMode={prioritizeMode}
         />
       </div>
     </div>
@@ -114,6 +117,7 @@ function BucketSection({
   bucket, items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
+  prioritizeMode,
 }: {
   bucket: typeof BUCKETS[number];
   items: InboxItem[];
@@ -134,6 +138,7 @@ function BucketSection({
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
+  prioritizeMode?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: bucket.id });
 
@@ -175,6 +180,7 @@ function BucketSection({
               onDismissSuggestion={onDismissSuggestion}
               isSelected={selectedIds?.has(item.id)}
               onSelect={onSelect}
+              prioritizeMode={prioritizeMode}
             />
           ))}
         </SortableContext>
@@ -214,12 +220,14 @@ interface InboxGroupedViewProps {
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
+  prioritizeMode?: boolean;
 }
 
 export function InboxGroupedView({
   items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
+  prioritizeMode,
 }: InboxGroupedViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -294,6 +302,7 @@ export function InboxGroupedView({
             onDismissSuggestion={onDismissSuggestion}
             selectedIds={selectedIds}
             onSelect={onSelect}
+            prioritizeMode={prioritizeMode}
           />
         ))}
       </div>
