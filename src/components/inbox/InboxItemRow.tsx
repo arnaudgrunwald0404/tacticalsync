@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
 import {
   WORKFLOW_STATUS_COLORS, tagStyle,
-  PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier,
+  PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
@@ -211,8 +211,9 @@ export function InboxItemRow({
             </button>
           )}
 
-          {/* Pin indicator — right after text */}
-          {item.pinned && (
+          {/* Pin indicator — right after text. Weekly priorities and daily
+              check-ins are always pinned; other items can be pinned manually. */}
+          {(item.pinned || isAutoPinnedItem(item)) && (
             <Pin className="h-3 w-3 flex-shrink-0 text-amber-400 rotate-45" />
           )}
         </div>
