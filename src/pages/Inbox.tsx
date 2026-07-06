@@ -3,7 +3,11 @@ import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame } from 'lucide-react';
+import {
+  Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
+  Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
+  type LucideIcon,
+} from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
@@ -24,7 +28,7 @@ import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
 import type { Json } from '@/integrations/supabase/types';
-import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority } from '@/types/inbox';
+import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
 import { planTagGroupReindex } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 
@@ -103,6 +107,76 @@ function filterLabel(filter: InboxFilterState, tags: { id: string; name: string 
     return tags.find(t => t.id === filter.tagIds![0])?.name ?? 'Filtered';
   }
   return 'Filtered';
+}
+
+// ── Empty states ───────────────────────────────────────────────────────────────
+// Each view gets its own icon/copy so an empty list reads as "you're caught up"
+// rather than "something's broken" — tailored to what would actually fill it.
+
+interface EmptyStateContent {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+}
+
+function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateContent {
+  if (filter.tagIds?.length === 1) {
+    const tag = tags.find(t => t.id === filter.tagIds![0]);
+    if (tag?.type === 'person') {
+      return {
+        icon: User,
+        title: `Nothing tied to ${tag.name}`,
+        subtitle: 'Tag a task or note with them, or check back after your next 1:1.',
+      };
+    }
+    if (tag?.type === 'folder') {
+      return {
+        icon: FolderOpen,
+        title: `${tag.name} is empty`,
+        subtitle: 'Move items here from the sidebar, or add a new one below.',
+      };
+    }
+    if (tag) {
+      return {
+        icon: Hash,
+        title: `No items in ${tag.name}`,
+        subtitle: 'Tag a task or note with this project to see it here.',
+      };
+    }
+  }
+  if (filter.tagIds && filter.tagIds.length > 1) {
+    return {
+      icon: AlignJustify,
+      title: 'Nothing matches this filter',
+      subtitle: 'Try a different combination of tags.',
+    };
+  }
+  switch (filter.builtIn) {
+    case 'asap':
+      return {
+        icon: Zap,
+        title: 'Nothing urgent',
+        subtitle: 'Items marked Do Now will show up here.',
+      };
+    case 'waiting':
+      return {
+        icon: Clock,
+        title: 'Nothing waiting on you',
+        subtitle: 'Items marked Waiting on someone will show up here.',
+      };
+    case 'archive':
+      return {
+        icon: ArchiveIcon,
+        title: 'Nothing archived yet',
+        subtitle: 'Items you archive will land here.',
+      };
+    default:
+      return {
+        icon: InboxIcon,
+        title: 'Inbox zero',
+        subtitle: 'Add a task, note, or question below to get started.',
+      };
+  }
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -354,7 +428,7 @@ export default function InboxPage() {
   }, [updateItem]);
 
   const title = filterLabel(filter, tags);
-  const isArchiveView = filter.builtIn === 'archive';
+  const emptyState = useMemo(() => emptyStateFor(filter, tags), [filter, tags]);
 
   // The person tag selected in the sidebar's People section, if the current
   // filter is scoped to exactly one such tag — drives the assistant panel's
@@ -600,11 +674,12 @@ export default function InboxPage() {
           {itemsLoading ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
-              <AlignJustify className="h-8 w-8 opacity-30" />
-              <p className="text-sm">
-                {isArchiveView ? 'Nothing archived yet.' : 'All clear — add a task below.'}
-              </p>
+            <div className="flex flex-col items-center justify-center h-48 gap-2 px-6 text-center">
+              <div className="h-11 w-11 rounded-full bg-gray-100 flex items-center justify-center mb-1">
+                <emptyState.icon className="h-5 w-5 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-600">{emptyState.title}</p>
+              <p className="text-xs text-gray-400 max-w-[240px]">{emptyState.subtitle}</p>
             </div>
           ) : sortMode === 'grouped' ? (
             <InboxGroupedView
