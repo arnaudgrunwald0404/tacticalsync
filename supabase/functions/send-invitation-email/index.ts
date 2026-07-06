@@ -23,13 +23,18 @@ serve(async (req) => {
   try {
     const { email, teamName, inviterName, inviteLink }: InvitationEmailRequest = await req.json()
 
+    const year = new Date().getFullYear()
+
     const subject = teamName
-      ? `${inviterName} invited you to join ${teamName} on TacticalSync`
-      : `${inviterName} invited you to join TacticalSync`
-    const heading = teamName ? "You're Invited to Join a Team!" : "You're Invited to TacticalSync!"
+      ? `${inviterName} invited you to ${teamName} on TacticalSync`
+      : `${inviterName} invited you to TacticalSync`
+    const heading = teamName ? `You're invited to ${teamName}` : "You're invited to TacticalSync"
     const introText = teamName
-      ? `<strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> on TacticalSync.`
-      : `<strong>${inviterName}</strong> has invited you to join TacticalSync.`
+      ? `<strong style="color: #37352A;">${inviterName}</strong> added you to <strong style="color: #37352A;">${teamName}</strong> on TacticalSync. Accept below to get access to your team's agendas, action items, and meeting history.`
+      : `<strong style="color: #37352A;">${inviterName}</strong> invited you to TacticalSync. Accept below to get started.`
+    const preheaderText = teamName
+      ? `${inviterName} added you to ${teamName} — accept your invite to get started.`
+      : `${inviterName} invited you to TacticalSync — accept your invite to get started.`
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -48,67 +53,59 @@ serve(async (req) => {
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
             </head>
-            <body style="font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px;">
-              <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                <!-- Header with gradient -->
-                <div style="background: linear-gradient(135deg, #ec4899 0%, #3b82f6 100%); padding: 40px 20px; text-align: center;">
-                  <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">TacticalSync</h1>
+            <body style="font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #FAF8F5; margin: 0; padding: 32px 16px;">
+              <!-- Preheader (hidden, improves inbox preview text) -->
+              <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">
+                ${preheaderText}
+              </div>
+
+              <div style="max-width: 520px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px 0 rgba(55, 53, 42, 0.08), 0 4px 12px -2px rgba(55, 53, 42, 0.08);">
+                <!-- Accent bar -->
+                <div style="height: 4px; background-color: #FF7A52;"></div>
+
+                <!-- Wordmark -->
+                <div style="padding: 32px 40px 0 40px; text-align: center;">
+                  <span style="font-family: 'Atkinson Hyperlegible', 'Public Sans', -apple-system, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: #4A5D5F; text-transform: uppercase;">TacticalSync</span>
                 </div>
 
                 <!-- Content -->
-                <div style="padding: 40px 30px;">
-                  <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 24px;">${heading}</h2>
+                <div style="padding: 24px 40px 40px 40px;">
+                  <h1 style="font-family: 'Atkinson Hyperlegible', 'Public Sans', -apple-system, sans-serif; color: #37352A; margin: 0 0 16px 0; font-size: 26px; font-weight: 700; line-height: 1.25; text-align: center;">
+                    ${heading}
+                  </h1>
 
-                  <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                  <p style="color: #525252; font-size: 16px; line-height: 1.6; margin: 0 0 32px 0; text-align: center;">
                     ${introText}
                   </p>
 
-                  <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-                    Click the button below to sign in and get started.
-                  </p>
-                  
                   <!-- CTA Button -->
-                  <div style="text-align: center; margin: 40px 0;">
-                    <a href="${inviteLink}" 
-                       style="display: inline-block; background: linear-gradient(135deg, #ec4899 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                      Accept Invitation
+                  <div style="text-align: center; margin: 0 0 24px 0;">
+                    <a href="${inviteLink}"
+                       style="display: inline-block; background-color: #FF7A52; color: #FFFFFF; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                      Accept invitation
                     </a>
                   </div>
-                  
-                  <p style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0; text-align: center;">
-                    This invitation link will expire in 7 days for security reasons.
+
+                  <p style="color: #A3A3A3; font-size: 13px; line-height: 1.6; margin: 0; text-align: center;">
+                    This link expires in 7 days.
                   </p>
-                  
+
                   <!-- Link fallback -->
-                  <div style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e5e7eb;">
-                    <p style="color: #9ca3af; font-size: 12px; line-height: 1.6; margin: 0;">
-                      If the button doesn't work, copy and paste this link into your browser:<br>
-                      <a href="${inviteLink}" style="color: #3b82f6; word-break: break-all;">${inviteLink}</a>
+                  <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #E5E5E5;">
+                    <p style="color: #A3A3A3; font-size: 12px; line-height: 1.6; margin: 0; text-align: center;">
+                      Or paste this link into your browser:<br>
+                      <a href="${inviteLink}" style="color: #5B6E7A; word-break: break-all;">${inviteLink}</a>
                     </p>
-                  </div>
-                  
-                  <!-- Info box -->
-                  <div style="margin-top: 30px; padding: 16px; background-color: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
-                    <p style="color: #1e40af; font-size: 14px; line-height: 1.6; margin: 0;">
-                      <strong>💡 What is TacticalSync?</strong><br>
-                      TacticalSync helps teams run more effective tactical meetings with:
-                    </p>
-                    <ul style="color: #1e40af; font-size: 14px; line-height: 1.6; margin: 10px 0 0 20px; padding: 0;">
-                      <li>Structured meeting agendas</li>
-                      <li>Time tracking and metrics</li>
-                      <li>Action item management</li>
-                      <li>Team collaboration tools</li>
-                    </ul>
                   </div>
                 </div>
-                
+
                 <!-- Footer -->
-                <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                    © 2025 TacticalSync. All rights reserved.
+                <div style="background-color: #F8F6F2; padding: 20px 40px; text-align: center;">
+                  <p style="color: #A3A3A3; font-size: 12px; margin: 0;">
+                    © ${year} TacticalSync
                   </p>
-                  <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
-                    If you didn't expect this invitation, you can safely ignore this email.
+                  <p style="color: #A3A3A3; font-size: 12px; margin: 6px 0 0 0;">
+                    Didn't expect this? You can safely ignore this email.
                   </p>
                 </div>
               </div>
