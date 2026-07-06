@@ -140,7 +140,7 @@ serve(async (req) => {
       ? `*${items[0]}*`
       : items.map((t) => `• ${t}`).join('\n')
     return ephemeral(
-      `:sparkles: Added ${items.length === 1 ? 'to' : `${items.length} items to`} your TacticalSync suggestions:\n${itemList}\nOpen <https://tacticalsync.com/chief-of-staff|the TacticalSync app> to route them to a list.`,
+      `:sparkles: Added ${items.length === 1 ? 'to' : `${items.length} items to`} your TacticalSync suggestions:\n${itemList}\nOpen <https://tacticalsync.com/check-ins|the TacticalSync app> to route them to a list.`,
     )
   } catch (error) {
     console.error('slack-add-suggestion error:', error)

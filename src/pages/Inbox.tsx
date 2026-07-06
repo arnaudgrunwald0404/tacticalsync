@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
-  Loader2, type LucideIcon,
+  Loader2, CheckSquare, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
@@ -98,6 +98,7 @@ const VIEW_LABELS: Record<string, string> = {
   all:     'All',
   asap:    'Do Now',
   waiting: 'Waiting on me',
+  done:    'Done',
   archive: 'Archive',
 };
 
@@ -165,6 +166,12 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
         icon: Clock,
         title: 'Nothing waiting on you',
         subtitle: 'Items marked Waiting on someone will show up here.',
+      };
+    case 'done':
+      return {
+        icon: CheckSquare,
+        title: 'Nothing done yet',
+        subtitle: 'Items you mark done will land here.',
       };
     case 'archive':
       return {
@@ -383,7 +390,7 @@ export default function InboxPage() {
   }, [brief, userId, syncBriefItem]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, archive: 0 };
+    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: 0, archive: 0 };
     for (const item of allItems) {
       c['all']++;
       if (item.workflow_status === 'Do Now') c['asap']++;
@@ -549,6 +556,11 @@ export default function InboxPage() {
     for (const id of selected) await archive(id);
     setSelected(new Set());
   }, [selected, archive]);
+
+  const handleBulkDone = useCallback(async () => {
+    for (const id of selected) await handleItemDone(id, true);
+    setSelected(new Set());
+  }, [selected, handleItemDone]);
 
   const handleDelegateToAssistant = useCallback(async () => {
     if (!userId) return;
@@ -754,13 +766,23 @@ export default function InboxPage() {
           <div className="relative flex flex-wrap items-center gap-1 gap-y-1.5 px-3 sm:px-4 py-2 bg-gray-900 text-white flex-shrink-0">
             <span className="text-xs text-gray-400 mr-2 flex-shrink-0">{selected.size} selected</span>
 
-            {/* Archive */}
+            {/* Mark Done */}
             <button
-              onClick={handleBulkArchive}
+              onClick={handleBulkDone}
               className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />Archive
+              <CheckSquare className="h-3.5 w-3.5" />Mark Done
             </button>
+
+            {/* Archive — items already archived, or already Done, can't be archived again */}
+            {filter.builtIn !== 'archive' && filter.builtIn !== 'done' && (
+              <button
+                onClick={handleBulkArchive}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />Archive
+              </button>
+            )}
 
             {/* Delegate — with dropdown */}
             <div className="relative flex-shrink-0">
@@ -855,7 +877,6 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
@@ -879,7 +900,6 @@ export default function InboxPage() {
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
-              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
