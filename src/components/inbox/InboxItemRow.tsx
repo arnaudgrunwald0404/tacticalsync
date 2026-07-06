@@ -151,34 +151,38 @@ export function InboxItemRow({
       )}>
         {/* Main content — checkbox, type icon, text, pin. */}
         <div className="flex items-center gap-3 min-w-0">
-          {/* Multi-select checkbox — shown on hover/touch or when selected */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
-            aria-label={isSelected ? 'Deselect item' : 'Select item'}
-            className={cn(
-              'flex-shrink-0 flex items-center justify-center transition-all',
-              // Larger tap surface on touch, compact box on pointer devices.
-              isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
-              !isSelected && !revealControls && 'opacity-0',
-            )}
-          >
+          {/* Select checkbox and type icon share one slot and never show at
+              once — for tasks the type icon is itself a checkbox glyph
+              (Square/CheckSquare), so showing both side by side on hover
+              read as two checkmarks on the same row. The select checkbox
+              swaps in for the icon instead of sitting next to it. */}
+          {isSelected || revealControls ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
+              aria-label={isSelected ? 'Deselect item' : 'Select item'}
+              className={cn(
+                'flex-shrink-0 flex items-center justify-center transition-all',
+                // Larger tap surface on touch, compact box on pointer devices.
+                isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
+              )}
+            >
+              <span className={cn(
+                'w-4 h-4 rounded border flex items-center justify-center',
+                isSelected
+                  ? 'bg-gray-900 border-gray-900 text-white'
+                  : 'border-gray-300 text-transparent hover:border-gray-500',
+              )}>
+                <Check className="h-2.5 w-2.5" strokeWidth={3} />
+              </span>
+            </button>
+          ) : (
             <span className={cn(
-              'w-4 h-4 rounded border flex items-center justify-center',
-              isSelected
-                ? 'bg-gray-900 border-gray-900 text-white'
-                : 'border-gray-300 text-transparent hover:border-gray-500',
+              'flex-shrink-0',
+              isDone ? 'text-emerald-500' : isAgentItem ? 'text-gray-400' : 'text-gray-300',
             )}>
-              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+              {item.type === 'task' && isDone ? <CheckSquare className="h-4 w-4" /> : TYPE_ICON[item.type]}
             </span>
-          </button>
-
-          {/* Type icon — done tasks show a checked square instead of the empty one */}
-          <span className={cn(
-            'flex-shrink-0',
-            isDone ? 'text-emerald-500' : isAgentItem ? 'text-gray-400' : 'text-gray-300',
-          )}>
-            {item.type === 'task' && isDone ? <CheckSquare className="h-4 w-4" /> : TYPE_ICON[item.type]}
-          </span>
+          )}
 
           {/* Main text */}
           {editingText ? (
@@ -296,25 +300,30 @@ export function InboxItemRow({
               {format(fixedDueDate, 'MMM d')}
             </span>
           )}
-          {/* Tag picker — show on hover when tags exist, or always when no tags */}
-          {item.tags && item.tags.length > 0 ? revealControls && (
-            <TagPickerDropdown
-              allTags={allTags}
-              itemTags={item.tags}
-              onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
-              onCreateTag={onQuickCreateTag}
-              teamMembers={teamMembers}
-              onCreatePersonTag={onCreatePersonTag}
-            />
-          ) : (
-            <TagPickerDropdown
-              allTags={allTags}
-              itemTags={item.tags ?? []}
-              onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
-              onCreateTag={onQuickCreateTag}
-              teamMembers={teamMembers}
-              onCreatePersonTag={onCreatePersonTag}
-            />
+          {/* Tag picker — show on hover when tags exist, or always when no tags.
+              Skipped for brief_item rows: they're auto-generated daily/weekly
+              summaries, not taggable content, so the picker would just sit
+              there as a suggestion that can never be acted on. */}
+          {item.type !== 'brief_item' && (
+            item.tags && item.tags.length > 0 ? revealControls && (
+              <TagPickerDropdown
+                allTags={allTags}
+                itemTags={item.tags}
+                onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
+                onCreateTag={onQuickCreateTag}
+                teamMembers={teamMembers}
+                onCreatePersonTag={onCreatePersonTag}
+              />
+            ) : (
+              <TagPickerDropdown
+                allTags={allTags}
+                itemTags={item.tags ?? []}
+                onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
+                onCreateTag={onQuickCreateTag}
+                teamMembers={teamMembers}
+                onCreatePersonTag={onCreatePersonTag}
+              />
+            )
           )}
         </div>
 
