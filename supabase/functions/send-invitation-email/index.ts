@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface InvitationEmailRequest {
   email: string;
-  teamName: string;
+  teamName?: string;
   inviterName: string;
   inviteLink: string;
 }
@@ -23,6 +23,14 @@ serve(async (req) => {
   try {
     const { email, teamName, inviterName, inviteLink }: InvitationEmailRequest = await req.json()
 
+    const subject = teamName
+      ? `${inviterName} invited you to join ${teamName} on TacticalSync`
+      : `${inviterName} invited you to join TacticalSync`
+    const heading = teamName ? "You're Invited to Join a Team!" : "You're Invited to TacticalSync!"
+    const introText = teamName
+      ? `<strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> on TacticalSync.`
+      : `<strong>${inviterName}</strong> has invited you to join TacticalSync.`
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -32,7 +40,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: 'TacticalSync <noreply@info.tacticalsync.com>',
         to: [email],
-        subject: `${inviterName} invited you to join ${teamName} on TacticalSync`,
+        subject,
         html: `
           <!DOCTYPE html>
           <html>
@@ -46,17 +54,17 @@ serve(async (req) => {
                 <div style="background: linear-gradient(135deg, #ec4899 0%, #3b82f6 100%); padding: 40px 20px; text-align: center;">
                   <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">TacticalSync</h1>
                 </div>
-                
+
                 <!-- Content -->
                 <div style="padding: 40px 30px;">
-                  <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 24px;">You're Invited to Join a Team!</h2>
-                  
+                  <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 24px;">${heading}</h2>
+
                   <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-                    <strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> on TacticalSync.
+                    ${introText}
                   </p>
-                  
+
                   <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-                    Click the button below to accept the invitation and start collaborating with your team.
+                    Click the button below to sign in and get started.
                   </p>
                   
                   <!-- CTA Button -->

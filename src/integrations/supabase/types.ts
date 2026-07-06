@@ -2003,7 +2003,7 @@ export type Database = {
           invited_by: string | null
           role: string
           status: Database["public"]["Enums"]["invitation_status"] | null
-          team_id: string
+          team_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2015,7 +2015,7 @@ export type Database = {
           invited_by?: string | null
           role?: string
           status?: Database["public"]["Enums"]["invitation_status"] | null
-          team_id: string
+          team_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2027,7 +2027,7 @@ export type Database = {
           invited_by?: string | null
           role?: string
           status?: Database["public"]["Enums"]["invitation_status"] | null
-          team_id?: string
+          team_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
