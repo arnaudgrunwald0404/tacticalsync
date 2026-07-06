@@ -37,24 +37,10 @@ async function seedDemoItems(userId: string, tags: { id: string; name: string }[
   const existing = await supabase.from('inbox_items').select('id').eq('user_id', userId).limit(1);
   if (existing.data && existing.data.length > 0) return;
 
-  const asapTag = tags.find(t => t.name === 'ASAP');
-  const danTag = tags.find(t => t.name === 'Dan Pope');
-  const chrTag = tags.find(t => t.name === 'Chrysalis');
-  const naTag = tags.find(t => t.name === 'New Altitude');
-  const rookTag = tags.find(t => t.name === 'Rook');
-
   const demoItems: Array<{ type: InboxItemType; text: string; tagNames: string[] }> = [
-    { type: 'task',           text: 'Send updated timeline to the Chrysalis stakeholders', tagNames: ['Chrysalis'] },
     { type: 'task',           text: 'Follow up with Dan on the delayed vendor invoice', tagNames: ['Dan Pope'] },
-    { type: 'note',           text: 'Weekly leadership brief: hiring pipeline is 2 weeks behind plan', tagNames: ['New Altitude'] },
-    { type: 'meeting_insight',text: 'Customer call recap: they want SSO before renewal', tagNames: ['Chrysalis'] },
     { type: 'note',           text: 'Dan mentioned the vendor contract renewal is due end of month', tagNames: ['Dan Pope'] },
-    { type: 'task',           text: 'Prep talking points for the board update', tagNames: ['New Altitude'] },
-    { type: 'note',           text: 'New Altitude retro notes: velocity dipped due to onboarding overlap', tagNames: ['New Altitude'] },
-    { type: 'task',           text: "Draft agenda for Friday's Rook sync", tagNames: ['Rook'] },
     { type: 'task',           text: 'Tag and file last week\'s postmortem doc', tagNames: [] },
-    { type: 'task',           text: 'Confirm Chrysalis demo environment is reset before Thursday', tagNames: ['Chrysalis'] },
-    { type: 'note',           text: 'Marcelo: budget approval came through for the Rook contractor', tagNames: ['Rook'] },
   ];
 
   for (const item of demoItems) {
@@ -94,10 +80,6 @@ async function seedDemoTags(userId: string) {
     { name: 'ASAP',        type: 'urgency',  color: '#ef4444', sort_order: 0 },
     { name: 'Later',       type: 'urgency',  color: '#f59e0b', sort_order: 1 },
     { name: 'Dan Pope',    type: 'person',   color: '#6366f1', sort_order: 0 },
-    { name: 'Marcelo Paiva', type: 'person', color: '#8b5cf6', sort_order: 1 },
-    { name: 'New Altitude',type: 'project',  color: '#10b981', sort_order: 0 },
-    { name: 'Chrysalis',   type: 'project',  color: '#3b82f6', sort_order: 1 },
-    { name: 'Rook',        type: 'project',  color: '#ec4899', sort_order: 2 },
     { name: 'This week',   type: 'folder',   color: '#14b8a6', sort_order: 0 },
     { name: 'Follow-ups',  type: 'folder',   color: '#f97316', sort_order: 1 },
   ];
