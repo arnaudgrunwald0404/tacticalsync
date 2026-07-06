@@ -295,7 +295,6 @@ export function OneOnOnesView({
   const search = externalSearch !== undefined ? externalSearch : internalSearch;
   const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch;
   const [heroQuotes, setHeroQuotes] = useState<Record<string, MemberQuote>>({});
-  const [pastSearch, setPastSearch] = useState('');
   const [pastExpanded, setPastExpanded] = useState(false);
   const scheduled = useMemo(() => bucketise(members), [members]);
 
@@ -447,33 +446,29 @@ export function OneOnOnesView({
   const todayMembers = membersByBucket.get('today') ?? [];
   const hero = todayMembers[0] ?? null;
 
-  // Calendar events filtered by search, grouped by date
-  const filteredEventsByDate = useMemo(() => {
-    if (!q) return eventsByDate;
-    const map = new Map<string, UpcomingOneOnOneEvent[]>();
-    for (const [date, events] of eventsByDate) {
-      const filtered = events.filter(ev => {
-        const name = ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '';
-        const role = ev.team_member?.role ?? '';
-        return matchesSearch(name, role);
-      });
-      if (filtered.length > 0) map.set(date, filtered);
-    }
-    return map;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventsByDate, q]);
+  // Calendar events filtered by search — feeds CalendarWeekView directly so
+  // typing in the search box actually filters the week grid. Filters the raw
+  // (non-deduped) arrays: dedupedEvents collapses recurring 1:1s to one
+  // occurrence per person, which would silently hide instances in other weeks.
+  const eventMatchesSearch = (ev: UpcomingOneOnOneEvent) => {
+    const name = ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '';
+    const role = ev.team_member?.role ?? '';
+    return matchesSearch(name, role);
+  };
 
-  const filteredDates = useMemo(() => [...filteredEventsByDate.keys()].sort(), [filteredEventsByDate]);
+  const filteredUpcomingEvents = useMemo(() => {
+    if (!q) return upcomingEvents;
+    return upcomingEvents.filter(eventMatchesSearch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upcomingEvents, q]);
 
   const filteredPastEvents = useMemo(() => {
-    const q = pastSearch.trim().toLowerCase();
     if (!q) return pastEvents;
-    return pastEvents.filter(ev => {
-      const name = (ev.team_member?.name ?? ev.attendee_name ?? ev.attendee_email ?? '').toLowerCase();
-      const title = (ev.title ?? '').toLowerCase();
-      return name.includes(q) || title.includes(q);
-    });
-  }, [pastEvents, pastSearch]);
+    return pastEvents.filter(eventMatchesSearch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pastEvents, q]);
+
+  const hasSearchResults = !q || filteredUpcomingEvents.length > 0 || filteredPastEvents.length > 0;
 
   const portalTarget = toolbarPortalId ? document.getElementById(toolbarPortalId) : null;
 
@@ -538,17 +533,25 @@ export function OneOnOnesView({
 
       {/* Week grid — fills available height */}
       <div className="flex-1 min-h-0" style={{ minHeight: 480 }}>
-        <CalendarWeekView
-          upcomingEvents={upcomingEvents}
-          pastEvents={pastEvents}
-          onOpen={onViewPrep}
-          loading={loadingPrep}
-          runningPrepEventIds={runningPrepEventIds}
-          onSelectEvent={onSelectEvent}
-          onIncludeInPrep={onIncludeInPrep}
-          onRunPrep={onRunPrep}
-          onExcludeFromCalendar={onExcludeFromCalendar}
-        />
+        {q && !hasSearchResults ? (
+          <div className="h-full flex flex-col items-center justify-center gap-2 text-center border border-dashed border-border rounded-lg">
+            <Search className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">No matches for "{search.trim()}"</p>
+            <p className="text-xs text-muted-foreground">Try a different name or clear the search.</p>
+          </div>
+        ) : (
+          <CalendarWeekView
+            upcomingEvents={filteredUpcomingEvents}
+            pastEvents={filteredPastEvents}
+            onOpen={onViewPrep}
+            loading={loadingPrep}
+            runningPrepEventIds={runningPrepEventIds}
+            onSelectEvent={onSelectEvent}
+            onIncludeInPrep={onIncludeInPrep}
+            onRunPrep={onRunPrep}
+            onExcludeFromCalendar={onExcludeFromCalendar}
+          />
+        )}
       </div>
     </div>
   );
