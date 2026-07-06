@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Tag, Minimize2, History, Cpu, Bot, ArrowUp, Loader2, Sparkles } from 'lucide-react';
+import { X, Tag, Minimize2, History, Cpu, Bot, ArrowUp, Loader2, Sparkles, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -9,8 +9,10 @@ import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
 import { AgentBar } from './AgentBar';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
+import { PersonContextWidget } from './PersonContextWidget';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { WORKFLOW_STATUS_COLORS, tagStyle } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings } from '@/types/inbox';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
@@ -20,14 +22,6 @@ const SUGGESTIONS = [
   "Show me what's overdue",
   "Find items I'm waiting on",
 ];
-
-const WORKFLOW_STYLES: Record<string, string> = {
-  'Do Now':             'bg-rose-100 text-rose-700 hover:bg-rose-200',
-  'Not started':        'bg-gray-100 text-gray-500 hover:bg-gray-200',
-  'Work in progress':   'bg-amber-100 text-amber-700 hover:bg-amber-200',
-  'Waiting on someone': 'bg-blue-100 text-blue-700 hover:bg-blue-200',
-  'Blocked':            'bg-red-100 text-red-700 hover:bg-red-200',
-};
 
 interface ChatMsg { id: string; role: 'user' | 'agent'; text: string }
 
@@ -191,6 +185,9 @@ interface InboxAssistantPanelProps {
   stakeholderOptions?: string[];
   slackChannelOptions?: string[];
   meetingOptions?: string[];
+  /** The person tag currently selected in the left sidebar's People section, if any. */
+  selectedPersonTag?: InboxTag | null;
+  userId?: string | null;
 }
 
 // ── Default state ─────────────────────────────────────────────────────────────
@@ -253,6 +250,7 @@ function ItemDetail({
         <BriefItemDetail
           priorities={item.agent_payload.brief_priorities}
           briefDate={item.agent_payload.brief_date ?? item.created_at.slice(0, 10)}
+          kind={item.agent_payload.brief_kind ?? 'daily'}
           onSave={async (priorities: BriefPriority[]) => {
             await onUpdateItem?.(item.id, {
               agent_payload: { ...item.agent_payload, brief_priorities: priorities },
@@ -268,11 +266,10 @@ function ItemDetail({
           <button
             onClick={() => onCycleWorkflowStatus(item.id, item.workflow_status ?? null)}
             className={cn(
-              'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors',
-              item.workflow_status
-                ? WORKFLOW_STYLES[item.workflow_status]
-                : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
+              'px-2.5 py-0.5 rounded-full border text-xs font-medium transition-opacity hover:opacity-75',
+              !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
             )}
+            style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
           >
             {item.workflow_status ?? 'Set status'}
           </button>
@@ -374,7 +371,7 @@ export function InboxAssistantPanel({
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
   onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
-  meetingEvent,
+  meetingEvent, selectedPersonTag, userId,
 }: InboxAssistantPanelProps) {
   const [prefill, setPrefill] = useState<{ text: string; token: number }>({ text: '', token: 0 });
   const isMobile = useIsMobile();
@@ -463,6 +460,14 @@ export function InboxAssistantPanel({
               <>
                 <p className="flex-1 text-sm font-medium text-gray-900 truncate">{item.text}</p>
                 <button
+                  onClick={() => {}}
+                  title="Clone"
+                  aria-label="Clone item"
+                  className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button
                   onClick={onClose}
                   className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                 >
@@ -471,6 +476,7 @@ export function InboxAssistantPanel({
               </>
             ) : (
               <>
+                <Bot className="h-4 w-4 flex-shrink-0 text-gray-400" />
                 <span className="text-sm font-semibold text-gray-900 flex-1">Assistant</span>
                 <button className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -480,6 +486,16 @@ export function InboxAssistantPanel({
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Person context widget — shown when a person is selected in the left sidebar */}
+      {selectedPersonTag?.member_id && (
+        <PersonContextWidget
+          userId={userId ?? null}
+          memberId={selectedPersonTag.member_id}
+          memberName={selectedPersonTag.name}
+          color={selectedPersonTag.color}
+        />
+      )}
 
       {/* Body — animates when item changes */}
       <AnimatePresence mode="wait" initial={false}>

@@ -3,7 +3,7 @@ import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, Copy, Zap, X, Pin, Menu, Flame } from 'lucide-react';
+import { Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
@@ -584,9 +584,7 @@ export default function InboxPage() {
             </div>
 
             {[
-              { label: 'Pin',         icon: <Pin className="h-3.5 w-3.5" />,    onClick: handleBulkPin },
-              { label: 'Clone',       icon: <Copy className="h-3.5 w-3.5" />,    onClick: () => {} },
-              { label: 'Make Urgent', icon: <Zap className="h-3.5 w-3.5" />,     onClick: () => {} },
+              { label: 'Pin', icon: <Pin className="h-3.5 w-3.5" />, onClick: handleBulkPin },
             ].map(({ label, icon, onClick }) => (
               <button
                 key={label}
