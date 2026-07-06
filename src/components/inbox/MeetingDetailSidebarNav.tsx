@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, CalendarDays, Settings, Video } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +61,7 @@ export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack 
 
   const NAV_TABS: Array<{ key: MeetingDetailTab; label: string; badge?: number }> = [
     { key: 'prep', label: 'Prep' },
+    { key: 'settings', label: 'Prep settings' },
     { key: 'past', label: 'Past 1:1s', badge: zoomRecsCount || undefined },
     { key: 'timeline', label: 'Timeline' },
   ];
@@ -127,21 +128,6 @@ export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack 
           );
         })}
       </nav>
-
-      <div className="mt-auto pt-4 border-t border-gray-100">
-        <button
-          onClick={() => onTabChange('settings')}
-          className={cn(
-            'flex items-center gap-2 px-2 py-2.5 rounded-lg text-sm transition-colors w-full',
-            activeTab === 'settings'
-              ? 'font-semibold text-gray-900 bg-gray-100'
-              : 'font-normal text-gray-400 hover:text-gray-700 hover:bg-gray-50',
-          )}
-        >
-          <Settings className="h-4 w-4" />
-          Settings
-        </button>
-      </div>
     </div>
   );
 }
