@@ -24,12 +24,14 @@ interface InboxByProjectViewProps {
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
+  prioritizeMode?: boolean;
 }
 
 export function InboxByProjectView({
   items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
+  prioritizeMode,
 }: InboxByProjectViewProps) {
   const projectGroups = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
@@ -71,7 +73,7 @@ export function InboxByProjectView({
   const sharedRowProps = {
     allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
     onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-    onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion,
+    onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, prioritizeMode,
   };
 
   return (

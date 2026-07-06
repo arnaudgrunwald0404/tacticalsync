@@ -33,6 +33,8 @@ const rowToItem = (r: InboxItemRow): InboxItem => ({
   tag_suggestions: Array.isArray((r as Record<string, unknown>).tag_suggestions)
     ? ((r as Record<string, unknown>).tag_suggestions as TagSuggestion[])
     : [],
+  priority_due_at: ((r as Record<string, unknown>).priority_due_at as string | null) ?? null,
+  priority_fixed: ((r as Record<string, unknown>).priority_fixed as boolean | null) ?? false,
 });
 
 type ItemsPatcher = (prev: InboxItem[]) => InboxItem[];
@@ -231,29 +233,33 @@ export function useInboxItems(
     await updateItem(id, { workflow_status: nextWorkflowStatus(current) });
   }, [updateItem]);
 
-  // Upsert a brief_item for today's daily brief run.
-  // Idempotent: if an item already exists for this date, update its payload.
+  // Upsert a brief_item for a daily or weekly brief run.
+  // Idempotent: if an item already exists for this date + kind, update its payload.
   const syncBriefItem = useCallback(async (
     date: string,
     priorities: BriefPriority[],
     summaryText: string,
+    kind: 'daily' | 'weekly' = 'daily',
   ): Promise<void> => {
     if (!userId) return;
+
+    const sourceType = kind === 'weekly' ? 'dci_weekly_brief' : 'dci_brief';
 
     const { data: existing } = await supabase
       .from('inbox_items')
       .select('id, agent_payload')
       .eq('user_id', userId)
       .eq('type', 'brief_item')
-      .contains('source_ref', { type: 'dci_brief', id: date })
+      .contains('source_ref', { type: sourceType, id: date })
       .maybeSingle();
 
     const payload: AgentPayload = {
-      rationale: 'Auto-generated from daily brief',
+      rationale: kind === 'weekly' ? 'Auto-generated from weekly brief' : 'Auto-generated from daily brief',
       brief_date: date,
       brief_priorities: priorities,
+      brief_kind: kind,
     };
-    const sourceRef: SourceRef = { type: 'dci_brief', id: date };
+    const sourceRef: SourceRef = { type: sourceType, id: date };
 
     if (existing) {
       await supabase

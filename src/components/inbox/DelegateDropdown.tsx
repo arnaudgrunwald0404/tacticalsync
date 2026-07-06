@@ -22,7 +22,7 @@ function groupMembers(members: CosMember[]) {
 
 interface DelegateDropdownProps {
   userId: string;
-  onSelect: (target: { type: 'agent' } | { type: 'person'; member: CosMember }) => void;
+  onSelect: (target: { type: 'assistant' } | { type: 'person'; member: CosMember }) => void;
   onClose: () => void;
 }
 
@@ -61,7 +61,7 @@ export function DelegateDropdown({ userId, onSelect, onClose }: DelegateDropdown
 
   const { directReports, skipLevel, others } = groupMembers(filtered);
 
-  const showAgent = !query || 'agent'.includes(query.toLowerCase());
+  const showAssistant = !query || 'assistant'.includes(query.toLowerCase());
 
   const MemberRow = ({ m }: { m: CosMember }) => (
     <button
@@ -102,20 +102,20 @@ export function DelegateDropdown({ userId, onSelect, onClose }: DelegateDropdown
       </div>
 
       <div className="max-h-60 overflow-y-auto p-1.5">
-        {/* Agent — always first */}
-        {showAgent && (
+        {/* Assistant — always first */}
+        {showAssistant && (
           <button
-            onClick={() => onSelect({ type: 'agent' })}
+            onClick={() => onSelect({ type: 'assistant' })}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-violet-50 transition-colors rounded-md group"
           >
             <span className="h-5 w-5 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center flex-shrink-0">
               <Bot className="h-3 w-3" />
             </span>
-            <span className="text-sm font-medium text-gray-800 group-hover:text-violet-700">Agent</span>
+            <span className="text-sm font-medium text-gray-800 group-hover:text-violet-700">Assistant</span>
           </button>
         )}
 
-        {showAgent && filtered.length > 0 && (
+        {showAssistant && filtered.length > 0 && (
           <div className="mx-2 my-1 border-t border-gray-100" />
         )}
 
@@ -123,7 +123,7 @@ export function DelegateDropdown({ userId, onSelect, onClose }: DelegateDropdown
         <Section label="Skip-level"     items={skipLevel} />
         <Section label="Others"         items={others} />
 
-        {!showAgent && filtered.length === 0 && (
+        {!showAssistant && filtered.length === 0 && (
           <p className="px-3 py-3 text-xs text-gray-400 text-center">No match</p>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { differenceInCalendarDays } from 'date-fns';
 import type {
   InboxItem,
   InboxItemType,
@@ -80,6 +81,20 @@ export const WORKFLOW_CYCLE = [
   'Blocked',
   'Not started',
 ] as const satisfies readonly WorkflowStatus[];
+
+/** Accent color per workflow status — used to render the status chip like a tag. */
+export const WORKFLOW_STATUS_COLORS: Record<WorkflowStatus, string> = {
+  'Do Now':              '#f43f5e',
+  'Not started':         '#9ca3af',
+  'Work in progress':    '#f59e0b',
+  'Waiting on someone':  '#3b82f6',
+  'Blocked':             '#ef4444',
+};
+
+/** Soft tint pill style for a given accent color — shared by tag pills and status chips. */
+export function tagStyle(color: string) {
+  return { backgroundColor: color + '22', color, borderColor: color + '44' };
+}
 
 // ── Type guards ──────────────────────────────────────────────────────────────
 
@@ -341,4 +356,57 @@ export function planFolderReindex(
   index: number,
 ): FolderReindexUpdate[] {
   return planTagGroupReindex(folders, draggedId, index, 'folder');
+}
+
+// ── Prioritize mode: informal "gut feel" due dates ───────────────────────────
+//
+// Prioritize mode lets a row be stacked against every other row by an informal
+// due date rather than a hard deadline. Clicking a tier pill (now / +1d / +3d /
+// +1w / +2w / +1m) stores `priority_due_at = now + tier.days`. Nothing stores
+// *which tier* was picked — the tier shown in the UI is always re-derived from
+// how much time is left until that date, so a "1 week" pick naturally reads as
+// "3 days" once 4-6 days have elapsed, without any decay job or extra column.
+
+export const PRIORITY_TIERS = [
+  { key: 'now', label: 'Do now', days: 0 },
+  { key: '1d',  label: 'Push 1 day',   days: 1 },
+  { key: '3d',  label: 'Push 3 days',  days: 3 },
+  { key: '1w',  label: 'Push 1 week',  days: 7 },
+  { key: '2w',  label: 'Push 2 weeks', days: 14 },
+  { key: '1m',  label: 'Push 1 month', days: 30 },
+] as const;
+export type PriorityTierKey = (typeof PRIORITY_TIERS)[number]['key'];
+
+/** Compute the informal due date for picking `tierKey` right now. */
+export function computePriorityDueAt(tierKey: PriorityTierKey, from: Date = new Date()): string {
+  const tier = PRIORITY_TIERS.find(t => t.key === tierKey)!;
+  const due = new Date(from);
+  due.setDate(due.getDate() + tier.days);
+  return due.toISOString();
+}
+
+/**
+ * Derive which tier a stored `priority_due_at` currently reads as: the largest
+ * tier threshold that still fits within the time remaining. `null`/past dates
+ * read as 'now'. Pure function of (dueAt, now) — the tier "decays" toward more
+ * urgent buckets purely by the clock advancing, with no write-back needed.
+ *
+ * Uses calendar-day differencing rather than exact millisecond math: picking a
+ * tier and re-rendering are never the same instant, and comparing fractional
+ * days (e.g. "is 2.99999997 days >= the 3d threshold?") made a freshly-picked
+ * tier immediately read as the *previous* one. Calendar days are immune to
+ * that sub-day jitter since `computePriorityDueAt` preserves time-of-day.
+ */
+export function currentPriorityTier(
+  dueAt: string | null | undefined,
+  now: Date = new Date(),
+): PriorityTierKey | null {
+  if (!dueAt) return null;
+  const remainingDays = differenceInCalendarDays(new Date(dueAt), now);
+  if (remainingDays <= 0) return 'now';
+  let result: PriorityTierKey = 'now';
+  for (const tier of PRIORITY_TIERS) {
+    if (tier.days <= remainingDays) result = tier.key;
+  }
+  return result;
 }

@@ -19,7 +19,7 @@ const STATUS_SPINNING: DelegationStatus[] = ['ramping_up', 'planning', 'getting_
 
 // ── Clarifying question UI ────────────────────────────────────────────────────
 
-function ClarifyingQuestion({
+export function ClarifyingQuestion({
   question,
   choices,
   onAnswer,

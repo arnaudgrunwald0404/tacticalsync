@@ -1,15 +1,26 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 import { Target, CheckSquare, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import Logo from "@/components/Logo";
 import LayoutTextFlip from "@/components/ui/layout-text-flip";
 
+/** QA-only escape hatch: real accounts, real Supabase auth, just a second sign-in
+ *  path so QA doesn't need a Google account. Gated on hostname, not build mode,
+ *  so it stays off even in a production build served from a non-local host. */
+const isLocalhost = () =>
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
 const Auth = () => {
   const navigate = useNavigate();
+  const [qaEmail, setQaEmail] = useState("");
+  const [qaPassword, setQaPassword] = useState("");
+  const [qaSubmitting, setQaSubmitting] = useState(false);
 
   const resolvePostLoginPath = (): string => {
     const storedInvite = localStorage.getItem('pendingInviteCode');
@@ -85,6 +96,25 @@ const Auth = () => {
       console.error("Error signing in:", error.message);
       toast.error("Failed to sign in with Google");
     }
+  };
+
+  const handleQaPasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Redundant with the render guard below, but a form handler that reaches
+    // the network is worth guarding directly rather than trusting only the UI.
+    if (!isLocalhost()) return;
+
+    setQaSubmitting(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: qaEmail,
+      password: qaPassword,
+    });
+    setQaSubmitting(false);
+
+    if (error) {
+      toast.error(error.message || "Failed to sign in");
+    }
+    // On success, the onAuthStateChange listener above handles navigation.
   };
 
   return (
@@ -172,6 +202,53 @@ const Auth = () => {
             >
               Sign in with Google
             </Button>
+
+            {isLocalhost() && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-[11px] uppercase tracking-wider text-gray-400 font-medium">
+                    QA only · localhost
+                  </span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+
+                <form onSubmit={handleQaPasswordSignIn} className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-email" className="text-xs text-titanium">Email</Label>
+                    <Input
+                      id="qa-email"
+                      type="email"
+                      autoComplete="username"
+                      value={qaEmail}
+                      onChange={e => setQaEmail(e.target.value)}
+                      placeholder="qa@example.com"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qa-password" className="text-xs text-titanium">Password</Label>
+                    <Input
+                      id="qa-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={qaPassword}
+                      onChange={e => setQaPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="font-body w-full h-11 text-sm font-normal"
+                    disabled={qaSubmitting}
+                  >
+                    {qaSubmitting ? "Signing in…" : "Sign in with password"}
+                  </Button>
+                </form>
+              </div>
+            )}
           </motion.div>
         </div>
       </div>

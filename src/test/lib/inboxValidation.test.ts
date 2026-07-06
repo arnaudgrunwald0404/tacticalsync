@@ -29,6 +29,9 @@ import {
   inboxTagInsertSchema,
   briefPrioritySchema,
   delegationRequestSchema,
+  PRIORITY_TIERS,
+  computePriorityDueAt,
+  currentPriorityTier,
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxFilterState, InboxTag } from '@/types/inbox';
@@ -644,5 +647,61 @@ describe('planTagGroupReindex with targetType "project"', () => {
     const byId = Object.fromEntries(updates.map(u => [u.id, u.patch.sort_order]));
     expect(byId).toEqual({ F: 1, B: 2 });
     expect(updates.find(u => u.id === 'A')).toBeUndefined();
+  });
+});
+
+// ── Prioritize mode ───────────────────────────────────────────────────────────
+
+describe('computePriorityDueAt', () => {
+  const from = new Date('2026-07-05T12:00:00.000Z');
+
+  it('returns "now" for the now tier', () => {
+    expect(computePriorityDueAt('now', from)).toBe(from.toISOString());
+  });
+
+  it.each(PRIORITY_TIERS.filter(t => t.key !== 'now'))('offsets by $days days for tier $key', (tier) => {
+    const due = new Date(computePriorityDueAt(tier.key, from));
+    const diffDays = (due.getTime() - from.getTime()) / (1000 * 60 * 60 * 24);
+    expect(diffDays).toBeCloseTo(tier.days);
+  });
+});
+
+describe('currentPriorityTier', () => {
+  const now = new Date('2026-07-05T12:00:00.000Z');
+
+  it('returns null when there is no due date', () => {
+    expect(currentPriorityTier(null, now)).toBeNull();
+    expect(currentPriorityTier(undefined, now)).toBeNull();
+  });
+
+  it('reads as "now" once the due date has passed', () => {
+    const past = new Date(now.getTime() - 1000).toISOString();
+    expect(currentPriorityTier(past, now)).toBe('now');
+  });
+
+  it('reads back the tier it was just set to', () => {
+    for (const tier of PRIORITY_TIERS) {
+      const due = computePriorityDueAt(tier.key, now);
+      expect(currentPriorityTier(due, now)).toBe(tier.key);
+    }
+  });
+
+  it('decays toward a more urgent tier as time passes without rewriting the stored date', () => {
+    // Picked "1 week" 2 days ago → 5 days remain → reads as the largest tier
+    // that still fits, "3d" — the exact "week, two days pass, becomes a three" case.
+    const dueAt = computePriorityDueAt('1w', now);
+    const twoDaysLater = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+    expect(currentPriorityTier(dueAt, twoDaysLater)).toBe('3d');
+  });
+
+  it('still reads as the picked tier moments later, not the tier below it', () => {
+    // Regression: picking a tier and rendering are never the same instant. A
+    // fractional-day comparison read "just under 3.0 days remaining" as '1d'
+    // a few ms after picking '3d' — the exact bug reported from the UI.
+    for (const tier of PRIORITY_TIERS) {
+      const due = computePriorityDueAt(tier.key, now);
+      const momentsLater = new Date(now.getTime() + 50);
+      expect(currentPriorityTier(due, momentsLater)).toBe(tier.key);
+    }
   });
 });

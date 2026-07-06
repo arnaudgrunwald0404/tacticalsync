@@ -122,7 +122,7 @@ Return: { "clear": true/false, "questions": [{ "question": "...", "choices": ["A
 
   if (parsed.clear || parsed.questions.length === 0) {
     await patch(db, id, { status: 'planning', agent_log: agentLog })
-    await planPhase(db, id, taskText, tagNames, {}, agentLog)
+    await planPhase(db, id, item.id as string, taskText, tagNames, {}, agentLog)
   } else {
     await patch(db, id, {
       status: 'clarifying',
@@ -161,7 +161,7 @@ async function receiveAnswer(
     agentLog.push(log('All questions answered — moving to planning.'))
     await patch(db, id, { status: 'planning', answers, agent_log: agentLog, current_question: null })
     const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
-    await planPhase(db, id, item.text as string, tagNames, answers, agentLog)
+    await planPhase(db, id, delegation.item_id as string, item.text as string, tagNames, answers, agentLog)
   }
 }
 
@@ -170,6 +170,7 @@ async function receiveAnswer(
 async function planPhase(
   db: ReturnType<typeof createClient>,
   id: string,
+  itemId: string,
   taskText: string,
   tagNames: string,
   answers: Record<string, string>,
@@ -195,6 +196,17 @@ async function planPhase(
 
   agentLog.push(log('Work complete — awaiting approval.'))
   await patch(db, id, { status: 'seeking_approval', approval_summary: approvalSummary, agent_log: agentLog })
+
+  // Document the outcome durably on the item itself, not just the transient
+  // delegation row — append (don't overwrite) so any notes the user already
+  // wrote in the item's body are preserved.
+  const summaryBlock = `**Assistant summary:** ${approvalSummary}`
+  const { data: itemRow } = await (db as any).from('inbox_items').select('body').eq('id', itemId).maybeSingle()
+  const existingBody: string = itemRow?.body ?? ''
+  if (!existingBody.includes(summaryBlock)) {
+    const newBody = existingBody ? `${existingBody}\n\n${summaryBlock}` : summaryBlock
+    await (db as any).from('inbox_items').update({ body: newBody, updated_at: new Date().toISOString() }).eq('id', itemId)
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────

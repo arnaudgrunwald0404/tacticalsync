@@ -52,10 +52,11 @@ export interface AgentPayload {
   // brief_item fields
   brief_date?: string;
   brief_priorities?: BriefPriority[];  // ordered; top 3 are "selected"
+  brief_kind?: 'daily' | 'weekly';     // which brief this item was synced from
 }
 
 export interface SourceRef {
-  type: 'zoom_recording' | 'dci_brief' | 'calendar' | 'manual';
+  type: 'zoom_recording' | 'dci_brief' | 'dci_weekly_brief' | 'calendar' | 'manual';
   id?: string;
 }
 
@@ -81,6 +82,13 @@ export interface InboxItem {
   sort_order: number;
   pinned: boolean;
   bucket: InboxBucket | null;
+  /** Informal "gut feel" due date set via Prioritize mode's pills. Not a hard
+   *  deadline — see {@link currentPriorityTier} in inboxValidation for how the
+   *  displayed tier is derived from it. Ignored when `priority_fixed` is true. */
+  priority_due_at: string | null;
+  /** True when `priority_due_at` was set via the calendar picker (a real due
+   *  date) rather than a tier pill — it displays as-is and does not decay. */
+  priority_fixed: boolean;
   created_at: string;
   updated_at: string;
   workflow_status: 'Do Now' | 'Not started' | 'Work in progress' | 'Waiting on someone' | 'Blocked' | null;

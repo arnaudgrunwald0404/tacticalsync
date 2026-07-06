@@ -116,12 +116,12 @@ interface TeamMemberRow {
 
 interface InvitationRow {
   id: string;
-  team_id: string;
+  team_id: string | null;
   email: string;
   status: string;
   expires_at: string;
   invited_by_profile?: { full_name?: string };
-  teams: TeamRow;
+  teams: TeamRow | null;
   meetings: MeetingSeries[];
 }
 
@@ -622,9 +622,13 @@ const DashboardOld = () => {
         return;
       }
 
-      // Fetch meetings for each invited team
+      // Fetch meetings for each invited team (invitation may not have a team)
       const invitationsWithMeetings = await Promise.all(
         validInvitations.map(async (invitation) => {
+          if (!invitation.team_id) {
+            return { ...invitation, teams: null, meetings: [] };
+          }
+
           // Fetch team info
           const { data: teamData } = await supabase
             .from("teams")
@@ -661,37 +665,40 @@ const DashboardOld = () => {
       console.log("Accepting invitation for team:", invitation.team_id);
       console.log("User ID:", user.id);
 
-      // Check if user is already a member
-      const { data: existingMember, error: checkError } = await supabase
-        .from("team_members")
-        .select("*")
-        .eq("team_id", invitation.team_id)
-        .eq("user_id", user.id)
-        .single();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error("Error checking existing member:", checkError);
-        throw checkError;
-      }
-
-      console.log("Existing member:", existingMember);
-
-      // Only add user to team if they're not already a member
-      if (!existingMember) {
-        console.log("Adding user to team...");
-        const { error: memberError } = await supabase
+      // Invitation may not be tied to a team (org chart now carries reporting structure)
+      if (invitation.team_id) {
+        // Check if user is already a member
+        const { data: existingMember, error: checkError } = await supabase
           .from("team_members")
-          .insert({
-            team_id: invitation.team_id,
-            user_id: user.id,
-            role: "member",
-          });
+          .select("*")
+          .eq("team_id", invitation.team_id)
+          .eq("user_id", user.id)
+          .single();
 
-        if (memberError) {
-          console.error("Error adding to team:", memberError);
-          throw memberError;
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error("Error checking existing member:", checkError);
+          throw checkError;
         }
-        console.log("Successfully added to team");
+
+        console.log("Existing member:", existingMember);
+
+        // Only add user to team if they're not already a member
+        if (!existingMember) {
+          console.log("Adding user to team...");
+          const { error: memberError } = await supabase
+            .from("team_members")
+            .insert({
+              team_id: invitation.team_id,
+              user_id: user.id,
+              role: "member",
+            });
+
+          if (memberError) {
+            console.error("Error adding to team:", memberError);
+            throw memberError;
+          }
+          console.log("Successfully added to team");
+        }
       }
 
       // Update invitation status
@@ -709,7 +716,7 @@ const DashboardOld = () => {
 
       toast({
         title: "Invitation accepted!",
-        description: `You've joined ${invitation.teams.name}`,
+        description: invitation.teams?.name ? `You've joined ${invitation.teams.name}` : "Welcome to TacticalSync!",
       });
 
       // Refresh data
@@ -735,7 +742,7 @@ const DashboardOld = () => {
 
       toast({
         title: "Invitation declined",
-        description: `You've declined the invitation to ${invitation.teams.name}`,
+        description: invitation.teams?.name ? `You've declined the invitation to ${invitation.teams.name}` : "Invitation declined",
       });
 
       await fetchPendingInvitations();
@@ -832,7 +839,7 @@ const DashboardOld = () => {
                   <CardHeader className="p-4 sm:p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg sm:text-xl mb-3">{invitation.teams.name}</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl mb-3">{invitation.teams?.name || "TacticalSync"}</CardTitle>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 mb-2">
                           <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200 w-fit">
                             Invitation Pending

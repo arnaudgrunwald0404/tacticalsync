@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import { kickOffZoomSync } from "@/lib/calendarZoomConnect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,7 @@ const Settings = () => {
     teams?: Array<{ team_id: string; team_name: string; role: string }>;
     pendingInvitations?: Array<{
       id: string;
-      team_id: string;
+      team_id: string | null;
       team_name: string;
       role: string;
       created_at: string;
@@ -130,7 +131,6 @@ const Settings = () => {
   } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteEmails, setInviteEmails] = useState<string[]>([]);
-  const [inviteTeamId, setInviteTeamId] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
   const [skipSendingInvitations, setSkipSendingInvitations] = useState(false);
   const [availableTeams, setAvailableTeams] = useState<Array<{ id: string; name: string }>>([]);
@@ -163,6 +163,24 @@ const Settings = () => {
 
   const checkAuth = async () => {
     try {
+      // Zoom OAuth callback: intercept before the admin gate below. Zoom's
+      // redirect_uri must exactly match the app's registered value and the
+      // server-side ZOOM_REDIRECT_URI secret — both point at this page today
+      // — so a non-admin who clicked "Connect Zoom" from the Inbox assistant
+      // would otherwise get silently bounced to /dashboard before the token
+      // exchange ever ran. Handle it here instead, then forward to /inbox.
+      const oauthParams = new URLSearchParams(window.location.search);
+      if (oauthParams.get('code') && oauthParams.get('state') === 'zoom_connected') {
+        window.history.replaceState(null, '', window.location.pathname);
+        try {
+          await kickOffZoomSync(oauthParams.get('code')!);
+        } catch (err) {
+          console.error('Zoom connect failed', err);
+        }
+        navigate('/inbox');
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate("/auth");
@@ -470,15 +488,15 @@ const Settings = () => {
       // Add pending invitations to existing users or create pending user entries
       const pendingUsers: typeof usersWithDetails = [];
       if (pendingInvitations) {
-        type InvitationRow = { id: string; email: string; team_id: string; teams?: { name?: string } | null; role: string; created_at: string; expires_at: string; invited_by: string };
+        type InvitationRow = { id: string; email: string; team_id: string | null; teams?: { name?: string } | null; role: string; created_at: string; expires_at: string; invited_by: string };
         (pendingInvitations as InvitationRow[]).forEach((invitation) => {
           const email = invitation.email.toLowerCase();
           const existingUser = usersByEmail.get(email);
-          
+
           const invitationData = {
             id: invitation.id,
             team_id: invitation.team_id,
-            team_name: invitation.teams?.name || "Unknown Team",
+            team_name: invitation.team_id ? (invitation.teams?.name || "Unknown Team") : "No team",
             role: invitation.role,
             created_at: invitation.created_at,
             expires_at: invitation.expires_at,
@@ -615,10 +633,10 @@ const Settings = () => {
       ? inviteEmails 
       : parseEmails(inviteEmail);
     
-    if (emailsToInvite.length === 0 || !inviteTeamId) {
+    if (emailsToInvite.length === 0) {
       toast({
         title: "Missing information",
-        description: "Please provide at least one valid email and select a team",
+        description: "Please provide at least one valid email address",
         variant: "destructive",
       });
       return;
@@ -635,18 +653,9 @@ const Settings = () => {
         .eq("id", currentUser.id)
         .single();
 
-      // Get team invite code
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
-        .select("invite_code, name")
-        .eq("id", inviteTeamId)
-        .single();
-
-      if (teamError || !team) throw new Error("Team not found");
-
-      // Create invitations for all emails
+      // Create invitations for all emails (no team assignment — the org chart
+      // now carries reporting structure, so team membership is assigned separately)
       const invitations = emailsToInvite.map(email => ({
-        team_id: inviteTeamId,
         email: email.toLowerCase().trim(),
         invited_by: currentUser.id,
         role: inviteRole,
@@ -662,12 +671,11 @@ const Settings = () => {
 
       // Send invitation emails via Edge Function (unless skipped)
       if (!skipSendingInvitations) {
-        const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
+        const inviteLink = `${window.location.origin}/auth`;
         const emailPromises = emailsToInvite.map(email =>
           supabase.functions.invoke("send-invitation-email", {
             body: {
               email: email.toLowerCase().trim(),
-              teamName: team.name,
               inviterName: profile?.full_name || "A super admin",
               inviteLink,
             },
@@ -681,13 +689,12 @@ const Settings = () => {
 
       toast({
         title: skipSendingInvitations ? "Invitations created" : "Invitations sent",
-        description: `${emailsToInvite.length} invitation${emailsToInvite.length > 1 ? 's' : ''} ${skipSendingInvitations ? 'created' : 'sent'} to ${team.name}${skipSendingInvitations ? ' (emails not sent)' : ''}`,
+        description: `${emailsToInvite.length} invitation${emailsToInvite.length > 1 ? 's' : ''} ${skipSendingInvitations ? 'created' : 'sent'}${skipSendingInvitations ? ' (emails not sent)' : ''}`,
       });
 
       setShowInviteDialog(false);
       setInviteEmail("");
       setInviteEmails([]);
-      setInviteTeamId("");
       setInviteRole("member");
       setSkipSendingInvitations(false);
       fetchUsersWithDetails();
@@ -700,7 +707,7 @@ const Settings = () => {
     }
   };
 
-  const handleSendReminder = async (invitationId: string, teamId: string, email: string) => {
+  const handleSendReminder = async (invitationId: string, teamId: string | null, email: string) => {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) throw new Error("Not authenticated");
@@ -712,22 +719,27 @@ const Settings = () => {
         .eq("id", currentUser.id)
         .single();
 
-      // Get team invite code
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
-        .select("invite_code, name")
-        .eq("id", teamId)
-        .single();
+      // Get team invite code (invitation may not be tied to a team)
+      let teamName: string | undefined;
+      let inviteLink = `${window.location.origin}/auth`;
+      if (teamId) {
+        const { data: team, error: teamError } = await supabase
+          .from("teams")
+          .select("invite_code, name")
+          .eq("id", teamId)
+          .single();
 
-      if (teamError || !team) throw new Error("Team not found");
+        if (teamError || !team) throw new Error("Team not found");
+        teamName = team.name;
+        inviteLink = `${window.location.origin}/join/${team.invite_code}`;
+      }
 
       // Send invitation email via Edge Function
-      const inviteLink = `${window.location.origin}/join/${team.invite_code}`;
       try {
         await supabase.functions.invoke("send-invitation-email", {
           body: {
             email: email.toLowerCase().trim(),
-            teamName: team.name,
+            teamName,
             inviterName: profile?.full_name || "A super admin",
             inviteLink,
           },
@@ -1185,22 +1197,6 @@ const Settings = () => {
         return;
       }
 
-      // Get teams for invitations
-      const { data: teams } = await supabase
-        .from("teams")
-        .select("id, name, invite_code")
-        .limit(1)
-        .single();
-
-      if (!teams) {
-        toast({
-          title: "No teams available",
-          description: "Please create a team before sending invitations",
-          variant: "destructive",
-        });
-        return;
-      }
-
       let successCount = 0;
       let errorCount = 0;
 
@@ -1216,11 +1212,11 @@ const Settings = () => {
             .maybeSingle();
 
           if (!existingInvitation) {
-            // Create new invitation
+            // Create new invitation (no team assignment — the org chart
+            // now carries reporting structure)
             await supabase
               .from("invitations")
               .insert({
-                team_id: teams.id,
                 email: user.email,
                 invited_by: currentUser.id,
                 role: user.is_admin ? 'admin' : 'member',
@@ -1234,9 +1230,8 @@ const Settings = () => {
             await supabase.functions.invoke("send-invitation-email", {
               body: {
                 email: user.email,
-                teamName: teams.name,
                 inviterName,
-                inviteLink: `${window.location.origin}/join/${teams.invite_code}`,
+                inviteLink: `${window.location.origin}/auth`,
               },
             });
             successCount++;
@@ -3099,9 +3094,9 @@ const Settings = () => {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite User to Team</DialogTitle>
+            <DialogTitle>Invite User</DialogTitle>
             <DialogDescription>
-              Send an invitation email to a user to join a team
+              Send an invitation email to a user to join the app
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -3138,21 +3133,6 @@ const Settings = () => {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="inviteTeam">Team</Label>
-              <Select value={inviteTeamId} onValueChange={setInviteTeamId} disabled={loadingTeams}>
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingTeams ? "Loading teams..." : "Select a team"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTeams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="inviteRole">Role</Label>
               <Select value={inviteRole} onValueChange={(value: "admin" | "member") => setInviteRole(value)}>
                 <SelectTrigger>
@@ -3179,7 +3159,7 @@ const Settings = () => {
             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInviteUser} disabled={inviteEmails.length === 0 || !inviteTeamId}>
+            <Button onClick={handleInviteUser} disabled={inviteEmails.length === 0}>
               Send Invitation{inviteEmails.length > 1 ? 's' : ''} ({inviteEmails.length})
             </Button>
           </DialogFooter>

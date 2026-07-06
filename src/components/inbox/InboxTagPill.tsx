@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, ChevronRight, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
+import { tagStyle } from '@/lib/inboxValidation';
 import type { InboxTag } from '@/types/inbox';
 
 interface InboxTagPillProps {
@@ -12,14 +13,6 @@ interface InboxTagPillProps {
   workstreams?: InboxTag[];
   onSelectWorkstream?: (ws: InboxTag) => void;
   onCreateWorkstream?: (name: string) => Promise<void>;
-}
-
-function tagStyle(color: string) {
-  return {
-    backgroundColor: color + '22',
-    color,
-    borderColor: color + '44',
-  };
 }
 
 export function InboxTagPill({
