@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Hash, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxItemRow } from './InboxItemRow';
+import { isAutoPinnedItem } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -33,14 +34,23 @@ export function InboxByProjectView({
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
   prioritizeMode, newItemId,
 }: InboxByProjectViewProps) {
-  const projectGroups = useMemo(() => {
+  const { pinnedItems, projectGroups } = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
+
+    // Weekly priorities and daily check-ins never belong to a project — pull
+    // them out up front so they get their own section above the project
+    // groups instead of sinking into "No project" at the bottom.
+    const pinnedItems: InboxItem[] = [];
 
     // Map each item to the project tags it carries
     const byProject = new Map<string, InboxItem[]>();
     const noProject: InboxItem[] = [];
 
     for (const item of items) {
+      if (isAutoPinnedItem(item)) {
+        pinnedItems.push(item);
+        continue;
+      }
       const itemProjects = item.tags?.filter(t => t.type === 'project') ?? [];
       if (itemProjects.length === 0) {
         noProject.push(item);
@@ -67,7 +77,7 @@ export function InboxByProjectView({
       groups.push({ tag: null as unknown as InboxTag, items: noProject });
     }
 
-    return groups;
+    return { pinnedItems, projectGroups: groups };
   }, [items, allTags]);
 
   const sharedRowProps = {
@@ -78,6 +88,32 @@ export function InboxByProjectView({
 
   return (
     <div className="flex flex-col overflow-y-auto">
+      {pinnedItems.length > 0 && (
+        <div className="border-b border-gray-100">
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 border-b"
+            style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a', borderLeftWidth: 3, borderLeftColor: '#fbbf24' }}
+          >
+            <Pin className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+            <span className="font-semibold text-sm text-amber-700">Pinned</span>
+            <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full text-amber-700 bg-amber-200/50">
+              {pinnedItems.length}
+            </span>
+          </div>
+
+          {pinnedItems.map(item => (
+            <InboxItemRow
+              key={item.id}
+              item={item}
+              {...sharedRowProps}
+              isSelected={selectedIds?.has(item.id)}
+              onSelect={onSelect}
+              isNew={item.id === newItemId}
+            />
+          ))}
+        </div>
+      )}
+
       {projectGroups.map(({ tag, items: groupItems }) => (
         <div key={tag?.id ?? '__none__'} className="border-b border-gray-100">
           <div
@@ -125,7 +161,7 @@ export function InboxByProjectView({
         </div>
       ))}
 
-      {projectGroups.length === 0 && (
+      {projectGroups.length === 0 && pinnedItems.length === 0 && (
         <div className={cn('flex items-center justify-center h-24')}>
           <p className="text-sm text-gray-300">No items</p>
         </div>
