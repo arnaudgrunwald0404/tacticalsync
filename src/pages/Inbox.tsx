@@ -38,8 +38,6 @@ async function seedDemoItems(userId: string, tags: { id: string; name: string }[
   if (existing.data && existing.data.length > 0) return;
 
   const demoItems: Array<{ type: InboxItemType; text: string; tagNames: string[] }> = [
-    { type: 'task',           text: 'Follow up with Dan on the delayed vendor invoice', tagNames: ['Dan Pope'] },
-    { type: 'note',           text: 'Dan mentioned the vendor contract renewal is due end of month', tagNames: ['Dan Pope'] },
     { type: 'task',           text: 'Tag and file last week\'s postmortem doc', tagNames: [] },
   ];
 
@@ -79,7 +77,6 @@ async function seedDemoTags(userId: string) {
   const tagDefs = [
     { name: 'ASAP',        type: 'urgency',  color: '#ef4444', sort_order: 0 },
     { name: 'Later',       type: 'urgency',  color: '#f59e0b', sort_order: 1 },
-    { name: 'Dan Pope',    type: 'person',   color: '#6366f1', sort_order: 0 },
     { name: 'This week',   type: 'folder',   color: '#14b8a6', sort_order: 0 },
     { name: 'Follow-ups',  type: 'folder',   color: '#f97316', sort_order: 1 },
   ];
@@ -457,24 +454,10 @@ export default function InboxPage() {
           {/* Sort / group toggle — labels collapse to icons below lg */}
           <div className="flex-shrink-0 flex items-center rounded border border-gray-200 overflow-hidden text-xs">
             <button
-              onClick={() => setSortMode('grouped')}
-              title="Now / Next / Later"
-              className={cn(
-                'flex items-center gap-1.5 transition-colors',
-                isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
-                sortMode === 'grouped'
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
-              )}
-            >
-              <Layers className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">Now / Next / Later</span>
-            </button>
-            <button
               onClick={() => setSortMode('byProject')}
               title="By Project"
               className={cn(
-                'flex items-center gap-1.5 transition-colors border-l border-gray-200',
+                'flex items-center gap-1.5 transition-colors',
                 isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
                 sortMode === 'byProject'
                   ? 'bg-gray-900 text-white'
@@ -483,6 +466,20 @@ export default function InboxPage() {
             >
               <LayoutList className="h-3.5 w-3.5" />
               <span className="hidden lg:inline">By Project</span>
+            </button>
+            <button
+              onClick={() => setSortMode('grouped')}
+              title="Now / Next / Later"
+              className={cn(
+                'flex items-center gap-1.5 transition-colors border-l border-gray-200',
+                isTouch ? 'px-3 py-2' : 'px-2.5 py-1',
+                sortMode === 'grouped'
+                  ? 'bg-gray-900 text-white'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Now / Next / Later</span>
             </button>
           </div>
 
