@@ -69,6 +69,21 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// Anthropic-executed web search — the API runs the search itself and returns
+// results inline (server_tool_use / web_search_tool_result blocks), so unlike
+// the tools above it needs no case in the tool-call switch below. Capped at 3
+// uses/turn to bound latency and cost for a chat assistant, not a research agent.
+// TODO: Anthropic's web search is billed at $10/1,000 searches on top of token
+// costs. Replace with a custom tool backed by a cheaper third-party search API
+// (e.g. Tavily, Brave Search) once usage volume makes that worth the added
+// integration/maintenance cost.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const WEB_SEARCH_TOOL: any = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+  max_uses: 3,
+}
+
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,7 +270,8 @@ RULES:
 {"proposedItems":[{"text":"..."}]}
 \`\`\`
 Only include this block when you actually have concrete items to propose — omit it for plain answers.
-- Be warm and concise. This is a conversation, not a report.`
+- Be warm and concise. This is a conversation, not a report.
+- Use web_search only for questions your other tools can't answer — general knowledge, current events, or anything about the outside world. Never use it to look up the user's own inbox, team, or account data. Don't narrate that you're searching; just answer once you have results, and name the source (site or publication) in prose since link-level citations aren't shown separately in this chat.`
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
@@ -282,6 +298,7 @@ serve(async (req) => {
     const body = await req.json() as {
       messages?: { role: 'user' | 'assistant'; content: string }[]
       mentions?: { id: string; name: string; type: 'project' | 'person'; memberId?: string }[]
+      webSearch?: boolean
     }
 
     const messages = body.messages ?? []
@@ -307,13 +324,18 @@ serve(async (req) => {
     let finalText = ''
     let lastOnboardingStatus: { calendarConnected: boolean; zoomConnected: boolean } | null = null
 
+    // Web search is billed per-search on top of tokens, so it's opt-in per
+    // request rather than always offered — the client must set webSearch:
+    // true on this call for the model to have it available at all.
+    const tools = body.webSearch ? [...TOOLS, WEB_SEARCH_TOOL] : TOOLS
+
     for (let round = 0; round < MAX_TOOL_ROUNDS + 1; round++) {
       const anthropic = new Anthropic({ apiKey: anthropicApiKey })
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        tools: TOOLS,
+        tools,
         messages: anthropicMessages,
       })
 

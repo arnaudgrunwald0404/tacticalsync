@@ -301,6 +301,7 @@ export function applyInboxClientFilters(
 /** Resolve which stored status a filter is asking to read. */
 export function resolveTargetStatus(filter: InboxFilterState): InboxItemStatus {
   if (filter.builtIn === 'archive') return 'archived';
+  if (filter.builtIn === 'done') return 'done';
   return filter.status ?? 'open';
 }
 

@@ -406,7 +406,7 @@ export function InboxAssistantPanel({
   const chatHistoryRef = useRef<AssistantChatMsg[]>([]);
   chatHistoryRef.current = chatMessages;
 
-  const sendChatMessage = async (rawText: string, mentionTagIds: string[]) => {
+  const sendChatMessage = async (rawText: string, mentionTagIds: string[], webSearch?: boolean) => {
     const text = rawText.trim();
     if (!text || chatLoading) return;
     const mentions = mentionTagIds.map(id => allTags.find(t => t.id === id)).filter((t): t is InboxTag => !!t);
@@ -424,6 +424,7 @@ export function InboxAssistantPanel({
         body: JSON.stringify({
           messages: history.map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.text })),
           mentions: mentions.map(t => ({ id: t.id, name: t.name, type: t.type, memberId: t.member_id ?? undefined })),
+          webSearch: !!webSearch,
         }),
       });
       if (!res.ok) {
@@ -456,9 +457,9 @@ export function InboxAssistantPanel({
 
   // Task/Note mode still create real items via onAddItem; "Assistant" mode
   // (agent_nudge) from this home view routes into the chat instead.
-  const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[]) => {
+  const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[], webSearch?: boolean) => {
     if (!item && !meetingEvent && !projectTag && type === 'agent_nudge') {
-      await sendChatMessage(text, tagIds);
+      await sendChatMessage(text, tagIds, webSearch);
       return;
     }
     await onAddItem(text, type, tagIds);

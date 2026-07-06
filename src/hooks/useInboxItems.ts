@@ -192,8 +192,13 @@ export function useInboxItems(
       ? { status: 'done', done_at: new Date().toISOString() }
       : { status: 'open', done_at: null };
     await updateItem(id, patch as Partial<InboxItem>);
-    if (done) applyPatch(prev => prev.filter(i => i.id !== id));
-  }, [updateItem, applyPatch]);
+    // Drop the item from the current list whenever its new status no longer
+    // matches what this view is showing — e.g. marking done removes it from
+    // an open list, and un-marking removes it from the Done view.
+    if (patch.status !== resolveTargetStatus(filter)) {
+      applyPatch(prev => prev.filter(i => i.id !== id));
+    }
+  }, [updateItem, applyPatch, filter]);
 
   const archive = useCallback(async (id: string) => {
     await updateItem(id, { status: 'archived', archived_at: new Date().toISOString() } as Partial<InboxItem>);

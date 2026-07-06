@@ -836,7 +836,6 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}

@@ -8,7 +8,6 @@ import type { TeamMember } from '@/hooks/useTeamMembers';
 interface InboxByProjectViewProps {
   items: InboxItem[];
   allTags: InboxTag[];
-  onDone: (id: string, done: boolean) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
@@ -28,7 +27,7 @@ interface InboxByProjectViewProps {
 }
 
 export function InboxByProjectView({
-  items, allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+  items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
   prioritizeMode,
@@ -71,7 +70,7 @@ export function InboxByProjectView({
   }, [items, allTags]);
 
   const sharedRowProps = {
-    allTags, onDone, onArchive, onDelete, onRemoveTag, onAddTag,
+    allTags, onArchive, onDelete, onRemoveTag, onAddTag,
     onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
     onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, prioritizeMode,
   };
