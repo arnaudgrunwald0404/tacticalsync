@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { CheckSquare, FileText, Sparkles, ArrowUp, Hash, AtSign } from 'lucide-react';
+import { CheckSquare, FileText, Sparkles, ArrowUp, Hash, AtSign, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
 import { useIsTouch } from '@/hooks/use-breakpoint';
@@ -10,7 +10,7 @@ type Mode = 'task' | 'note' | 'agent';
 
 interface AgentBarProps {
   tags: InboxTag[];
-  onSubmit: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
+  onSubmit: (text: string, type: InboxItemType, tagIds: string[], webSearch?: boolean) => Promise<void>;
   onCreateTag: (name: string, type: 'project' | 'person', color: string) => Promise<InboxTag | null>;
 }
 
@@ -25,6 +25,9 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
   const [mode, setMode] = useState<Mode>('task');
   const [focused, setFocused] = useState(false);
   const [pendingTags, setPendingTags] = useState<InboxTag[]>([]);
+  // Not persisted across sends on purpose — web search is billed per-use, so
+  // it must be re-selected for every message rather than staying sticky.
+  const [webSearch, setWebSearch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const mention = useTagMentionInput({
@@ -40,10 +43,11 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && pendingTags.length === 0) return;
-    await onSubmit(trimmed || '(no text)', MODE_CONFIG[mode].type, pendingTags.map(t => t.id));
+    await onSubmit(trimmed || '(no text)', MODE_CONFIG[mode].type, pendingTags.map(t => t.id), webSearch);
     mention.clearText();
     setPendingTags([]);
-  }, [text, pendingTags, mode, onSubmit, mention]);
+    setWebSearch(false);
+  }, [text, pendingTags, mode, webSearch, onSubmit, mention]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (mention.handleAutocompleteKeyDown(e)) return;
@@ -172,6 +176,22 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
               <span>{MODE_CONFIG[m].label}</span>
             </button>
           ))}
+          {mode === 'agent' && (
+            <button
+              onClick={() => { setWebSearch(v => !v); inputRef.current?.focus(); }}
+              title="Search the web for this message only"
+              className={cn(
+                'flex items-center gap-1 rounded-full text-xs font-medium transition-colors',
+                isTouch ? 'px-3 py-1.5' : 'px-2 py-0.5',
+                webSearch
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+              )}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              <span>Web</span>
+            </button>
+          )}
           <span className="ml-auto text-[10px] text-gray-300 select-none">⌘↵</span>
         </div>
       </div>

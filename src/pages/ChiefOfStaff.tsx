@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -140,7 +140,6 @@ type CategoryKey = string;
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const location = useLocation();
   const [userId, setUserId] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
@@ -153,11 +152,11 @@ export default function ChiefOfStaff() {
   const [newlyAddedAccountabilityId, setNewlyAddedAccountabilityId] = useState<string | null>(null);
   const [newlyAddedTopicId, setNewlyAddedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const activeTab = location.pathname.includes('/daily-brief')
-    ? 'dci'
-    : location.pathname.includes('/meetings')
+  const activeTab = location.pathname.includes('/meetings')
     ? 'team'
-    : 'priorities';
+    : location.pathname.includes('/my-lists')
+    ? 'priorities'
+    : 'dci';
   const { onboarding, loading: onboardingLoading, markComplete } = useOnboardingState();
   const [showWelcomeCarousel, setShowWelcomeCarousel] = useState(false);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -515,8 +514,6 @@ export default function ChiefOfStaff() {
     );
   }
 
-  const prioritiesTabLabel = 'My Lists';
-
   const thisWeekPriorities = priorities
     .filter(p => p.category === 'this_week')
     .sort((a, b) => a.tier_order - b.tier_order)
@@ -558,19 +555,9 @@ export default function ChiefOfStaff() {
         </SheetContent>
       </Sheet>
 
-      <Tabs value={activeTab} onValueChange={(tab) => {
-          if (tab === 'dci') navigate('/chief-of-staff/daily-brief');
-          else if (tab === 'team') navigate('/chief-of-staff/meetings');
-          else navigate('/chief-of-staff/my-lists');
-        }}>
+      <Tabs value={activeTab}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-          <h1 className="text-xl font-semibold whitespace-nowrap sm:mr-2">Chief of Staff</h1>
-          <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:max-w-sm">
-
-            <TabsTrigger value="priorities">{prioritiesTabLabel}</TabsTrigger>
-            <TabsTrigger value="dci">Daily Brief</TabsTrigger>
-            <TabsTrigger value="team">Meetings</TabsTrigger>
-          </TabsList>
+          <h1 className="text-xl font-semibold whitespace-nowrap sm:mr-2">Check-Ins</h1>
         </div>
         <div id="team-toolbar-slot" className="flex items-center mt-6 mb-8" />
 
@@ -3604,7 +3591,7 @@ function formatGeneratedAt(iso: string): string {
 //    prep load/refresh/share orchestration (ClearGO → local FS → static fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
-export function TeamSection({ members, toolbarPortalId, basePath = '/chief-of-staff/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
+export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
   const { toast } = useToast();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
@@ -4708,7 +4695,7 @@ function SettingsSection({
       <div className="max-w-lg">
         <h2 className="text-lg font-semibold">Settings</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure labels, sections, and status options for your Chief of Staff workspace.
+          Configure labels, sections, and status options for your Check-Ins workspace.
         </p>
       </div>
 

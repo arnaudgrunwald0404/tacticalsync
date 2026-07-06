@@ -18,7 +18,7 @@ const Index = () => {
     if (!hasCode) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          navigate("/chief-of-staff");
+          navigate("/check-ins");
         }
       });
     }
@@ -28,7 +28,7 @@ const Index = () => {
         if (hasCode) {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate("/chief-of-staff");
+        navigate("/check-ins");
       }
     });
 

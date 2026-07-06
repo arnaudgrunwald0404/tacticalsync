@@ -23,7 +23,7 @@ const DashboardWithTabs = () => {
   // Determine active tab from URL (used for TabsContent visibility + canvas redirect)
   const activeTab = location.pathname.includes('/insights')
     ? 'insights'
-    : location.pathname.includes('/chief-of-staff')
+    : location.pathname.includes('/check-ins')
     ? 'cos'
     : location.pathname.includes('/dashboard/rcdo/tasks-feed')
     ? 'tasks'
@@ -56,7 +56,7 @@ const DashboardWithTabs = () => {
       <Tabs value={activeTab} className="w-full">
         <TabsContent value="cos" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'cos' ? (
-            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Chief of Staff…</div>}>
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Check-Ins…</div>}>
               <LazyChiefOfStaffPage />
             </Suspense>
           ) : null}
