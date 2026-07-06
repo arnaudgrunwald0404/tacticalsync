@@ -173,8 +173,20 @@ export function InboxItemRow({
             </span>
           </button>
 
-          {/* Type icon (non-task) */}
-          {item.type !== 'task' && (
+          {/* Done checkbox (task) / type icon (everything else) */}
+          {item.type === 'task' ? (
+            <button
+              onClick={e => { e.stopPropagation(); onDone(item.id, !isDone); }}
+              aria-label={isDone ? 'Mark as not done' : 'Mark as done'}
+              title={isDone ? 'Mark as not done' : 'Mark as done'}
+              className={cn(
+                'flex-shrink-0 flex items-center justify-center transition-colors',
+                isDone ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500',
+              )}
+            >
+              {isDone ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+            </button>
+          ) : (
             <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
               {TYPE_ICON[item.type]}
             </span>
