@@ -267,12 +267,16 @@ export function useInboxItems(
     const sourceRef: SourceRef = { type: sourceType, id: date };
 
     if (existing) {
+      // Keep text in sync too — not just agent_payload — so a summary label
+      // computed from "today"/"this week" phrasing in an older app version
+      // gets corrected to the current date-based wording on the next sync
+      // instead of staying frozen at whatever text the row was created with.
       await supabase
         .from('inbox_items')
-        .update({ agent_payload: payload as Json, updated_at: new Date().toISOString() })
+        .update({ text: summaryText, agent_payload: payload as Json, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
       applyPatch(prev => prev.map(i =>
-        i.id === existing.id ? { ...i, agent_payload: payload } : i,
+        i.id === existing.id ? { ...i, text: summaryText, agent_payload: payload } : i,
       ));
     } else {
       const { data } = await supabase
