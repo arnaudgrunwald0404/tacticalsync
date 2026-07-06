@@ -30,7 +30,7 @@ import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
-import { planTagGroupReindex } from '@/lib/inboxValidation';
+import { planTagGroupReindex, isAutoPinnedItem } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
@@ -196,6 +196,7 @@ export default function InboxPage() {
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
   const [filter, setFilter] = useState<InboxFilterState>({ builtIn: 'all' });
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const [meetingsSearch, setMeetingsSearch] = useState('');
   const [meetingsSyncInfo, setMeetingsSyncInfo] = useState<MeetingsSyncInfo | undefined>(undefined);
   const [selectedMeetingEvent, setSelectedMeetingEvent] = useState<UpcomingOneOnOneEvent | null>(null);
@@ -397,8 +398,18 @@ export default function InboxPage() {
   const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
     const item = await addItem(text, type, tagIds);
     if (item?.id) {
+      // The active filter may hide what was just added (e.g. viewing "Do Now"
+      // and adding a plain task) — switch to "All" so the add is never invisible.
+      const visibleUnderCurrentFilter =
+        filter.builtIn === 'asap' ? item.workflow_status === 'Do Now' :
+        filter.builtIn === 'waiting' ? item.type === 'agent_question' && Boolean(item.agent_payload?.action_required) :
+        filter.tagIds?.length ? filter.tagIds.every(tid => tagIds.includes(tid)) :
+        true;
+      if (!visibleUnderCurrentFilter) setFilter(allFilter);
+
       setLastAddedId(item.id);
       setTimeout(() => setLastAddedId(null), 2000);
+
       // Fire tag suggestion agent async — only when item has no tags already
       if (tagIds.length === 0 && userId) {
         supabase.functions.invoke('suggest-inbox-tags', {
@@ -406,7 +417,7 @@ export default function InboxPage() {
         }).then(() => reloadItems());
       }
     }
-  }, [addItem, userId, reloadItems]);
+  }, [addItem, userId, reloadItems, filter, allFilter]);
 
   const handleCreateTag = useCallback(async (name: string, type: 'project' | 'person', color: string) => {
     return getOrCreate(name, type, color);
@@ -466,9 +477,13 @@ export default function InboxPage() {
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
 
-  // For date/grouped views: items with pending suggestions float first, then pinned-project items
+  // For date/grouped views: weekly priorities and daily check-ins float first,
+  // then items with pending suggestions, then pinned-project items
   const sortedItems = useMemo(() => {
     const base = sortMode === 'byProject' ? items : [...items].sort((a, b) => {
+      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
+      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
+      if (bPinned !== aPinned) return bPinned - aPinned;
       const aSug = (a.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       const bSug = (b.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       if (bSug !== aSug) return bSug - aSug;
@@ -478,8 +493,12 @@ export default function InboxPage() {
     });
     // Prioritize mode ranks by the informal due date (soonest first), regardless
     // of the sort mode underneath — items without one yet sort to the end.
+    // Weekly priorities and daily check-ins stay pinned to the top even here.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
+      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
+      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
+      if (bPinned !== aPinned) return bPinned - aPinned;
       const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
       const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
       return aDue - bDue;
@@ -854,6 +873,7 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           ) : (
             <InboxByProjectView
@@ -876,6 +896,7 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           )}
         </div>}

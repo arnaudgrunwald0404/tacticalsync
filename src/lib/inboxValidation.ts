@@ -96,6 +96,16 @@ export function tagStyle(color: string) {
   return { backgroundColor: color + '22', color, borderColor: color + '44' };
 }
 
+/**
+ * Weekly-priorities and daily-check-in brief items are always pinned to the
+ * top of the inbox, regardless of sort mode — they're synced in by
+ * `syncBriefItem` (see useInboxItems.ts) rather than user-created, so there's
+ * nothing to distinguish beyond the type itself.
+ */
+export function isAutoPinnedItem(item: Pick<InboxItem, 'type'>): boolean {
+  return item.type === 'brief_item';
+}
+
 // ── Type guards ──────────────────────────────────────────────────────────────
 
 export const isItemType = (v: unknown): v is InboxItemType =>
