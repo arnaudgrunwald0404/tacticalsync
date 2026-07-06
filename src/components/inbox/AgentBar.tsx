@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { CheckSquare, FileText, Sparkles, ArrowUp, Hash, AtSign, Globe } from 'lucide-react';
+import { CheckSquare, FileText, Sparkles, ArrowUp, Hash, AtSign, Globe, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
 import { useIsTouch } from '@/hooks/use-breakpoint';
@@ -28,7 +28,9 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
   // Not persisted across sends on purpose — web search is billed per-use, so
   // it must be re-selected for every message rather than staying sticky.
   const [webSearch, setWebSearch] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const justAddedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const mention = useTagMentionInput({
     tags,
@@ -43,10 +45,18 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && pendingTags.length === 0) return;
+    const submittedMode = mode;
     await onSubmit(trimmed || '(no text)', MODE_CONFIG[mode].type, pendingTags.map(t => t.id), webSearch);
     mention.clearText();
     setPendingTags([]);
     setWebSearch(false);
+    // Assistant mode routes into a chat reply, which is its own confirmation —
+    // only Task/Note (which otherwise vanish silently into the list) get the pill.
+    if (submittedMode !== 'agent') {
+      setJustAdded(true);
+      clearTimeout(justAddedTimer.current);
+      justAddedTimer.current = setTimeout(() => setJustAdded(false), 1600);
+    }
   }, [text, pendingTags, mode, webSearch, onSubmit, mention]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -100,6 +110,15 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
         </div>
       )}
 
+      {/* Success pill — pops upward in the same slot as autocomplete, briefly */}
+      {justAdded && !autocomplete && (
+        <div className="absolute bottom-full left-3 mb-1 z-20">
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5 bg-emerald-50 text-emerald-600 shadow-sm border border-emerald-100">
+            <Check className="h-3.5 w-3.5" />Added to your inbox
+          </span>
+        </div>
+      )}
+
       {/* Input card */}
       <div
         className={cn(
@@ -130,7 +149,7 @@ export function AgentBar({ tags, onSubmit, onCreateTag }: AgentBarProps) {
             ref={inputRef}
             type="text"
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => { setText(e.target.value); setJustAdded(false); }}
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => { setFocused(false); setTimeout(() => mention.closeAutocomplete(), 150); }}

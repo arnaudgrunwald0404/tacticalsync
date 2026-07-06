@@ -203,6 +203,7 @@ export default function InboxPage() {
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
   const [filter, setFilter] = useState<InboxFilterState>({ builtIn: 'all' });
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const [meetingsSearch, setMeetingsSearch] = useState('');
   const [meetingsSyncInfo, setMeetingsSyncInfo] = useState<MeetingsSyncInfo | undefined>(undefined);
   const [selectedMeetingEvent, setSelectedMeetingEvent] = useState<UpcomingOneOnOneEvent | null>(null);
@@ -404,8 +405,18 @@ export default function InboxPage() {
   const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
     const item = await addItem(text, type, tagIds);
     if (item?.id) {
+      // The active filter may hide what was just added (e.g. viewing "Do Now"
+      // and adding a plain task) — switch to "All" so the add is never invisible.
+      const visibleUnderCurrentFilter =
+        filter.builtIn === 'asap' ? item.workflow_status === 'Do Now' :
+        filter.builtIn === 'waiting' ? item.type === 'agent_question' && Boolean(item.agent_payload?.action_required) :
+        filter.tagIds?.length ? filter.tagIds.every(tid => tagIds.includes(tid)) :
+        true;
+      if (!visibleUnderCurrentFilter) setFilter(allFilter);
+
       setLastAddedId(item.id);
       setTimeout(() => setLastAddedId(null), 2000);
+
       // Fire tag suggestion agent async — only when item has no tags already
       if (tagIds.length === 0 && userId) {
         supabase.functions.invoke('suggest-inbox-tags', {
@@ -413,7 +424,7 @@ export default function InboxPage() {
         }).then(() => reloadItems());
       }
     }
-  }, [addItem, userId, reloadItems]);
+  }, [addItem, userId, reloadItems, filter, allFilter]);
 
   const handleCreateTag = useCallback(async (name: string, type: 'project' | 'person', color: string) => {
     return getOrCreate(name, type, color);
@@ -875,6 +886,7 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           ) : (
             <InboxByProjectView
@@ -896,6 +908,7 @@ export default function InboxPage() {
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
+              newItemId={lastAddedId}
             />
           )}
         </div>}
