@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import { kickOffZoomSync } from "@/lib/calendarZoomConnect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -162,6 +163,24 @@ const Settings = () => {
 
   const checkAuth = async () => {
     try {
+      // Zoom OAuth callback: intercept before the admin gate below. Zoom's
+      // redirect_uri must exactly match the app's registered value and the
+      // server-side ZOOM_REDIRECT_URI secret — both point at this page today
+      // — so a non-admin who clicked "Connect Zoom" from the Inbox assistant
+      // would otherwise get silently bounced to /dashboard before the token
+      // exchange ever ran. Handle it here instead, then forward to /inbox.
+      const oauthParams = new URLSearchParams(window.location.search);
+      if (oauthParams.get('code') && oauthParams.get('state') === 'zoom_connected') {
+        window.history.replaceState(null, '', window.location.pathname);
+        try {
+          await kickOffZoomSync(oauthParams.get('code')!);
+        } catch (err) {
+          console.error('Zoom connect failed', err);
+        }
+        navigate('/inbox');
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate("/auth");

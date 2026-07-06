@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
-  type LucideIcon,
+  Loader2, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { WeekendBanner } from '@/components/WeekendBanner';
@@ -32,6 +32,7 @@ import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
 import { planTagGroupReindex } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
+import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
 type SortMode = 'grouped' | 'byProject';
 
@@ -221,6 +222,90 @@ export default function InboxPage() {
 
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
+
+  // ── Post-connect sync + simple progress log ───────────────────────────────
+  // Shown in the empty middle list area while a calendar/Zoom connection just
+  // triggered from the Assistant chat is syncing and analyzing recent
+  // meetings — see handleConnectOAuthCallback below.
+  const [syncing, setSyncing] = useState(false);
+  const [syncLog, setSyncLog] = useState<string[]>([]);
+  const didSyncOAuthRef = useRef(false);
+
+  const pushSyncLog = useCallback((line: string) => {
+    setSyncLog(prev => [...prev, line]);
+  }, []);
+
+  // Analyzes up to a week's worth of newly-synced Zoom transcripts one at a
+  // time — real per-meeting counts via generate-meeting-suggestions'
+  // transcript_id param, not a fake progress bar. Idempotent: already-
+  // analyzed transcripts (suggestions_extracted_at set) are skipped, so
+  // re-running this doesn't reprocess the same meetings.
+  const analyzeRecentTranscripts = useCallback(async () => {
+    const { data: transcripts } = await supabase
+      .from('cos_zoom_transcripts')
+      .select('id, recording_id')
+      .is('suggestions_extracted_at', null)
+      .order('fetched_at', { ascending: false });
+    if (!transcripts || transcripts.length === 0) return;
+
+    const recordingIds = transcripts.map(t => t.recording_id);
+    const { data: recordings } = await supabase
+      .from('cos_zoom_recordings')
+      .select('id, topic')
+      .in('id', recordingIds);
+    const topicById = new Map((recordings ?? []).map(r => [r.id, r.topic ?? 'Untitled meeting']));
+
+    for (const t of transcripts) {
+      const topic = topicById.get(t.recording_id) ?? 'Untitled meeting';
+      pushSyncLog(`Analyzing ${topic}`);
+      try {
+        const { data } = await supabase.functions.invoke('generate-meeting-suggestions', {
+          body: { transcript_id: t.id },
+        });
+        const added = (data as { suggestions_added?: number } | null)?.suggestions_added ?? 0;
+        pushSyncLog(`Done analyzing ${topic} → ${added} action item${added === 1 ? '' : 's'} found (will soon be added to your inbox)`);
+      } catch (err) {
+        pushSyncLog(`Couldn't analyze ${topic} — skipping.`);
+      }
+    }
+  }, [pushSyncLog]);
+
+  useEffect(() => {
+    if (!userId || didSyncOAuthRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const isCalendarCallback = params.get('calendar') === 'connected';
+    const isZoomCallback = !!code && params.get('state') === 'zoom_connected';
+    if (!isCalendarCallback && !isZoomCallback) return;
+    didSyncOAuthRef.current = true;
+    navigate(location.pathname, { replace: true });
+
+    (async () => {
+      setSyncing(true);
+      setSyncLog([]);
+      try {
+        if (isCalendarCallback) {
+          pushSyncLog('Connecting to your calendar…');
+          const { created = 0, updated = 0 } = await kickOffCalendarSync(7);
+          pushSyncLog(`Synced ${created + updated} meeting${created + updated === 1 ? '' : 's'} from your calendar.`);
+        }
+        if (isZoomCallback) {
+          pushSyncLog('Connecting to Zoom…');
+          const { transcripts_fetched = 0 } = await kickOffZoomSync(code!, 7);
+          pushSyncLog(`Found ${transcripts_fetched} meeting transcript${transcripts_fetched === 1 ? '' : 's'}.`);
+        }
+        await analyzeRecentTranscripts();
+        pushSyncLog('All done — check your inbox for new suggestions.');
+        await reloadItems();
+        await reloadTags();
+      } catch (err) {
+        pushSyncLog(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setSyncing(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
   const slackChannelOptions = useSlackChannelOptions(userId);
   const meetingOptions = useMeetingTitleOptions(userId);
 
@@ -337,6 +422,46 @@ export default function InboxPage() {
     return getOrCreate(member.name, 'person', color, member.id);
   }, [getOrCreate, tags.length]);
 
+  // Materialize the assistant's proposed setup items into a real "Onboarding"
+  // project, ending with a deterministic (client-appended, not model-generated)
+  // "Delete onboarding project" item — see handleItemDone for the cleanup side.
+  const handleMaterializeOnboarding = useCallback(async (proposedItems: { text: string }[]) => {
+    const color = TAG_COLORS[tags.length % TAG_COLORS.length];
+    const onboardingTag = await getOrCreate('Onboarding', 'project', color);
+    if (!onboardingTag) return;
+    for (const proposed of proposedItems) {
+      await addItem(proposed.text, 'task', [onboardingTag.id]);
+    }
+    await addItem('Delete onboarding project', 'task', [onboardingTag.id], {
+      agent_payload: { cta_action: 'delete_onboarding_project' },
+    });
+  }, [tags.length, getOrCreate, addItem]);
+
+  const handleItemDone = useCallback(async (id: string, done: boolean) => {
+    const item = allItems.find(i => i.id === id);
+    const isSelfDestruct = done && item?.agent_payload?.cta_action === 'delete_onboarding_project';
+    await markDone(id, done);
+    if (!isSelfDestruct) return;
+    try {
+      const onboardingTag = item?.tags?.find(t => t.type === 'project');
+      if (!onboardingTag) return;
+      const siblingIds = allItems
+        .filter(i => i.id !== id && i.tags?.some(t => t.id === onboardingTag.id))
+        .map(i => i.id);
+      await Promise.all(siblingIds.map(sid => deleteItem(sid)));
+      await deleteItem(id);
+      await deleteTag(onboardingTag.id);
+      await reloadTags();
+    } catch (err) {
+      console.error('Failed to clean up onboarding project', err);
+    }
+  }, [allItems, markDone, deleteItem, deleteTag, reloadTags]);
+
+  const handleAssistantMutated = useCallback(() => {
+    void reloadItems();
+    void reloadTags();
+  }, [reloadItems, reloadTags]);
+
   const pinnedProjectIds = useMemo(() =>
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
@@ -406,7 +531,7 @@ export default function InboxPage() {
     setSelected(new Set());
   }, [selected, archive]);
 
-  const handleDelegateToAgent = useCallback(async () => {
+  const handleDelegateToAssistant = useCallback(async () => {
     if (!userId) return;
     const { data: { session } } = await supabase.auth.getSession();
     for (const itemId of selected) {
@@ -633,7 +758,7 @@ export default function InboxPage() {
                 <DelegateDropdown
                   userId={userId}
                   onSelect={(target) => {
-                    if (target.type === 'agent') handleDelegateToAgent();
+                    if (target.type === 'assistant') handleDelegateToAssistant();
                     else setDelegateOpen(false); // person delegation — future
                   }}
                   onClose={() => setDelegateOpen(false)}
@@ -676,7 +801,24 @@ export default function InboxPage() {
               onCreatePersonTag={handleCreatePersonTag}
             />
           )}
-          {itemsLoading ? (
+          {syncing ? (
+            <div className="flex flex-col items-center justify-center h-56 gap-3 px-6 text-center">
+              <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+              <div className="space-y-1 max-w-sm">
+                {syncLog.map((line, i) => (
+                  <p
+                    key={i}
+                    className={cn(
+                      'text-xs',
+                      i === syncLog.length - 1 ? 'text-gray-700 font-medium' : 'text-gray-400',
+                    )}
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : itemsLoading ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-56 gap-2 px-6 text-center">
@@ -694,7 +836,7 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onDone={markDone}
+              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
@@ -717,7 +859,7 @@ export default function InboxPage() {
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
-              onDone={markDone}
+              onDone={handleItemDone}
               onArchive={archive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
@@ -767,6 +909,8 @@ export default function InboxPage() {
         selectedPersonTag={selectedPersonTag}
         userId={userId}
         isNewUser={isNewUser}
+        onMaterializeOnboarding={handleMaterializeOnboarding}
+        onMutated={handleAssistantMutated}
       />
       </div>
     </div>

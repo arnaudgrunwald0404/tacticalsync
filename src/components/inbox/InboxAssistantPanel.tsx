@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { InboxTagPill } from './InboxTagPill';
+import { ChatBubble } from './ChatBubble';
+import { AssistantChatPanel, type AssistantChatMsg } from './AssistantChatPanel';
+import { DelegationChatView } from './DelegationChatView';
 import { BriefItemDetail } from './BriefItemDetail';
 import { AgentBar } from './AgentBar';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
@@ -17,6 +20,7 @@ import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 const SUGGESTIONS = [
+  "Help me set up TacticalSync",
   "What needs my attention today?",
   "Summarize unread items",
   "Show me what's overdue",
@@ -104,19 +108,8 @@ function MeetingChatPanel({ event }: { event: UpcomingOneOnOneEvent }) {
 
       {/* Chat messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-3 px-4 py-4">
-        {chat.map(msg => msg.role === 'agent' ? (
-          <div key={msg.id} className="flex gap-2.5 items-start max-w-[90%]">
-            <span className="w-7 h-7 flex-shrink-0 rounded-lg bg-gray-100 grid place-items-center mt-0.5">
-              <Bot className="h-3.5 w-3.5 text-gray-500" />
-            </span>
-            <div className="bg-white border border-gray-200 rounded-[4px_12px_12px_12px] px-3 py-2.5 text-sm leading-relaxed whitespace-pre-line text-gray-800">
-              {msg.text}
-            </div>
-          </div>
-        ) : (
-          <div key={msg.id} className="self-end max-w-[80%] bg-blue-600 text-white rounded-[12px_4px_12px_12px] px-3 py-2.5 text-sm leading-relaxed">
-            {msg.text}
-          </div>
+        {chat.map(msg => (
+          <ChatBubble key={msg.id} role={msg.role}>{msg.text}</ChatBubble>
         ))}
         {loading && (
           <div className="flex gap-2 items-center text-gray-400">
@@ -192,6 +185,9 @@ interface InboxAssistantPanelProps {
    *  panel greeting from a returning-user framing ("what's up next") to a
    *  first-visit welcome. */
   isNewUser?: boolean;
+  onMaterializeOnboarding: (items: { text: string }[]) => Promise<void>;
+  /** Called after a chat turn that ran an action tool (e.g. generated a brief). */
+  onMutated: () => void;
 }
 
 // ── Default state ─────────────────────────────────────────────────────────────
@@ -204,6 +200,7 @@ function DefaultState({
   onSuggestion: (s: string) => void;
 }) {
   const first = userName?.split(' ')[0];
+  const [setup, ...rest] = SUGGESTIONS;
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-5 gap-5">
       <div className="h-14 w-14 rounded-full bg-gray-100 flex items-center justify-center">
@@ -221,16 +218,24 @@ function DefaultState({
             : 'Here are some things I can help with'}
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-2 w-full">
-        {SUGGESTIONS.map(s => (
-          <button
-            key={s}
-            onClick={() => onSuggestion(s)}
-            className="text-left p-3 rounded-xl border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors leading-snug"
-          >
-            {s}
-          </button>
-        ))}
+      <div className="w-full space-y-2">
+        <button
+          onClick={() => onSuggestion(setup)}
+          className="w-full flex items-center gap-2 text-left p-3 rounded-xl border border-violet-200 bg-violet-50 text-xs font-medium text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition-colors leading-snug"
+        >
+          <Sparkles className="h-3.5 w-3.5 flex-shrink-0" />{setup}
+        </button>
+        <div className="grid grid-cols-2 gap-2">
+          {rest.map(s => (
+            <button
+              key={s}
+              onClick={() => onSuggestion(s)}
+              className="text-left p-3 rounded-xl border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors leading-snug"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -261,6 +266,9 @@ function ItemDetail({
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
+      {/* Active delegation — renders as a chat thread when this item was delegated to the Assistant */}
+      <DelegationChatView itemId={item.id} />
+
       {/* Brief item: priorities */}
       {item.type === 'brief_item' && item.agent_payload?.brief_priorities && (
         <BriefItemDetail
@@ -388,9 +396,73 @@ export function InboxAssistantPanel({
   onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
   meetingEvent, selectedPersonTag, userId, isNewUser,
+  onMaterializeOnboarding, onMutated,
 }: InboxAssistantPanelProps) {
-  const [prefill, setPrefill] = useState<{ text: string; token: number }>({ text: '', token: 0 });
   const isMobile = useIsMobile();
+
+  // ── Assistant chat (the "no item selected" home view) ─────────────────────
+  const [chatMessages, setChatMessages] = useState<AssistantChatMsg[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatHistoryRef = useRef<AssistantChatMsg[]>([]);
+  chatHistoryRef.current = chatMessages;
+
+  const sendChatMessage = async (rawText: string, mentionTagIds: string[]) => {
+    const text = rawText.trim();
+    if (!text || chatLoading) return;
+    const mentions = mentionTagIds.map(id => allTags.find(t => t.id === id)).filter((t): t is InboxTag => !!t);
+    const userMsg: AssistantChatMsg = { id: 'u' + Date.now(), role: 'user', text };
+    const history = [...chatHistoryRef.current, userMsg];
+    setChatMessages(history);
+    setChatLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/inbox-assistant-chat`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.text })),
+          mentions: mentions.map(t => ({ id: t.id, name: t.name, type: t.type, memberId: t.member_id ?? undefined })),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.message ?? err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as {
+        reply: string; proposedItems?: { text: string }[]; mutated?: boolean;
+        actions?: ('connect_calendar' | 'connect_zoom')[];
+      };
+      setChatMessages(prev => [...prev, {
+        id: 'a' + Date.now(), role: 'agent', text: data.reply,
+        proposedItems: data.proposedItems, actions: data.actions,
+      }]);
+      if (data.mutated) onMutated();
+    } catch (err) {
+      setChatMessages(prev => [...prev, {
+        id: 'a' + Date.now(), role: 'agent',
+        text: `Sorry — I ran into a problem. ${err instanceof Error ? err.message : ''}`.trim(),
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleAddChatItems = (msgId: string, items: { text: string }[]) => {
+    setChatMessages(prev => prev.map(m => m.id === msgId ? { ...m, itemsAdded: true } : m));
+    void onMaterializeOnboarding(items);
+  };
+
+  // Task/Note mode still create real items via onAddItem; "Assistant" mode
+  // (agent_nudge) from this home view routes into the chat instead.
+  const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[]) => {
+    if (!item && !meetingEvent && !projectTag && type === 'agent_nudge') {
+      await sendChatMessage(text, tagIds);
+      return;
+    }
+    await onAddItem(text, type, tagIds);
+  };
 
   // Close on Escape when item is open
   useEffect(() => {
@@ -409,7 +481,7 @@ export function InboxAssistantPanel({
           className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} prefill={prefill} />
+          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
         </div>
 
         <Sheet open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -534,11 +606,17 @@ export function InboxAssistantPanel({
               onCreateWorkstream={onCreateWorkstream}
               onUpdateItem={onUpdateItem}
             />
+          ) : chatMessages.length > 0 ? (
+            <AssistantChatPanel
+              messages={chatMessages}
+              loading={chatLoading}
+              onAddItems={handleAddChatItems}
+            />
           ) : (
             <DefaultState
               userName={userName}
               isNewUser={isNewUser}
-              onSuggestion={s => setPrefill(prev => ({ text: s, token: prev.token + 1 }))}
+              onSuggestion={s => void sendChatMessage(s, [])}
             />
           )}
         </motion.div>
@@ -549,7 +627,7 @@ export function InboxAssistantPanel({
       {/* Bottom bar — hidden in project settings mode */}
       {!projectTag && (
         <div className="flex-shrink-0 border-t border-gray-100">
-          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} prefill={prefill} />
+          <AgentBar tags={allTags} onSubmit={composerSubmit} onCreateTag={onCreateTag} />
           <div className="flex items-center gap-3 px-4 py-2">
             <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
               <History className="h-3 w-3" />History
