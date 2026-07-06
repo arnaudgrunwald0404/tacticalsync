@@ -15,7 +15,7 @@ import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { PersonContextWidget } from './PersonContextWidget';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { WORKFLOW_STATUS_COLORS, tagStyle } from '@/lib/inboxValidation';
+import { WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings } from '@/types/inbox';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
@@ -295,7 +295,7 @@ function ItemDetail({
             )}
             style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
           >
-            {item.workflow_status ?? 'Set status'}
+            {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
           </button>
         </div>
       )}

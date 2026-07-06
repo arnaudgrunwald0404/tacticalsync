@@ -13,7 +13,7 @@ import { useIsTouch } from '@/hooks/use-breakpoint';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
 import {
-  WORKFLOW_STATUS_COLORS, tagStyle,
+  WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle,
   PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
@@ -144,10 +144,10 @@ export function InboxItemRow({
         // Explicit grid tracks, not flex + absolute percentages: each column
         // gets a real, reserved slot, so nothing can ever overlap regardless
         // of how much text a tag or status label holds or how many lines
-        // Tags wraps to. Column boundaries: 50% / 75% normally; 50% / 70% /
+        // Tags wraps to. Column boundaries: 45% / 75% normally; 45% / 70% /
         // 77% in Prioritize mode (Tags narrows slightly there to make room
         // for Status + the tier pills).
-        prioritizeMode ? 'grid-cols-[50%_20%_7%_1fr]' : 'grid-cols-[50%_25%_1fr]',
+        prioritizeMode ? 'grid-cols-[45%_25%_7%_1fr]' : 'grid-cols-[45%_30%_1fr]',
       )}>
         {/* Main content — checkbox, type icon, text, pin. */}
         <div className="flex items-center gap-3 min-w-0">
@@ -220,7 +220,7 @@ export function InboxItemRow({
           )}
         </div>
 
-        {/* Tags — its own grid column (50%-75%, or 50%-70% in Prioritize mode).
+        {/* Tags — its own grid column (45%-75%, or 45%-70% in Prioritize mode).
             Wraps to a second line — since Status/Pills are separate columns,
             not absolutely positioned over this one, a wrapped second line
             can't overlap them the way it could before. */}
@@ -353,7 +353,7 @@ export function InboxItemRow({
               )}
               style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
             >
-              {item.workflow_status ?? 'Set status'}
+              {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
             </button>
           )}
         </div>

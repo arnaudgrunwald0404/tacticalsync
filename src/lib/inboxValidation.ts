@@ -91,6 +91,17 @@ export const WORKFLOW_STATUS_COLORS: Record<WorkflowStatus, string> = {
   'Blocked':             '#ef4444',
 };
 
+/** Display text per workflow status — the stored value stays "Work in progress"
+ *  / "Waiting on someone" (they're DB CHECK constraint values); only the
+ *  on-screen label is abbreviated. */
+export const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
+  'Do Now':              'Do Now',
+  'Not started':         'Not started',
+  'Work in progress':    'WIP',
+  'Waiting on someone':  'WOS',
+  'Blocked':             'Blocked',
+};
+
 /** Soft tint pill style for a given accent color — shared by tag pills and status chips. */
 export function tagStyle(color: string) {
   return { backgroundColor: color + '22', color, borderColor: color + '44' };
