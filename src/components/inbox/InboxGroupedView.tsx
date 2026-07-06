@@ -8,16 +8,20 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { InboxItemRow } from './InboxItemRow';
+import { isAutoPinnedItem } from '@/lib/inboxValidation';
 import type { InboxItem, InboxBucket, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
 // ── Auto-assign bucket based on tags ─────────────────────────────────────────
 
 export function autoBucket(item: InboxItem): InboxBucket {
+  // Weekly priorities and daily check-ins are always pinned to Now — they
+  // can't be dragged to another bucket, so any stored `item.bucket` is ignored.
+  if (isAutoPinnedItem(item)) return 'now';
   if (item.bucket) return item.bucket;
   if (item.type === 'agent_question' && item.agent_payload?.action_required) return 'now';
   const tagNames = item.tags?.map(t => t.name.toLowerCase()) ?? [];
@@ -63,8 +67,11 @@ function SortableItem({
   isNew?: boolean;
 }) {
   const isTouch = useIsTouch();
+  // Weekly priorities and daily check-ins are always pinned to Now — dragging
+  // them would just snap back next render, so disable the drag instead.
+  const pinned = isAutoPinnedItem(item);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.id });
+    useSortable({ id: item.id, disabled: pinned });
 
   return (
     <div
@@ -73,16 +80,18 @@ function SortableItem({
       className={cn('flex items-stretch', isDragging && 'opacity-40')}
     >
       <div
-        {...attributes}
-        {...listeners}
-        aria-label="Drag to reorder"
+        {...(pinned ? {} : attributes)}
+        {...(pinned ? {} : listeners)}
+        aria-label={pinned ? 'Pinned — cannot be reordered' : 'Drag to reorder'}
+        title={pinned ? 'Pinned to Now' : undefined}
         // touch-none keeps the press-and-hold drag from being read as a scroll.
         className={cn(
-          'flex items-center justify-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 touch-none',
+          'flex items-center justify-center flex-shrink-0 touch-none',
+          pinned ? 'text-amber-400' : 'cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500',
           isTouch ? 'w-9' : 'px-1',
         )}
       >
-        <GripVertical className="h-4 w-4" />
+        {pinned ? <Pin className="h-4 w-4" /> : <GripVertical className="h-4 w-4" />}
       </div>
       <div className="flex-1 min-w-0">
         <InboxItemRow
