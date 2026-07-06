@@ -74,6 +74,49 @@ function isInQuietHours(config: AgentConfig): boolean {
 }
 
 /**
+ * Format a Date as YYYY-MM-DD in the given timezone (not UTC), for same-day comparisons.
+ */
+function localDateKey(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+
+/**
+ * Describe when a meeting falls relative to now, in the user's timezone: "today", "tomorrow",
+ * or a short weekday/date (e.g. "Wed, Jul 8"). Prep is staged up to 24h ahead, so notifications
+ * must say which day the meeting is on or they read as same-day when checked against "today".
+ */
+function meetingDayLabel(startTime: string, timeZone: string): string {
+  const now = new Date()
+  const meetingDate = new Date(startTime)
+  const todayKey = localDateKey(now, timeZone)
+  const meetingKey = localDateKey(meetingDate, timeZone)
+
+  if (meetingKey === todayKey) return 'today'
+
+  const tomorrowKey = localDateKey(new Date(now.getTime() + 24 * 3600 * 1000), timeZone)
+  if (meetingKey === tomorrowKey) return 'tomorrow'
+
+  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' }).format(meetingDate)
+}
+
+/**
+ * Mirrors categorizeMeeting()/meetingQualifies() in src/lib/prepTools.ts: 1:1s (at
+ * most one other attendee) always qualify. Recurring meetings with 2+ other
+ * attendees only qualify if the user opted their series into
+ * cos_prep_schedule.included_group_series via the "Group meetings" settings panel.
+ * One-off group meetings never qualify. Keep this in sync with prepTools.ts.
+ */
+function meetingQualifiesForPrep(
+  recurringEventId: string | null,
+  attendeeEmails: string[] | null,
+  includedGroupSeries: string[],
+): boolean {
+  const attendeeCount = attendeeEmails?.length ?? 0
+  if (attendeeCount <= 1) return true
+  return !!recurringEventId && includedGroupSeries.includes(recurringEventId)
+}
+
+/**
  * Send a Slack DM to a user using their stored Slack credentials.
  * Returns true if the message was sent successfully.
  */
@@ -603,24 +646,36 @@ async function prestagePreps(
   config: AgentConfig,
 ): Promise<number> {
   const now = new Date()
-  const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
+  const windowEnd = new Date(now.getTime() + 12 * 3600 * 1000)
   const todayDate = now.toISOString().slice(0, 10)
 
-  // Find meetings in the next 24 hours with a team_member_id
+  // Find meetings in the next 12 hours with a team_member_id
   const { data: events } = await supabase
     .from('cos_one_on_one_events')
-    .select('id, team_member_id, title, start_time')
+    .select('id, team_member_id, title, start_time, recurring_event_id, attendee_emails')
     .eq('user_id', userId)
     .eq('status', 'confirmed')
     .not('team_member_id', 'is', null)
     .gte('start_time', now.toISOString())
     .lte('start_time', windowEnd.toISOString())
 
+  const { data: prepSchedule } = await supabase
+    .from('cos_prep_schedule')
+    .select('included_group_series')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+
   let staged = 0
 
   for (const event of (events ?? []) as Array<{
     id: string; team_member_id: string; title: string | null; start_time: string
+    recurring_event_id: string | null; attendee_emails: string[] | null
   }>) {
+    // Skip group meetings the user hasn't opted into daily prep for
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+
     // Check per-person override
     const { data: memberOverrides } = await supabase
       .from('cos_team_members')
@@ -693,14 +748,16 @@ async function prestagePreps(
           })
         } catch { /* use raw if timezone fails */ }
 
+        const dayLabel = meetingDayLabel(event.start_time, config.timezone)
+
         // Notify via Slack
         if (config.slack_notifications) {
-          await sendSlackDM(supabase, userId, `Your 1:1 prep for ${memberName} is ready (meeting at ${meetingTime})`, [
+          await sendSlackDM(supabase, userId, `Your 1:1 prep for ${memberName} is ready (meeting ${dayLabel} at ${meetingTime})`, [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `:sparkles: *1:1 Prep Ready*\n\nYour meeting with *${memberName}* is at *${meetingTime}*. I've prepared your briefing.`,
+                text: `:sparkles: *1:1 Prep Ready*\n\nYour meeting with *${memberName}* is ${dayLabel} at *${meetingTime}*. I've prepared your briefing.`,
               },
             },
           ])
@@ -742,16 +799,28 @@ async function computeFormatRecommendations(
   // Find meetings in the next 24 hours
   const { data: events } = await supabase
     .from('cos_one_on_one_events')
-    .select('id, team_member_id, title, start_time')
+    .select('id, team_member_id, title, start_time, recurring_event_id, attendee_emails')
     .eq('user_id', userId)
     .eq('status', 'confirmed')
     .not('team_member_id', 'is', null)
     .gte('start_time', now.toISOString())
     .lte('start_time', windowEnd.toISOString())
 
+  const { data: prepSchedule } = await supabase
+    .from('cos_prep_schedule')
+    .select('included_group_series')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+
   for (const event of (events ?? []) as Array<{
     id: string; team_member_id: string; title: string | null; start_time: string
+    recurring_event_id: string | null; attendee_emails: string[] | null
   }>) {
+    // Skip group meetings the user hasn't opted into daily prep for
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+
     // Check if we already recommended for this event today
     const { count: alreadyDone } = await supabase
       .from('cos_agent_log')

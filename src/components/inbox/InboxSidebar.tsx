@@ -50,7 +50,7 @@ function SidebarItem({
     <button
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors text-left',
+        'w-full flex items-center gap-2 px-2 py-1 rounded-md text-sm transition-colors text-left',
         active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
       )}
     >
@@ -223,7 +223,7 @@ function TagItem({
       {/* Main row */}
       {editing ? (
         <div
-          className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white ring-1 ring-blue-300 shadow-sm"
+          className="flex items-center gap-2 px-2 py-1 rounded-md bg-white ring-1 ring-blue-300 shadow-sm"
           style={{ paddingLeft: depth > 0 ? `${8 + depth * 16}px` : undefined }}
         >
           {icon}
@@ -254,7 +254,7 @@ function TagItem({
           onDragLeave={() => setDropTarget(false)}
           onDrop={handleDrop}
           className={cn(
-            'group w-full flex items-center gap-2 py-1.5 rounded-md text-sm transition-colors text-left',
+            'group w-full flex items-center gap-2 py-1 rounded-md text-sm transition-colors text-left',
             isTouch && 'min-h-[44px]',
             depth > 0 ? 'pr-2' : 'px-2',
             isActive ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
@@ -380,7 +380,7 @@ function TagItem({
 
           {/* New workstream input */}
           {addingWorkstream ? (
-            <div className="flex items-center gap-2 py-1.5 rounded-md" style={{ paddingLeft: '28px' }}>
+            <div className="flex items-center gap-2 py-1 rounded-md" style={{ paddingLeft: '28px' }}>
               <span className="h-1.5 w-1.5 rounded-full bg-gray-300 flex-shrink-0" />
               <InlineInput
                 placeholder="Workstream name…"
@@ -631,7 +631,7 @@ export function InboxSidebar({
                   <div key={sub}>
                     <div
                       className={cn(
-                        'w-full flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-md text-sm transition-colors',
+                        'w-full flex items-center gap-2 pl-2 pr-1 py-1 rounded-md text-sm transition-colors',
                         active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
                       )}
                     >
@@ -789,22 +789,18 @@ export function InboxSidebar({
             )}
           </>
         )}
+
+        <SectionHeader label="More" />
+        <SidebarItem
+          label="Archive"
+          icon={<Archive className="h-4 w-4" />}
+          count={counts['archive']}
+          active={isActive({ builtIn: 'archive' })}
+          onClick={() => onFilterChange({ builtIn: 'archive' })}
+        />
           </>
         )}
       </div>
-
-      {!isMeetings && (
-        <div className="px-2 py-1 border-t border-gray-200 flex-shrink-0">
-          <SidebarItem
-            label="Archive"
-            icon={<Archive className="h-4 w-4" />}
-            count={counts['archive']}
-            active={isActive({ builtIn: 'archive' })}
-            onClick={() => onFilterChange({ builtIn: 'archive' })}
-          />
-        </div>
-      )}
-
     </div>
   );
 }

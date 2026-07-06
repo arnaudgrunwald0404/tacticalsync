@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface InvitationEmailRequest {
   email: string;
-  teamName: string;
+  teamName?: string;
   inviterName: string;
   inviteLink: string;
 }
@@ -25,6 +25,17 @@ serve(async (req) => {
 
     const year = new Date().getFullYear()
 
+    const subject = teamName
+      ? `${inviterName} invited you to ${teamName} on TacticalSync`
+      : `${inviterName} invited you to TacticalSync`
+    const heading = teamName ? `You're invited to ${teamName}` : "You're invited to TacticalSync"
+    const introText = teamName
+      ? `<strong style="color: #37352A;">${inviterName}</strong> added you to <strong style="color: #37352A;">${teamName}</strong> on TacticalSync. Accept below to get access to your team's agendas, action items, and meeting history.`
+      : `<strong style="color: #37352A;">${inviterName}</strong> invited you to TacticalSync. Accept below to get started.`
+    const preheaderText = teamName
+      ? `${inviterName} added you to ${teamName} — accept your invite to get started.`
+      : `${inviterName} invited you to TacticalSync — accept your invite to get started.`
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -34,7 +45,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: 'TacticalSync <noreply@info.tacticalsync.com>',
         to: [email],
-        subject: `${inviterName} invited you to ${teamName} on TacticalSync`,
+        subject,
         html: `
           <!DOCTYPE html>
           <html>
@@ -45,7 +56,7 @@ serve(async (req) => {
             <body style="font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #FAF8F5; margin: 0; padding: 32px 16px;">
               <!-- Preheader (hidden, improves inbox preview text) -->
               <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">
-                ${inviterName} added you to ${teamName} — accept your invite to get started.
+                ${preheaderText}
               </div>
 
               <div style="max-width: 520px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px 0 rgba(55, 53, 42, 0.08), 0 4px 12px -2px rgba(55, 53, 42, 0.08);">
@@ -60,11 +71,11 @@ serve(async (req) => {
                 <!-- Content -->
                 <div style="padding: 24px 40px 40px 40px;">
                   <h1 style="font-family: 'Atkinson Hyperlegible', 'Public Sans', -apple-system, sans-serif; color: #37352A; margin: 0 0 16px 0; font-size: 26px; font-weight: 700; line-height: 1.25; text-align: center;">
-                    You're invited to ${teamName}
+                    ${heading}
                   </h1>
 
                   <p style="color: #525252; font-size: 16px; line-height: 1.6; margin: 0 0 32px 0; text-align: center;">
-                    <strong style="color: #37352A;">${inviterName}</strong> added you to <strong style="color: #37352A;">${teamName}</strong> on TacticalSync. Accept below to get access to your team's agendas, action items, and meeting history.
+                    ${introText}
                   </p>
 
                   <!-- CTA Button -->
