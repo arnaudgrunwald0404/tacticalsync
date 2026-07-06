@@ -188,11 +188,21 @@ interface InboxAssistantPanelProps {
   /** The person tag currently selected in the left sidebar's People section, if any. */
   selectedPersonTag?: InboxTag | null;
   userId?: string | null;
+  /** True when this account has never had any inbox items — swaps the default
+   *  panel greeting from a returning-user framing ("what's up next") to a
+   *  first-visit welcome. */
+  isNewUser?: boolean;
 }
 
 // ── Default state ─────────────────────────────────────────────────────────────
 
-function DefaultState({ userName, onSuggestion }: { userName?: string; onSuggestion: (s: string) => void }) {
+function DefaultState({
+  userName, isNewUser, onSuggestion,
+}: {
+  userName?: string;
+  isNewUser?: boolean;
+  onSuggestion: (s: string) => void;
+}) {
   const first = userName?.split(' ')[0];
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-5 gap-5">
@@ -201,9 +211,15 @@ function DefaultState({ userName, onSuggestion }: { userName?: string; onSuggest
       </div>
       <div className="text-center space-y-1">
         <p className="font-semibold text-gray-900 text-base">
-          {first ? `What's up next, ${first}?` : "What's up next?"}
+          {isNewUser
+            ? (first ? `Welcome, ${first}` : 'Welcome to TacticalSync')
+            : (first ? `What's up next, ${first}?` : "What's up next?")}
         </p>
-        <p className="text-xs text-gray-400">Here are some things I can help with</p>
+        <p className="text-xs text-gray-400">
+          {isNewUser
+            ? "Record a conversation and I'll turn it into tracked follow-ups — or let's get you set up"
+            : 'Here are some things I can help with'}
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2 w-full">
         {SUGGESTIONS.map(s => (
@@ -371,7 +387,7 @@ export function InboxAssistantPanel({
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
   onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
-  meetingEvent, selectedPersonTag, userId,
+  meetingEvent, selectedPersonTag, userId, isNewUser,
 }: InboxAssistantPanelProps) {
   const [prefill, setPrefill] = useState<{ text: string; token: number }>({ text: '', token: 0 });
   const isMobile = useIsMobile();
@@ -521,6 +537,7 @@ export function InboxAssistantPanel({
           ) : (
             <DefaultState
               userName={userName}
+              isNewUser={isNewUser}
               onSuggestion={s => setPrefill(prev => ({ text: s, token: prev.token + 1 }))}
             />
           )}

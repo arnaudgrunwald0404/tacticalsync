@@ -243,7 +243,10 @@ export default function InboxPage() {
   // `items` replays the same patch here, keeping counts in sync with no extra
   // network round trip.
   const allFilter = useMemo<InboxFilterState>(() => ({ builtIn: 'all' }), []);
-  const { items: allItems, applyExternalPatch: mirrorToAllItems } = useInboxItems(userId, allFilter);
+  const { items: allItems, loading: allItemsLoading, applyExternalPatch: mirrorToAllItems } = useInboxItems(userId, allFilter);
+  // Drives the assistant panel's default greeting: a returning-user "what's up
+  // next" framing doesn't fit someone who has never had an inbox item.
+  const isNewUser = !allItemsLoading && allItems.length === 0;
 
   const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
@@ -763,6 +766,7 @@ export default function InboxPage() {
         meetingEvent={selectedMeetingEvent}
         selectedPersonTag={selectedPersonTag}
         userId={userId}
+        isNewUser={isNewUser}
       />
       </div>
     </div>
