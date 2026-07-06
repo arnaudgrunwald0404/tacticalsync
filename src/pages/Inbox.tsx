@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type ComponentType } from 'react';
 import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -20,6 +20,7 @@ import { InboxGroupedView } from '@/components/inbox/InboxGroupedView';
 import { InboxByProjectView } from '@/components/inbox/InboxByProjectView';
 import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
 import { InboxAssistantPanel } from '@/components/inbox/InboxAssistantPanel';
+import { AccountabilityIllustration } from '@/components/inbox/AccountabilityIllustration';
 import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
 import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
@@ -41,9 +42,7 @@ async function seedDemoItems(userId: string, tags: { id: string; name: string }[
   const existing = await supabase.from('inbox_items').select('id').eq('user_id', userId).limit(1);
   if (existing.data && existing.data.length > 0) return;
 
-  const demoItems: Array<{ type: InboxItemType; text: string; tagNames: string[] }> = [
-    { type: 'task',           text: 'Tag and file last week\'s postmortem doc', tagNames: [] },
-  ];
+  const demoItems: Array<{ type: InboxItemType; text: string; tagNames: string[] }> = [];
 
   for (const item of demoItems) {
     const { data: inserted } = await supabase
@@ -117,6 +116,8 @@ interface EmptyStateContent {
   icon: LucideIcon;
   title: string;
   subtitle: string;
+  /** Optional brand illustration shown instead of the plain icon+circle treatment. */
+  illustration?: ComponentType<{ className?: string }>;
 }
 
 function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateContent {
@@ -173,8 +174,9 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
     default:
       return {
         icon: InboxIcon,
-        title: 'Inbox zero',
-        subtitle: 'Add a task, note, or question below to get started.',
+        illustration: AccountabilityIllustration,
+        title: 'This is where accountability lives',
+        subtitle: "Record a conversation and we'll surface commitments and follow-ups here automatically — so nothing falls through the cracks.",
       };
   }
 }
@@ -674,10 +676,14 @@ export default function InboxPage() {
           {itemsLoading ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-2 px-6 text-center">
-              <div className="h-11 w-11 rounded-full bg-gray-100 flex items-center justify-center mb-1">
-                <emptyState.icon className="h-5 w-5 text-gray-400" />
-              </div>
+            <div className="flex flex-col items-center justify-center h-56 gap-2 px-6 text-center">
+              {emptyState.illustration ? (
+                <emptyState.illustration className="h-24 w-auto mb-1" />
+              ) : (
+                <div className="h-11 w-11 rounded-full bg-gray-100 flex items-center justify-center mb-1">
+                  <emptyState.icon className="h-5 w-5 text-gray-400" />
+                </div>
+              )}
               <p className="text-sm font-medium text-gray-600">{emptyState.title}</p>
               <p className="text-xs text-gray-400 max-w-[240px]">{emptyState.subtitle}</p>
             </div>
