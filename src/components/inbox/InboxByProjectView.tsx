@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Hash, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxItemRow } from './InboxItemRow';
-import { isAutoPinnedItem } from '@/lib/inboxValidation';
+import { isAutoPinnedItem, priorityRank } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -37,9 +37,10 @@ export function InboxByProjectView({
   const { pinnedItems, projectGroups } = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
 
-    // Weekly priorities and daily check-ins never belong to a project — pull
-    // them out up front so they get their own section above the project
-    // groups instead of sinking into "No project" at the bottom.
+    // Weekly priorities/daily check-ins (never belong to a project) and
+    // manually pinned items both get pulled out up front so they float in
+    // their own section above every project group, regardless of which
+    // project(s) a manually pinned item is tagged with.
     const pinnedItems: InboxItem[] = [];
 
     // Map each item to the project tags it carries
@@ -47,7 +48,7 @@ export function InboxByProjectView({
     const noProject: InboxItem[] = [];
 
     for (const item of items) {
-      if (isAutoPinnedItem(item)) {
+      if (isAutoPinnedItem(item) || item.pinned) {
         pinnedItems.push(item);
         continue;
       }
@@ -76,6 +77,13 @@ export function InboxByProjectView({
     if (noProject.length > 0) {
       groups.push({ tag: null as unknown as InboxTag, items: noProject });
     }
+
+    // Within each section, most-urgent-first: Do Now, then the informal due
+    // date tiers (now/1d/3d/1w/2w/1m), least urgent (or no due date) last.
+    const now = new Date();
+    const byUrgency = (a: InboxItem, b: InboxItem) => priorityRank(a, now) - priorityRank(b, now);
+    pinnedItems.sort(byUrgency);
+    for (const group of groups) group.items.sort(byUrgency);
 
     return { pinnedItems, projectGroups: groups };
   }, [items, allTags]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, Calendar, Unlink, RefreshCw, Clock } from 'lucide-react';
+import { Loader2, Save, Calendar, Unlink, RefreshCw, Clock, Mail } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -29,6 +29,7 @@ export default function CosCalendarSyncPanel() {
   } | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingGmail, setSyncingGmail] = useState(false);
   const [savingAutoSync, setSavingAutoSync] = useState(false);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function CosCalendarSyncPanel() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly',
+        scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly',
         queryParams: { access_type: 'offline', prompt: 'consent' },
         redirectTo: `${origin}/chief-of-staff?calendar=connected`,
       },
@@ -102,6 +103,40 @@ export default function CosCalendarSyncPanel() {
       toast({ title: 'Sync failed', description: String(err), variant: 'destructive' });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const syncGmailNow = async () => {
+    setSyncingGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-meeting-assets-sync', { body: {} });
+      if (error) {
+        // Non-2xx responses land here, not in `data` — the JSON body (with our
+        // `error: 'missing_scope'` code) is on the underlying Response.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const errBody = await (error as any)?.context?.json?.().catch(() => null);
+        if (errBody?.error === 'missing_scope') {
+          toast({
+            title: 'Reconnect needed',
+            description: 'Disconnect and reconnect Google Calendar to grant Gmail access for this sync.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw error;
+      }
+      const { processed = 0, transcripts_fetched = 0 } = (data ?? {}) as {
+        processed?: number;
+        transcripts_fetched?: number;
+      };
+      toast({
+        title: 'Gmail sync complete',
+        description: `${processed} meeting email${processed === 1 ? '' : 's'} found · ${transcripts_fetched} new summar${transcripts_fetched === 1 ? 'y' : 'ies'} added`,
+      });
+    } catch (err) {
+      toast({ title: 'Sync failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setSyncingGmail(false);
     }
   };
 
@@ -154,6 +189,10 @@ export default function CosCalendarSyncPanel() {
                 <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
                   {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   Sync now
+                </Button>
+                <Button size="sm" variant="outline" onClick={syncGmailNow} disabled={syncingGmail} className="gap-1.5">
+                  {syncingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                  Sync meeting emails
                 </Button>
                 <Button
                   size="sm"
