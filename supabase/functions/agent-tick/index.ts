@@ -27,7 +27,6 @@ interface AgentConfig {
   quiet_hours_start: number // 0-23
   quiet_hours_end: number   // 0-23
   timezone: string
-  slack_notifications: boolean
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -42,7 +41,27 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   quiet_hours_start: 18,
   quiet_hours_end: 9,
   timezone: 'America/New_York',
-  slack_notifications: true,
+}
+
+// Per-notification-type Slack delivery toggles, replacing the old single
+// agent_config.slack_notifications master flag. Set via the Notifications
+// settings page (src/components/cos/NotificationSettingsPanel.tsx).
+interface NotificationPreferences {
+  overdue_action_nudges: boolean
+  prep_ready: boolean
+  escalation_alerts: boolean
+  format_suggestions: boolean
+  meeting_followups: boolean
+  daily_brief: boolean
+}
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  overdue_action_nudges: true,
+  prep_ready: true,
+  escalation_alerts: true,
+  format_suggestions: true,
+  meeting_followups: true,
+  daily_brief: true,
 }
 
 /**
@@ -217,7 +236,7 @@ serve(async (req) => {
     // Fetch all users with agent enabled
     const { data: settingsRows, error: settingsErr } = await supabase
       .from('cos_settings')
-      .select('user_id, agent_config')
+      .select('user_id, agent_config, notification_preferences')
 
     if (settingsErr) {
       return jsonResponse({ error: 'settings_fetch_failed', detail: settingsErr.message }, 500)
@@ -244,6 +263,11 @@ serve(async (req) => {
       const userId = (row as { user_id: string }).user_id
       const rawConfig = (row as { agent_config: unknown }).agent_config
       const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...(rawConfig as Partial<AgentConfig>) }
+      const rawNotifPrefs = (row as { notification_preferences: unknown }).notification_preferences
+      const notifPrefs: NotificationPreferences = {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        ...(rawNotifPrefs as Partial<NotificationPreferences>),
+      }
 
       // Post-meeting transcript check runs regardless of quiet hours — it only
       // does silent DB work (sync Zoom + extract action items). We just suppress
@@ -252,7 +276,7 @@ serve(async (req) => {
       const inQuiet = isInQuietHours(config)
       if (config.post_meeting_check) {
         try {
-          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config, inQuiet)
+          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config, notifPrefs, inQuiet)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'post_meeting_check',
@@ -303,7 +327,7 @@ serve(async (req) => {
       // ── Nudge overdue action items ────────────────────────────────────
       if (config.nudge_actions) {
         try {
-          actionsNudged = await nudgeActionItems(supabase, userId, config)
+          actionsNudged = await nudgeActionItems(supabase, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'nudge_actions',
@@ -315,7 +339,7 @@ serve(async (req) => {
       // ── Pre-stage meeting prep ────────────────────────────────────────
       if (config.pre_stage_prep) {
         try {
-          prepsStaged = await prestagePreps(supabase, supabaseUrl, serviceRoleKey, userId, config)
+          prepsStaged = await prestagePreps(supabase, supabaseUrl, serviceRoleKey, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'pre_stage_prep',
@@ -338,7 +362,7 @@ serve(async (req) => {
               stalled_topics: 'Stalled Topics',
             }
 
-            if (config.slack_notifications) {
+            if (notifPrefs.escalation_alerts) {
               await sendSlackDM(supabase, userId,
                 `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
                 [{
@@ -376,7 +400,7 @@ serve(async (req) => {
       // ── Format recommendations ─────────────────────────────────────
       if (config.recommend_format) {
         try {
-          await computeFormatRecommendations(supabase, userId, config)
+          await computeFormatRecommendations(supabase, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'recommend_format',
@@ -416,6 +440,7 @@ async function nudgeActionItems(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<number> {
   const today = new Date().toISOString().slice(0, 10)
   const nudgeWindowMs = config.nudge_timing_hours * 3600 * 1000
@@ -535,7 +560,7 @@ async function nudgeActionItems(
   }
 
   // Build Slack message with interactive buttons
-  if (config.slack_notifications) {
+  if (notifPrefs.overdue_action_nudges) {
     const blocks: unknown[] = [
       {
         type: 'section',
@@ -644,6 +669,7 @@ async function prestagePreps(
   serviceRoleKey: string,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<number> {
   const now = new Date()
   const windowEnd = new Date(now.getTime() + 12 * 3600 * 1000)
@@ -751,7 +777,7 @@ async function prestagePreps(
         const dayLabel = meetingDayLabel(event.start_time, config.timezone)
 
         // Notify via Slack
-        if (config.slack_notifications) {
+        if (notifPrefs.prep_ready) {
           await sendSlackDM(supabase, userId, `Your 1:1 prep for ${memberName} is ready (meeting ${dayLabel} at ${meetingTime})`, [
             {
               type: 'section',
@@ -791,6 +817,7 @@ async function computeFormatRecommendations(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<void> {
   const now = new Date()
   const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
@@ -923,7 +950,7 @@ async function computeFormatRecommendations(
 
     // Send notification (only if score suggests something non-standard)
     if (score === 0 || score > 8) {
-      if (config.slack_notifications) {
+      if (notifPrefs.format_suggestions) {
         await sendSlackDM(supabase, userId,
           `Meeting format suggestion for ${memberName}: ${format}`,
           [{
@@ -967,6 +994,7 @@ async function postMeetingCheck(
   serviceRoleKey: string,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
   suppressNotify = false,
 ): Promise<void> {
   const now = new Date()
@@ -1136,7 +1164,7 @@ async function postMeetingCheck(
   }
 
   // Notify via Slack if action items were surfaced (suppressed during quiet hours).
-  if (suggestionsAdded > 0 && config.slack_notifications && !suppressNotify) {
+  if (suggestionsAdded > 0 && notifPrefs.meeting_followups && !suppressNotify) {
     const label = pendingRows[0]?.title ?? 'your recent meeting'
     const n = suggestionsAdded
     await sendSlackDM(
