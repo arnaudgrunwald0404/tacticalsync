@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X, ThumbsUp, BookmarkPlus, XCircle,
+  Check, Pin, X, Users, ThumbsUp, BookmarkPlus, XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -215,7 +215,13 @@ export function InboxItemRow({
               // tooltip carries the full rationale on hover.
               title={item.type === 'agent_nudge' ? item.agent_payload?.rationale : undefined}
             >
-              {TYPE_ICON[item.type]}
+              {/* Pre-1:1 person briefs (Idea #7) get a distinct icon from
+                  daily/weekly briefs — both are type 'brief_item', and
+                  without a visual difference they'd compete for attention
+                  indistinguishably (see PLAN_idea7_relationship_memory.md §6). */}
+              {item.type === 'brief_item' && item.agent_payload?.person_brief
+                ? <Users className="h-4 w-4" />
+                : TYPE_ICON[item.type]}
             </span>
           )}
 

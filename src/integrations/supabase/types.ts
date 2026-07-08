@@ -1323,6 +1323,54 @@ export type Database = {
           },
         ]
       }
+      cos_relationship_documents: {
+        Row: {
+          id: string
+          user_id: string
+          team_member_id: string | null
+          group_meeting_id: string | null
+          content: string
+          version_count: number
+          last_updated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          team_member_id?: string | null
+          group_meeting_id?: string | null
+          content?: string
+          version_count?: number
+          last_updated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          team_member_id?: string | null
+          group_meeting_id?: string | null
+          content?: string
+          version_count?: number
+          last_updated_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_relationship_documents_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_relationship_documents_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cos_settings: {
         Row: {
           agent_config: Json
@@ -1333,6 +1381,7 @@ export type Database = {
           layout_config: Json | null
           notification_preferences: Json
           onboarding_completed: Json
+          person_memory_consent_seen_at: string | null
           status_options: Json
           tab_labels: Json | null
           updated_at: string
@@ -1347,6 +1396,7 @@ export type Database = {
           layout_config?: Json | null
           notification_preferences?: Json
           onboarding_completed?: Json
+          person_memory_consent_seen_at?: string | null
           status_options?: Json
           tab_labels?: Json | null
           updated_at?: string
@@ -1361,6 +1411,7 @@ export type Database = {
           layout_config?: Json | null
           notification_preferences?: Json
           onboarding_completed?: Json
+          person_memory_consent_seen_at?: string | null
           status_options?: Json
           tab_labels?: Json | null
           updated_at?: string

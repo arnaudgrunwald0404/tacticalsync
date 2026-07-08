@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type ComponentType } from 'react';
 import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { PersonPage } from '@/components/inbox/PersonPage';
 import {
   AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
@@ -35,6 +36,9 @@ import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
 import { delegateInboxItemToPerson, useIncomingDelegations } from '@/hooks/useInboxItemDelegation';
 import { useToast } from '@/hooks/use-toast';
+import { usePersonMemoryConsent } from '@/hooks/usePersonMemoryConsent';
+import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsentModal';
+import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMemoryBanner';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
 import { planTagGroupReindex, isAutoPinnedItem } from '@/lib/inboxValidation';
@@ -202,11 +206,15 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  // Derived from the URL so navigating between /inbox and /inbox/meetings always
-  // switches the middle view — InboxPage stays mounted across those routes, so a
-  // one-time useState initializer would go stale and leave the wrong panel showing.
-  const activePanel: 'inbox' | 'meetings' =
-    location.pathname.startsWith('/inbox/meetings') ? 'meetings' : 'inbox';
+  const { memberId: routeMemberId } = useParams<{ memberId?: string }>();
+  // Derived from the URL so navigating between /inbox, /inbox/meetings, and
+  // /inbox/person/:memberId always switches the middle view — InboxPage stays
+  // mounted across those routes, so a one-time useState initializer would go
+  // stale and leave the wrong panel showing.
+  const activePanel: 'inbox' | 'meetings' | 'person' =
+    location.pathname.startsWith('/inbox/meetings') ? 'meetings' :
+    location.pathname.startsWith('/inbox/person/') && routeMemberId ? 'person' :
+    'inbox';
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | undefined>(undefined);
   const [seeded, setSeeded] = useState(false);
@@ -793,6 +801,25 @@ export default function InboxPage() {
     return tag?.type === 'person' ? tag : null;
   }, [filter, tags]);
 
+  // Idea #7 (Relationship memory): first-run consent/expectations modal.
+  // Shown once, before the user's first person-page view or first received
+  // pre-1:1 brief — whichever comes first (PLAN_idea7_relationship_memory.md
+  // §7a.4). `allItems` (unfiltered) is used for the brief-item check so it
+  // fires even if the user's current filter/view doesn't happen to show it.
+  const { shouldShow: showConsentModal, acknowledge: acknowledgeConsent } = usePersonMemoryConsent(userId);
+  const hasPersonBriefItem = useMemo(
+    () => allItems.some(i => i.type === 'brief_item' && !!i.agent_payload?.person_brief),
+    [allItems],
+  );
+  const consentTriggerName = useMemo(() => {
+    if (activePanel === 'person' && routeMemberId) {
+      const tag = tags.find(t => t.member_id === routeMemberId && t.type === 'person');
+      return tag?.name;
+    }
+    const briefItem = allItems.find(i => i.type === 'brief_item' && !!i.agent_payload?.person_brief);
+    return briefItem?.agent_payload?.person_brief?.member_name;
+  }, [activePanel, routeMemberId, tags, allItems]);
+
   const applyFilter = useCallback((f: InboxFilterState) => {
     setFilter(f);
     setSelected(new Set());
@@ -872,7 +899,7 @@ export default function InboxPage() {
           )}
 
           <h1 className="font-semibold text-gray-900 text-sm truncate">
-            {activePanel === 'meetings' ? 'Meetings' : title}
+            {activePanel === 'meetings' ? 'Meetings' : activePanel === 'person' ? 'Person' : title}
           </h1>
           {activePanel === 'inbox' && !itemsLoading && (
             <span className="text-xs text-gray-400 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''}</span>
@@ -933,6 +960,16 @@ export default function InboxPage() {
           )}
         </div>
 
+        {/* Idea #7 (Relationship memory) what's-new callout — see WhatsNewPersonMemoryBanner
+            for why this is a dismissible banner rather than a changelog entry. */}
+        {activePanel === 'inbox' && (
+          <WhatsNewPersonMemoryBanner
+            examplePersonMemberId={tags.find(t => t.type === 'person' && t.member_id)?.member_id}
+            examplePersonName={tags.find(t => t.type === 'person' && t.member_id)?.name}
+            onViewPersonPage={(memberId) => navigate(`/inbox/person/${memberId}`)}
+          />
+        )}
+
         {activePanel === 'meetings' && (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <InboxMeetingsView
@@ -944,6 +981,16 @@ export default function InboxPage() {
               onTabChange={setMeetingDetailTab}
             />
           </div>
+        )}
+
+        {/* Idea #7 (Relationship memory): person page */}
+        {activePanel === 'person' && routeMemberId && (
+          <PersonPage
+            userId={userId}
+            memberId={routeMemberId}
+            onBack={() => navigate('/inbox')}
+            onOpenItem={openDrawer}
+          />
         )}
 
         {/* Bulk action bar — wraps to multiple rows when it can't fit */}
@@ -1169,12 +1216,21 @@ export default function InboxPage() {
         meetingOptions={meetingOptions}
         meetingEvent={selectedMeetingEvent}
         selectedPersonTag={selectedPersonTag}
+        onViewPersonPage={(memberId) => navigate(`/inbox/person/${memberId}`)}
         userId={userId}
         isNewUser={isNewUser}
         onMaterializeOnboarding={handleMaterializeOnboarding}
         onMutated={handleAssistantMutated}
       />
       </div>
+
+      {/* Idea #7 (Relationship memory): first-run consent/expectations modal */}
+      <PersonMemoryConsentModal
+        open={showConsentModal && (activePanel === 'person' || hasPersonBriefItem)}
+        memberNameExample={consentTriggerName}
+        onAcknowledge={acknowledgeConsent}
+        onManageSettings={() => navigate('/settings')}
+      />
     </div>
   );
 }

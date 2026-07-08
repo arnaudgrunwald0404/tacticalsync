@@ -2,6 +2,7 @@
 import { test as baseTest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types';
+import { LOCAL_SUPABASE_URL, LOCAL_SUPABASE_SERVICE_ROLE_KEY } from './localSupabaseDefaults';
 import {
   retryWithBackoff,
   waitForCondition,
@@ -29,8 +30,8 @@ export const test = baseTest.extend<TestFixtures>({
   // eslint-disable-next-line no-empty-pattern
   supabase: async ({}, use) => {
     const supabase = createClient<Database>(
-      'http://127.0.0.1:54321',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU',
+      LOCAL_SUPABASE_URL,
+      LOCAL_SUPABASE_SERVICE_ROLE_KEY,
       {
         auth: {
           autoRefreshToken: false,
