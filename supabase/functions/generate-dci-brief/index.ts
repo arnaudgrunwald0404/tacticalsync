@@ -16,6 +16,15 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
+// Claude sometimes prepends reasoning prose before the JSON payload despite
+// instructions not to. Recover by locating the embedded {...} object.
+function extractJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) return null
+  return text.slice(start, end + 1)
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -718,80 +727,88 @@ Activities:
 
     // ── Parse response ────────────────────────────────────────────────────
 
-    let parsed: ClaudeBriefResponse
+    let parsed: ClaudeBriefResponse | null = null
+    const cleaned = rawText.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
     try {
-      const cleaned = rawText.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
       parsed = JSON.parse(cleaned)
     } catch {
-      // Fallback: use raw text as brief, extract what we can
-      parsed = {
-        brief_markdown: rawText,
-        priorities: [],
-        weekly_objectives: [],
-        weekly_objective_statuses: null,
-        suggested_topic: '',
+      const extracted = extractJsonObject(rawText)
+      if (extracted) {
+        try { parsed = JSON.parse(extracted) } catch { parsed = null }
       }
+    }
+
+    if (!parsed || typeof parsed.brief_markdown !== 'string' || !parsed.brief_markdown.trim()) {
+      // Don't persist reasoning prose as if it were a real brief — that
+      // silently produces a "0 priorities" brief with no visible failure.
+      parsed = null
+      errors.push({ source: 'claude_parse', error: 'Claude did not return a parseable brief; skipped write for today.' })
     }
 
     // ── Write to cos_dci_logs (upsert) ────────────────────────────────────
 
-    const upsertData: Record<string, unknown> = {
-      user_id: userId,
-      date: todayDate,
-      topic_raised: parsed.suggested_topic || null,
-      notes: parsed.brief_markdown,
-      brief_markdown: parsed.brief_markdown,
-      brief_generated_at: new Date().toISOString(),
-      data_sources_used: dataSources,
-    }
-
-    // Only write priorities when Claude returned them; never overwrite existing with null
-    if (parsed.priorities.length > 0) {
-      upsertData.priority_1 = parsed.priorities[0] ?? null
-      upsertData.priority_2 = parsed.priorities[1] ?? null
-      upsertData.priority_3 = parsed.priorities[2] ?? null
-    }
-
-    // On Monday: set weekly objectives
-    if (pt.isMonday && parsed.weekly_objectives.length > 0) {
-      const objs = parsed.weekly_objectives
-      upsertData.weekly_obj_1 = objs[0]?.title ?? null
-      upsertData.weekly_obj_2 = objs[1]?.title ?? null
-      upsertData.weekly_obj_3 = objs[2]?.title ?? null
-      upsertData.weekly_obj_1_activities = objs[0]?.activities ?? []
-      upsertData.weekly_obj_2_activities = objs[1]?.activities ?? []
-      upsertData.weekly_obj_3_activities = objs[2]?.activities ?? []
-    }
-
-    // On Thursday/Friday: set weekly objective statuses
-    if (pt.isThursdayOrFriday && parsed.weekly_objective_statuses) {
-      const validStatuses = new Set(['done', 'in_progress', 'blocked', 'deferred'])
-      const statuses = parsed.weekly_objective_statuses
-      if (statuses[0] && validStatuses.has(statuses[0])) upsertData.weekly_obj_1_status = statuses[0]
-      if (statuses[1] && validStatuses.has(statuses[1])) upsertData.weekly_obj_2_status = statuses[1]
-      if (statuses[2] && validStatuses.has(statuses[2])) upsertData.weekly_obj_3_status = statuses[2]
-    }
-
-    // Check if row exists, then insert or update
-    const { data: existingRow } = await supabase
-      .from('cos_dci_logs')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('date', todayDate)
-      .maybeSingle()
-
     let writeError: string | null = null
-    if (existingRow) {
-      const { error: updateErr } = await supabase
+
+    if (parsed) {
+      const upsertData: Record<string, unknown> = {
+        user_id: userId,
+        date: todayDate,
+        topic_raised: parsed.suggested_topic || null,
+        notes: parsed.brief_markdown,
+        brief_markdown: parsed.brief_markdown,
+        brief_generated_at: new Date().toISOString(),
+        data_sources_used: dataSources,
+      }
+
+      // Only write priorities when Claude returned them; never overwrite existing with null
+      if (parsed.priorities.length > 0) {
+        upsertData.priority_1 = parsed.priorities[0] ?? null
+        upsertData.priority_2 = parsed.priorities[1] ?? null
+        upsertData.priority_3 = parsed.priorities[2] ?? null
+      }
+
+      // On Monday: set weekly objectives
+      if (pt.isMonday && parsed.weekly_objectives.length > 0) {
+        const objs = parsed.weekly_objectives
+        upsertData.weekly_obj_1 = objs[0]?.title ?? null
+        upsertData.weekly_obj_2 = objs[1]?.title ?? null
+        upsertData.weekly_obj_3 = objs[2]?.title ?? null
+        upsertData.weekly_obj_1_activities = objs[0]?.activities ?? []
+        upsertData.weekly_obj_2_activities = objs[1]?.activities ?? []
+        upsertData.weekly_obj_3_activities = objs[2]?.activities ?? []
+      }
+
+      // On Thursday/Friday: set weekly objective statuses
+      if (pt.isThursdayOrFriday && parsed.weekly_objective_statuses) {
+        const validStatuses = new Set(['done', 'in_progress', 'blocked', 'deferred'])
+        const statuses = parsed.weekly_objective_statuses
+        if (statuses[0] && validStatuses.has(statuses[0])) upsertData.weekly_obj_1_status = statuses[0]
+        if (statuses[1] && validStatuses.has(statuses[1])) upsertData.weekly_obj_2_status = statuses[1]
+        if (statuses[2] && validStatuses.has(statuses[2])) upsertData.weekly_obj_3_status = statuses[2]
+      }
+
+      // Check if row exists, then insert or update
+      const { data: existingRow } = await supabase
         .from('cos_dci_logs')
-        .update(upsertData)
-        .eq('id', existingRow.id)
-      if (updateErr) writeError = updateErr.message
+        .select('id')
+        .eq('user_id', userId)
+        .eq('date', todayDate)
+        .maybeSingle()
+
+      if (existingRow) {
+        const { error: updateErr } = await supabase
+          .from('cos_dci_logs')
+          .update(upsertData)
+          .eq('id', existingRow.id)
+        if (updateErr) writeError = updateErr.message
+      } else {
+        const { error: insertErr } = await supabase
+          .from('cos_dci_logs')
+          .insert(upsertData)
+        if (insertErr) writeError = insertErr.message
+      }
     } else {
-      const { error: insertErr } = await supabase
-        .from('cos_dci_logs')
-        .insert(upsertData)
-      if (insertErr) writeError = insertErr.message
+      writeError = 'Claude did not return a parseable brief'
     }
 
     // ── Send Slack DM ─────────────────────────────────────────────────────
@@ -809,7 +826,8 @@ Activities:
     const notificationPreferences = settingsRow?.notification_preferences as { daily_brief?: boolean } | null
     const shouldSendSlack = notificationPreferences?.daily_brief !== false
 
-    if (shouldSendSlack) {
+    if (shouldSendSlack && parsed) {
+      const brief = parsed
       try {
         const { data: slackCreds } = await supabase
           .from('user_slack_credentials')
@@ -819,7 +837,7 @@ Activities:
 
         if (slackCreds?.access_token && slackCreds?.slack_user_id) {
           // Build Slack message (keep under 4000 chars)
-          let slackMsg = markdownToSlack(parsed.brief_markdown)
+          let slackMsg = markdownToSlack(brief.brief_markdown)
           if (slackMsg.length > 3800) {
             // Truncate: keep header + Today's Focus + Weekly Objectives + Topic
             const sections = slackMsg.split('───────────────')
@@ -863,7 +881,7 @@ Activities:
     const finishedAt = new Date().toISOString()
     await supabase.from('cos_prep_schedule').update({
       dci_last_run_at: finishedAt,
-      dci_last_run_status: writeError ? 'partial' : 'ok',
+      dci_last_run_status: !parsed ? 'failed' : writeError ? 'partial' : 'ok',
     }).eq('user_id', userId)
 
     // ── Write run audit row ───────────────────────────────────────────────
@@ -875,10 +893,11 @@ Activities:
         trigger_type: isBatch ? 'cron' : 'manual',
         started_at: new Date(startMs).toISOString(),
         finished_at: finishedAt,
-        status: writeError ? 'failed' : 'ok',
+        status: !parsed ? 'failed' : writeError ? 'partial' : 'ok',
         items_found: dataSources.length,
-        items_surfaced: 0,
+        items_surfaced: parsed ? parsed.priorities.length : 0,
         error: writeError ?? null,
+        summary: dataSources.length > 0 ? `Sources: ${dataSources.join(', ')}` : null,
       })
     } catch { /* non-fatal */ }
 
@@ -898,7 +917,7 @@ Activities:
     } catch { /* non-fatal */ }
 
     return jsonResponse({
-      brief_generated: true,
+      brief_generated: parsed !== null,
       data_sources_used: dataSources,
       slack_dm_sent: slackSent,
       db_write_error: writeError,

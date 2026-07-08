@@ -1080,9 +1080,31 @@ async function postMeetingCheck(
     console.warn('post_meeting_check: zoom sync failed:', (err as Error).message)
   }
 
+  // Step 1b: Fallback sync from Zoom's "Meeting assets ready" emails — catches
+  // hosted meetings zoom-recordings-sync's API calls miss (e.g. cloud recording
+  // disabled but an AI Companion summary still got emailed to the host).
+  // Not fatal: users who haven't reconnected Google since gmail.readonly was
+  // added, or who never connected Google at all, just get a warning here.
+  let gmailSyncOk = false
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/gmail-meeting-assets-sync`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        'x-supabase-user-id': userId,
+      },
+      body: JSON.stringify({ days: 1 }),
+    })
+    gmailSyncOk = res.ok
+    if (!res.ok) console.warn(`post_meeting_check: gmail-meeting-assets-sync returned ${res.status}`)
+  } catch (err) {
+    console.warn('post_meeting_check: gmail meeting-assets sync failed:', (err as Error).message)
+  }
+
   // Step 2: Extract action item suggestions from any new transcripts.
   let suggestionsAdded = 0
-  if (zoomSyncOk) {
+  if (zoomSyncOk || gmailSyncOk) {
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/generate-meeting-suggestions`, {
         method: 'POST',

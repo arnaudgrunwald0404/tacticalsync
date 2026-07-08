@@ -56,7 +56,8 @@ export interface AgentPayload {
 }
 
 export interface SourceRef {
-  type: 'zoom_recording' | 'dci_brief' | 'dci_weekly_brief' | 'calendar' | 'manual';
+  type: 'zoom_recording' | 'dci_brief' | 'dci_weekly_brief' | 'calendar' | 'manual'
+    | 'slack_message' | 'gmail_message';
   id?: string;
 }
 

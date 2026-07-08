@@ -47,6 +47,9 @@ verify_jwt = true
 [functions.daily-prep-batch]
 verify_jwt = false
 
+[functions.extract-inbox-action-items]
+verify_jwt = false
+
 [functions.agent-tick]
 verify_jwt = false
 

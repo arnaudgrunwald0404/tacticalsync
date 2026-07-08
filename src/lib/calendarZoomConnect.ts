@@ -1,8 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const ZOOM_CLIENT_ID = import.meta.env.VITE_ZOOM_CLIENT_ID ?? '';
-const CALENDAR_SCOPES = 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly';
-const ZOOM_SCOPES = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary meeting:read:list_past_instances meeting:read:meeting_transcript docs:read:file docs:read:list_children docs:read:export docs:write:export';
+const CALENDAR_SCOPES = 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly';
+const ZOOM_SCOPES = 'user:read:user meeting:read:list_meetings meeting:read:meeting cloud_recording:read:list_user_recordings cloud_recording:read:list_recording_files meeting:read:summary meeting:read:list_past_instances cloud_recording:read:meeting_transcript docs:read:file docs:read:list_children docs:read:export docs:write:export';
 
 /**
  * Starts the Google Calendar OAuth flow. Same call as CosCalendarSyncPanel's
