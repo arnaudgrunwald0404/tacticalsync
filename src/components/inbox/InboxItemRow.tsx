@@ -181,7 +181,14 @@ export function InboxItemRow({
               never renders a checkbox-shaped glyph next to the select
               checkbox above. */}
           {item.type !== 'task' && (
-            <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
+            <span
+              className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}
+              // "Why am I seeing this" affordance for agent-generated nudges
+              // (PLAN_idea4_agentic_followthrough.md, Section 5.3) — the
+              // persistent caption below covers the short version; this
+              // tooltip carries the full rationale on hover.
+              title={item.type === 'agent_nudge' ? item.agent_payload?.rationale : undefined}
+            >
               {TYPE_ICON[item.type]}
             </span>
           )}
@@ -203,13 +210,23 @@ export function InboxItemRow({
             />
           ) : (
             <button
-              className="flex-1 text-left text-sm min-w-0 break-words"
+              className="flex-1 flex flex-col items-start text-left text-sm min-w-0 break-words"
               onClick={() => onOpenDrawer?.(item)}
               onDoubleClick={e => { e.stopPropagation(); startEditText(); }}
             >
               <span className={cn(isDone && 'line-through text-gray-400')}>
                 {item.text}
               </span>
+              {/* Persistent (not hover-only) provenance caption for agent
+                  nudges — answers "who generated this, why now" inline, per
+                  PLAN_idea4_agentic_followthrough.md Section 5.2. The fuller
+                  rationale is also available via the type icon's tooltip
+                  above (Section 5.3). */}
+              {item.type === 'agent_nudge' && item.agent_payload?.rationale && (
+                <span className="text-[11px] text-amber-700/70 mt-0.5">
+                  {item.agent_payload.rationale}
+                </span>
+              )}
             </button>
           )}
 

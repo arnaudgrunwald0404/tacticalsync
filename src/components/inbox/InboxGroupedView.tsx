@@ -43,7 +43,7 @@ const BUCKETS: { id: InboxBucket; label: string; description: string; accent: st
 function SortableItem({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, isSelected, onSelect,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, isSelected, onSelect,
   prioritizeMode, isNew,
 }: {
   item: InboxItem;
@@ -61,6 +61,7 @@ function SortableItem({
   onOpenDrawer?: (item: InboxItem) => void;
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  onCtaClick?: (item: InboxItem) => void;
   isSelected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -110,6 +111,7 @@ function SortableItem({
           onOpenDrawer={onOpenDrawer}
           onAcceptSuggestion={onAcceptSuggestion}
           onDismissSuggestion={onDismissSuggestion}
+          onCtaClick={onCtaClick}
           isSelected={isSelected}
           onSelect={onSelect}
           prioritizeMode={prioritizeMode}
@@ -125,7 +127,7 @@ function SortableItem({
 function BucketSection({
   bucket, items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, selectedIds, onSelect,
   prioritizeMode, newItemId,
 }: {
   bucket: typeof BUCKETS[number];
@@ -144,6 +146,7 @@ function BucketSection({
   onOpenDrawer?: (item: InboxItem) => void;
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  onCtaClick?: (item: InboxItem) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -186,6 +189,7 @@ function BucketSection({
               onOpenDrawer={onOpenDrawer}
               onAcceptSuggestion={onAcceptSuggestion}
               onDismissSuggestion={onDismissSuggestion}
+              onCtaClick={onCtaClick}
               isSelected={selectedIds?.has(item.id)}
               onSelect={onSelect}
               prioritizeMode={prioritizeMode}
@@ -226,6 +230,7 @@ interface InboxGroupedViewProps {
   onOpenDrawer?: (item: InboxItem) => void;
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  onCtaClick?: (item: InboxItem) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -235,7 +240,7 @@ interface InboxGroupedViewProps {
 export function InboxGroupedView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, selectedIds, onSelect,
+  onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, selectedIds, onSelect,
   prioritizeMode, newItemId,
 }: InboxGroupedViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -308,6 +313,7 @@ export function InboxGroupedView({
             onOpenDrawer={onOpenDrawer}
             onAcceptSuggestion={onAcceptSuggestion}
             onDismissSuggestion={onDismissSuggestion}
+            onCtaClick={onCtaClick}
             selectedIds={selectedIds}
             onSelect={onSelect}
             prioritizeMode={prioritizeMode}

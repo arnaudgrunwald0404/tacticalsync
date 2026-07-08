@@ -510,6 +510,76 @@ export default function InboxPage() {
     void reloadTags();
   }, [reloadItems, reloadTags]);
 
+  // Idea #4 (PLAN_idea4_agentic_followthrough.md, Section 5.1): the agent's
+  // one-time opt-in prompt for inbox nudges is an agent_question item whose
+  // CTA click must flip cos_settings.agent_config.nudge_inbox_items to true
+  // before agent-tick will ever send a real nudge — see
+  // maybeNudgeInboxItems()/decideOptInAction() in supabase/functions/agent-tick.
+  const handleEnableInboxNudges = useCallback(async (item: InboxItem) => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data: settings } = await supabase
+      .from('cos_settings')
+      .select('agent_config')
+      .eq('user_id', userData.user.id)
+      .maybeSingle();
+
+    const currentConfig = (settings?.agent_config as Record<string, unknown> | null) ?? {};
+    await supabase
+      .from('cos_settings')
+      .upsert(
+        { user_id: userData.user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
+        { onConflict: 'user_id' },
+      );
+
+    await supabase.from('cos_agent_log').insert({
+      user_id: userData.user.id,
+      event_type: 'inbox_optin_accepted',
+      item_id: item.id,
+      payload: {},
+    });
+
+    await archive(item.id);
+  }, [archive]);
+
+  // "Not now" on the opt-in prompt is just the item's normal archive action —
+  // but agent-tick's decideOptInAction() (Section 5.1) needs to know a
+  // decline happened so it can start the 14-day re-prompt cooldown, rather
+  // than re-prompting on the very next tick. Intercept archiving specifically
+  // for that item type before delegating to the plain archive() hook —
+  // mirrors the existing isSelfDestruct interception in handleItemDone above.
+  const handleArchive = useCallback(async (id: string) => {
+    const item = allItems.find(i => i.id === id);
+    const isOptInDecline = item?.type === 'agent_question'
+      && item.agent_payload?.source === 'inbox_agent_optin_prompt';
+
+    if (isOptInDecline) {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData.user) {
+        await supabase.from('cos_agent_log').insert({
+          user_id: userData.user.id,
+          event_type: 'inbox_optin_declined',
+          item_id: id,
+          payload: {},
+        });
+      }
+    }
+
+    await archive(id);
+  }, [allItems, archive]);
+
+  // Dispatch table for agent_question CTA clicks, keyed by cta_action —
+  // mirrors the existing cta_action convention used for
+  // 'delete_onboarding_project' above (handled via handleItemDone instead,
+  // since that one triggers off "done" rather than a CTA button).
+  const handleCtaClick = useCallback(async (item: InboxItem) => {
+    const ctaAction = item.agent_payload?.cta_action;
+    if (ctaAction === 'enable_inbox_nudges') {
+      await handleEnableInboxNudges(item);
+    }
+  }, [handleEnableInboxNudges]);
+
   const pinnedProjectIds = useMemo(() =>
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
@@ -585,9 +655,9 @@ export default function InboxPage() {
   }, [selected, items, pinItem]);
 
   const handleBulkArchive = useCallback(async () => {
-    for (const id of selected) await archive(id);
+    for (const id of selected) await handleArchive(id);
     setSelected(new Set());
-  }, [selected, archive]);
+  }, [selected, handleArchive]);
 
   const handleBulkDone = useCallback(async () => {
     for (const id of selected) await handleItemDone(id, true);
@@ -917,7 +987,7 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onArchive={archive}
+              onArchive={handleArchive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
@@ -931,6 +1001,7 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onCtaClick={handleCtaClick}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
@@ -940,7 +1011,7 @@ export default function InboxPage() {
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
-              onArchive={archive}
+              onArchive={handleArchive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
@@ -953,6 +1024,7 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onCtaClick={handleCtaClick}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}

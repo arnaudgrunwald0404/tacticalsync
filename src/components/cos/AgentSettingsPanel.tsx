@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Inbox } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,14 @@ interface AgentConfig {
   escalate_patterns: boolean;
   recommend_format: boolean;
   recommend_tools: boolean;
+  /** Idea #4 (PLAN_idea4_agentic_followthrough.md): nudge before 1:1s about
+   *  open inbox items tagged to that person, and as fixed-due-date inbox
+   *  items approach their date. Defaults to false even when `enabled` is
+   *  true — this is the most proactive/agentic behavior shipped so far (the
+   *  agent contacts the user via Slack DM on its own), so it's turned on via
+   *  the dedicated in-app opt-in prompt, not silently bundled into the
+   *  existing "Agent" toggle. See plan Section 5.1. */
+  nudge_inbox_items: boolean;
   nudge_timing_hours: number;
   nudge_max_count: number;
   quiet_hours_start: number;
@@ -35,6 +43,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   recommend_tools: false,
+  nudge_inbox_items: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -301,6 +310,14 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
               onChange={recommend_tools => update({ recommend_tools })}
             />
 
+            <FeatureToggle
+              icon={Inbox}
+              label="Inbox item nudges"
+              description="Get a heads-up before 1:1s about open items tagged to that person, and as due-dated items approach their date. Uses the same quiet hours and Slack settings as your other agent nudges above."
+              checked={config.nudge_inbox_items}
+              onChange={nudge_inbox_items => update({ nudge_inbox_items })}
+            />
+
             {/* Per-person exceptions summary */}
             <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md border border-dashed border-border bg-muted/30">
               <Users className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -361,7 +378,7 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
           {/* ── Group 4: When it contacts you ─────────────────────────────── */}
           <SettingsGroup
             title="When it contacts you"
-            description="Control delivery channel, timing, and quiet hours."
+            description="Control delivery channel, timing, and quiet hours. Applies to all agent nudges, including inbox item nudges above."
           >
             {/* Slack notifications toggle */}
             <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border bg-background">
