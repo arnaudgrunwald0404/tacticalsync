@@ -10,6 +10,7 @@ export interface NotificationPreferences {
   format_suggestions: boolean;
   meeting_followups: boolean;
   daily_brief: boolean;
+  inbox_item_nudges: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -19,6 +20,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   format_suggestions: true,
   meeting_followups: true,
   daily_brief: true,
+  inbox_item_nudges: true,
 };
 
 export function useNotificationPreferences() {
