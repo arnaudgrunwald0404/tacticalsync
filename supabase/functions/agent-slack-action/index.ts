@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { verifySlackSignature } from "../_shared/slack.ts"
 
 /**
  * Slack interactive action handler.
@@ -22,6 +23,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
  *   since the two operate on entirely different fields for a different
  *   purpose — this pushes a hard due date, that suppresses the item
  *   temporarily without touching its due date.
+ *
+ * This endpoint is public (verify_jwt = false), so every request's Slack
+ * signature (X-Slack-Signature / X-Slack-Request-Timestamp) is verified
+ * against SLACK_SIGNING_SECRET before any action is processed — otherwise
+ * anyone who discovers the URL could forge actions on behalf of any Slack
+ * user whose id they can obtain.
  */
 serve(async (req) => {
   if (req.method !== 'POST') {
@@ -37,8 +44,22 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
+    // Read the raw body once — needed for both signature verification and
+    // form-data parsing (parsing first would make the raw bytes unrecoverable).
+    const rawBody = await req.text()
+
+    const verified = await verifySlackSignature(
+      slackSigningSecret,
+      req.headers.get('X-Slack-Request-Timestamp'),
+      req.headers.get('X-Slack-Signature'),
+      rawBody,
+    )
+    if (!verified) {
+      return new Response('Invalid signature', { status: 401 })
+    }
+
     // Slack sends application/x-www-form-urlencoded with a "payload" field
-    const formData = await req.formData()
+    const formData = new URLSearchParams(rawBody)
     const rawPayload = formData.get('payload')
     if (!rawPayload || typeof rawPayload !== 'string') {
       return new Response('Missing payload', { status: 400 })

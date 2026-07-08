@@ -3,6 +3,7 @@ import { Hash, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxItemRow } from './InboxItemRow';
 import { isAutoPinnedItem, priorityRank } from '@/lib/inboxValidation';
+import type { TriageAction } from '@/lib/meetingInsights';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -23,6 +24,7 @@ interface InboxByProjectViewProps {
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   onCtaClick?: (item: InboxItem) => void;
+  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -32,7 +34,7 @@ interface InboxByProjectViewProps {
 export function InboxByProjectView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, selectedIds, onSelect,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId,
 }: InboxByProjectViewProps) {
   const { pinnedItems, projectGroups } = useMemo(() => {
@@ -92,7 +94,7 @@ export function InboxByProjectView({
   const sharedRowProps = {
     allTags, onArchive, onDelete, onRemoveTag, onAddTag,
     onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-    onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, prioritizeMode,
+    onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, prioritizeMode,
   };
 
   return (
