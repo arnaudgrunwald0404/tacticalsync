@@ -272,6 +272,29 @@ export const delegationRequestSchema = z.discriminatedUnion('action', [
     delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
     answer: z.string().trim().min(1, 'answer cannot be empty.').max(ITEM_TEXT_MAX),
   }),
+  z.object({
+    action: z.literal('approve_step'),
+    delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
+    step_id: z.string().min(1, 'step_id is required.'),
+  }),
+  z.object({
+    action: z.literal('reject_step'),
+    delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
+    step_id: z.string().min(1, 'step_id is required.'),
+  }),
+  z.object({
+    action: z.literal('retry_step'),
+    delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
+    step_id: z.string().min(1, 'step_id is required.'),
+  }),
+  z.object({
+    action: z.literal('approve_all'),
+    delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
+  }),
+  z.object({
+    action: z.literal('cancel'),
+    delegation_id: z.string().refine(isUuid, 'delegation_id must be a UUID.'),
+  }),
 ]);
 export type DelegationRequest = z.infer<typeof delegationRequestSchema>;
 

@@ -4,7 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useActiveQuarter, useTeamCommitments } from '@/hooks/useCommitments';
 import { usePriorityAnalysis, type PriorityCategory } from '@/hooks/usePriorityAnalysis';
 import { useRoles } from '@/hooks/useRoles';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { QuarterSelector } from '@/components/commitments/QuarterSelector';
+import { ManagerSignalsPanel } from '@/components/insights/ManagerSignalsPanel';
 import { cn } from '@/lib/utils';
 
 const CATEGORY_OPTIONS: { value: PriorityCategory; label: string; color: string }[] = [
@@ -89,13 +91,25 @@ export default function Insights() {
   const { isAdmin, isSuperAdmin, loading: rolesLoading } = useRoles();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [bootstrapLoading, setBootstrapLoading] = useState(true);
+
+  // Manager-signals access gate (PLAN_idea9_manager_signals.md §6/§8): this
+  // section is for the direct manager, not gated on admin status. `useTeamMembers`
+  // reads cos_team_members scoped to the current user via RLS, so an empty
+  // result here just means "no direct reports tracked yet," not a denial.
+  const cosMembers = useTeamMembers(currentUserId);
+  const hasDirectReports = useMemo(
+    () => cosMembers.some((m) => m.relationship_type === 'direct_report'),
+    [cosMembers],
+  );
 
   useEffect(() => {
     async function load() {
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData.user?.id;
       if (!uid) { setBootstrapLoading(false); return; }
+      setCurrentUserId(uid);
 
       const { data: membership } = await supabase
         .from('team_members')
@@ -143,13 +157,21 @@ export default function Insights() {
   }, [teamMembers]);
 
   const loading = bootstrapLoading || rolesLoading || quarterLoading;
+  const canSeeAdminAnalysis = isAdmin || isSuperAdmin;
 
-  // Access control
-  if (!rolesLoading && !isAdmin && !isSuperAdmin) {
+  // Access control (PLAN_idea9_manager_signals.md §6.1): the coaching-signals
+  // section below is scoped to "has at least one direct report," independent
+  // of admin status — an admin who isn't the direct manager has no reason to
+  // see another manager's coaching notes, and a non-admin manager should still
+  // see their own. Only block the page entirely if the user is neither an
+  // admin nor a manager with direct reports.
+  if (!rolesLoading && !canSeeAdminAnalysis && !hasDirectReports) {
     return (
       <div className="mx-auto max-w-4xl p-6 text-center">
         <h1 className="text-xl font-semibold">Access Denied</h1>
-        <p className="mt-2 text-muted-foreground">This page is only available to admins.</p>
+        <p className="mt-2 text-muted-foreground">
+          This page is available to admins and to managers with direct reports.
+        </p>
       </div>
     );
   }
@@ -163,7 +185,10 @@ export default function Insights() {
     );
   }
 
-  if (!quarter) {
+  // A manager with direct reports but no admin access still gets the coaching
+  // panel even without an active RCDO quarter — the quarter gate below only
+  // applies to the admin priority-analysis sections.
+  if (!quarter && !hasDirectReports) {
     return (
       <div className="mx-auto max-w-5xl p-6">
         <h1 className="text-xl font-semibold">Insights</h1>
@@ -178,16 +203,35 @@ export default function Insights() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Insights</h1>
-          <p className="text-sm text-muted-foreground">Priority &amp; commitment analysis &mdash; {quarter.label}</p>
+          <p className="text-sm text-muted-foreground">
+            {canSeeAdminAnalysis && quarter
+              ? <>Priority &amp; commitment analysis &mdash; {quarter.label}</>
+              : 'Coaching signals for your direct reports'}
+          </p>
         </div>
-        <QuarterSelector
-          quarters={quarters}
-          selected={quarter}
-          onSelect={setQuarter}
-          isAdmin={false}
-        />
+        {canSeeAdminAnalysis && quarter && (
+          <QuarterSelector
+            quarters={quarters}
+            selected={quarter}
+            onSelect={setQuarter}
+            isAdmin={false}
+          />
+        )}
       </div>
 
+      {/* Manager coaching signals (Idea #9) — visible to any manager with direct
+          reports, regardless of admin status. Rendered above the admin-only
+          priority analysis so it isn't buried under unrelated team-wide content. */}
+      {hasDirectReports && (
+        <section>
+          <ManagerSignalsPanel managerId={currentUserId} />
+        </section>
+      )}
+
+      {/* Everything below is the pre-existing admin-only RCDO priority/commitment
+          analysis — unchanged, still gated on admin status. */}
+      {canSeeAdminAnalysis && quarter && (
+      <>
       {/* Overall breakdown */}
       <section className="rounded-xl border bg-white p-6 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold">Overall Breakdown</h2>
@@ -288,6 +332,8 @@ export default function Insights() {
           </div>
         )}
       </section>
+      </>
+      )}
     </div>
   );
 }

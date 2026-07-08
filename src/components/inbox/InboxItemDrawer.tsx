@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Hash, Tag } from 'lucide-react';
+import { X, Hash, Tag, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WORKFLOW_STATUS_LABELS } from '@/lib/inboxValidation';
 import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
+import { getSourceLink, isSyncedSourceRef } from '@/hooks/useInboxItems';
 import type { InboxItem, InboxTag, BriefPriority } from '@/types/inbox';
 
 interface InboxItemDrawerProps {
@@ -175,9 +177,28 @@ export function InboxItemDrawer({
                 {item.updated_at !== item.created_at && (
                   <li>Last updated {formatDistanceToNow(new Date(item.updated_at))} ago</li>
                 )}
-                {item.source_ref && (
-                  <li>From {item.source_ref.type.replace('_', ' ')}</li>
-                )}
+                {item.source_ref && (() => {
+                  const link = getSourceLink(item.source_ref);
+                  const synced = isSyncedSourceRef(item.source_ref);
+                  return (
+                    <li className="flex items-center gap-1">
+                      {link ? (
+                        <Link to={link.href} title={link.label} className="underline hover:text-gray-600">
+                          {link.label}
+                        </Link>
+                      ) : (
+                        <span>From {item.source_ref.type.replace('_', ' ')}</span>
+                      )}
+                      {synced && (
+                        <span
+                          title="Synced from a meeting or 1:1 — completing it here keeps it in sync there, but editing the text here does not update the original."
+                        >
+                          <Info className="h-3 w-3 flex-shrink-0 text-gray-300" />
+                        </span>
+                      )}
+                    </li>
+                  );
+                })()}
               </ul>
             </div>
           </div>

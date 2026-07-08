@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Sparkles, Loader2, X, Clock, MessageSquare,
   ChevronDown, ChevronUp, Settings2, Calendar, Video, ListChecks, TrendingUp,
-  Eye, RefreshCw,
+  Eye, RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -159,21 +159,26 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      const [scheduleRes, slackRes] = await Promise.all([
+      const [scheduleRes, slackRes, settingsRes] = await Promise.all([
         db.from('cos_prep_schedule')
-          .select('dci_enabled, dci_slack_dm, dci_sources, dci_instructions, dci_last_run_at, dci_last_run_status, run_hour_local')
+          .select('dci_enabled, dci_sources, dci_instructions, dci_last_run_at, dci_last_run_status, run_hour_local')
           .eq('user_id', user.id)
           .maybeSingle(),
         db.from('user_slack_credentials')
           .select('access_token')
           .eq('user_id', user.id)
           .maybeSingle(),
+        db.from('cos_settings')
+          .select('notification_preferences')
+          .eq('user_id', user.id)
+          .maybeSingle(),
       ]);
 
       setHasSlackConnected(Boolean(slackRes.data?.access_token));
+      setSlackDm(settingsRes.data?.notification_preferences?.daily_brief ?? true);
 
       const schedule = scheduleRes.data as {
-        dci_enabled: boolean; dci_slack_dm: boolean;
+        dci_enabled: boolean;
         dci_sources: string[] | null; dci_instructions: string | null;
         dci_last_run_at: string | null; dci_last_run_status: string | null;
         run_hour_local: number | null;
@@ -184,7 +189,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
       if (schedule?.dci_enabled) {
         setState('enabled');
-        setSlackDm(schedule.dci_slack_dm ?? true);
         setLastRunStatus(schedule.dci_last_run_status);
         setLastRunAt(schedule.dci_last_run_at);
         if (schedule.run_hour_local != null) setRunHourLocal(schedule.run_hour_local);
@@ -218,7 +222,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
         .update({
           dci_sources: sources,
           dci_instructions: instructions || null,
-          dci_slack_dm: slackDm,
         })
         .eq('user_id', user.id);
 
@@ -227,7 +230,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     } catch (err) {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
     }
-  }, [sources, instructions, slackDm, toast]);
+  }, [sources, instructions, toast]);
 
   // ── Enable DCI briefs ───────────────────────────────────────────────────
 
@@ -242,7 +245,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
       await db.from('cos_prep_schedule').upsert({
         user_id: user.id,
         dci_enabled: true,
-        dci_slack_dm: slackDm,
         dci_sources: sources,
         dci_instructions: instructions || null,
       }, { onConflict: 'user_id' });
@@ -256,7 +258,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     } finally {
       setEnabling(false);
     }
-  }, [slackDm, sources, instructions, toast, onStateChange]);
+  }, [sources, instructions, toast, onStateChange]);
 
   // ── Run now ─────────────────────────────────────────────────────────────
 
@@ -294,22 +296,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
       toast({ title: 'Failed', description: String(err), variant: 'destructive' });
     }
   }, [toast, onStateChange]);
-
-  // ── Toggle Slack DM (live save when enabled) ────────────────────────────
-
-  const toggleSlackDm = useCallback(async (checked: boolean) => {
-    setSlackDm(checked);
-    if (state !== 'enabled') return; // Will be saved on enable
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
-      await db.from('cos_prep_schedule').update({ dci_slack_dm: checked }).eq('user_id', user.id);
-    } catch {
-      setSlackDm(!checked);
-    }
-  }, [state]);
 
   // ── Dismiss ─────────────────────────────────────────────────────────────
 
@@ -425,12 +411,15 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
                 onInstructionsChange={setInstructions}
               />
 
-              {/* Slack DM toggle */}
+              {/* Slack DM status + link to Notifications settings */}
               {hasSlackConnected && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Switch checked={slackDm} onCheckedChange={toggleSlackDm} className="scale-90" />
-                  <span className="text-xs text-muted-foreground">Send me a Slack DM each morning</span>
-                </label>
+                <Link
+                  to="/settings?section=notifications"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
+                >
+                  {slackDm ? 'Slack DM is on' : 'Slack DM is off'} — manage in Notifications settings
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
               )}
 
               <div className="flex items-center gap-2 pt-1">
@@ -485,12 +474,15 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
                   onInstructionsChange={setInstructions}
                 />
 
-                {/* Slack DM toggle */}
+                {/* Slack DM status + link to Notifications settings */}
                 {hasSlackConnected && (
-                  <label className="flex items-center gap-2 cursor-pointer mt-4">
-                    <Switch checked={slackDm} onCheckedChange={setSlackDm} className="scale-90" />
-                    <span className="text-xs text-muted-foreground">Send me a Slack DM each morning</span>
-                  </label>
+                  <Link
+                    to="/settings?section=notifications"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit mt-4"
+                  >
+                    {slackDm ? 'Slack DM is on' : 'Slack DM is off'} — manage in Notifications settings
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
                 )}
               </div>
             )}

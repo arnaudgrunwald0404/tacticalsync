@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   Bell, BellOff, FileText, AlertTriangle, BarChart3, CheckCircle2, XCircle,
-  Bot, Clock, Loader2, Wrench, Video,
+  Bot, Clock, Loader2, Wrench, Video, Inbox, Sparkles,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -44,6 +44,16 @@ const EVENT_META: Record<string, {
   health_score_updated:{ icon: Bot,            label: 'Health updated',    color: 'text-emerald-500' },
   tools_recommended:   { icon: Wrench,         label: 'Tools reviewed',    color: 'text-violet-500' },
   post_meeting_check:  { icon: Video,          label: 'Meeting check',     color: 'text-blue-500' },
+  // Idea #4: inbox item nudges (PLAN_idea4_agentic_followthrough.md)
+  inbox_nudge_sent:        { icon: Inbox,        label: 'Inbox nudge sent',             color: 'text-amber-500' },
+  inbox_nudge_capped:      { icon: BellOff,      label: 'Inbox nudges paused',          color: 'text-muted-foreground' },
+  inbox_due_nudge_sent:    { icon: Inbox,        label: 'Due-date nudge sent',          color: 'text-amber-500' },
+  inbox_due_nudge_capped:  { icon: BellOff,      label: 'Due-date nudges paused',       color: 'text-muted-foreground' },
+  inbox_agenda_staged:     { icon: FileText,     label: 'Agenda pre-staged',            color: 'text-blue-500' },
+  inbox_optin_prompted:    { icon: Sparkles,     label: 'Asked to enable inbox nudges', color: 'text-primary' },
+  inbox_optin_declined:    { icon: XCircle,      label: 'Inbox nudges declined',        color: 'text-muted-foreground' },
+  inbox_optin_accepted:    { icon: CheckCircle2, label: 'Inbox nudges enabled',         color: 'text-emerald-500' },
+  inbox_nudge_explainer_shown: { icon: Sparkles, label: 'Explained inbox nudges',       color: 'text-primary' },
 };
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -113,8 +123,13 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
 
   // Stats
   const stats = {
-    nudges: entries.filter(e => e.event_type === 'nudge_sent').length,
-    preps: entries.filter(e => e.event_type === 'prep_staged').length,
+    // Includes Idea #4's inbox nudges alongside the original action-item
+    // nudges, so the summary badge doesn't quietly undercount once inbox
+    // nudges start flowing (PLAN_idea4_agentic_followthrough.md).
+    nudges: entries.filter(e =>
+      e.event_type === 'nudge_sent' || e.event_type === 'inbox_nudge_sent' || e.event_type === 'inbox_due_nudge_sent'
+    ).length,
+    preps: entries.filter(e => e.event_type === 'prep_staged' || e.event_type === 'inbox_agenda_staged').length,
     escalations: entries.filter(e => e.event_type === 'escalation_flagged').length,
   };
 
@@ -218,7 +233,27 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
               if (payload.actions_nudged) parts.push(`${payload.actions_nudged} nudged`);
               if (payload.preps_staged) parts.push(`${payload.preps_staged} staged`);
               if (payload.escalations) parts.push(`${payload.escalations} escalations`);
+              if (payload.inbox_items_nudged) parts.push(`${payload.inbox_items_nudged} inbox nudged`);
               description = parts.length > 0 ? parts.join(', ') : 'No actions taken';
+            } else if (entry.event_type === 'inbox_nudge_sent') {
+              const count = (payload.item_count as number) ?? 0;
+              description = `${count} open item${count === 1 ? '' : 's'} tagged to ${payload.member_name ?? memberName ?? 'a team member'}`;
+            } else if (entry.event_type === 'inbox_due_nudge_sent') {
+              description = payload.due_at ? `Due ${String(payload.due_at).slice(0, 10)}` : 'Due date approaching';
+            } else if (entry.event_type === 'inbox_nudge_capped' || entry.event_type === 'inbox_due_nudge_capped') {
+              const nudgeCount = (payload.nudge_count as number) ?? '';
+              description = `Stopped nudging after ${nudgeCount} reminders — resolve or snooze in the app`;
+            } else if (entry.event_type === 'inbox_agenda_staged') {
+              const count = (payload.item_count as number) ?? 0;
+              description = `${count} open item${count === 1 ? '' : 's'} added to ${payload.member_name ?? memberName ?? "this person's"} prep agenda`;
+            } else if (entry.event_type === 'inbox_optin_prompted') {
+              description = 'Asked whether to enable inbox item nudges';
+            } else if (entry.event_type === 'inbox_optin_declined') {
+              description = 'User declined inbox item nudges';
+            } else if (entry.event_type === 'inbox_optin_accepted') {
+              description = 'User enabled inbox item nudges';
+            } else if (entry.event_type === 'inbox_nudge_explainer_shown') {
+              description = 'Sent the one-time "what is this" explainer with the first inbox nudge DM';
             }
 
             return (

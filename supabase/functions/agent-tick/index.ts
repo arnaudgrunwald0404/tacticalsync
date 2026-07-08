@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { detectEscalations } from "../agent-escalation/index.ts"
+import {
+  selectDueItemsToNudge,
+  selectMeetingsForInboxNudge,
+  decideOptInAction,
+  buildMeetingNudgeRationale,
+  buildDueDateNudgeRationale,
+  type DueInboxItem,
+  type NudgeHistoryEntry,
+  type UpcomingMeeting,
+  type OptInState,
+} from "../_shared/agentInboxNudges.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,12 +33,22 @@ interface AgentConfig {
   escalate_patterns: boolean
   recommend_format: boolean
   post_meeting_check: boolean
+  // Idea #4 (PLAN_idea4_agentic_followthrough.md): nudge before 1:1s about
+  // open inbox items tagged to that person, and as fixed-due-date inbox
+  // items approach their date. Defaults to false even when `enabled` is
+  // true — gated behind the one-time opt-in prompt (see maybePromptOrNudge
+  // below), not silently bundled into the master toggle.
+  nudge_inbox_items: boolean
+  // Gates the extract-zoom-quotes call inside postMeetingCheck (meeting_insight
+  // rows in inbox_items). Rollout flag, defaults false — see
+  // PLAN_idea3_meeting_insights.md §7 Step 6. Distinct from any future
+  // user-facing Settings toggle (plan §9.4).
+  enable_meeting_insights: boolean
   nudge_timing_hours: number
   nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
   quiet_hours_end: number   // 0-23
   timezone: string
-  slack_notifications: boolean
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -37,12 +58,34 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   post_meeting_check: true,
+  nudge_inbox_items: false,
+  enable_meeting_insights: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
   quiet_hours_end: 9,
   timezone: 'America/New_York',
-  slack_notifications: true,
+}
+
+// Per-notification-type Slack delivery toggles, replacing the old single
+// agent_config.slack_notifications master flag. Set via the Notifications
+// settings page (src/components/cos/NotificationSettingsPanel.tsx).
+interface NotificationPreferences {
+  overdue_action_nudges: boolean
+  prep_ready: boolean
+  escalation_alerts: boolean
+  format_suggestions: boolean
+  meeting_followups: boolean
+  daily_brief: boolean
+}
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  overdue_action_nudges: true,
+  prep_ready: true,
+  escalation_alerts: true,
+  format_suggestions: true,
+  meeting_followups: true,
+  daily_brief: true,
 }
 
 /**
@@ -217,7 +260,7 @@ serve(async (req) => {
     // Fetch all users with agent enabled
     const { data: settingsRows, error: settingsErr } = await supabase
       .from('cos_settings')
-      .select('user_id, agent_config')
+      .select('user_id, agent_config, notification_preferences')
 
     if (settingsErr) {
       return jsonResponse({ error: 'settings_fetch_failed', detail: settingsErr.message }, 500)
@@ -238,12 +281,18 @@ serve(async (req) => {
       actions_nudged?: number
       preps_staged?: number
       escalations?: number
+      inbox_items_nudged?: number
     }> = []
 
     for (const row of enabledUsers) {
       const userId = (row as { user_id: string }).user_id
       const rawConfig = (row as { agent_config: unknown }).agent_config
       const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...(rawConfig as Partial<AgentConfig>) }
+      const rawNotifPrefs = (row as { notification_preferences: unknown }).notification_preferences
+      const notifPrefs: NotificationPreferences = {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        ...(rawNotifPrefs as Partial<NotificationPreferences>),
+      }
 
       // Post-meeting transcript check runs regardless of quiet hours — it only
       // does silent DB work (sync Zoom + extract action items). We just suppress
@@ -252,7 +301,7 @@ serve(async (req) => {
       const inQuiet = isInQuietHours(config)
       if (config.post_meeting_check) {
         try {
-          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config, inQuiet)
+          await postMeetingCheck(supabase, supabaseUrl, serviceRoleKey, userId, config, notifPrefs, inQuiet)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'post_meeting_check',
@@ -270,6 +319,7 @@ serve(async (req) => {
       let actionsNudged = 0
       let prepsStaged = 0
       let escalations = 0
+      let inboxItemsNudged = 0
 
       // ── Adaptive behavior: adjust config based on feedback ────────────
       try {
@@ -303,7 +353,7 @@ serve(async (req) => {
       // ── Nudge overdue action items ────────────────────────────────────
       if (config.nudge_actions) {
         try {
-          actionsNudged = await nudgeActionItems(supabase, userId, config)
+          actionsNudged = await nudgeActionItems(supabase, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'nudge_actions',
@@ -315,13 +365,26 @@ serve(async (req) => {
       // ── Pre-stage meeting prep ────────────────────────────────────────
       if (config.pre_stage_prep) {
         try {
-          prepsStaged = await prestagePreps(supabase, supabaseUrl, serviceRoleKey, userId, config)
+          prepsStaged = await prestagePreps(supabase, supabaseUrl, serviceRoleKey, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'pre_stage_prep',
             error: (err as Error).message,
           })
         }
+      }
+
+      // ── Inbox item nudges (Idea #4) ─────────────────────────────────
+      // Gated behind its own opt-in, independent of the master `enabled`
+      // toggle and `nudge_inbox_items` config value — see
+      // maybeNudgeInboxItems() for the opt-in prompt/cooldown logic.
+      try {
+        inboxItemsNudged = await maybeNudgeInboxItems(supabase, userId, config)
+      } catch (err) {
+        await logAgentEvent(supabase, userId, 'error', {
+          handler: 'nudge_inbox_items',
+          error: (err as Error).message,
+        })
       }
 
       // ── Escalation detection ───────────────────────────────────────
@@ -338,7 +401,7 @@ serve(async (req) => {
               stalled_topics: 'Stalled Topics',
             }
 
-            if (config.slack_notifications) {
+            if (notifPrefs.escalation_alerts) {
               await sendSlackDM(supabase, userId,
                 `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
                 [{
@@ -376,7 +439,7 @@ serve(async (req) => {
       // ── Format recommendations ─────────────────────────────────────
       if (config.recommend_format) {
         try {
-          await computeFormatRecommendations(supabase, userId, config)
+          await computeFormatRecommendations(supabase, userId, config, notifPrefs)
         } catch (err) {
           await logAgentEvent(supabase, userId, 'error', {
             handler: 'recommend_format',
@@ -390,6 +453,7 @@ serve(async (req) => {
         actions_nudged: actionsNudged,
         preps_staged: prepsStaged,
         escalations,
+        inbox_items_nudged: inboxItemsNudged,
       })
 
       results.push({
@@ -397,6 +461,7 @@ serve(async (req) => {
         actions_nudged: actionsNudged,
         preps_staged: prepsStaged,
         escalations,
+        inbox_items_nudged: inboxItemsNudged,
       })
     }
 
@@ -416,6 +481,7 @@ async function nudgeActionItems(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<number> {
   const today = new Date().toISOString().slice(0, 10)
   const nudgeWindowMs = config.nudge_timing_hours * 3600 * 1000
@@ -535,7 +601,7 @@ async function nudgeActionItems(
   }
 
   // Build Slack message with interactive buttons
-  if (config.slack_notifications) {
+  if (notifPrefs.overdue_action_nudges) {
     const blocks: unknown[] = [
       {
         type: 'section',
@@ -644,6 +710,7 @@ async function prestagePreps(
   serviceRoleKey: string,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<number> {
   const now = new Date()
   const windowEnd = new Date(now.getTime() + 12 * 3600 * 1000)
@@ -737,6 +804,16 @@ async function prestagePreps(
 
         const memberName = member?.name ?? 'your team member'
 
+        // Idea #4 (plan Section 4, Option B): append any open inbox items
+        // tagged to this person as an agenda section on the freshly
+        // generated prep, rather than creating a separate inbox item or
+        // rewriting generate-1on1-prep's own prompt (Option A, deferred).
+        try {
+          await appendInboxAgendaSection(supabase, userId, event.team_member_id, memberName, todayDate)
+        } catch (err) {
+          console.warn(`Agenda pre-staging failed for event ${event.id}:`, (err as Error).message)
+        }
+
         // Format meeting time in user's timezone
         let meetingTime = event.start_time
         try {
@@ -751,7 +828,7 @@ async function prestagePreps(
         const dayLabel = meetingDayLabel(event.start_time, config.timezone)
 
         // Notify via Slack
-        if (config.slack_notifications) {
+        if (notifPrefs.prep_ready) {
           await sendSlackDM(supabase, userId, `Your 1:1 prep for ${memberName} is ready (meeting ${dayLabel} at ${meetingTime})`, [
             {
               type: 'section',
@@ -780,6 +857,484 @@ async function prestagePreps(
   return staged
 }
 
+// ── Agenda pre-staging (Idea #4, plan Section 4 — Option B) ─────────────────
+//
+// Appends an "Open inbox items" section to today's freshly generated
+// cos_one_on_one_prep.content for this member, sourced from the same
+// person-tag join used by the pre-1:1 nudge (cos_team_members ->
+// inbox_tags(type=person) -> inbox_item_tags -> inbox_items). Read-modify-
+// write with an idempotency marker so re-running prestagePreps for the same
+// event/day never duplicates the section — mirrors the existing
+// summaryBlock dedupe pattern in delegate-inbox-task's planPhase().
+const AGENDA_SECTION_MARKER = '<!-- inbox-agenda-section -->'
+
+async function appendInboxAgendaSection(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  teamMemberId: string,
+  memberName: string,
+  prepDate: string,
+): Promise<void> {
+  const { data: personTags } = await supabase
+    .from('inbox_tags')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', 'person')
+    .eq('member_id', teamMemberId)
+
+  const tagIds = ((personTags ?? []) as Array<{ id: string }>).map((t) => t.id)
+  if (tagIds.length === 0) return
+
+  const { data: itemTagRows } = await supabase
+    .from('inbox_item_tags')
+    .select('inbox_items!inner(id, text, status, user_id)')
+    .in('tag_id', tagIds)
+
+  const openItems = ((itemTagRows ?? []) as Array<{ inbox_items: { id: string; text: string; status: string; user_id: string } }>)
+    .map((r) => r.inbox_items)
+    .filter((item) => item && item.user_id === userId && item.status === 'open')
+
+  if (openItems.length === 0) return
+
+  const { data: prep } = await supabase
+    .from('cos_one_on_one_prep')
+    .select('id, content')
+    .eq('user_id', userId)
+    .eq('team_member_id', teamMemberId)
+    .eq('prep_date', prepDate)
+    .eq('source', 'ai_generated')
+    .maybeSingle()
+
+  if (!prep) return
+
+  const existingContent = (prep as { id: string; content: string }).content ?? ''
+  if (existingContent.includes(AGENDA_SECTION_MARKER)) return // already staged — idempotent
+
+  const agendaSection = [
+    '',
+    AGENDA_SECTION_MARKER,
+    `## Open inbox items tagged to ${memberName}`,
+    ...openItems.map((item) => `- [ ] ${item.text}`),
+  ].join('\n')
+
+  await supabase
+    .from('cos_one_on_one_prep')
+    .update({ content: `${existingContent}\n${agendaSection}` })
+    .eq('id', (prep as { id: string }).id)
+
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'inbox_agenda_staged',
+    member_id: teamMemberId,
+    payload: { member_name: memberName, item_count: openItems.length },
+  })
+}
+
+// ── Inbox item nudges (Idea #4 — PLAN_idea4_agentic_followthrough.md) ───────
+//
+// Scope: self-owned items only (plan Section 6.B). This never resolves or
+// contacts a Slack identity other than the inbox owner's own — cross-user
+// "ping the item owner" nudges are blocked on idea #8 (people delegation /
+// account linking) and are NOT implemented here.
+//
+// Two triggers, both gated behind the same opt-in:
+//   1. Pre-1:1 nudge  — open inbox items tagged to a person the user has a
+//      confirmed 1:1 with in the next 12h (matches prestagePreps()'s window).
+//   2. Due-date nudge — open inbox items with a *fixed* due date
+//      (priority_fixed = true) approaching within nudge_timing_hours.
+//
+// Both trigger types are collapsed into a single Slack DM per tick (the
+// "digest cap" from the plan's risk section) rather than one message per
+// trigger, to avoid stacking multiple agent messages on a user in one tick.
+
+const OPTIN_COOLDOWN_DAYS = 14
+
+/** Loads the current opt-in state for a user: whether nudge_inbox_items is
+ *  already on, whether a prompt is currently awaiting an answer, and when
+ *  the user last declined (if ever). */
+async function loadOptInState(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<OptInState> {
+  const { data: pendingPrompt } = await supabase
+    .from('inbox_items')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', 'agent_question')
+    .eq('status', 'open')
+    .contains('agent_payload', { source: 'inbox_agent_optin_prompt' })
+    .maybeSingle()
+
+  const { data: lastDecline } = await supabase
+    .from('cos_agent_log')
+    .select('created_at')
+    .eq('user_id', userId)
+    .eq('event_type', 'inbox_optin_declined')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return {
+    nudgeInboxItemsEnabled: config.nudge_inbox_items === true,
+    lastDeclinedAt: (lastDecline as { created_at: string } | null)?.created_at ?? null,
+    promptCurrentlyPending: !!pendingPrompt,
+  }
+}
+
+/** Creates the one-time in-app opt-in prompt (plan Section 5.1) as an
+ *  agent_question inbox item. Reuses the existing agent_question type's CTA
+ *  affordance (see InboxItemRow.tsx) rather than inventing new UI. */
+async function createOptInPrompt(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<void> {
+  await supabase.from('inbox_items').insert({
+    user_id: userId,
+    type: 'agent_question',
+    text: 'Want me to flag open items before your 1:1s and as due dates approach?',
+    status: 'open',
+    agent_payload: {
+      source: 'inbox_agent_optin_prompt',
+      rationale:
+        "I noticed you have items tagged to people you meet with regularly. I can remind you about those before each 1:1, and ping you in Slack as due dates get close — so nothing slips through unnoticed. You can turn this off anytime in Settings → Agent.",
+      action_required: true,
+      cta_label: 'Turn on nudges',
+      cta_action: 'enable_inbox_nudges',
+    },
+  })
+
+  await logAgentEvent(supabase, userId, 'inbox_optin_prompted', {})
+}
+
+/** Sends the one-time "this is new" explainer that prepends the very first
+ *  real inbox nudge DM a user receives (plan Section 5.2). Tracked via
+ *  cos_agent_log so it never repeats. */
+async function maybeSendFirstDmExplainer(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<string> {
+  const { count } = await supabase
+    .from('cos_agent_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('event_type', 'inbox_nudge_explainer_shown')
+
+  if ((count ?? 0) > 0) return ''
+
+  await logAgentEvent(supabase, userId, 'inbox_nudge_explainer_shown', {})
+
+  return (
+    ':sparkles: *This is a new kind of message from your agent — a heads-up about inbox items ' +
+    "tied to people or dates, sent automatically before they become a problem.*\n" +
+    '_(You can turn this off anytime: Settings → Agent → Inbox item nudges. This explainer only shows once.)_'
+  )
+}
+
+/** Fetches open, fixed-due-date inbox items and the nudge history needed to
+ *  dedupe/cap them, then defers the actual decision to the pure, tested
+ *  selectDueItemsToNudge() in _shared/agentInboxNudges.ts. */
+interface DueNudgeItemWithText extends DueInboxItem {
+  text: string
+}
+
+async function fetchDueNudgeCandidates(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<{ toNudge: DueNudgeItemWithText[]; newlyCappedIds: string[] }> {
+  const windowEnd = new Date(Date.now() + config.nudge_timing_hours * 3600 * 1000).toISOString()
+
+  const { data: items } = await supabase
+    .from('inbox_items')
+    .select('id, text, priority_fixed, priority_due_at, status')
+    .eq('user_id', userId)
+    .eq('status', 'open')
+    .eq('priority_fixed', true)
+    .not('priority_due_at', 'is', null)
+    .lte('priority_due_at', windowEnd)
+
+  const dueItems = (items ?? []) as DueNudgeItemWithText[]
+  if (dueItems.length === 0) return { toNudge: [], newlyCappedIds: [] }
+
+  const itemIds = dueItems.map((i) => i.id)
+  const { data: history } = await supabase
+    .from('cos_agent_log')
+    .select('item_id, event_type, created_at')
+    .eq('user_id', userId)
+    .in('event_type', ['inbox_due_nudge_sent', 'inbox_due_nudge_capped'])
+    .in('item_id', itemIds)
+
+  const decision = selectDueItemsToNudge(
+    dueItems,
+    (history ?? []) as NudgeHistoryEntry[],
+    { nudge_timing_hours: config.nudge_timing_hours, nudge_max_count: config.nudge_max_count },
+  )
+
+  const byId = new Map(dueItems.map((i) => [i.id, i]))
+  return {
+    toNudge: decision.toNudge.map((id) => byId.get(id)!).filter(Boolean),
+    newlyCappedIds: decision.newlyCapped,
+  }
+}
+
+/** Fetches confirmed 1:1s in the next 12h, joins to inbox_tags(type=person)
+ *  and their open inbox items, and returns per-meeting nudge payloads. */
+async function fetchMeetingNudgeCandidates(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<Array<{ eventId: string; memberId: string; memberName: string; startTime: string; items: Array<{ id: string; text: string }> }>> {
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 12 * 3600 * 1000)
+
+  const { data: events } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, start_time, status')
+    .eq('user_id', userId)
+    .eq('status', 'confirmed')
+    .not('team_member_id', 'is', null)
+    .gte('start_time', now.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  const meetings = (events ?? []) as Array<{ id: string; team_member_id: string; start_time: string; status: string }>
+  if (meetings.length === 0) return []
+
+  const eventIds = meetings.map((e) => e.id)
+  const { data: alreadyNudged } = await supabase
+    .from('cos_agent_log')
+    .select('event_id')
+    .eq('user_id', userId)
+    .eq('event_type', 'inbox_nudge_sent')
+    .in('event_id', eventIds)
+
+  const alreadyNudgedIds = ((alreadyNudged ?? []) as Array<{ event_id: string }>).map((r) => r.event_id)
+
+  const eligible = selectMeetingsForInboxNudge(
+    meetings.map((m): UpcomingMeeting => ({
+      eventId: m.id,
+      teamMemberId: m.team_member_id,
+      startTime: m.start_time,
+      status: m.status as UpcomingMeeting['status'],
+    })),
+    alreadyNudgedIds,
+    now,
+  )
+
+  if (eligible.length === 0) return []
+
+  const memberIds = [...new Set(eligible.map((m) => m.teamMemberId))]
+  const [{ data: members }, { data: personTags }] = await Promise.all([
+    supabase.from('cos_team_members').select('id, name').in('id', memberIds),
+    supabase.from('inbox_tags').select('id, member_id').eq('user_id', userId).eq('type', 'person').in('member_id', memberIds),
+  ])
+
+  const memberNameById = new Map(((members ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name]))
+  const tagIdsByMember = new Map<string, string[]>()
+  for (const tag of (personTags ?? []) as Array<{ id: string; member_id: string }>) {
+    const list = tagIdsByMember.get(tag.member_id) ?? []
+    list.push(tag.id)
+    tagIdsByMember.set(tag.member_id, list)
+  }
+
+  const results: Array<{ eventId: string; memberId: string; memberName: string; startTime: string; items: Array<{ id: string; text: string }> }> = []
+
+  for (const meeting of eligible) {
+    const tagIds = tagIdsByMember.get(meeting.teamMemberId) ?? []
+    if (tagIds.length === 0) continue // no person-tag for this member — nothing to surface
+
+    const { data: itemTagRows } = await supabase
+      .from('inbox_item_tags')
+      .select('item_id, inbox_items!inner(id, text, status, user_id)')
+      .in('tag_id', tagIds)
+
+    const openItems = ((itemTagRows ?? []) as Array<{ item_id: string; inbox_items: { id: string; text: string; status: string; user_id: string } }>)
+      .map((r) => r.inbox_items)
+      .filter((item) => item && item.user_id === userId && item.status === 'open')
+
+    // Silence is correct here (plan Section 2.2) — no open tagged items means
+    // no nudge at all for this meeting, not an empty "nothing to report" DM.
+    if (openItems.length === 0) continue
+
+    results.push({
+      eventId: meeting.eventId,
+      memberId: meeting.teamMemberId,
+      memberName: memberNameById.get(meeting.teamMemberId) ?? 'your team member',
+      startTime: meeting.startTime,
+      items: openItems.map((i) => ({ id: i.id, text: i.text })),
+    })
+  }
+
+  return results
+}
+
+/**
+ * Top-level entry point wired into the main tick loop. Handles opt-in gating
+ * first, then — only once opted in — runs both nudge triggers and sends a
+ * single combined Slack DM (the "digest cap") rather than one message per
+ * trigger type.
+ */
+async function maybeNudgeInboxItems(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+): Promise<number> {
+  const [dueResult, meetingResults] = await Promise.all([
+    fetchDueNudgeCandidates(supabase, userId, config),
+    fetchMeetingNudgeCandidates(supabase, userId, config),
+  ])
+
+  const hasAnythingToNudge = dueResult.toNudge.length > 0 || meetingResults.length > 0
+
+  // Always record newly-capped items, opted in or not — capping is bookkeeping,
+  // not a notification, so it doesn't need to wait on consent.
+  for (const itemId of dueResult.newlyCappedIds) {
+    await supabase.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'inbox_due_nudge_capped',
+      item_id: itemId,
+      payload: { reason: 'max_nudges_reached', nudge_count: config.nudge_max_count },
+    })
+  }
+
+  if (!hasAnythingToNudge) return 0
+
+  const optInState = await loadOptInState(supabase, userId, config)
+  const action = decideOptInAction(optInState, new Date(), OPTIN_COOLDOWN_DAYS)
+
+  if (action === 'suppress') return 0
+
+  if (action === 'show_optin_prompt') {
+    await createOptInPrompt(supabase, userId)
+    return 0
+  }
+
+  // action === 'send_nudge' — user has opted in; build and send the digest.
+  const blocks: unknown[] = []
+  let nudgedCount = 0
+
+  for (const meeting of meetingResults) {
+    const dayLabel = meetingDayLabel(meeting.startTime, config.timezone)
+    let meetingTime = meeting.startTime
+    try {
+      meetingTime = new Date(meeting.startTime).toLocaleTimeString('en-US', {
+        timeZone: config.timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      })
+    } catch { /* use raw if timezone fails */ }
+
+    const rationale = buildMeetingNudgeRationale(meeting.memberName, dayLabel, meetingTime, meeting.items.length)
+
+    const { data: insertedNudge } = await supabase
+      .from('inbox_items')
+      .insert({
+        user_id: userId,
+        type: 'agent_nudge',
+        text: `${meeting.items.length} open item${meeting.items.length === 1 ? '' : 's'} tagged to ${meeting.memberName} — 1:1 ${dayLabel} at ${meetingTime}`,
+        status: 'open',
+        agent_payload: {
+          source: 'agent_nudge_before_1on1',
+          rationale,
+          action_required: false,
+        },
+      })
+      .select('id')
+      .single()
+
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:zap: *1:1 with ${meeting.memberName} ${dayLabel} at ${meetingTime}*\n${meeting.items.map((i) => `• ${i.text}`).join('\n')}`,
+      },
+      // This digest summarizes multiple tagged items with no single "the
+      // item" to mark done or snooze a due date on — so unlike the due-date
+      // block below, the only overflow action offered is dismissing the
+      // notification itself (inbox_mark_done against the agent_nudge row).
+      // Acting on the individual tagged items still happens in-app.
+      accessory: insertedNudge ? {
+        type: 'overflow',
+        action_id: `action_overflow:${(insertedNudge as { id: string }).id}`,
+        options: [
+          { text: { type: 'plain_text', text: ':white_check_mark: Dismiss' }, value: `inbox_mark_done:${(insertedNudge as { id: string }).id}` },
+        ],
+      } : undefined,
+    })
+
+    await supabase.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'inbox_nudge_sent',
+      event_id: meeting.eventId,
+      member_id: meeting.memberId,
+      item_id: (insertedNudge as { id: string } | null)?.id ?? null,
+      payload: { item_count: meeting.items.length, member_name: meeting.memberName },
+    })
+
+    nudgedCount++
+  }
+
+  if (dueResult.toNudge.length > 0) {
+    for (const dueItem of dueResult.toNudge) {
+      await supabase.from('inbox_items').insert({
+        user_id: userId,
+        type: 'agent_nudge',
+        text: `${dueItem.text} — due date approaching`,
+        status: 'open',
+        agent_payload: {
+          source: 'agent_nudge_due_date',
+          rationale: buildDueDateNudgeRationale(),
+          action_required: false,
+        },
+      })
+
+      // Both overflow actions target the original item (dueItem.id), not the
+      // agent_nudge notification row — unlike the pre-1:1 digest above,
+      // there's exactly one real underlying item here, so "mark done" /
+      // "snooze" should act on it directly rather than just dismissing the
+      // notification.
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `:calendar: *Due date approaching*\n• ${dueItem.text}` },
+        accessory: {
+          type: 'overflow',
+          action_id: `action_overflow:${dueItem.id}`,
+          options: [
+            { text: { type: 'plain_text', text: ':white_check_mark: Mark done' }, value: `inbox_mark_done:${dueItem.id}` },
+            { text: { type: 'plain_text', text: ':clock3: Snooze 2 days' }, value: `inbox_due_snooze:${dueItem.id}:2` },
+          ],
+        },
+      })
+
+      await supabase.from('cos_agent_log').insert({
+        user_id: userId,
+        event_type: 'inbox_due_nudge_sent',
+        item_id: dueItem.id,
+        payload: { due_at: dueItem.priority_due_at },
+      })
+
+      nudgedCount++
+    }
+  }
+
+  if (config.slack_notifications && blocks.length > 0) {
+    const explainer = await maybeSendFirstDmExplainer(supabase, userId)
+    const summaryParts: string[] = []
+    if (meetingResults.length > 0) summaryParts.push('1:1 prep')
+    if (dueResult.toNudge.length > 0) summaryParts.push('due-date items')
+    const summaryText = `${summaryParts.join(' and ')} need your attention`
+
+    const finalBlocks = explainer
+      ? [{ type: 'section', text: { type: 'mrkdwn', text: explainer } }, { type: 'divider' }, ...blocks]
+      : blocks
+
+    await sendSlackDM(supabase, userId, summaryText, finalBlocks)
+  }
+
+  return nudgedCount
+}
+
 // ── Format recommendations ──────────────────────────────────────────────────
 
 const CADENCE_DAYS: Record<string, number> = {
@@ -791,6 +1346,7 @@ async function computeFormatRecommendations(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<void> {
   const now = new Date()
   const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
@@ -923,7 +1479,7 @@ async function computeFormatRecommendations(
 
     // Send notification (only if score suggests something non-standard)
     if (score === 0 || score > 8) {
-      if (config.slack_notifications) {
+      if (notifPrefs.format_suggestions) {
         await sendSlackDM(supabase, userId,
           `Meeting format suggestion for ${memberName}: ${format}`,
           [{
@@ -967,6 +1523,7 @@ async function postMeetingCheck(
   serviceRoleKey: string,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
   suppressNotify = false,
 ): Promise<void> {
   const now = new Date()
@@ -1098,6 +1655,34 @@ async function postMeetingCheck(
     }
   }
 
+  // Step 3: Extract standout quotes and surface meeting_insight rows in the
+  // inbox. Independent try/catch from Step 2 — a Gemini outage or malformed
+  // response here must never block action-item suggestions or vice versa
+  // (PLAN_idea3_meeting_insights.md §6.5). Gated behind enable_meeting_insights
+  // (rollout flag, §7 Step 6) so this can be enabled per-user.
+  let meetingInsightsAdded = 0
+  if (zoomSyncOk && config.enable_meeting_insights) {
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/extract-zoom-quotes`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': userId,
+        },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const data = await res.json() as { insights_added?: number }
+        meetingInsightsAdded = data.insights_added ?? 0
+      } else {
+        console.warn(`post_meeting_check: extract-zoom-quotes returned ${res.status}`)
+      }
+    } catch (err) {
+      console.warn('post_meeting_check: meeting insight extraction failed:', (err as Error).message)
+    }
+  }
+
   // Only mark meetings whose Zoom transcript has actually arrived. Meetings
   // still awaiting a transcript stay pending and are retried on later ticks
   // until their transcript lands or they age out of the 24 h window — this is
@@ -1135,8 +1720,12 @@ async function postMeetingCheck(
       .in('id', doneIds)
   }
 
+  // Meeting insights are silent for v1 (PLAN_idea3_meeting_insights.md §9.4.1)
+  // — no Slack ping, just surfaced in-app and tracked via cos_agent_log below
+  // for the manual dismiss-rate monitoring described in plan §7 Step 6.
+
   // Notify via Slack if action items were surfaced (suppressed during quiet hours).
-  if (suggestionsAdded > 0 && config.slack_notifications && !suppressNotify) {
+  if (suggestionsAdded > 0 && notifPrefs.meeting_followups && !suppressNotify) {
     const label = pendingRows[0]?.title ?? 'your recent meeting'
     const n = suggestionsAdded
     await sendSlackDM(
@@ -1157,6 +1746,7 @@ async function postMeetingCheck(
     meetings_processed: doneIds.length,
     zoom_sync_ok:       zoomSyncOk,
     suggestions_added:  suggestionsAdded,
+    meeting_insights_added: meetingInsightsAdded,
   })
 }
 
