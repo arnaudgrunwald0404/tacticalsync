@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { WORKFLOW_STATUS_LABELS } from '@/lib/inboxValidation';
 import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
+import { PersonBriefDetail } from './PersonBriefDetail';
 import { getSourceLink, isSyncedSourceRef } from '@/hooks/useInboxItems';
 import type { InboxItem, InboxTag, BriefPriority } from '@/types/inbox';
 
@@ -70,7 +71,7 @@ export function InboxItemDrawer({
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
-            {/* Brief item: priorities */}
+            {/* Brief item: daily/weekly priorities */}
             {item.type === 'brief_item' && item.agent_payload?.brief_priorities && (
               <BriefItemDetail
                 priorities={item.agent_payload.brief_priorities}
@@ -81,6 +82,11 @@ export function InboxItemDrawer({
                   } as Partial<InboxItem>);
                 }}
               />
+            )}
+
+            {/* Brief item: pre-1:1 person brief (Idea #7) */}
+            {item.type === 'brief_item' && item.agent_payload?.person_brief && (
+              <PersonBriefDetail brief={item.agent_payload.person_brief} />
             )}
 
             {/* Workflow status */}

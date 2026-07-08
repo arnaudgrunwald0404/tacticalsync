@@ -10,6 +10,7 @@ import { ChatBubble } from './ChatBubble';
 import { AssistantChatPanel, type AssistantChatMsg } from './AssistantChatPanel';
 import { DelegationChatView } from './DelegationChatView';
 import { BriefItemDetail } from './BriefItemDetail';
+import { PersonBriefDetail } from './PersonBriefDetail';
 import { AgentBar } from './AgentBar';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { PersonContextWidget } from './PersonContextWidget';
@@ -184,6 +185,9 @@ interface InboxAssistantPanelProps {
   meetingOptions?: string[];
   /** The person tag currently selected in the left sidebar's People section, if any. */
   selectedPersonTag?: InboxTag | null;
+  /** Navigates to /inbox/person/:memberId — the "View person page" entry
+   *  point from the person context widget (PLAN_idea7_relationship_memory.md §2.1). */
+  onViewPersonPage?: (memberId: string) => void;
   userId?: string | null;
   /** True when this account has never had any inbox items — swaps the default
    *  panel greeting from a returning-user framing ("what's up next") to a
@@ -292,7 +296,7 @@ function ItemDetail({
       {/* Active delegation — renders as a chat thread when this item was delegated to the Assistant */}
       <DelegationChatView itemId={item.id} />
 
-      {/* Brief item: priorities */}
+      {/* Brief item: daily/weekly priorities */}
       {item.type === 'brief_item' && item.agent_payload?.brief_priorities && (
         <BriefItemDetail
           priorities={item.agent_payload.brief_priorities}
@@ -304,6 +308,11 @@ function ItemDetail({
             } as Partial<InboxItem>);
           }}
         />
+      )}
+
+      {/* Brief item: pre-1:1 person brief (Idea #7) */}
+      {item.type === 'brief_item' && item.agent_payload?.person_brief && (
+        <PersonBriefDetail brief={item.agent_payload.person_brief} />
       )}
 
       {/* Workflow status */}
@@ -418,7 +427,7 @@ export function InboxAssistantPanel({
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
   onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
-  meetingEvent, selectedPersonTag, userId, isNewUser,
+  meetingEvent, selectedPersonTag, onViewPersonPage, userId, isNewUser,
   onMaterializeOnboarding, onMutated,
 }: InboxAssistantPanelProps) {
   const isMobile = useIsMobile();
@@ -597,6 +606,7 @@ export function InboxAssistantPanel({
           memberId={selectedPersonTag.member_id}
           memberName={selectedPersonTag.name}
           color={selectedPersonTag.color}
+          onViewPersonPage={onViewPersonPage}
         />
       )}
 

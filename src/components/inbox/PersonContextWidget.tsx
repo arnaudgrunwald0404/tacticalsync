@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DEFAULT_STATUS_OPTIONS } from '@/types/cos';
 import {
@@ -147,9 +147,13 @@ interface PersonContextWidgetProps {
   memberId: string;
   memberName: string;
   color?: string;
+  /** Idea #7 (Relationship memory): navigates to /inbox/person/:memberId,
+   *  the full aggregated person page. Omit to hide the link (e.g. contexts
+   *  where the full page doesn't make sense to offer). */
+  onViewPersonPage?: (memberId: string) => void;
 }
 
-export function PersonContextWidget({ userId, memberId, memberName, color }: PersonContextWidgetProps) {
+export function PersonContextWidget({ userId, memberId, memberName, color, onViewPersonPage }: PersonContextWidgetProps) {
   const {
     accountabilities, topics,
     addAccountability, updateAccountability, deleteAccountability,
@@ -166,7 +170,16 @@ export function PersonContextWidget({ userId, memberId, memberName, color }: Per
         >
           {initials(memberName)}
         </span>
-        <span className="text-sm font-semibold text-gray-900 truncate">{memberName}</span>
+        <span className="text-sm font-semibold text-gray-900 truncate flex-1">{memberName}</span>
+        {onViewPersonPage && (
+          <button
+            onClick={() => onViewPersonPage(memberId)}
+            className="flex items-center gap-1 text-[11px] text-indigo-500 hover:text-indigo-700 transition-colors flex-shrink-0"
+            title={`View ${memberName}'s full history`}
+          >
+            <ExternalLink className="h-3 w-3" />View page
+          </button>
+        )}
       </div>
 
       <div className="px-4 pb-3 space-y-3">
