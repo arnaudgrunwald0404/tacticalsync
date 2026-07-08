@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { verifySlackSignature } from "../_shared/slack.ts"
 
 /**
  * Slack slash-command handler — "add a suggestion from Slack".
@@ -16,51 +17,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
  * (verify_jwt = false).
  */
 
-const SLACK_SIGNATURE_VERSION = 'v0'
-// Reject requests whose timestamp is more than 5 minutes off (replay defence).
-const MAX_TIMESTAMP_SKEW_SECONDS = 60 * 5
-
 function ephemeral(text: string): Response {
   return new Response(
     JSON.stringify({ response_type: 'ephemeral', text }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   )
-}
-
-/** Constant-time-ish comparison of two hex signatures. */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let mismatch = 0
-  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return mismatch === 0
-}
-
-async function verifySlackSignature(
-  signingSecret: string,
-  timestamp: string | null,
-  signature: string | null,
-  rawBody: string,
-): Promise<boolean> {
-  if (!signingSecret || !timestamp || !signature) return false
-
-  const ts = parseInt(timestamp, 10)
-  if (!Number.isFinite(ts)) return false
-  const now = Math.floor(Date.now() / 1000)
-  if (Math.abs(now - ts) > MAX_TIMESTAMP_SKEW_SECONDS) return false
-
-  const basestring = `${SLACK_SIGNATURE_VERSION}:${timestamp}:${rawBody}`
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(signingSecret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sigBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(basestring))
-  const hex = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-  return safeEqual(`${SLACK_SIGNATURE_VERSION}=${hex}`, signature)
 }
 
 serve(async (req) => {
