@@ -89,10 +89,34 @@ export interface AgentPayload {
   person_brief?: PersonBriefPayload;
 }
 
+// `meeting_action_item` and `cos_meeting_action` are written by DB triggers
+// (see supabase/migrations/20260723000001_cos_meeting_actions_inbox_sync.sql
+// and 20260723000003_meeting_action_items_inbox_sync.sql), not by the app —
+// they mirror a team meeting action item or a 1:1 "for me" commitment into
+// the inbox. Status (open/done) round-trips both ways for these two kinds;
+// text/body edits made from the inbox side do not flow back to the source.
 export interface SourceRef {
   type: 'zoom_recording' | 'dci_brief' | 'dci_weekly_brief' | 'calendar' | 'manual'
-    | 'slack_message' | 'gmail_message' | 'pre_1on1_brief';
+    | 'slack_message' | 'gmail_message' | 'pre_1on1_brief'
+    | 'meeting_action_item' | 'cos_meeting_action';
   id?: string;
+  // meeting_insight-specific fields (see PLAN_idea3_meeting_insights.md §3).
+  /** cos_zoom_recordings.id — click-through target for "View in recording". */
+  recording_id?: string;
+  /** cos_zoom_transcripts.id — for re-extraction/debugging and dedup. */
+  transcript_id?: string;
+  /** cos_member_quotes.id, when the speaker matched a known team member.
+   *  Null/absent for unmatched speakers. */
+  quote_id?: string;
+  /** Raw speaker string from the transcript — always present on a
+   *  meeting_insight row, even when quote_id is absent. */
+  speaker_name?: string;
+  /** cos_zoom_recordings.topic, denormalized for display without a join. */
+  meeting_topic?: string;
+  /** YYYY-MM-DD, denormalized from the recording start time. */
+  said_on?: string;
+  /** The short "context" string Gemini returns per quote. */
+  context?: string;
 }
 
 export interface TagSuggestion {

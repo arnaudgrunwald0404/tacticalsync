@@ -10,7 +10,9 @@ import {
   Loader2, CheckSquare, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
+import { MeetingInsightsIntroBanner } from '@/components/inbox/MeetingInsightsIntroBanner';
 import { WeekendBanner } from '@/components/WeekendBanner';
+import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
@@ -23,8 +25,11 @@ import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
 import { InboxAssistantPanel } from '@/components/inbox/InboxAssistantPanel';
 import { AccountabilityIllustration } from '@/components/inbox/AccountabilityIllustration';
 import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
-import { useInboxItems } from '@/hooks/useInboxItems';
+import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
+import { UnifiedFunnelAnnouncementBanner } from '@/components/inbox/UnifiedFunnelAnnouncementBanner';
+import { useInboxItems, isSyncedSourceRef } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
+import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
@@ -189,7 +194,7 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
         icon: InboxIcon,
         illustration: AccountabilityIllustration,
         title: 'This is where accountability lives',
-        subtitle: "Record a conversation and we'll surface commitments and follow-ups here automatically — so nothing falls through the cracks.",
+        subtitle: "Record a conversation and we'll surface commitments and follow-ups here automatically — so nothing falls through the cracks. Your inbox isn't just for things you type here, either — action items assigned to you in meetings and 1:1s show up automatically too.",
       };
   }
 }
@@ -244,6 +249,7 @@ export default function InboxPage() {
 
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
+  const { onboarding, markComplete: markOnboardingComplete } = useOnboardingState();
 
   // ── Post-connect sync + simple progress log ───────────────────────────────
   // Shown in the empty middle list area while a calendar/Zoom connection just
@@ -355,7 +361,18 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+
+  // One-time onboarding surfaces for the unified funnel (meeting/1:1 action
+  // items auto-syncing into the inbox) — see PLAN_idea1_unified_funnel.md §6.
+  // Gated on profiles.feature_announcements via the shared hook so neither
+  // re-shows once dismissed.
+  const { seen: introSeen, markSeen: markIntroSeen } = useFeatureAnnouncement(userId, 'unified_funnel_intro_seen');
+  const { seen: announcementSeen, markSeen: markAnnouncementSeen } = useFeatureAnnouncement(userId, 'unified_funnel_announcement_seen');
+  const firstSyncedItemId = useMemo(
+    () => allItems.find(i => isSyncedSourceRef(i.source_ref))?.id ?? null,
+    [allItems],
+  );
 
   // Sync daily brief → brief_item in inbox (once per brief load)
   const { brief } = useDciBrief();
@@ -518,6 +535,76 @@ export default function InboxPage() {
     void reloadTags();
   }, [reloadItems, reloadTags]);
 
+  // Idea #4 (PLAN_idea4_agentic_followthrough.md, Section 5.1): the agent's
+  // one-time opt-in prompt for inbox nudges is an agent_question item whose
+  // CTA click must flip cos_settings.agent_config.nudge_inbox_items to true
+  // before agent-tick will ever send a real nudge — see
+  // maybeNudgeInboxItems()/decideOptInAction() in supabase/functions/agent-tick.
+  const handleEnableInboxNudges = useCallback(async (item: InboxItem) => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data: settings } = await supabase
+      .from('cos_settings')
+      .select('agent_config')
+      .eq('user_id', userData.user.id)
+      .maybeSingle();
+
+    const currentConfig = (settings?.agent_config as Record<string, unknown> | null) ?? {};
+    await supabase
+      .from('cos_settings')
+      .upsert(
+        { user_id: userData.user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
+        { onConflict: 'user_id' },
+      );
+
+    await supabase.from('cos_agent_log').insert({
+      user_id: userData.user.id,
+      event_type: 'inbox_optin_accepted',
+      item_id: item.id,
+      payload: {},
+    });
+
+    await archive(item.id);
+  }, [archive]);
+
+  // "Not now" on the opt-in prompt is just the item's normal archive action —
+  // but agent-tick's decideOptInAction() (Section 5.1) needs to know a
+  // decline happened so it can start the 14-day re-prompt cooldown, rather
+  // than re-prompting on the very next tick. Intercept archiving specifically
+  // for that item type before delegating to the plain archive() hook —
+  // mirrors the existing isSelfDestruct interception in handleItemDone above.
+  const handleArchive = useCallback(async (id: string) => {
+    const item = allItems.find(i => i.id === id);
+    const isOptInDecline = item?.type === 'agent_question'
+      && item.agent_payload?.source === 'inbox_agent_optin_prompt';
+
+    if (isOptInDecline) {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData.user) {
+        await supabase.from('cos_agent_log').insert({
+          user_id: userData.user.id,
+          event_type: 'inbox_optin_declined',
+          item_id: id,
+          payload: {},
+        });
+      }
+    }
+
+    await archive(id);
+  }, [allItems, archive]);
+
+  // Dispatch table for agent_question CTA clicks, keyed by cta_action —
+  // mirrors the existing cta_action convention used for
+  // 'delete_onboarding_project' above (handled via handleItemDone instead,
+  // since that one triggers off "done" rather than a CTA button).
+  const handleCtaClick = useCallback(async (item: InboxItem) => {
+    const ctaAction = item.agent_payload?.cta_action;
+    if (ctaAction === 'enable_inbox_nudges') {
+      await handleEnableInboxNudges(item);
+    }
+  }, [handleEnableInboxNudges]);
+
   const pinnedProjectIds = useMemo(() =>
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
@@ -593,9 +680,9 @@ export default function InboxPage() {
   }, [selected, items, pinItem]);
 
   const handleBulkArchive = useCallback(async () => {
-    for (const id of selected) await archive(id);
+    for (const id of selected) await handleArchive(id);
     setSelected(new Set());
-  }, [selected, archive]);
+  }, [selected, handleArchive]);
 
   const handleBulkDone = useCallback(async () => {
     for (const id of selected) await handleItemDone(id, true);
@@ -736,6 +823,9 @@ export default function InboxPage() {
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
       <WeekendBanner bare />
+      {activePanel === 'inbox' && announcementSeen === false && (
+        <UnifiedFunnelAnnouncementBanner onDismiss={markAnnouncementSeen} />
+      )}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200/80">
         {/* Top bar */}
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
@@ -917,6 +1007,12 @@ export default function InboxPage() {
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
         {activePanel === 'inbox' && <div className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+          {/* One-time "this showed up automatically" explainer, shown once
+              above the first auto-synced item a user ever sees — see
+              PLAN_idea1_unified_funnel.md §6.1. */}
+          {introSeen === false && firstSyncedItemId && (
+            <AutoSyncIntroCallout onDismiss={markIntroSeen} />
+          )}
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}
@@ -928,6 +1024,14 @@ export default function InboxPage() {
               onCreateTag={handleQuickCreateTag}
               onCreatePersonTag={handleCreatePersonTag}
             />
+          )}
+          {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
+              list, the first time this user's inbox has an open
+              meeting_insight item they haven't been introduced to yet. */}
+          {!onboarding.meetingInsightsIntro && items.some(i => i.type === 'meeting_insight' && i.status === 'open') && (
+            <div className="px-3 sm:px-4 pt-2">
+              <MeetingInsightsIntroBanner onDismiss={() => markOnboardingComplete('meetingInsightsIntro')} />
+            </div>
           )}
           {syncing ? (
             <div className="flex flex-col items-center justify-center h-56 gap-3 px-6 text-center">
@@ -964,7 +1068,7 @@ export default function InboxPage() {
             <InboxGroupedView
               items={sortedItems}
               allTags={tags}
-              onArchive={archive}
+              onArchive={handleArchive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
@@ -978,6 +1082,8 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onCtaClick={handleCtaClick}
+              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
@@ -987,7 +1093,7 @@ export default function InboxPage() {
             <InboxByProjectView
               items={sortedItems}
               allTags={tags}
-              onArchive={archive}
+              onArchive={handleArchive}
               onDelete={deleteItem}
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
@@ -1000,6 +1106,8 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onCtaClick={handleCtaClick}
+              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
