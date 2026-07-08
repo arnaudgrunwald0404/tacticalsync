@@ -29,6 +29,7 @@ import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
 import ConnectionsPanel from "@/components/cos/ConnectionsPanel";
 import CosPrepSchedulePanel, { MeetingsPrepPanel, DailyBriefPanel } from "@/components/cos/CosPrepSchedulePanel";
 import { AgentSettingsPanel } from "@/components/cos/AgentSettingsPanel";
+import { NotificationSettingsPanel } from "@/components/cos/NotificationSettingsPanel";
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
 import IntegrationExplainer from "@/components/cos/IntegrationExplainer";
@@ -2770,6 +2771,16 @@ const Settings = () => {
               </p>
             </div>
             <AgentSettingsPanel onNavigateToSection={setActiveSection} />
+          </div>
+        ) : activeSection === "notifications" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Notifications</h2>
+              <p className="text-muted-foreground text-sm">
+                Control what TacticalSync sends you, and where.
+              </p>
+            </div>
+            <NotificationSettingsPanel onNavigateToSection={setActiveSection} />
           </div>
         ) : activeSection === "testing-mode" && isTestUser ? (
           <div className="mb-8">

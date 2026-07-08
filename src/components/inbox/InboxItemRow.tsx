@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X,
+  Check, Pin, X, ThumbsUp, BookmarkPlus, XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -14,10 +14,12 @@ import { useOutgoingDelegation, useIncomingDelegationForItem } from '@/hooks/use
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle,
   PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
 } from '@/lib/inboxValidation';
+import type { TriageAction } from '@/lib/meetingInsights';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -38,6 +40,8 @@ interface InboxItemRowProps {
   onOpenDrawer?: (item: InboxItem) => void;
   onAcceptSuggestion?: (item: InboxItem, suggestion: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  /** Confirm/Save/Dismiss triage for meeting_insight rows (plan §4/§5). */
+  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   isSelected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   isNew?: boolean;
@@ -68,6 +72,16 @@ const TYPE_ACCENT: Record<InboxItem['type'], string> = {
 // the two visually read as the same thing.
 const PRIORITY_DATE_COLOR = '#2563eb';
 
+// Source label for items auto-synced in by a DB trigger (meeting action items
+// / 1:1 "for me" commitments — see src/types/inbox.ts's SourceRef doc
+// comment). Generic on purpose: the meeting title / 1:1 counterpart's name
+// isn't loaded onto InboxItem today, and adding a join just for this label
+// isn't worth it for v1 — see PLAN_idea1_unified_funnel.md §6.1.
+const SYNC_SOURCE_LABEL: Partial<Record<NonNullable<InboxItem['source_ref']>['type'], string>> = {
+  meeting_action_item: 'From a meeting',
+  cos_meeting_action: 'From a 1:1',
+};
+
 const AGENT_BG: Record<InboxItem['type'], string> = {
   task:             '',
   note:             '',
@@ -80,7 +94,7 @@ const AGENT_BG: Record<InboxItem['type'], string> = {
 export function InboxItemRow({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
-  onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion,
+  onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onTriageInsight,
   isSelected, onSelect, isNew, prioritizeMode,
 }: InboxItemRowProps) {
   const [hovered, setHovered] = useState(false);
@@ -91,7 +105,7 @@ export function InboxItemRow({
   const isTouch = useIsTouch();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
-  const { delegation, submitAnswer, approve } = useInboxDelegation(item.id);
+  const { delegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(item.id);
   // Person delegation (Idea #8) — only fetches when this row actually points
   // at an active delegation, so rows without one don't pay for the query.
   const { delegation: outgoingDelegation } = useOutgoingDelegation(
@@ -110,6 +124,7 @@ export function InboxItemRow({
     ? new Date(item.priority_due_at)
     : null;
   const activeTier = prioritizeMode && !item.priority_fixed ? currentPriorityTier(item.priority_due_at) : null;
+  const syncSourceLabel = item.source_ref ? SYNC_SOURCE_LABEL[item.source_ref.type] : undefined;
 
   // Tier pills are "loosey goosey" — the tier they read as decays over time.
   // Picking one always clears any fixed calendar date.
@@ -192,7 +207,14 @@ export function InboxItemRow({
               never renders a checkbox-shaped glyph next to the select
               checkbox above. */}
           {item.type !== 'task' && (
-            <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
+            <span
+              className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}
+              // "Why am I seeing this" affordance for agent-generated nudges
+              // (PLAN_idea4_agentic_followthrough.md, Section 5.3) — the
+              // persistent caption below covers the short version; this
+              // tooltip carries the full rationale on hover.
+              title={item.type === 'agent_nudge' ? item.agent_payload?.rationale : undefined}
+            >
               {TYPE_ICON[item.type]}
             </span>
           )}
@@ -214,13 +236,23 @@ export function InboxItemRow({
             />
           ) : (
             <button
-              className="flex-1 text-left text-sm min-w-0 break-words"
+              className="flex-1 flex flex-col items-start text-left text-sm min-w-0 break-words"
               onClick={() => onOpenDrawer?.(item)}
               onDoubleClick={e => { e.stopPropagation(); startEditText(); }}
             >
               <span className={cn(isDone && 'line-through text-gray-400')}>
                 {item.text}
               </span>
+              {/* Persistent (not hover-only) provenance caption for agent
+                  nudges — answers "who generated this, why now" inline, per
+                  PLAN_idea4_agentic_followthrough.md Section 5.2. The fuller
+                  rationale is also available via the type icon's tooltip
+                  above (Section 5.3). */}
+              {item.type === 'agent_nudge' && item.agent_payload?.rationale && (
+                <span className="text-[11px] text-amber-700/70 mt-0.5">
+                  {item.agent_payload.rationale}
+                </span>
+              )}
             </button>
           )}
 
@@ -322,6 +354,32 @@ export function InboxItemRow({
             >
               <Calendar className="h-3 w-3" />
               {format(fixedDueDate, 'MMM d')}
+            </span>
+          )}
+          {/* "View in recording" — meeting_insight only, links back to the
+              source Zoom recording (plan §3/§9.2). Doesn't promise seeking to
+              the exact quote timestamp — that deep-link isn't built yet. */}
+          {item.type === 'meeting_insight' && item.source_ref?.recording_id && (
+            <button
+              onClick={e => { e.stopPropagation(); onOpenDrawer?.(item); }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+              title="Open the recording this quote is from"
+            >
+              <Video className="h-3 w-3" />
+              View in recording
+            </button>
+          )}
+          {/* Source chip — for items auto-synced in from a meeting or 1:1 (see
+              src/types/inbox.ts SourceRef doc comment). Not a real InboxTag,
+              same "synthetic pill" treatment as the fixed-due-date chip above
+              (rounded-full, xs text) so it reads consistently with the rest
+              of this column. */}
+          {syncSourceLabel && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-gray-200 bg-gray-50 text-gray-500"
+              title={syncSourceLabel}
+            >
+              {syncSourceLabel}
             </span>
           )}
           {/* Tag picker — show on hover when tags exist, or always when no tags.
@@ -478,6 +536,62 @@ export function InboxItemRow({
             {item.agent_payload.cta_label ?? 'Respond'}
           </button>
         )}
+
+        {/* Meeting-insight triage — Confirm/Save/Dismiss, same CTA slot as the
+            agent_question button above (mutually exclusive by type, so no
+            layout conflict). Only while the insight hasn't been triaged yet. */}
+        {item.type === 'meeting_insight' && item.status === 'open' && onTriageInsight && (
+          <div
+            style={{ gridColumn: '-1' }}
+            className="justify-self-end flex items-center gap-1"
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'confirm'); }}
+                  aria-label="Confirm — turn into a task"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                  <span className="hidden sm:inline">Confirm</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Turns this into a task on your list. The original quote stays linked so you can always trace it back to the meeting.
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'save'); }}
+                  aria-label="Save as a note"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                >
+                  <BookmarkPlus className="h-3 w-3" />
+                  <span className="hidden sm:inline">Save</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Keeps the full quote as a note — no follow-up expected, just saved for reference.
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'dismiss'); }}
+                  aria-label="Dismiss"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                >
+                  <XCircle className="h-3 w-3" />
+                  <span className="hidden sm:inline">Dismiss</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Not useful? Dismiss it — this just clears it from your inbox, nothing is held against you and it won't come back.
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </div>
 
       {/* Delegation status — stays inline */}
@@ -485,7 +599,9 @@ export function InboxItemRow({
         <DelegationStatusRow
           delegation={delegation}
           onAnswer={submitAnswer}
-          onApprove={approve}
+          onApproveStep={approveStep}
+          onRejectStep={rejectStep}
+          onRetryStep={retryStep}
         />
       )}
 

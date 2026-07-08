@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import type { PlanStep } from '@/lib/delegationSteps';
 
 export type DelegationStatus =
   | 'ramping_up' | 'clarifying' | 'planning'
@@ -26,6 +27,7 @@ export interface Delegation {
   current_question: ClarifyingQuestion | null;
   answers: Record<string, string>;
   plan: string | null;
+  plan_steps: PlanStep[];
   result: string | null;
   approval_summary: string | null;
   created_at: string;
@@ -42,6 +44,7 @@ const rowToDelegation = (r: DelegationRow): Delegation => ({
   current_question: (r.current_question as unknown as ClarifyingQuestion | null) ?? null,
   answers: (r.answers as unknown as Record<string, string>) ?? {},
   plan: r.plan,
+  plan_steps: ((r as unknown as { plan_steps?: PlanStep[] }).plan_steps as PlanStep[]) ?? [],
   result: r.result,
   approval_summary: r.approval_summary,
   created_at: r.created_at,
@@ -113,13 +116,46 @@ export function useInboxDelegation(itemId: string | null) {
     });
   }, [delegation]);
 
-  const approve = useCallback(async () => {
-    if (!delegation) return;
-    await supabase
-      .from('inbox_delegations')
-      .update({ status: 'done', updated_at: new Date().toISOString() })
-      .eq('id', delegation.id);
-  }, [delegation]);
+  const callDelegationAction = useCallback(async (body: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delegate-inbox-task`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: 'Request failed.' }));
+      throw new Error(error ?? 'Request failed.');
+    }
+  }, []);
 
-  return { delegation, loading, startDelegation, submitAnswer, approve };
+  const approveStep = useCallback(async (stepId: string) => {
+    if (!delegation) return;
+    await callDelegationAction({ action: 'approve_step', delegation_id: delegation.id, step_id: stepId });
+  }, [delegation, callDelegationAction]);
+
+  const rejectStep = useCallback(async (stepId: string) => {
+    if (!delegation) return;
+    await callDelegationAction({ action: 'reject_step', delegation_id: delegation.id, step_id: stepId });
+  }, [delegation, callDelegationAction]);
+
+  const retryStep = useCallback(async (stepId: string) => {
+    if (!delegation) return;
+    await callDelegationAction({ action: 'retry_step', delegation_id: delegation.id, step_id: stepId });
+  }, [delegation, callDelegationAction]);
+
+  const approveAll = useCallback(async () => {
+    if (!delegation) return;
+    await callDelegationAction({ action: 'approve_all', delegation_id: delegation.id });
+  }, [delegation, callDelegationAction]);
+
+  const cancel = useCallback(async () => {
+    if (!delegation) return;
+    await callDelegationAction({ action: 'cancel', delegation_id: delegation.id });
+  }, [delegation, callDelegationAction]);
+
+  return { delegation, loading, startDelegation, submitAnswer, approveStep, rejectStep, retryStep, approveAll, cancel };
 }
