@@ -1,6 +1,7 @@
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { ChatBubble } from './ChatBubble';
 import { ClarifyingQuestion } from './DelegationStatusRow';
+import { PlanStepList } from './PlanStepList';
 import { useInboxDelegation, type DelegationStatus } from '@/hooks/useInboxDelegation';
 
 const SPINNING_STATUSES: DelegationStatus[] = ['ramping_up', 'planning', 'getting_it_done'];
@@ -14,10 +15,11 @@ interface DelegationChatViewProps {
  *  realtime subscription already wired up in useInboxDelegation. The compact
  *  DelegationStatusRow in the list stays as a separate, quicker-glance surface. */
 export function DelegationChatView({ itemId }: DelegationChatViewProps) {
-  const { delegation, submitAnswer, approve } = useInboxDelegation(itemId);
+  const { delegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(itemId);
   if (!delegation) return null;
 
   const spinning = SPINNING_STATUSES.includes(delegation.status);
+  const hasStructuredSteps = delegation.plan_steps.length > 0;
 
   return (
     <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3 flex flex-col gap-2.5">
@@ -35,17 +37,20 @@ export function DelegationChatView({ itemId }: DelegationChatViewProps) {
         </ChatBubble>
       )}
 
-      {delegation.status === 'seeking_approval' && delegation.approval_summary && (
+      {hasStructuredSteps && (delegation.status === 'seeking_approval' || delegation.status === 'getting_it_done' || delegation.status === 'done') && (
         <ChatBubble role="agent">
-          <div className="space-y-2">
-            <p>{delegation.approval_summary}</p>
-            <button
-              onClick={approve}
-              className="text-xs font-medium px-3 py-1.5 rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-            >
-              Approve
-            </button>
-          </div>
+          <PlanStepList
+            steps={delegation.plan_steps}
+            onApproveStep={approveStep}
+            onRejectStep={rejectStep}
+            onRetryStep={retryStep}
+          />
+        </ChatBubble>
+      )}
+
+      {!hasStructuredSteps && delegation.status === 'seeking_approval' && delegation.approval_summary && (
+        <ChatBubble role="agent">
+          <p>{delegation.approval_summary}</p>
         </ChatBubble>
       )}
 
