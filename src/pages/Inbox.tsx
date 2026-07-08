@@ -9,7 +9,9 @@ import {
   Loader2, CheckSquare, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
+import { MeetingInsightsIntroBanner } from '@/components/inbox/MeetingInsightsIntroBanner';
 import { WeekendBanner } from '@/components/WeekendBanner';
+import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
@@ -239,6 +241,7 @@ export default function InboxPage() {
 
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
+  const { onboarding, markComplete: markOnboardingComplete } = useOnboardingState();
 
   // ── Post-connect sync + simple progress log ───────────────────────────────
   // Shown in the empty middle list area while a calendar/Zoom connection just
@@ -350,7 +353,7 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // One-time onboarding surfaces for the unified funnel (meeting/1:1 action
   // items auto-syncing into the inbox) — see PLAN_idea1_unified_funnel.md §6.
@@ -905,6 +908,14 @@ export default function InboxPage() {
               onCreatePersonTag={handleCreatePersonTag}
             />
           )}
+          {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
+              list, the first time this user's inbox has an open
+              meeting_insight item they haven't been introduced to yet. */}
+          {!onboarding.meetingInsightsIntro && items.some(i => i.type === 'meeting_insight' && i.status === 'open') && (
+            <div className="px-3 sm:px-4 pt-2">
+              <MeetingInsightsIntroBanner onDismiss={() => markOnboardingComplete('meetingInsightsIntro')} />
+            </div>
+          )}
           {syncing ? (
             <div className="flex flex-col items-center justify-center h-56 gap-3 px-6 text-center">
               <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
@@ -954,6 +965,7 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
@@ -976,6 +988,7 @@ export default function InboxPage() {
               onOpenDrawer={openDrawer}
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
+              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}

@@ -22,6 +22,11 @@ interface AgentConfig {
   escalate_patterns: boolean
   recommend_format: boolean
   post_meeting_check: boolean
+  // Gates the extract-zoom-quotes call inside postMeetingCheck (meeting_insight
+  // rows in inbox_items). Rollout flag, defaults false — see
+  // PLAN_idea3_meeting_insights.md §7 Step 6. Distinct from any future
+  // user-facing Settings toggle (plan §9.4).
+  enable_meeting_insights: boolean
   nudge_timing_hours: number
   nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
@@ -36,6 +41,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   post_meeting_check: true,
+  enable_meeting_insights: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -1126,6 +1132,34 @@ async function postMeetingCheck(
     }
   }
 
+  // Step 3: Extract standout quotes and surface meeting_insight rows in the
+  // inbox. Independent try/catch from Step 2 — a Gemini outage or malformed
+  // response here must never block action-item suggestions or vice versa
+  // (PLAN_idea3_meeting_insights.md §6.5). Gated behind enable_meeting_insights
+  // (rollout flag, §7 Step 6) so this can be enabled per-user.
+  let meetingInsightsAdded = 0
+  if (zoomSyncOk && config.enable_meeting_insights) {
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/extract-zoom-quotes`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': userId,
+        },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const data = await res.json() as { insights_added?: number }
+        meetingInsightsAdded = data.insights_added ?? 0
+      } else {
+        console.warn(`post_meeting_check: extract-zoom-quotes returned ${res.status}`)
+      }
+    } catch (err) {
+      console.warn('post_meeting_check: meeting insight extraction failed:', (err as Error).message)
+    }
+  }
+
   // Only mark meetings whose Zoom transcript has actually arrived. Meetings
   // still awaiting a transcript stay pending and are retried on later ticks
   // until their transcript lands or they age out of the 24 h window — this is
@@ -1163,6 +1197,10 @@ async function postMeetingCheck(
       .in('id', doneIds)
   }
 
+  // Meeting insights are silent for v1 (PLAN_idea3_meeting_insights.md §9.4.1)
+  // — no Slack ping, just surfaced in-app and tracked via cos_agent_log below
+  // for the manual dismiss-rate monitoring described in plan §7 Step 6.
+
   // Notify via Slack if action items were surfaced (suppressed during quiet hours).
   if (suggestionsAdded > 0 && notifPrefs.meeting_followups && !suppressNotify) {
     const label = pendingRows[0]?.title ?? 'your recent meeting'
@@ -1185,6 +1223,7 @@ async function postMeetingCheck(
     meetings_processed: doneIds.length,
     zoom_sync_ok:       zoomSyncOk,
     suggestions_added:  suggestionsAdded,
+    meeting_insights_added: meetingInsightsAdded,
   })
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Video } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,9 @@ interface AgentConfig {
   escalate_patterns: boolean;
   recommend_format: boolean;
   recommend_tools: boolean;
+  // User-facing on/off control for meeting-insight cards in the inbox
+  // (distinct from any internal rollout gating) — plan §9.4.2.
+  enable_meeting_insights: boolean;
   nudge_timing_hours: number;
   nudge_max_count: number;
   quiet_hours_start: number;
@@ -34,6 +37,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   recommend_tools: false,
+  enable_meeting_insights: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -297,6 +301,14 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
               description="Suggest which data sources to attach to each 1:1's prep, shown in the prep panel"
               checked={config.recommend_tools}
               onChange={recommend_tools => update({ recommend_tools })}
+            />
+
+            <FeatureToggle
+              icon={Video}
+              label="Meeting insights"
+              description="Surface standout quotes from your meeting recordings in the inbox to confirm, save, or dismiss"
+              checked={config.enable_meeting_insights}
+              onChange={enable_meeting_insights => update({ enable_meeting_insights })}
             />
 
             {/* Per-person exceptions summary */}

@@ -6,9 +6,13 @@ export interface OnboardingState {
   welcome: boolean;
   lists: boolean;
   oneOnOnes: boolean;
+  // Has the user seen the meeting-insights first-run intro banner? See
+  // PLAN_idea3_meeting_insights.md §9.1 and the
+  // 20260724000000_meeting_insight_dedup_and_intro_flag migration.
+  meetingInsightsIntro: boolean;
 }
 
-const DEFAULT_STATE: OnboardingState = { welcome: false, lists: false, oneOnOnes: false };
+const DEFAULT_STATE: OnboardingState = { welcome: false, lists: false, oneOnOnes: false, meetingInsightsIntro: false };
 
 export function useOnboardingState() {
   const [onboarding, setOnboarding] = useState<OnboardingState>(DEFAULT_STATE);

@@ -66,6 +66,23 @@ export interface SourceRef {
     | 'slack_message' | 'gmail_message'
     | 'meeting_action_item' | 'cos_meeting_action';
   id?: string;
+  // meeting_insight-specific fields (see PLAN_idea3_meeting_insights.md §3).
+  /** cos_zoom_recordings.id — click-through target for "View in recording". */
+  recording_id?: string;
+  /** cos_zoom_transcripts.id — for re-extraction/debugging and dedup. */
+  transcript_id?: string;
+  /** cos_member_quotes.id, when the speaker matched a known team member.
+   *  Null/absent for unmatched speakers. */
+  quote_id?: string;
+  /** Raw speaker string from the transcript — always present on a
+   *  meeting_insight row, even when quote_id is absent. */
+  speaker_name?: string;
+  /** cos_zoom_recordings.topic, denormalized for display without a join. */
+  meeting_topic?: string;
+  /** YYYY-MM-DD, denormalized from the recording start time. */
+  said_on?: string;
+  /** The short "context" string Gemini returns per quote. */
+  context?: string;
 }
 
 export interface TagSuggestion {
