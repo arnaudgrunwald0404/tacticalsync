@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X,
+  Check, Pin, X, ThumbsUp, BookmarkPlus, XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -12,10 +12,12 @@ import { useInboxDelegation } from '@/hooks/useInboxDelegation';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle,
   PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
 } from '@/lib/inboxValidation';
+import type { TriageAction } from '@/lib/meetingInsights';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -36,6 +38,8 @@ interface InboxItemRowProps {
   onOpenDrawer?: (item: InboxItem) => void;
   onAcceptSuggestion?: (item: InboxItem, suggestion: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
+  /** Confirm/Save/Dismiss triage for meeting_insight rows (plan §4/§5). */
+  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   isSelected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   isNew?: boolean;
@@ -78,7 +82,7 @@ const AGENT_BG: Record<InboxItem['type'], string> = {
 export function InboxItemRow({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
-  onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion,
+  onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onTriageInsight,
   isSelected, onSelect, isNew, prioritizeMode,
 }: InboxItemRowProps) {
   const [hovered, setHovered] = useState(false);
@@ -302,6 +306,19 @@ export function InboxItemRow({
               {format(fixedDueDate, 'MMM d')}
             </span>
           )}
+          {/* "View in recording" — meeting_insight only, links back to the
+              source Zoom recording (plan §3/§9.2). Doesn't promise seeking to
+              the exact quote timestamp — that deep-link isn't built yet. */}
+          {item.type === 'meeting_insight' && item.source_ref?.recording_id && (
+            <button
+              onClick={e => { e.stopPropagation(); onOpenDrawer?.(item); }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+              title="Open the recording this quote is from"
+            >
+              <Video className="h-3 w-3" />
+              View in recording
+            </button>
+          )}
           {/* Tag picker — show on hover when tags exist, or always when no tags.
               Skipped for brief_item rows: they're auto-generated daily/weekly
               summaries, not taggable content, so the picker would just sit
@@ -443,6 +460,62 @@ export function InboxItemRow({
           >
             {item.agent_payload.cta_label ?? 'Respond'}
           </button>
+        )}
+
+        {/* Meeting-insight triage — Confirm/Save/Dismiss, same CTA slot as the
+            agent_question button above (mutually exclusive by type, so no
+            layout conflict). Only while the insight hasn't been triaged yet. */}
+        {item.type === 'meeting_insight' && item.status === 'open' && onTriageInsight && (
+          <div
+            style={{ gridColumn: '-1' }}
+            className="justify-self-end flex items-center gap-1"
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'confirm'); }}
+                  aria-label="Confirm — turn into a task"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                  <span className="hidden sm:inline">Confirm</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Turns this into a task on your list. The original quote stays linked so you can always trace it back to the meeting.
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'save'); }}
+                  aria-label="Save as a note"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                >
+                  <BookmarkPlus className="h-3 w-3" />
+                  <span className="hidden sm:inline">Save</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Keeps the full quote as a note — no follow-up expected, just saved for reference.
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => { e.stopPropagation(); onTriageInsight(item, 'dismiss'); }}
+                  aria-label="Dismiss"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                >
+                  <XCircle className="h-3 w-3" />
+                  <span className="hidden sm:inline">Dismiss</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Not useful? Dismiss it — this just clears it from your inbox, nothing is held against you and it won't come back.
+              </TooltipContent>
+            </Tooltip>
+          </div>
         )}
       </div>
 
