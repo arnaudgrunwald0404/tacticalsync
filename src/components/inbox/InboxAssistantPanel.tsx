@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Tag, Minimize2, History, Cpu, Bot, ArrowUp, Loader2, Sparkles, Copy } from 'lucide-react';
+import { X, Tag, Bot, ArrowUp, Loader2, Sparkles, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-breakpoint';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -167,6 +167,10 @@ interface InboxAssistantPanelProps {
   onAddTag: (itemId: string, tagId: string) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onUpdateItem?: (id: string, patch: Partial<InboxItem>) => Promise<void>;
+  /** Marks the open item done/not-done — the only way to complete an item from
+   *  this detail view (the row-level checkbox was removed in favor of the
+   *  bulk-select "Mark Done" action; this covers the single-item case). */
+  onItemDone?: (id: string, done: boolean) => void;
   onAddItem: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
   onCreateTag: (name: string, type: 'project' | 'person', color: string) => Promise<InboxTag | null>;
   projectTag?: InboxTag | null;
@@ -204,7 +208,7 @@ function DefaultState({
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-5 gap-5">
       <div className="h-14 w-14 rounded-full bg-gray-100 flex items-center justify-center">
-        <Cpu className="h-7 w-7 text-gray-400" />
+        <Bot className="h-7 w-7 text-gray-400" />
       </div>
       <div className="text-center space-y-1">
         <p className="font-semibold text-gray-900 text-base">
@@ -245,7 +249,7 @@ function DefaultState({
 
 function ItemDetail({
   item, allTags, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
-  onCreateWorkstream, onUpdateItem,
+  onCreateWorkstream, onUpdateItem, onItemDone,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
@@ -255,9 +259,11 @@ function ItemDetail({
   onAddTag: (itemId: string, tagId: string) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onUpdateItem?: (id: string, patch: Partial<InboxItem>) => Promise<void>;
+  onItemDone?: (id: string, done: boolean) => void;
 }) {
   const [bodyDraft, setBodyDraft] = useState('');
   const [editingBody, setEditingBody] = useState(false);
+  const isDone = item.status === 'done';
 
   useEffect(() => {
     setBodyDraft(item.body ?? '');
@@ -266,6 +272,23 @@ function ItemDetail({
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
+      {/* Done toggle — the only way to complete an item from this view; brief
+          items are auto-generated summaries, not user-completable. */}
+      {item.type !== 'brief_item' && onItemDone && (
+        <button
+          onClick={() => onItemDone(item.id, !isDone)}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
+            isDone
+              ? 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+          )}
+        >
+          <CheckSquare className="h-4 w-4" />
+          {isDone ? 'Done — undo' : 'Mark done'}
+        </button>
+      )}
+
       {/* Active delegation — renders as a chat thread when this item was delegated to the Assistant */}
       <DelegationChatView itemId={item.id} />
 
@@ -391,7 +414,7 @@ function ItemDetail({
 
 export function InboxAssistantPanel({
   item, allTags, userName, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
-  onCreateWorkstream, onUpdateItem, onAddItem, onCreateTag,
+  onCreateWorkstream, onUpdateItem, onItemDone, onAddItem, onCreateTag,
   projectTag, onCloseProject, onSaveProjectSettings, onDeleteProjectTag, onConvertFolderToProject,
   onSetTagPosition,
   stakeholderOptions, slackChannelOptions, meetingOptions,
@@ -500,6 +523,7 @@ export function InboxAssistantPanel({
                 onAddTag={onAddTag}
                 onCreateWorkstream={onCreateWorkstream}
                 onUpdateItem={onUpdateItem}
+                onItemDone={onItemDone}
               />
             )}
           </SheetContent>
@@ -549,15 +573,8 @@ export function InboxAssistantPanel({
               <>
                 <p className="flex-1 text-sm font-medium text-gray-900 truncate">{item.text}</p>
                 <button
-                  onClick={() => {}}
-                  title="Clone"
-                  aria-label="Clone item"
-                  className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-                <button
                   onClick={onClose}
+                  aria-label="Close item detail"
                   className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                   <X className="h-4 w-4" />
@@ -567,9 +584,6 @@ export function InboxAssistantPanel({
               <>
                 <Bot className="h-4 w-4 flex-shrink-0 text-gray-400" />
                 <span className="text-sm font-semibold text-gray-900 flex-1">Assistant</span>
-                <button className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                  <Minimize2 className="h-3.5 w-3.5" />
-                </button>
               </>
             )}
           </motion.div>
@@ -606,6 +620,7 @@ export function InboxAssistantPanel({
               onAddTag={onAddTag}
               onCreateWorkstream={onCreateWorkstream}
               onUpdateItem={onUpdateItem}
+              onItemDone={onItemDone}
             />
           ) : chatMessages.length > 0 ? (
             <AssistantChatPanel
@@ -629,14 +644,6 @@ export function InboxAssistantPanel({
       {!projectTag && (
         <div className="flex-shrink-0 border-t border-gray-100">
           <AgentBar tags={allTags} onSubmit={composerSubmit} onCreateTag={onCreateTag} />
-          <div className="flex items-center gap-3 px-4 py-2">
-            <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-              <History className="h-3 w-3" />History
-            </button>
-            <button className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-              <Cpu className="h-3 w-3" />Select Agent
-            </button>
-          </div>
         </div>
       )}
     </div>

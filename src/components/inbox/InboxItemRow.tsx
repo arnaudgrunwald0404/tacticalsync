@@ -437,7 +437,7 @@ export function InboxItemRow({
             columns exist. */}
         {item.type === 'agent_question' && item.agent_payload?.action_required && (
           <button
-            onClick={() => onCtaClick?.(item)}
+            onClick={() => (onCtaClick ?? onOpenDrawer)?.(item)}
             style={{ gridColumn: '-1' }}
             className="justify-self-end px-2.5 py-1 text-xs rounded-md bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
           >
