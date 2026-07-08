@@ -79,13 +79,27 @@ serve(async (req) => {
     // ── Test connection ─────────────────────────────────────────────────────
     const {
       base_url,
-      auth_value,
+      auth_value: submittedAuthValue,
       auth_header_name = 'Authorization',
       test_endpoint = '/',
     } = body
 
     if (!integration_key || !base_url) {
       return jsonResponse({ error: 'integration_key and base_url required' }, 400)
+    }
+
+    // "Test again" on an already-connected integration submits no auth_value
+    // (the client never gets the stored key back after save) — fall back to
+    // whatever is already on file so re-testing doesn't wipe a working key.
+    let auth_value = submittedAuthValue
+    if (!auth_value) {
+      const { data: existing } = await supabase
+        .from('cos_mcp_integrations')
+        .select('auth_value')
+        .eq('user_id', user.id)
+        .eq('integration_key', integration_key)
+        .maybeSingle()
+      auth_value = existing?.auth_value ?? null
     }
 
     // Build the test URL

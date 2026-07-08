@@ -123,7 +123,7 @@ serve(async (req) => {
     // Load credentials.
     const { data: creds, error: credsErr } = await supabase
       .from('user_zoom_credentials')
-      .select('access_token, refresh_token, expires_at, scope')
+      .select('access_token, refresh_token, expires_at, scope, notes_folder_id')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -137,6 +137,7 @@ serve(async (req) => {
     let accessToken: string = creds.access_token
     const refreshToken: string | null = creds.refresh_token
     const expiresAt: string | null = creds.expires_at
+    let notesFolderId: string | null = creds.notes_folder_id ?? null
 
     // Refresh if expired or near-expired (30s skew).
     const needsRefresh = !expiresAt || (new Date(expiresAt).getTime() - Date.now() < 30_000)
@@ -717,6 +718,162 @@ serve(async (req) => {
           console.error(`Calendar discovery: error processing meeting ${zoomId}:`, (err as Error).message)
         }
       }
+    }
+
+    // ── Zoom Docs meeting notes sync ─────────────────────────────────────────
+    // AI Companion stores meeting transcripts as Zoom Docs (type=notes).
+    // The cloud recordings API misses these entirely, so we list them directly.
+    // Requires docs:read:file scope.
+    //
+    // type=notes only catches AI Companion-generated docs. To also catch docs
+    // that live in the user's "My Notes" folder but aren't tagged that way,
+    // we bootstrap that folder's id from the parent of any type=notes doc (no
+    // Zoom API exposes "get my Notes folder id" directly) and list its
+    // children on every run. The folder id is cached per user once found.
+    let docsDiscovered = 0
+
+    try {
+      const docsUrl = new URL('https://api.zoom.us/v2/docs')
+      docsUrl.searchParams.set('type', 'notes')
+      docsUrl.searchParams.set('page_size', '100')
+
+      const docsRes = await fetch(docsUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+
+      const candidateDocs = new Map<string, { file_id: string; title: string; create_time?: string }>()
+
+      if (docsRes.ok) {
+        const docsData = await docsRes.json() as {
+          docs?: Array<{ file_id: string; title: string; create_time?: string }>
+        }
+        for (const doc of docsData.docs ?? []) {
+          candidateDocs.set(doc.file_id, doc)
+        }
+
+        if (!notesFolderId && docsData.docs && docsData.docs.length > 0) {
+          try {
+            const metaRes = await fetch(
+              `https://api.zoom.us/v2/docs/files/${encodeURIComponent(docsData.docs[0].file_id)}`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } },
+            )
+            if (metaRes.ok) {
+              const meta = await metaRes.json() as Record<string, unknown>
+              const parentId = (meta.parent_id ?? meta.parent_file_id ?? meta.folder_id) as string | undefined
+              if (parentId) {
+                notesFolderId = parentId
+                await supabase
+                  .from('user_zoom_credentials')
+                  .update({ notes_folder_id: notesFolderId })
+                  .eq('user_id', userId)
+              }
+            } else {
+              console.warn(`Zoom Docs sync: file metadata lookup returned ${metaRes.status}`)
+            }
+          } catch (metaErr) {
+            console.warn(`Zoom Docs sync: file metadata lookup failed:`, (metaErr as Error).message)
+          }
+        }
+      } else {
+        console.warn(`Zoom Docs sync: API returned ${docsRes.status}`)
+      }
+
+      if (notesFolderId) {
+        try {
+          const childrenRes = await fetch(
+            `https://api.zoom.us/v2/docs/files/${encodeURIComponent(notesFolderId)}/children`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } },
+          )
+          if (childrenRes.ok) {
+            const childrenData = await childrenRes.json() as {
+              files?: Array<{ file_id: string; title?: string; name?: string; create_time?: string }>
+            }
+            for (const child of childrenData.files ?? []) {
+              if (!candidateDocs.has(child.file_id)) {
+                candidateDocs.set(child.file_id, {
+                  file_id: child.file_id,
+                  title: child.title ?? child.name ?? '',
+                  create_time: child.create_time,
+                })
+              }
+            }
+          } else {
+            console.warn(`Zoom Docs sync: folder children lookup returned ${childrenRes.status}`)
+          }
+        } catch (childrenErr) {
+          console.warn(`Zoom Docs sync: folder children lookup failed:`, (childrenErr as Error).message)
+        }
+      }
+
+      {
+        const docUuids = [...candidateDocs.keys()].map(id => `doc:${id}`)
+        const { data: existingDocRecs } = await supabase
+          .from('cos_zoom_recordings')
+          .select('zoom_meeting_uuid')
+          .eq('user_id', userId)
+          .in('zoom_meeting_uuid', docUuids)
+        const alreadySyncedDocs = new Set(
+          (existingDocRecs ?? []).map(r => r.zoom_meeting_uuid as string)
+        )
+
+        for (const doc of candidateDocs.values()) {
+          const docUuid = `doc:${doc.file_id}`
+          if (alreadySyncedDocs.has(docUuid)) continue
+
+          // Parse "2026-06-25 11:31(GMT-7:00)" from title
+          const dateMatch = doc.title.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?:\(GMT([+-]\d+:\d+)\))?/)
+          let startTime: string
+          if (dateMatch) {
+            const tzOffset = dateMatch[3] ?? '-07:00'
+            startTime = `${dateMatch[1]}T${dateMatch[2]}:00${tzOffset}`
+          } else {
+            startTime = doc.create_time ?? new Date().toISOString()
+          }
+
+          const startDate = new Date(startTime)
+          if (isNaN(startDate.getTime()) || startDate < from || startDate > to) continue
+
+          // Match a team member by name in the title (case-insensitive).
+          // Strip the date suffix first so date digits don't confuse matching.
+          const titleCore = doc.title.replace(/\d{4}-\d{2}-\d{2}.*$/, '').toLowerCase()
+          let matchedMember: MinimalMember | null = null
+          for (const member of members) {
+            const firstName = member.name.split(' ')[0].toLowerCase()
+            const fullName = member.name.toLowerCase()
+            if (titleCore.includes(fullName) || titleCore.includes(firstName)) {
+              matchedMember = member
+              break
+            }
+          }
+          if (!matchedMember) continue
+
+          const row = {
+            user_id: userId,
+            team_member_id: matchedMember.id,
+            zoom_meeting_id: docUuid,
+            zoom_meeting_uuid: docUuid,
+            topic: doc.title,
+            start_time: startTime,
+            duration_minutes: null,
+            participant_emails: [] as string[],
+            participant_names: [] as string[],
+            has_transcript: false,
+            recording_files: [] as unknown[],
+            last_synced_at: new Date().toISOString(),
+          }
+
+          const { error: upsertErr } = await supabase
+            .from('cos_zoom_recordings')
+            .upsert(row, { onConflict: 'user_id,zoom_meeting_uuid' })
+
+          if (!upsertErr) {
+            docsDiscovered++
+            synced++
+          }
+        }
+      }
+    } catch (docsErr) {
+      console.warn(`Zoom Docs sync failed:`, (docsErr as Error).message)
     }
 
     // Mark success.

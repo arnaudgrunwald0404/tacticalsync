@@ -1331,6 +1331,7 @@ export type Database = {
           col2_sections: Json | null
           col3_label: string | null
           layout_config: Json | null
+          notification_preferences: Json
           onboarding_completed: Json
           status_options: Json
           tab_labels: Json | null
@@ -1344,6 +1345,7 @@ export type Database = {
           col2_sections?: Json | null
           col3_label?: string | null
           layout_config?: Json | null
+          notification_preferences?: Json
           onboarding_completed?: Json
           status_options?: Json
           tab_labels?: Json | null
@@ -1357,6 +1359,7 @@ export type Database = {
           col2_sections?: Json | null
           col3_label?: string | null
           layout_config?: Json | null
+          notification_preferences?: Json
           onboarding_completed?: Json
           status_options?: Json
           tab_labels?: Json | null
@@ -1672,6 +1675,7 @@ export type Database = {
       }
       dci_suggested_tasks: {
         Row: {
+          assignee_member_id: string | null
           created_at: string
           date: string
           id: string
@@ -1683,12 +1687,14 @@ export type Database = {
           source_type: string | null
           status: string
           suggested_category: string | null
+          tag_suggestions: Json
           title: string
           updated_at: string
           urgency: string | null
           user_id: string
         }
         Insert: {
+          assignee_member_id?: string | null
           created_at?: string
           date?: string
           id?: string
@@ -1700,12 +1706,14 @@ export type Database = {
           source_type?: string | null
           status?: string
           suggested_category?: string | null
+          tag_suggestions?: Json
           title: string
           updated_at?: string
           urgency?: string | null
           user_id: string
         }
         Update: {
+          assignee_member_id?: string | null
           created_at?: string
           date?: string
           id?: string
@@ -1717,12 +1725,20 @@ export type Database = {
           source_type?: string | null
           status?: string
           suggested_category?: string | null
+          tag_suggestions?: Json
           title?: string
           updated_at?: string
           urgency?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "dci_suggested_tasks_assignee_member_id_fkey"
+            columns: ["assignee_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "dci_suggested_tasks_member_id_fkey"
             columns: ["member_id"]
@@ -3578,6 +3594,7 @@ export type Database = {
           expires_at: string | null
           last_sync_at: string | null
           last_sync_status: string | null
+          notes_folder_id: string | null
           provider: string
           refresh_token: string
           scope: string
@@ -3592,6 +3609,7 @@ export type Database = {
           expires_at?: string | null
           last_sync_at?: string | null
           last_sync_status?: string | null
+          notes_folder_id?: string | null
           provider?: string
           refresh_token: string
           scope: string
@@ -3606,6 +3624,7 @@ export type Database = {
           expires_at?: string | null
           last_sync_at?: string | null
           last_sync_status?: string | null
+          notes_folder_id?: string | null
           provider?: string
           refresh_token?: string
           scope?: string

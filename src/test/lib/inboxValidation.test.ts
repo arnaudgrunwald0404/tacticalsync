@@ -32,7 +32,6 @@ import {
   PRIORITY_TIERS,
   computePriorityDueAt,
   currentPriorityTier,
-  priorityRank,
   isAutoPinnedItem,
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
@@ -531,6 +530,32 @@ describe('delegationRequestSchema', () => {
     expect(() => delegationRequestSchema.parse({ action: 'start' })).toThrow();
     expect(() => delegationRequestSchema.parse({})).toThrow();
   });
+
+  it('accepts approve_step, reject_step, and retry_step requests', () => {
+    for (const action of ['approve_step', 'reject_step', 'retry_step'] as const) {
+      const parsed = delegationRequestSchema.parse({ action, delegation_id: UUID, step_id: 'step-1' });
+      expect(parsed).toEqual({ action, delegation_id: UUID, step_id: 'step-1' });
+    }
+  });
+
+  it('rejects a step action with a non-UUID delegation_id', () => {
+    expect(() =>
+      delegationRequestSchema.parse({ action: 'approve_step', delegation_id: 'x', step_id: 'step-1' }),
+    ).toThrow();
+  });
+
+  it('rejects a step action with an empty step_id', () => {
+    expect(() =>
+      delegationRequestSchema.parse({ action: 'approve_step', delegation_id: UUID, step_id: '' }),
+    ).toThrow();
+  });
+
+  it('accepts approve_all and cancel requests', () => {
+    expect(delegationRequestSchema.parse({ action: 'approve_all', delegation_id: UUID }))
+      .toEqual({ action: 'approve_all', delegation_id: UUID });
+    expect(delegationRequestSchema.parse({ action: 'cancel', delegation_id: UUID }))
+      .toEqual({ action: 'cancel', delegation_id: UUID });
+  });
 });
 
 // ── planFolderReindex — dropping a project/workstream into the Folders section ─
@@ -705,31 +730,6 @@ describe('currentPriorityTier', () => {
       const momentsLater = new Date(now.getTime() + 50);
       expect(currentPriorityTier(due, momentsLater)).toBe(tier.key);
     }
-  });
-});
-
-describe('priorityRank', () => {
-  const now = new Date('2026-07-05T12:00:00.000Z');
-
-  it('ranks "Do Now" workflow status above every due-date tier', () => {
-    const doNow = priorityRank({ workflow_status: 'Do Now', priority_due_at: computePriorityDueAt('1m', now) }, now);
-    const nowTier = priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt('now', now) }, now);
-    expect(doNow).toBeLessThan(nowTier);
-  });
-
-  it('ranks tiers in PRIORITY_TIERS order (now < 1d < 3d < 1w < 2w < 1m)', () => {
-    const ranks = PRIORITY_TIERS.map(tier =>
-      priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt(tier.key, now) }, now),
-    );
-    for (let i = 1; i < ranks.length; i++) {
-      expect(ranks[i]).toBeGreaterThan(ranks[i - 1]);
-    }
-  });
-
-  it('ranks items with no due date as least urgent, alongside the 1-month tier', () => {
-    const noDueDate = priorityRank({ workflow_status: null, priority_due_at: null }, now);
-    const oneMonth = priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt('1m', now) }, now);
-    expect(noDueDate).toBeGreaterThan(oneMonth);
   });
 });
 

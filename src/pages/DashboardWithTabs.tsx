@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import GridBackground from "@/components/ui/grid-background";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { useEffect, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import DashboardMain from "./DashboardMain";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 const StrategyHome = lazyWithRetry(() => import("./StrategyHome"));
@@ -11,6 +11,8 @@ const LazyChiefOfStaffPage = lazyWithRetry(() => import("./ChiefOfStaff"));
 import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { supabase } from "@/integrations/supabase/client";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 const DashboardWithTabs = () => {
@@ -18,7 +20,18 @@ const DashboardWithTabs = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { isAdmin, isSuperAdmin } = useRoles();
-  const showInsights = isAdmin || isSuperAdmin;
+
+  // PLAN_idea9_manager_signals.md §6.1/§8: the Insights tab is no longer
+  // admin-only — a manager with direct reports (tracked in cos_team_members)
+  // needs it too, for the manager-signals/coaching-prep section. Admins keep
+  // access to the existing priority-analysis content on the same page.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+  }, []);
+  const cosMembers = useTeamMembers(currentUserId);
+  const hasDirectReports = cosMembers.some((m) => m.relationship_type === "direct_report");
+  const showInsights = isAdmin || isSuperAdmin || hasDirectReports;
 
   // Determine active tab from URL (used for TabsContent visibility + canvas redirect)
   const activeTab = location.pathname.includes('/insights')

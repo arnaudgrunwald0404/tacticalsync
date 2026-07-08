@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { id: "prep-schedule",               label: "Daily Brief",       group: "Check-Ins" },
   { id: "meetings-prep",               label: "Meetings",          group: "Check-Ins" },
   { id: "agent-settings",              label: "Agent",             group: "Check-Ins" },
+  { id: "notifications",               label: "Notifications",     group: "Check-Ins" },
   { id: "calendar-sync",               label: "Calendar",          group: "Integrations" },
   { id: "zoom-sync",                   label: "Zoom",              group: "Integrations" },
   { id: "slack-sync",                  label: "Slack",             group: "Integrations" },
