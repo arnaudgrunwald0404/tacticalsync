@@ -797,14 +797,17 @@ Activities:
     // ── Send Slack DM ─────────────────────────────────────────────────────
 
     let slackSent = false
-    // Check if user has dci_slack_dm enabled (default true)
-    const { data: scheduleRow } = await supabase
-      .from('cos_prep_schedule')
-      .select('dci_slack_dm')
+    // Check if the user has the Daily Brief Slack notification enabled (default true).
+    // Preference lives on cos_settings.notification_preferences, set via the
+    // Notifications settings page — supersedes the old cos_prep_schedule.dci_slack_dm flag.
+    const { data: settingsRow } = await supabase
+      .from('cos_settings')
+      .select('notification_preferences')
       .eq('user_id', userId)
       .maybeSingle()
 
-    const shouldSendSlack = scheduleRow?.dci_slack_dm !== false
+    const notificationPreferences = settingsRow?.notification_preferences as { daily_brief?: boolean } | null
+    const shouldSendSlack = notificationPreferences?.daily_brief !== false
 
     if (shouldSendSlack) {
       try {
