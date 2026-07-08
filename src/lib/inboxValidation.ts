@@ -432,3 +432,22 @@ export function currentPriorityTier(
   }
   return result;
 }
+
+/**
+ * Urgency rank for ordering items, lowest number = most urgent = sorts first.
+ * Mirrors the display hierarchy: an explicit "Do Now" workflow status beats
+ * the informal due-date tiers, which then follow `PRIORITY_TIERS` order
+ * (now/1d/3d/1w/2w/1m). Items with no due date rank least urgent, alongside
+ * the 1-month tier. Pinning is handled separately by callers — this only
+ * ranks urgency within a non-pinned set (or within the pinned set, if callers
+ * want pinned items themselves ordered by urgency too).
+ */
+export function priorityRank(
+  item: Pick<InboxItem, 'workflow_status' | 'priority_due_at'>,
+  now: Date = new Date(),
+): number {
+  if (item.workflow_status === 'Do Now') return 0;
+  const tier = currentPriorityTier(item.priority_due_at, now);
+  if (!tier) return PRIORITY_TIERS.length + 1;
+  return 1 + PRIORITY_TIERS.findIndex(t => t.key === tier);
+}
