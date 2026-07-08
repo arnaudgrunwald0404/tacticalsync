@@ -1331,6 +1331,7 @@ export type Database = {
           col2_sections: Json | null
           col3_label: string | null
           layout_config: Json | null
+          notification_preferences: Json
           onboarding_completed: Json
           status_options: Json
           tab_labels: Json | null
@@ -1344,6 +1345,7 @@ export type Database = {
           col2_sections?: Json | null
           col3_label?: string | null
           layout_config?: Json | null
+          notification_preferences?: Json
           onboarding_completed?: Json
           status_options?: Json
           tab_labels?: Json | null
@@ -1357,6 +1359,7 @@ export type Database = {
           col2_sections?: Json | null
           col3_label?: string | null
           layout_config?: Json | null
+          notification_preferences?: Json
           onboarding_completed?: Json
           status_options?: Json
           tab_labels?: Json | null
