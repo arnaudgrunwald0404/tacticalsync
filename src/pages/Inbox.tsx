@@ -22,8 +22,11 @@ import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
 import { InboxAssistantPanel } from '@/components/inbox/InboxAssistantPanel';
 import { AccountabilityIllustration } from '@/components/inbox/AccountabilityIllustration';
 import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
-import { useInboxItems } from '@/hooks/useInboxItems';
+import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
+import { UnifiedFunnelAnnouncementBanner } from '@/components/inbox/UnifiedFunnelAnnouncementBanner';
+import { useInboxItems, isSyncedSourceRef } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
+import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
@@ -185,7 +188,7 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
         icon: InboxIcon,
         illustration: AccountabilityIllustration,
         title: 'This is where accountability lives',
-        subtitle: "Record a conversation and we'll surface commitments and follow-ups here automatically — so nothing falls through the cracks.",
+        subtitle: "Record a conversation and we'll surface commitments and follow-ups here automatically — so nothing falls through the cracks. Your inbox isn't just for things you type here, either — action items assigned to you in meetings and 1:1s show up automatically too.",
       };
   }
 }
@@ -348,6 +351,17 @@ export default function InboxPage() {
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
   const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+
+  // One-time onboarding surfaces for the unified funnel (meeting/1:1 action
+  // items auto-syncing into the inbox) — see PLAN_idea1_unified_funnel.md §6.
+  // Gated on profiles.feature_announcements via the shared hook so neither
+  // re-shows once dismissed.
+  const { seen: introSeen, markSeen: markIntroSeen } = useFeatureAnnouncement(userId, 'unified_funnel_intro_seen');
+  const { seen: announcementSeen, markSeen: markAnnouncementSeen } = useFeatureAnnouncement(userId, 'unified_funnel_announcement_seen');
+  const firstSyncedItemId = useMemo(
+    () => allItems.find(i => isSyncedSourceRef(i.source_ref))?.id ?? null,
+    [allItems],
+  );
 
   // Sync daily brief → brief_item in inbox (once per brief load)
   const { brief } = useDciBrief();
@@ -709,6 +723,9 @@ export default function InboxPage() {
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
       <WeekendBanner bare />
+      {activePanel === 'inbox' && announcementSeen === false && (
+        <UnifiedFunnelAnnouncementBanner onDismiss={markAnnouncementSeen} />
+      )}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200/80">
         {/* Top bar */}
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
@@ -870,6 +887,12 @@ export default function InboxPage() {
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
         {activePanel === 'inbox' && <div className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+          {/* One-time "this showed up automatically" explainer, shown once
+              above the first auto-synced item a user ever sees — see
+              PLAN_idea1_unified_funnel.md §6.1. */}
+          {introSeen === false && firstSyncedItemId && (
+            <AutoSyncIntroCallout onDismiss={markIntroSeen} />
+          )}
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}

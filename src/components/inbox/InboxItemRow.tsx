@@ -66,6 +66,16 @@ const TYPE_ACCENT: Record<InboxItem['type'], string> = {
 // the two visually read as the same thing.
 const PRIORITY_DATE_COLOR = '#2563eb';
 
+// Source label for items auto-synced in by a DB trigger (meeting action items
+// / 1:1 "for me" commitments — see src/types/inbox.ts's SourceRef doc
+// comment). Generic on purpose: the meeting title / 1:1 counterpart's name
+// isn't loaded onto InboxItem today, and adding a join just for this label
+// isn't worth it for v1 — see PLAN_idea1_unified_funnel.md §6.1.
+const SYNC_SOURCE_LABEL: Partial<Record<NonNullable<InboxItem['source_ref']>['type'], string>> = {
+  meeting_action_item: 'From a meeting',
+  cos_meeting_action: 'From a 1:1',
+};
+
 const AGENT_BG: Record<InboxItem['type'], string> = {
   task:             '',
   note:             '',
@@ -99,6 +109,7 @@ export function InboxItemRow({
     ? new Date(item.priority_due_at)
     : null;
   const activeTier = prioritizeMode && !item.priority_fixed ? currentPriorityTier(item.priority_due_at) : null;
+  const syncSourceLabel = item.source_ref ? SYNC_SOURCE_LABEL[item.source_ref.type] : undefined;
 
   // Tier pills are "loosey goosey" — the tier they read as decays over time.
   // Picking one always clears any fixed calendar date.
@@ -300,6 +311,19 @@ export function InboxItemRow({
             >
               <Calendar className="h-3 w-3" />
               {format(fixedDueDate, 'MMM d')}
+            </span>
+          )}
+          {/* Source chip — for items auto-synced in from a meeting or 1:1 (see
+              src/types/inbox.ts SourceRef doc comment). Not a real InboxTag,
+              same "synthetic pill" treatment as the fixed-due-date chip above
+              (rounded-full, xs text) so it reads consistently with the rest
+              of this column. */}
+          {syncSourceLabel && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-gray-200 bg-gray-50 text-gray-500"
+              title={syncSourceLabel}
+            >
+              {syncSourceLabel}
             </span>
           )}
           {/* Tag picker — show on hover when tags exist, or always when no tags.

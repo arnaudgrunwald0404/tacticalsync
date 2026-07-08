@@ -55,9 +55,16 @@ export interface AgentPayload {
   brief_kind?: 'daily' | 'weekly';     // which brief this item was synced from
 }
 
+// `meeting_action_item` and `cos_meeting_action` are written by DB triggers
+// (see supabase/migrations/20260723000001_cos_meeting_actions_inbox_sync.sql
+// and 20260723000003_meeting_action_items_inbox_sync.sql), not by the app —
+// they mirror a team meeting action item or a 1:1 "for me" commitment into
+// the inbox. Status (open/done) round-trips both ways for these two kinds;
+// text/body edits made from the inbox side do not flow back to the source.
 export interface SourceRef {
   type: 'zoom_recording' | 'dci_brief' | 'dci_weekly_brief' | 'calendar' | 'manual'
-    | 'slack_message' | 'gmail_message';
+    | 'slack_message' | 'gmail_message'
+    | 'meeting_action_item' | 'cos_meeting_action';
   id?: string;
 }
 

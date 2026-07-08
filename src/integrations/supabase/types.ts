@@ -2550,6 +2550,7 @@ export type Database = {
           created_at: string | null
           department: string | null
           email: string
+          feature_announcements: Json
           first_name: string | null
           full_name: string
           green_percentage: number | null
@@ -2572,6 +2573,7 @@ export type Database = {
           created_at?: string | null
           department?: string | null
           email: string
+          feature_announcements?: Json
           first_name?: string | null
           full_name: string
           green_percentage?: number | null
@@ -2594,6 +2596,7 @@ export type Database = {
           created_at?: string | null
           department?: string | null
           email?: string
+          feature_announcements?: Json
           first_name?: string | null
           full_name?: string
           green_percentage?: number | null

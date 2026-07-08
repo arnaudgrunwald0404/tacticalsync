@@ -12,6 +12,33 @@ import {
   resolveTargetStatus,
   nextWorkflowStatus,
 } from '@/lib/inboxValidation';
+import { useToast } from '@/hooks/use-toast';
+
+// "Open the source" affordance for the two DB-trigger-synced source_ref
+// kinds (see src/types/inbox.ts). There's no per-series or per-member deep
+// link route today — /my-meetings and /check-ins/meetings (the 1:1s tab of
+// the Chief of Staff page, see src/pages/ChiefOfStaff.tsx's TeamSection
+// basePath) are the closest real routes, so we link there rather than
+// inventing a query-param scheme the app doesn't support yet.
+export function getSourceLink(sourceRef: SourceRef | null | undefined): { label: string; href: string } | null {
+  if (!sourceRef) return null;
+  switch (sourceRef.type) {
+    case 'meeting_action_item':
+      return { label: 'Open the meeting this came from', href: '/my-meetings' };
+    case 'cos_meeting_action':
+      return { label: 'Open your 1:1 prep', href: '/check-ins/meetings' };
+    default:
+      return null;
+  }
+}
+
+// The two source_ref kinds whose status round-trips with a source row via DB
+// trigger (see supabase/migrations/20260721000001.../20260721000003...). Used
+// to gate the "also marked complete" toast and the sync-explainer UI.
+const SYNCED_SOURCE_TYPES = new Set<SourceRef['type']>(['meeting_action_item', 'cos_meeting_action']);
+export function isSyncedSourceRef(sourceRef: SourceRef | null | undefined): boolean {
+  return !!sourceRef && SYNCED_SOURCE_TYPES.has(sourceRef.type);
+}
 
 // The generated Row types the jsonb/CHECK columns as Json/string; the domain
 // InboxItem narrows them. These mappers are the single boundary where we assert
@@ -50,6 +77,7 @@ export function useInboxItems(
 ) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   const applyPatch = useCallback((patcher: ItemsPatcher) => {
     setItems(patcher);
@@ -191,6 +219,12 @@ export function useInboxItems(
     const patch = done
       ? { status: 'done', done_at: new Date().toISOString() }
       : { status: 'open', done_at: null };
+    // Look up the item before it's dropped from `items` below, so we know
+    // whether this was a DB-trigger-synced item (meeting action item / 1:1
+    // commitment) and can tell the user the source stays in sync too — the
+    // single highest-trust-risk moment for this feature (see
+    // PLAN_idea1_unified_funnel.md §6.2 item 2).
+    const item = items.find(i => i.id === id);
     await updateItem(id, patch as Partial<InboxItem>);
     // Drop the item from the current list whenever its new status no longer
     // matches what this view is showing — e.g. marking done removes it from
@@ -198,7 +232,11 @@ export function useInboxItems(
     if (patch.status !== resolveTargetStatus(filter)) {
       applyPatch(prev => prev.filter(i => i.id !== id));
     }
-  }, [updateItem, applyPatch, filter]);
+    if (done && isSyncedSourceRef(item?.source_ref)) {
+      const sourceLabel = item?.source_ref?.type === 'cos_meeting_action' ? 'your 1:1' : 'the original meeting';
+      toast({ title: `Done — this is also marked complete in ${sourceLabel}.` });
+    }
+  }, [updateItem, applyPatch, filter, items, toast]);
 
   const archive = useCallback(async (id: string) => {
     await updateItem(id, { status: 'archived', archived_at: new Date().toISOString() } as Partial<InboxItem>);
