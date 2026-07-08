@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Users, Bell, Loader2 } from 'lucide-react';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { StatusBadge, nextStatus } from './StatusBadge';
 import { PrioritySlot } from './PrioritySlot';
 import { CommitmentCell } from './CommitmentCell';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import type {
   CommitmentQuarter,
   CommitmentStatus,
@@ -28,6 +30,7 @@ interface TeamMember {
   full_name: string;
   avatar_url: string | null;
   avatar_name: string | null;
+  email?: string | null;
 }
 
 interface EditCallbacks {
@@ -51,6 +54,46 @@ interface TeamRollupViewProps {
   editableUserId?: string;
   editAll?: boolean;
   editCallbacks?: EditCallbacks;
+}
+
+// ─── Nudge button — DMs a member on Slack (via the viewer's own Slack
+// connection) to remind them their priorities/commitments are still empty ───
+
+function NudgeButton({ member, quarterLabel }: { member: TeamMember; quarterLabel: string }) {
+  const { toast } = useToast();
+  const [sending, setSending] = useState(false);
+
+  if (!member.email) return null;
+
+  const handleNudge = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      const firstName = member.full_name.split(' ')[0];
+      const message = `Hey ${firstName} — just a nudge to add your ${quarterLabel} priorities and monthly commitments in TacticalSync. Takes about 2 minutes: ${window.location.origin}/commitments`;
+      const { data, error } = await supabase.functions.invoke('agent-command', {
+        body: { mode: 'send', target_name: member.full_name, target_email: member.email, message },
+      });
+      if (error) throw error;
+      const reply = (data as { reply?: string } | null)?.reply ?? `Sent to ${firstName}.`;
+      toast({ title: reply });
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleNudge}
+      disabled={sending}
+      className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-60"
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bell className="h-3 w-3" />}
+      {sending ? 'Sending…' : 'Send nudge'}
+    </button>
+  );
 }
 
 // ─── Editable member card (for the current user) ────────────────────────────
@@ -218,12 +261,14 @@ function ReadOnlyMemberCard({
   priorities,
   commitments,
   monthLabels,
+  quarterLabel,
   depth = 0,
 }: {
   member: TeamMember;
   priorities: QuarterlyPriority[];
   commitments: MonthlyCommitment[];
   monthLabels: string[];
+  quarterLabel: string;
   depth?: number;
 }) {
   const [monthsExpanded, setMonthsExpanded] = useState(false);
@@ -264,7 +309,10 @@ function ReadOnlyMemberCard({
         </div>
 
         {isEmpty ? (
-          <p className="text-xs text-muted-foreground/40 italic pl-1">No commitments yet</p>
+          <div className="flex items-center gap-2 pl-1">
+            <p className="text-xs text-muted-foreground/40 italic">No commitments yet</p>
+            <NudgeButton member={member} quarterLabel={quarterLabel} />
+          </div>
         ) : (
           <>
             {/* Q Priorities — read-only cards */}
@@ -396,31 +444,51 @@ export function TeamRollupView({
     );
   }
 
+  const allEmpty = priorities.length === 0 && commitments.length === 0;
+  const hasNudgeableMembers = orderedMembers.some(
+    ({ member }) => !((editAll || editableUserId === member.id) && editCallbacks),
+  );
+
   return (
-    <div className="rounded-lg border border-border/50 overflow-hidden">
-      {orderedMembers.map(({ member, depth }) =>
-        (editAll || editableUserId === member.id) && editCallbacks ? (
-          <EditableMemberCard
-            key={member.id}
-            member={member}
-            quarter={quarter}
-            priorities={priorities}
-            commitments={commitments}
-            monthLabels={monthLabels}
-            depth={depth}
-            callbacks={editCallbacks}
-          />
-        ) : (
-          <ReadOnlyMemberCard
-            key={member.id}
-            member={member}
-            priorities={priorities}
-            commitments={commitments}
-            monthLabels={monthLabels}
-            depth={depth}
-          />
-        ),
+    <div className="space-y-4">
+      {allEmpty && (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/30 px-6 py-10 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+            <Users className="h-5 w-5 text-primary" />
+          </div>
+          <p className="text-sm font-medium text-foreground">Nobody's set up {quarter.label} yet</p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            Priorities and commitments will show up here as people fill them in
+            {hasNudgeableMembers ? ' — send a nudge below to help someone get started' : ''}.
+          </p>
+        </div>
       )}
+      <div className="rounded-lg border border-border/50 overflow-hidden">
+        {orderedMembers.map(({ member, depth }) =>
+          (editAll || editableUserId === member.id) && editCallbacks ? (
+            <EditableMemberCard
+              key={member.id}
+              member={member}
+              quarter={quarter}
+              priorities={priorities}
+              commitments={commitments}
+              monthLabels={monthLabels}
+              depth={depth}
+              callbacks={editCallbacks}
+            />
+          ) : (
+            <ReadOnlyMemberCard
+              key={member.id}
+              member={member}
+              priorities={priorities}
+              commitments={commitments}
+              monthLabels={monthLabels}
+              quarterLabel={quarter.label}
+              depth={depth}
+            />
+          ),
+        )}
+      </div>
     </div>
   );
 }
