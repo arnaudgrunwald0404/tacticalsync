@@ -25,12 +25,10 @@ export const INTEGRATION_COPY: Record<string, IntegrationCopy> = {
     whatWeDo: [
       "Reads your calendar to find recurring 1:1s and other meetings automatically, so you don't add them by hand.",
       "Infers how often you meet with each person from the recurrence pattern (weekly, biweekly, etc.), so we can tell when a 1:1 is skipped or drifting off-cadence.",
-      "Extracts the Zoom meeting link from each invite's location or description — this is what lets the Zoom integration find a recording even when someone else on your team hosts the call.",
       'Matches attendees on each invite to the people you track, so meetings get attributed to the right person without you tagging them.',
     ],
     whyItMatters: [
       'Your 1:1 list builds itself from your real calendar instead of manual entry.',
-      "This is the piece that makes Zoom sync work for meetings you don't host — without it, we'd only ever see recordings from your own Zoom account, leaving a blind spot for most 1:1s your manager or peers schedule.",
       'Cadence detection lets the app notice "you usually meet weekly, but it\'s been three weeks" — a signal no single meeting record can give you on its own.',
     ],
     boundaries: [
