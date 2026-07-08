@@ -22,6 +22,12 @@ interface AgentConfig {
   escalate_patterns: boolean
   recommend_format: boolean
   post_meeting_check: boolean
+  // Idea #7 (Relationship memory): pre-1:1 person brief in the inbox, 24h
+  // ahead. Off by default — see PLAN_idea7_relationship_memory.md §4/§5c;
+  // should only be enabled once Unified Funnel (idea #1) ingestion is live
+  // for the workspace, since a brief built on incomplete data undermines
+  // the trust the feature is meant to build.
+  pre_stage_inbox_brief: boolean
   nudge_timing_hours: number
   nudge_max_count: number // stop nudging an action after this many nudges
   quiet_hours_start: number // 0-23
@@ -37,6 +43,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   post_meeting_check: true,
+  pre_stage_inbox_brief: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
   quiet_hours_start: 18,
@@ -237,6 +244,7 @@ serve(async (req) => {
       skipped_reason?: string
       actions_nudged?: number
       preps_staged?: number
+      inbox_briefs_staged?: number
       escalations?: number
     }> = []
 
@@ -324,6 +332,19 @@ serve(async (req) => {
         }
       }
 
+      // ── Pre-stage pre-1:1 inbox briefs (Idea #7: Relationship memory) ──
+      let inboxBriefsStaged = 0
+      if (config.pre_stage_inbox_brief) {
+        try {
+          inboxBriefsStaged = await prestageInboxBriefs(supabase, supabaseUrl, serviceRoleKey, userId, config)
+        } catch (err) {
+          await logAgentEvent(supabase, userId, 'error', {
+            handler: 'pre_stage_inbox_brief',
+            error: (err as Error).message,
+          })
+        }
+      }
+
       // ── Escalation detection ───────────────────────────────────────
       if (config.escalate_patterns) {
         try {
@@ -389,6 +410,7 @@ serve(async (req) => {
       await logAgentEvent(supabase, userId, 'tick_completed', {
         actions_nudged: actionsNudged,
         preps_staged: prepsStaged,
+        inbox_briefs_staged: inboxBriefsStaged,
         escalations,
       })
 
@@ -396,6 +418,7 @@ serve(async (req) => {
         user_id: userId,
         actions_nudged: actionsNudged,
         preps_staged: prepsStaged,
+        inbox_briefs_staged: inboxBriefsStaged,
         escalations,
       })
     }
@@ -774,6 +797,133 @@ async function prestagePreps(
       }
     } catch (err) {
       console.warn(`Prep staging failed for event ${event.id}:`, (err as Error).message)
+    }
+  }
+
+  return staged
+}
+
+// ── Pre-stage pre-1:1 inbox briefs (Idea #7: Relationship memory) ───────────
+// Mirrors prestagePreps' shape (same 12h window, same cos_one_on_one_events
+// source, same qualifies-as-1:1 + per-member override checks) but calls
+// generate-person-brief and writes a brief_item into inbox_items instead of
+// cos_one_on_one_prep. See PLAN_idea7_relationship_memory.md §3.2.
+async function prestageInboxBriefs(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userId: string,
+  config: AgentConfig,
+): Promise<number> {
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 24 * 3600 * 1000)
+  const todayDate = now.toISOString().slice(0, 10)
+
+  // Find meetings in the next 24 hours with a team_member_id — 24h (not the
+  // 12h window prestagePreps uses) because the brief is meant to land a full
+  // day ahead per the idea's "24 hours before each 1:1" requirement.
+  const { data: events } = await supabase
+    .from('cos_one_on_one_events')
+    .select('id, team_member_id, title, start_time, recurring_event_id, attendee_emails')
+    .eq('user_id', userId)
+    .eq('status', 'confirmed')
+    .not('team_member_id', 'is', null)
+    .gte('start_time', now.toISOString())
+    .lte('start_time', windowEnd.toISOString())
+
+  const { data: prepSchedule } = await supabase
+    .from('cos_prep_schedule')
+    .select('included_group_series')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+
+  let staged = 0
+
+  for (const event of (events ?? []) as Array<{
+    id: string; team_member_id: string; title: string | null; start_time: string
+    recurring_event_id: string | null; attendee_emails: string[] | null
+  }>) {
+    // Only real 1:1s qualify — same rule prestagePreps and
+    // computeFormatRecommendations already apply, kept in sync deliberately
+    // rather than re-derived (see meetingQualifiesForPrep's docstring).
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+
+    // Check per-person override (same flag prep-staging honors)
+    const { data: memberOverrides } = await supabase
+      .from('cos_team_members')
+      .select('agent_overrides')
+      .eq('id', event.team_member_id)
+      .single()
+
+    if ((memberOverrides?.agent_overrides as Record<string, unknown>)?.auto_prep === false) continue
+
+    // Check if we already staged an inbox brief for this event today —
+    // belt-and-suspenders alongside generate-person-brief's own source_ref
+    // dedup, so a failed-but-partial run doesn't retry indefinitely without
+    // a record of having tried.
+    const { count: alreadyStaged } = await supabase
+      .from('cos_agent_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('event_type', 'inbox_brief_staged')
+      .eq('event_id', event.id)
+      .gte('created_at', todayDate + 'T00:00:00Z')
+
+    if ((alreadyStaged ?? 0) > 0) continue
+
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-person-brief`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          member_id: event.team_member_id,
+          event_id: event.id,
+          meeting_time: event.start_time,
+        }),
+      })
+
+      if (res.ok) {
+        const resBody = await res.json() as { created?: boolean }
+        if (resBody.created) {
+          staged++
+
+          const { data: member } = await supabase
+            .from('cos_team_members')
+            .select('name')
+            .eq('id', event.team_member_id)
+            .single()
+          const memberName = member?.name ?? 'your team member'
+          const dayLabel = meetingDayLabel(event.start_time, config.timezone)
+
+          if (config.slack_notifications) {
+            await sendSlackDM(supabase, userId, `Your 1:1 brief for ${memberName} is in your inbox (meeting ${dayLabel})`, [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `:brain: *1:1 Brief Ready*\n\nYour meeting with *${memberName}* is ${dayLabel}. Open items, what's changed, and talking points are waiting in your inbox.`,
+                },
+              },
+            ])
+          }
+        }
+
+        await supabase.from('cos_agent_log').insert({
+          user_id: userId,
+          event_type: 'inbox_brief_staged',
+          event_id: event.id,
+          member_id: event.team_member_id,
+          payload: { meeting_time: event.start_time, created: resBody.created ?? false },
+        })
+      }
+    } catch (err) {
+      console.warn(`Inbox brief staging failed for event ${event.id}:`, (err as Error).message)
     }
   }
 

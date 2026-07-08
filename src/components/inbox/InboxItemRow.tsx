@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X,
+  Check, Pin, X, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -182,7 +182,13 @@ export function InboxItemRow({
               checkbox above. */}
           {item.type !== 'task' && (
             <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
-              {TYPE_ICON[item.type]}
+              {/* Pre-1:1 person briefs (Idea #7) get a distinct icon from
+                  daily/weekly briefs — both are type 'brief_item', and
+                  without a visual difference they'd compete for attention
+                  indistinguishably (see PLAN_idea7_relationship_memory.md §6). */}
+              {item.type === 'brief_item' && item.agent_payload?.person_brief
+                ? <Users className="h-4 w-4" />
+                : TYPE_ICON[item.type]}
             </span>
           )}
 
