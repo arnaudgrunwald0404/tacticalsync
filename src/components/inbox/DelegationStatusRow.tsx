@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bot, Loader2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Delegation, DelegationStatus } from '@/hooks/useInboxDelegation';
+import { PlanStepList } from './PlanStepList';
 
 // ── Status display config ─────────────────────────────────────────────────────
 
@@ -118,13 +119,20 @@ function DelegationDetail({ delegation }: { delegation: Delegation }) {
 interface DelegationStatusRowProps {
   delegation: Delegation;
   onAnswer: (answer: string) => void;
-  onApprove: () => void;
+  onApproveStep: (stepId: string) => void;
+  onRejectStep: (stepId: string) => void;
+  onRetryStep: (stepId: string) => void;
+  actorName?: string;
 }
 
-export function DelegationStatusRow({ delegation, onAnswer, onApprove }: DelegationStatusRowProps) {
+export function DelegationStatusRow({ delegation, onAnswer, onApproveStep, onRejectStep, onRetryStep, actorName }: DelegationStatusRowProps) {
   const [expanded, setExpanded] = useState(false);
   const spinning = STATUS_SPINNING.includes(delegation.status);
-  const showSummaryInline = delegation.status === 'seeking_approval' && !!delegation.approval_summary;
+  const hasStructuredSteps = delegation.plan_steps.length > 0;
+  // Legacy (v1) delegations have no plan_steps but may still have an
+  // approval_summary — render those read-only, with no approval affordance,
+  // per the backward-compatibility requirement in PLAN_idea6_delegation_v2.md §8.
+  const showLegacySummaryInline = !hasStructuredSteps && delegation.status === 'seeking_approval' && !!delegation.approval_summary;
 
   return (
     <div className="ml-7 mb-2 border-l-2 border-violet-200 pl-3">
@@ -158,20 +166,23 @@ export function DelegationStatusRow({ delegation, onAnswer, onApprove }: Delegat
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
         )}
-
-        {/* Approve button */}
-        {delegation.status === 'seeking_approval' && (
-          <button
-            onClick={onApprove}
-            className="ml-auto text-xs px-2.5 py-1 rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-          >
-            Approve
-          </button>
-        )}
       </div>
 
-      {/* Approval summary — shown inline so user knows what they're approving */}
-      {showSummaryInline && (
+      {/* Per-step approval list — the "Approve & Execute" surface */}
+      {hasStructuredSteps && (delegation.status === 'seeking_approval' || delegation.status === 'getting_it_done' || delegation.status === 'done') && (
+        <div className="mt-1.5">
+          <PlanStepList
+            steps={delegation.plan_steps}
+            actorName={actorName}
+            onApproveStep={onApproveStep}
+            onRejectStep={onRejectStep}
+            onRetryStep={onRetryStep}
+          />
+        </div>
+      )}
+
+      {/* Legacy summary — shown inline so user knows what they're approving */}
+      {showLegacySummaryInline && (
         <p className="mt-1.5 text-xs text-gray-600 leading-relaxed">{delegation.approval_summary}</p>
       )}
 
