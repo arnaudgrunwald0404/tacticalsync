@@ -323,7 +323,148 @@ export function applyInboxClientFilters(
 export function resolveTargetStatus(filter: InboxFilterState): InboxItemStatus {
   if (filter.builtIn === 'archive') return 'archived';
   if (filter.builtIn === 'done') return 'done';
+  if (filter.builtIn === 'snoozed') return 'snoozed';
   return filter.status ?? 'open';
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+
+/**
+ * Sanitize a free-text search term before it's interpolated into a Supabase
+ * PostgREST `.or()`/`.ilike()` filter string. `%` and `_` are ilike wildcards
+ * (escaped so a literal search for e.g. "50%" doesn't become a wildcard
+ * match), and `,`/`(`/`)` are PostgREST's own filter-string syntax — an
+ * unescaped comma in a search term could otherwise inject an unintended
+ * second filter clause into `.or('text.ilike.%<term>%,body.ilike.%<term>%')`.
+ * Returns '' (treated as "no search") for empty/whitespace-only input.
+ */
+export function sanitizeSearchTerm(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/[\\%_]/g, (c) => `\\${c}`)
+    .replace(/[,()]/g, '');
+}
+
+// ── Snooze ───────────────────────────────────────────────────────────────────
+
+export type SnoozeRelativeOption = 'later_today' | 'tomorrow' | 'weekend' | 'next_week';
+
+/**
+ * Compute the target Date for a relative snooze option, in local time (per
+ * the parseLocalDate convention in CLAUDE.md — never construct these via a
+ * UTC-parsed date string). All options land on a "reasonable morning/later"
+ * local time rather than the exact current instant, so items don't resurface
+ * mid-meeting or at 2am.
+ */
+export function computeSnoozeDate(option: SnoozeRelativeOption, from: Date = new Date()): Date {
+  const result = new Date(from);
+  switch (option) {
+    case 'later_today': {
+      result.setHours(result.getHours() + 4, 0, 0, 0);
+      // Cap at 6pm local — "later today" shouldn't resurface overnight.
+      const cap = new Date(from);
+      cap.setHours(18, 0, 0, 0);
+      return result > cap ? cap : result;
+    }
+    case 'tomorrow': {
+      result.setDate(result.getDate() + 1);
+      result.setHours(9, 0, 0, 0);
+      return result;
+    }
+    case 'weekend': {
+      // Next Saturday (or today if it's already Saturday and still morning).
+      const day = result.getDay(); // 0 = Sun, 6 = Sat
+      const daysUntilSat = (6 - day + 7) % 7;
+      result.setDate(result.getDate() + (daysUntilSat === 0 ? 7 : daysUntilSat));
+      result.setHours(9, 0, 0, 0);
+      return result;
+    }
+    case 'next_week': {
+      // Next Monday.
+      const day = result.getDay();
+      const daysUntilMon = ((1 - day + 7) % 7) || 7;
+      result.setDate(result.getDate() + daysUntilMon);
+      result.setHours(9, 0, 0, 0);
+      return result;
+    }
+  }
+}
+
+/**
+ * Render a human label for a snoozed item's "come back at" state — used in
+ * the Snoozed view and anywhere else a snooze needs to read as a sentence
+ * rather than a bare ISO timestamp.
+ *
+ *  - Person-bound + a resolved future date: "Until your next 1:1 with Jane"
+ *  - Person-bound but the cached date is in the past (sweep couldn't find a
+ *    replacement meeting — see inbox-unsnooze-sweep): flagged as stale so the
+ *    UI can prompt for a new date instead of looking like a normal snooze.
+ *  - Fixed date only: "Until Jul 14"
+ */
+export function formatSnoozeLabel(
+  item: { snoozed_until: string | null; snooze_until_member_id: string | null },
+  memberName: string | null,
+  now: Date = new Date(),
+): { text: string; stale: boolean } {
+  if (item.snooze_until_member_id) {
+    const name = memberName ?? 'them';
+    if (item.snoozed_until && new Date(item.snoozed_until) > now) {
+      return { text: `Until your next 1:1 with ${name}`, stale: false };
+    }
+    return { text: `Your 1:1 with ${name} was cancelled — pick a new time`, stale: true };
+  }
+  if (item.snoozed_until) {
+    const d = new Date(item.snoozed_until);
+    const formatted = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return { text: `Until ${formatted}`, stale: false };
+  }
+  return { text: 'Snoozed', stale: false };
+}
+
+// ── Saved views ──────────────────────────────────────────────────────────────
+
+/** Max length of a saved view's name. */
+export const VIEW_NAME_MAX = 80;
+
+/** Validate + normalize a saved view's name (mirrors {@link validateTagName}). */
+export function validateViewName(raw: unknown): ValidationResult<string> {
+  if (typeof raw !== 'string') return fail('View name is required.');
+  const cleaned = stripControlChars(raw).replace(/\s+/g, ' ').trim();
+  if (!cleaned) return fail('View name cannot be empty.');
+  if (cleaned.length > VIEW_NAME_MAX) {
+    return fail(`View name is too long (max ${VIEW_NAME_MAX} characters).`);
+  }
+  return ok(cleaned);
+}
+
+// ── Keyboard navigation ────────────────────────────────────────────────────
+
+/**
+ * Compute the item id adjacent to `currentId` in `items` (the currently
+ * *displayed* order — callers must pass the already-sorted/grouped list, not
+ * a raw fetch order, since focus must track what's on screen).
+ *
+ *  - `currentId` not found / null → first item (direction 'next') or last
+ *    item (direction 'prev'), so the very first j/k press lands somewhere
+ *    sensible instead of doing nothing.
+ *  - At either boundary, stays put (no wraparound) — matches how j/k behave
+ *    in Gmail/Superhuman.
+ *  - Empty list → null.
+ */
+export function getAdjacentItemId(
+  items: { id: string }[],
+  currentId: string | null,
+  direction: 'next' | 'prev',
+): string | null {
+  if (items.length === 0) return null;
+  const idx = currentId ? items.findIndex((i) => i.id === currentId) : -1;
+  if (idx === -1) {
+    return direction === 'next' ? items[0].id : items[items.length - 1].id;
+  }
+  const nextIdx = direction === 'next' ? idx + 1 : idx - 1;
+  if (nextIdx < 0 || nextIdx >= items.length) return items[idx].id;
+  return items[nextIdx].id;
 }
 
 // ── Folder/project drag-and-drop reindexing (extracted from InboxSidebar) ─────

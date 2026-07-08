@@ -11,7 +11,9 @@ import {
   applyInboxClientFilters,
   resolveTargetStatus,
   nextWorkflowStatus,
+  sanitizeSearchTerm,
 } from '@/lib/inboxValidation';
+import { resolveNextOneOnOne } from '@/lib/oneOnOneResolution';
 
 // The generated Row types the jsonb/CHECK columns as Json/string; the domain
 // InboxItem narrows them. These mappers are the single boundary where we assert
@@ -35,6 +37,7 @@ const rowToItem = (r: InboxItemRow): InboxItem => ({
     : [],
   priority_due_at: ((r as Record<string, unknown>).priority_due_at as string | null) ?? null,
   priority_fixed: ((r as Record<string, unknown>).priority_fixed as boolean | null) ?? false,
+  snooze_until_member_id: ((r as Record<string, unknown>).snooze_until_member_id as string | null) ?? null,
 });
 
 type ItemsPatcher = (prev: InboxItem[]) => InboxItem[];
@@ -72,6 +75,15 @@ export function useInboxItems(
 
     if (filter.types?.length) {
       query = query.in('type', filter.types);
+    }
+
+    // Free-text search across text/body, combined (AND) with every other
+    // filter already applied above. sanitizeSearchTerm strips characters that
+    // would otherwise let a search term break out of the .or() filter string
+    // (see its doc comment in inboxValidation.ts for why this matters).
+    const searchTerm = sanitizeSearchTerm(filter.search ?? '');
+    if (searchTerm) {
+      query = query.or(`text.ilike.%${searchTerm}%,body.ilike.%${searchTerm}%`);
     }
 
     // (builtIn 'asap' is handled client-side after the tag join.)
@@ -304,6 +316,62 @@ export function useInboxItems(
     await updateItem(id, { pinned });
   }, [updateItem]);
 
+  // ── Snooze ───────────────────────────────────────────────────────────────
+  //
+  // Snoozing sets status='snoozed', which — since resolveTargetStatus() maps
+  // every non-done/archive/snoozed built-in view to status='open' — makes the
+  // item disappear from every existing view for free, no query changes
+  // needed elsewhere. Un-snoozing (manual, or via the inbox-unsnooze-sweep
+  // cron) flips status back to 'open' and clears both snooze columns.
+
+  /** Snooze an item until a fixed date/time. */
+  const snoozeItem = useCallback(async (id: string, until: Date) => {
+    await updateItem(id, {
+      status: 'snoozed',
+      snoozed_until: until.toISOString(),
+      snooze_until_member_id: null,
+    } as Partial<InboxItem>);
+    applyPatch(prev => prev.filter(i => i.id !== id));
+  }, [updateItem, applyPatch]);
+
+  /**
+   * Snooze an item until the user's next scheduled 1:1 with `teamMemberId`.
+   * Resolves the meeting immediately via cos_one_on_one_events and caches the
+   * resolved timestamp in `snoozed_until` (kept fresh by the unsnooze-sweep
+   * cron if the meeting moves). Returns false — and does *not* snooze the
+   * item — when no upcoming 1:1 is found, so the caller can prompt for a
+   * fallback date instead of silently creating a snooze with nothing to wake
+   * it up (see PLAN_idea2_dormant20.md Section 1b's risk notes).
+   */
+  const snoozeUntilNext1on1 = useCallback(async (
+    id: string,
+    teamMemberId: string,
+  ): Promise<{ ok: true; resolvedAt: string } | { ok: false }> => {
+    if (!userId) return { ok: false };
+    const next = await resolveNextOneOnOne(userId, teamMemberId);
+    if (!next) return { ok: false };
+
+    await updateItem(id, {
+      status: 'snoozed',
+      snoozed_until: next.start_time,
+      snooze_until_member_id: teamMemberId,
+    } as Partial<InboxItem>);
+    applyPatch(prev => prev.filter(i => i.id !== id));
+    return { ok: true, resolvedAt: next.start_time };
+  }, [userId, updateItem, applyPatch]);
+
+  /** Manually bring a snoozed item back to the open inbox. */
+  const unsnoozeItem = useCallback(async (id: string) => {
+    await updateItem(id, {
+      status: 'open',
+      snoozed_until: null,
+      snooze_until_member_id: null,
+    } as Partial<InboxItem>);
+    if (resolveTargetStatus(filter) !== 'open') {
+      applyPatch(prev => prev.filter(i => i.id !== id));
+    }
+  }, [updateItem, applyPatch, filter]);
+
   // Accept a tag suggestion: apply the tag and remove the suggestion from the list.
   const acceptSuggestion = useCallback(async (itemId: string, suggestion: TagSuggestion) => {
     // Apply the tag
@@ -353,5 +421,8 @@ export function useInboxItems(
     pinItem,
     acceptSuggestion,
     dismissSuggestion,
+    snoozeItem,
+    snoozeUntilNext1on1,
+    unsnoozeItem,
   };
 }

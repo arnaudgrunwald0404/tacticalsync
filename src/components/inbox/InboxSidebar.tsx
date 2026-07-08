@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, Loader2, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Radar, Bot, Users, Search, Loader2, X, Star, Trash2 } from 'lucide-react';
 import { Inbox, Zap, Clock, CheckSquare, Archive, Hash, Folder, FolderPlus, ChevronRight, Plus, Settings2, Pin, FolderOutput, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
-import type { InboxTag, InboxFilterState } from '@/types/inbox';
+import type { InboxTag, InboxFilterState, InboxView, InboxViewSort } from '@/types/inbox';
 import { planTagGroupReindex } from '@/lib/inboxValidation';
 
 function formatRelativeTime(iso: string): string {
@@ -39,6 +39,21 @@ interface InboxSidebarProps {
   meetingsSearch?: string;
   onMeetingsSearchChange?: (v: string) => void;
   meetingsSyncInfo?: MeetingsSyncInfo;
+
+  // ── Saved views ──────────────────────────────────────────────────────────
+  views?: InboxView[];
+  /** Current sort-mode half of "current view", for the save-view action —
+   *  sort mode lives in page-level state, not in `filter`. */
+  currentSort?: InboxViewSort;
+  onSaveView?: (name: string, filter: InboxFilterState, sort: InboxViewSort) => void;
+  onApplyView?: (view: InboxView) => void;
+  onToggleStarView?: (id: string, starred: boolean) => void;
+  onDeleteView?: (id: string) => void;
+  /** Progressive disclosure gate (Section 5.4): only show the "Save this
+   *  view" ghost row once the user has changed the filter/sort at least once
+   *  this session — an empty inbox shouldn't also ask to save a view of
+   *  nothing. */
+  hasChangedViewThisSession?: boolean;
 }
 
 // ── Fixed (non-editable) item ─────────────────────────────────────────────────
@@ -478,7 +493,9 @@ function DropGap({ active, onDrop, label }: { active: boolean; onDrop: () => voi
 export function InboxSidebar({
   tags, counts, filter, onFilterChange, onRenameTag, onCreateWorkstream, onUpdateTag, onEditProject, onTogglePin, bare = false,
   meetingsSearch = '', onMeetingsSearchChange, meetingsSyncInfo,
+  views = [], currentSort, onSaveView, onApplyView, onToggleStarView, onDeleteView, hasChangedViewThisSession,
 }: InboxSidebarProps) {
+  const [savingView, setSavingView] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const isMeetings = location.pathname.startsWith('/inbox/meetings');
@@ -672,10 +689,93 @@ export function InboxSidebar({
           </>
         ) : (
           <>
-            <SectionHeader label="Views" />
+            <SectionHeader
+              label="Views"
+              action={onSaveView ? (
+                <button
+                  onClick={() => setSavingView(true)}
+                  title="Save this filter and sort as a view you can jump back to anytime."
+                  className="flex-shrink-0 h-5 w-5 flex items-center justify-center rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              ) : undefined}
+            />
             <SidebarItem label="All"           icon={<Inbox className="h-4 w-4" />} count={counts['all']}     active={isActive({ builtIn: 'all' })}     onClick={() => onFilterChange({ builtIn: 'all' })} />
             <SidebarItem label="Do Now"        icon={<Zap className="h-4 w-4" />}   count={counts['asap']}    active={isActive({ builtIn: 'asap' })}    onClick={() => onFilterChange({ builtIn: 'asap' })} />
             <SidebarItem label="Waiting on me" icon={<Clock className="h-4 w-4" />} count={counts['waiting']} active={isActive({ builtIn: 'waiting' })} onClick={() => onFilterChange({ builtIn: 'waiting' })} />
+
+            {savingView && onSaveView && currentSort && (
+              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white ring-1 ring-blue-300 shadow-sm mt-0.5">
+                <Star className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                <InlineInput
+                  placeholder="View name…"
+                  onCommit={name => { onSaveView(name, filter, currentSort); setSavingView(false); }}
+                  onCancel={() => setSavingView(false)}
+                />
+              </div>
+            )}
+
+            {views.length === 0 && hasChangedViewThisSession && onSaveView && !savingView && (
+              // One-time ghost row (Section 5.1/5.4) — disappears for good once
+              // the user has ever saved a view, and is gated behind having
+              // actually changed the filter/sort this session so a brand new,
+              // empty inbox doesn't also ask to save a view of nothing.
+              <button
+                onClick={() => setSavingView(true)}
+                className="w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 hover:border-gray-400 transition-colors mt-0.5"
+              >
+                <Star className="h-3.5 w-3.5 flex-shrink-0" />
+                Save this view — filters + sort, one click away
+              </button>
+            )}
+
+            {views.map(view => {
+              const active = onApplyView ? JSON.stringify(view.filter_json) === JSON.stringify(filter) : false;
+              return (
+                <div
+                  key={view.id}
+                  className={cn(
+                    'group w-full flex items-center gap-2 px-2 py-1 rounded-md text-sm transition-colors',
+                    active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                  )}
+                >
+                  <button
+                    onClick={() => onApplyView?.(view)}
+                    className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                  >
+                    <span className="w-4 flex-shrink-0" />
+                    <span className="text-gray-400 flex-shrink-0 w-4 flex items-center justify-center">
+                      <ListOrdered className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="flex-1 truncate">{view.name}</span>
+                  </button>
+                  <span className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100">
+                    {onToggleStarView && (
+                      <button
+                        onClick={() => onToggleStarView(view.id, !view.is_starred)}
+                        title={view.is_starred ? 'This is your default view' : 'Make this your default view when you open your inbox'}
+                        className={cn(
+                          'p-0.5 rounded hover:bg-gray-200',
+                          view.is_starred ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-gray-500',
+                        )}
+                      >
+                        <Star className="h-3.5 w-3.5" fill={view.is_starred ? 'currentColor' : 'none'} />
+                      </button>
+                    )}
+                    {onDeleteView && (
+                      <button
+                        onClick={() => onDeleteView(view.id)}
+                        title="Delete view"
+                        className="p-0.5 rounded hover:bg-gray-200 text-gray-300 hover:text-gray-500"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
 
         {personTags.length > 0 && (
           <>
@@ -791,6 +891,13 @@ export function InboxSidebar({
         )}
 
         <SectionHeader label="More" />
+        <SidebarItem
+          label="Snoozed"
+          icon={<Clock className="h-4 w-4" />}
+          count={counts['snoozed']}
+          active={isActive({ builtIn: 'snoozed' })}
+          onClick={() => onFilterChange({ builtIn: 'snoozed' })}
+        />
         <SidebarItem
           label="Done"
           icon={<CheckSquare className="h-4 w-4" />}

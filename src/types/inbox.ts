@@ -78,6 +78,12 @@ export interface InboxItem {
   done_at: string | null;
   archived_at: string | null;
   snoozed_until: string | null;
+  /** Set when snoozed via "until my next 1:1 with X" — the cos_team_members.id
+   *  being waited on. `snoozed_until` still holds the resolved timestamp (kept
+   *  in sync by the unsnooze-sweep edge function); this column lets the sweep
+   *  re-resolve it if the meeting moves, and lets the UI render "until your
+   *  next 1:1 with Jane" instead of a bare date. */
+  snooze_until_member_id: string | null;
   agent_payload: AgentPayload | null;
   source_ref: SourceRef | null;
   sort_order: number;
@@ -98,12 +104,20 @@ export interface InboxItem {
   tag_suggestions?: TagSuggestion[];
 }
 
+/** Sort/view-mode half of a saved view — kept separate from `InboxFilterState`
+ *  since sort mode lives only in page-level React state today, not in the
+ *  filter object itself. */
+export interface InboxViewSort {
+  sortMode: 'grouped' | 'byProject';
+  prioritizeMode: boolean;
+}
+
 export interface InboxView {
   id: string;
   user_id: string;
   name: string;
   filter_json: InboxFilterState;
-  sort_json: Record<string, unknown>;
+  sort_json: InboxViewSort;
   is_starred: boolean;
   sort_order: number;
   created_at: string;
@@ -113,10 +127,13 @@ export interface InboxFilterState {
   tagIds?: string[];
   types?: InboxItemType[];
   status?: InboxItemStatus;
-  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'done' | 'archive' | tag-id.
+  /** built-in view key, e.g. 'all' | 'asap' | 'waiting' | 'done' | 'archive' | 'snoozed' | tag-id.
    *  'asap' is labeled "Do Now" in the UI and filters by workflow_status === 'Do Now'
    *  (no longer by an ASAP tag). */
-  builtIn?: 'all' | 'asap' | 'waiting' | 'done' | 'archive';
+  builtIn?: 'all' | 'asap' | 'waiting' | 'done' | 'archive' | 'snoozed';
+  /** Free-text search across item `text`/`body`, combined (AND) with every
+   *  other filter field. Empty/whitespace-only is treated as "no search". */
+  search?: string;
 }
 
 export const TAG_COLORS = [
