@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import { verifySlackSignature } from "../_shared/slackSignature.ts"
+import { verifySlackSignature } from "../_shared/slack.ts"
 
 /**
  * Slack → TacticalSync inbox capture.
