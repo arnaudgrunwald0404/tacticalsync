@@ -89,7 +89,7 @@ export function InboxItemRow({
   const isTouch = useIsTouch();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
-  const { delegation, submitAnswer, approve } = useInboxDelegation(item.id);
+  const { delegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(item.id);
 
   const isAgentItem = ['agent_nudge', 'agent_question', 'meeting_insight', 'brief_item'].includes(item.type);
   // A fixed due date shows as a tag (see the Tags column below) so it survives
@@ -451,7 +451,9 @@ export function InboxItemRow({
         <DelegationStatusRow
           delegation={delegation}
           onAnswer={submitAnswer}
-          onApprove={approve}
+          onApproveStep={approveStep}
+          onRejectStep={rejectStep}
+          onRetryStep={retryStep}
         />
       )}
 
