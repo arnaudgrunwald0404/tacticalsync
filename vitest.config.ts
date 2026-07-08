@@ -14,6 +14,7 @@ export default defineConfig({
       '**/e2e/**', // Exclude Playwright e2e tests
       '**/.{idea,git,cache,output,temp}/**',
       '**/.claude/worktrees/**', // Nested git worktrees carry their own copy of the test suite
+      '**/supabase/functions/**', // Deno tests — run via `deno test`, not Vitest
     ],
     coverage: {
       provider: 'v8',

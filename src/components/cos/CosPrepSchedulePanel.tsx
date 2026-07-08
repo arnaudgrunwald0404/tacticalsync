@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -422,73 +423,95 @@ function MeetingsManualRunCard({ draft, running, onRunNow, logs, userId, onRefre
           Run now
         </Button>
         {logs.length > 0 && (
-          <div className="border-t pt-3 space-y-3">
-            {logs.map(log => {
-              const isRunning = log.status === 'running';
-              const duration = log.finished_at
-                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
-                : null;
-              return (
-                <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusIcon status={log.status} />
-                    <span className="text-sm font-medium">
-                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      {' '}
-                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
-                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
-                    {isRunning && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
-                        onClick={() => stopRun(log.id)}
-                        disabled={stopping === log.id}
-                      >
-                        {stopping === log.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Square className="h-3 w-3" />}
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>{log.meetings_found} meeting{log.meetings_found !== 1 ? 's' : ''} found</span>
-                    <span>{log.meetings_qualified} qualified</span>
-                    <span className="text-foreground font-medium">
-                      {log.preps_generated} prep{log.preps_generated !== 1 ? 's' : ''} generated
-                    </span>
-                    {log.preps_cached > 0 && <span>{log.preps_cached} cached</span>}
-                  </div>
-                  {(log.zoom_synced || log.slack_synced) && (
-                    <div className="flex gap-2">
-                      {log.zoom_synced && (
-                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                          <Video className="h-3 w-3" /> {log.zoom_recordings ?? 0} recordings
-                        </Badge>
+          <div className="border-t pt-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8 px-2"></TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead className="text-right">Found</TableHead>
+                  <TableHead className="text-right">Qualified</TableHead>
+                  <TableHead className="text-right">Generated</TableHead>
+                  <TableHead className="text-right">Cached</TableHead>
+                  <TableHead>Sources</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead className="w-20"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map(log => {
+                  const isRunning = log.status === 'running';
+                  const duration = log.finished_at
+                    ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
+                    : null;
+                  return (
+                    <React.Fragment key={log.id}>
+                      <TableRow>
+                        <TableCell className="px-2"><StatusIcon status={log.status} /></TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          {' '}
+                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge></TableCell>
+                        <TableCell className="text-right text-sm">{log.meetings_found}</TableCell>
+                        <TableCell className="text-right text-sm">{log.meetings_qualified}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{log.preps_generated}</TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{log.preps_cached || '—'}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {log.zoom_synced && (
+                              <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                                <Video className="h-3 w-3" /> {log.zoom_recordings ?? 0}
+                              </Badge>
+                            )}
+                            {log.slack_synced && (
+                              <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                                <MessageSquare className="h-3 w-3" /> {log.slack_messages ?? 0}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {duration != null ? `${duration}s` : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {isRunning && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-xs gap-1 text-destructive hover:text-destructive"
+                              onClick={() => stopRun(log.id)}
+                              disabled={stopping === log.id}
+                            >
+                              {stopping === log.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Square className="h-3 w-3" />}
+                              Stop
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {log.errors.length > 0 && (
+                        <TableRow>
+                          <TableCell colSpan={10} className="bg-red-50 py-2">
+                            <div className="space-y-1">
+                              {log.errors.map((err, i) => (
+                                <p key={i} className="text-xs text-red-700">
+                                  {err.member_name && <span className="font-medium">{err.member_name}: </span>}
+                                  {err.error}
+                                </p>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       )}
-                      {log.slack_synced && (
-                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                          <MessageSquare className="h-3 w-3" /> {log.slack_messages ?? 0} messages
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                  {log.errors.length > 0 && (
-                    <div className="bg-red-50 rounded p-2 space-y-1">
-                      {log.errors.map((err, i) => (
-                        <p key={i} className="text-xs text-red-700">
-                          {err.member_name && <span className="font-medium">{err.member_name}: </span>}
-                          {err.error}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>
@@ -1074,44 +1097,73 @@ function BriefManualRunCard({ draft, running, onRunNow, userId }: {
           Run now
         </Button>
         {logs.length > 0 && (
-          <div className="border-t pt-3 space-y-3">
-            {logs.map(log => {
-              const isRunning = log.status === 'running';
-              const duration = log.finished_at
-                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
-                : null;
-              return (
-                <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusIcon status={log.status} />
-                    <span className="text-sm font-medium">
-                      {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      {' '}
-                      {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge>
-                    {duration != null && <span className="text-[11px] text-muted-foreground ml-auto">{duration}s</span>}
-                    {isRunning && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-xs gap-1 ml-auto text-destructive hover:text-destructive"
-                        onClick={() => stopRun(log.id)}
-                        disabled={stopping === log.id}
-                      >
-                        {stopping === log.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Square className="h-3 w-3" />}
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                  {log.error && (
-                    <p className="text-xs text-destructive bg-destructive/5 rounded px-2 py-1">{log.error}</p>
-                  )}
-                </div>
-              );
-            })}
+          <div className="border-t pt-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8 px-2"></TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead className="text-right">Sources</TableHead>
+                  <TableHead className="text-right">Priorities</TableHead>
+                  <TableHead>Summary</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead className="w-20"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map(log => {
+                  const isRunning = log.status === 'running';
+                  const duration = log.finished_at
+                    ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)
+                    : null;
+                  return (
+                    <React.Fragment key={log.id}>
+                      <TableRow>
+                        <TableCell className="px-2"><StatusIcon status={log.status} /></TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          {' '}
+                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge></TableCell>
+                        <TableCell className="text-right text-sm">{log.items_found}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{log.items_surfaced}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={log.summary ?? undefined}>
+                          {log.summary ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {duration != null ? `${duration}s` : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {isRunning && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-xs gap-1 text-destructive hover:text-destructive"
+                              onClick={() => stopRun(log.id)}
+                              disabled={stopping === log.id}
+                            >
+                              {stopping === log.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Square className="h-3 w-3" />}
+                              Stop
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {log.error && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="bg-destructive/5 py-2">
+                            <p className="text-xs text-destructive">{log.error}</p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>

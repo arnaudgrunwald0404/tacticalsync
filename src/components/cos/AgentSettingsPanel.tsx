@@ -25,7 +25,6 @@ interface AgentConfig {
   quiet_hours_start: number;
   quiet_hours_end: number;
   timezone: string;
-  slack_notifications: boolean;
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -40,7 +39,6 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   quiet_hours_start: 18,
   quiet_hours_end: 9,
   timezone: 'America/New_York',
-  slack_notifications: true,
 };
 
 const TIMEZONES = [
@@ -363,21 +361,20 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
             title="When it contacts you"
             description="Control delivery channel, timing, and quiet hours."
           >
-            {/* Slack notifications toggle */}
-            <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border bg-background">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">Send Slack notifications</span>
-                {!slackConnected && (
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-200 text-amber-600">
-                    Connect Slack first
-                  </Badge>
-                )}
-              </div>
-              <Switch
-                checked={config.slack_notifications}
-                onCheckedChange={slack_notifications => update({ slack_notifications })}
-                disabled={!slackConnected}
-              />
+            {/* Link to the consolidated Notifications settings page */}
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-dashed border-border bg-muted/30">
+              <p className="text-[11px] text-muted-foreground">
+                Which alerts get sent to Slack is managed on the <span className="font-medium text-foreground">Notifications</span> settings page.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-shrink-0 gap-1.5 h-7 text-xs"
+                onClick={() => onNavigateToSection?.('notifications')}
+              >
+                Manage
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
