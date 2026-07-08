@@ -5,9 +5,9 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { PersonPage } from '@/components/inbox/PersonPage';
 import {
-  AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
+  Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
-  Loader2, CheckSquare, type LucideIcon,
+  Loader2, CheckSquare, Search, Keyboard, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
 import { MeetingInsightsIntroBanner } from '@/components/inbox/MeetingInsightsIntroBanner';
@@ -25,10 +25,13 @@ import { DelegateDropdown } from '@/components/inbox/DelegateDropdown';
 import { InboxAssistantPanel } from '@/components/inbox/InboxAssistantPanel';
 import { AccountabilityIllustration } from '@/components/inbox/AccountabilityIllustration';
 import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
+import { ShortcutsHelpDialog } from '@/components/inbox/ShortcutsHelpDialog';
+import { InboxWhatsNewBanner } from '@/components/inbox/InboxWhatsNewBanner';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { UnifiedFunnelAnnouncementBanner } from '@/components/inbox/UnifiedFunnelAnnouncementBanner';
 import { useInboxItems, isSyncedSourceRef } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
+import { useInboxViews } from '@/hooks/useInboxViews';
 import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
@@ -40,12 +43,27 @@ import { usePersonMemoryConsent } from '@/hooks/usePersonMemoryConsent';
 import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsentModal';
 import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMemoryBanner';
 import type { Json } from '@/integrations/supabase/types';
-import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
-import { planTagGroupReindex, isAutoPinnedItem } from '@/lib/inboxValidation';
+import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag, InboxView, InboxViewSort } from '@/types/inbox';
+import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
 type SortMode = 'grouped' | 'byProject';
+
+// ── Keyboard shortcuts — first-press education toast (Section 5.1) ──────────
+// localStorage-gated to once-ever, not once-per-session, so returning users
+// aren't nagged after the first time they discover keyboard nav.
+const SHORTCUTS_TOAST_SEEN_KEY = 'inbox_shortcuts_toast_seen';
+function hasSeenShortcutsToast(): boolean {
+  try { return localStorage.getItem(SHORTCUTS_TOAST_SEEN_KEY) === '1'; } catch { return true; }
+}
+function markShortcutsToastSeen(): void {
+  try { localStorage.setItem(SHORTCUTS_TOAST_SEEN_KEY, '1'); } catch { /* ignore */ }
+}
+
+// Progressive-disclosure thresholds (Section 5.4) — placeholder heuristics,
+// not analytics-backed; see PLAN_idea2_dormant20.md Section 8 open question 6.
+const SHORTCUTS_MIN_ITEMS = 5;
 
 // ── Seed data helper ─────────────────────────────────────────────────────────
 // Creates demo items so the page is not empty on first load
@@ -111,6 +129,7 @@ const VIEW_LABELS: Record<string, string> = {
   waiting: 'Waiting on me',
   done:    'Done',
   archive: 'Archive',
+  snoozed: 'Snoozed',
 };
 
 function filterLabel(filter: InboxFilterState, tags: { id: string; name: string }[]) {
@@ -134,6 +153,26 @@ interface EmptyStateContent {
 }
 
 function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateContent {
+  // Search that returns nothing should say why, not just "no results" — and
+  // point at "All" when a narrower filter is also active, since the item
+  // might exist just outside the current scope (Section 5.1).
+  if (filter.search?.trim()) {
+    const scopeLabel = filter.tagIds?.length === 1
+      ? tags.find(t => t.id === filter.tagIds![0])?.name
+      : filter.builtIn && filter.builtIn !== 'all' ? VIEW_LABELS[filter.builtIn] : null;
+    return {
+      icon: Search,
+      title: `No matches for "${filter.search.trim()}"${scopeLabel ? ` in ${scopeLabel}` : ''}`,
+      subtitle: scopeLabel ? 'Try searching in All instead.' : 'Try a different search term.',
+    };
+  }
+  if (filter.builtIn === 'snoozed') {
+    return {
+      icon: Clock,
+      title: 'Nothing snoozed',
+      subtitle: 'Snooze an item and it will come back automatically when it\'s time.',
+    };
+  }
   if (filter.tagIds?.length === 1) {
     const tag = tags.find(t => t.id === filter.tagIds![0]);
     if (tag?.type === 'person') {
@@ -233,9 +272,18 @@ export default function InboxPage() {
   // tags, Done) are reflected immediately instead of the panel showing a
   // stale copy until it's closed and reopened.
   const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const [forceEditToken, setForceEditToken] = useState(0);
+  const [hasChangedViewThisSession, setHasChangedViewThisSession] = useState(false);
+  const [shortcutsToastSeen, setShortcutsToastSeen] = useState(hasSeenShortcutsToast());
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [editingProjectTag, setEditingProjectTag] = useState<import('@/types/inbox').InboxTag | null>(null);
   const openDrawer = useCallback((item: InboxItem) => { setDrawerItemId(item.id); setEditingProjectTag(null); }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userCreatedAt, setUserCreatedAt] = useState<string | null>(null);
   const isDesktop = useIsDesktop();
   const isMobile = useIsMobile();
   const isTouch = useIsTouch();
@@ -244,13 +292,50 @@ export default function InboxPage() {
       if (data.user) {
         setUserId(data.user.id);
         setUserName(data.user.user_metadata?.full_name ?? data.user.email?.split('@')[0]);
+        setUserCreatedAt(data.user.created_at ?? null);
       }
     });
   }, []);
 
+  // "What's new" banner (Section 5.3/5.4) shows to *existing* users on their
+  // first load after this release, not to a brand-new user who signs up
+  // after it ships and has no "before" to contrast against. Gated on account
+  // age vs. this release's ship date, not on isNewUser's zero-items
+  // heuristic (which would also wrongly suppress it for an existing user
+  // who's simply cleared their inbox to zero).
+  const INBOX_IDEA2_RELEASE_DATE = new Date('2026-07-08T00:00:00Z');
+  const whatsNewEligible = Boolean(
+    userCreatedAt && new Date(userCreatedAt) < INBOX_IDEA2_RELEASE_DATE,
+  );
+
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
+  const { views, createView, deleteView, toggleStar, starredView } = useInboxViews(userId);
   const { onboarding, markComplete: markOnboardingComplete } = useOnboardingState();
+
+  // Debounce the search box (~250ms) into the actual filter so the query
+  // isn't refired on every keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setFilter(prev => {
+        const trimmed = searchDraft.trim();
+        if ((prev.search ?? '') === trimmed) return prev;
+        return { ...prev, search: trimmed || undefined };
+      });
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [searchDraft]);
+
+  // Apply the starred view (if any) as the initial filter/sort on first load,
+  // replacing the hardcoded { builtIn: 'all' } default.
+  const appliedStarredView = useRef(false);
+  useEffect(() => {
+    if (appliedStarredView.current || !starredView) return;
+    appliedStarredView.current = true;
+    setFilter(starredView.filter_json);
+    setSortMode(starredView.sort_json.sortMode);
+    setPrioritizeMode(starredView.sort_json.prioritizeMode);
+  }, [starredView]);
 
   // ── Post-connect sync + simple progress log ───────────────────────────────
   // Shown in the empty middle list area while a calendar/Zoom connection just
@@ -362,7 +447,13 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+
+  // Snoozed count for the sidebar badge — a separate lightweight fetch since
+  // `allItems` (used for the `all`/`asap`/`waiting` counts) only ever fetches
+  // status='open' rows.
+  const snoozedFilter = useMemo<InboxFilterState>(() => ({ builtIn: 'snoozed' }), []);
+  const { items: snoozedItems } = useInboxItems(userId, snoozedFilter);
 
   // One-time onboarding surfaces for the unified funnel (meeting/1:1 action
   // items auto-syncing into the inbox) — see PLAN_idea1_unified_funnel.md §6.
@@ -460,7 +551,7 @@ export default function InboxPage() {
   }, [userId, allItems]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: doneCount, archive: archiveCount };
+    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: doneCount, archive: archiveCount, snoozed: snoozedItems.length };
     for (const item of allItems) {
       c['all']++;
       if (item.workflow_status === 'Do Now') c['asap']++;
@@ -470,7 +561,7 @@ export default function InboxPage() {
       }
     }
     return c;
-  }, [allItems, doneCount, archiveCount]);
+  }, [allItems, doneCount, archiveCount, snoozedItems.length]);
 
   const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
     const item = await addItem(text, type, tagIds);
@@ -824,7 +915,146 @@ export default function InboxPage() {
     setFilter(f);
     setSelected(new Set());
     setSidebarOpen(false);
+    setHasChangedViewThisSession(true);
   }, []);
+
+  // ── Saved views ──────────────────────────────────────────────────────────
+
+  const currentViewSort = useMemo<InboxViewSort>(() => ({ sortMode, prioritizeMode }), [sortMode, prioritizeMode]);
+
+  const handleSaveView = useCallback((name: string, f: InboxFilterState, sort: InboxViewSort) => {
+    void createView(name, f, sort);
+  }, [createView]);
+
+  const handleApplyView = useCallback((view: InboxView) => {
+    setFilter(view.filter_json);
+    setSortMode(view.sort_json.sortMode);
+    setPrioritizeMode(view.sort_json.prioritizeMode);
+    setSelected(new Set());
+    setSidebarOpen(false);
+  }, []);
+
+  // ── Snooze ───────────────────────────────────────────────────────────────
+
+  const handleSnooze = useCallback((id: string, until: Date) => {
+    void snoozeItem(id, until);
+  }, [snoozeItem]);
+
+  const handleSnoozeUntilNext1on1 = useCallback(async (id: string, memberId: string) => {
+    return snoozeUntilNext1on1(id, memberId);
+  }, [snoozeUntilNext1on1]);
+
+  const handleUnsnooze = useCallback((id: string) => {
+    void unsnoozeItem(id);
+  }, [unsnoozeItem]);
+
+  // ── Keyboard shortcuts (j/k/e/d/s/x/Enter/?) ────────────────────────────
+  //
+  // A single page-level listener rather than one per row. Guards on
+  // activeElement so typing in the search box or an inline edit never
+  // triggers navigation/mutation — the single highest-regression-risk case
+  // per PLAN_idea2_dormant20.md Section 4's risk notes.
+  useEffect(() => {
+    if (activePanel !== 'inbox') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
+      if (isTyping) return;
+
+      if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsHelpOpen(true);
+        return;
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (e.key === 'Escape') {
+        setShortcutsHelpOpen(false);
+        setFocusedItemId(null);
+        return;
+      }
+
+      if (e.key !== 'j' && e.key !== 'k') return;
+      if (sortedItems.length === 0) return;
+      // Below the progressive-disclosure threshold there's nothing meaningful
+      // to navigate between yet — see Section 5.4.
+      if (allItems.length < SHORTCUTS_MIN_ITEMS) return;
+
+      e.preventDefault();
+      const direction = e.key === 'j' ? 'next' : 'prev';
+      const nextId = getAdjacentItemId(sortedItems, focusedItemId, direction);
+      setFocusedItemId(nextId);
+
+      if (!shortcutsToastSeen) {
+        markShortcutsToastSeen();
+        setShortcutsToastSeen(true);
+      }
+
+      if (nextId) {
+        requestAnimationFrame(() => {
+          listContainerRef.current
+            ?.querySelector(`[data-inbox-item-id="${nextId}"]`)
+            ?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activePanel, sortedItems, focusedItemId, allItems.length, shortcutsToastSeen]);
+
+  // Second listener for item-scoped actions (d/e/s/x/Enter) — split out so
+  // the deps list doesn't force the whole j/k listener to be re-bound on
+  // every handler change.
+  useEffect(() => {
+    if (activePanel !== 'inbox' || !focusedItemId) return;
+
+    const handleActionKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
+      if (isTyping) return;
+
+      const item = sortedItems.find(i => i.id === focusedItemId);
+      if (!item) return;
+
+      switch (e.key) {
+        case 'd':
+          e.preventDefault();
+          void handleItemDone(item.id, item.status !== 'done');
+          break;
+        case 'e':
+          e.preventDefault();
+          setForceEditToken(t => t + 1);
+          break;
+        case 's':
+          e.preventDefault();
+          // The snooze popover itself needs a click to open (it's anchored to
+          // a specific button) — a bare 's' press with no popover trigger in
+          // view isn't actionable, so this opens the drawer as a safe
+          // fallback entry point instead of silently doing nothing.
+          openDrawer(item);
+          break;
+        case 'x':
+          e.preventDefault();
+          handleSelect(item.id, !selected.has(item.id));
+          break;
+        case 'Enter':
+          e.preventDefault();
+          openDrawer(item);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleActionKey);
+    return () => window.removeEventListener('keydown', handleActionKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel, focusedItemId, sortedItems, selected]);
 
   return (
     <div className="flex h-full overflow-hidden bg-gray-100/80 gap-3 p-2 relative">
@@ -850,6 +1080,13 @@ export default function InboxPage() {
           meetingsSearch={meetingsSearch}
           onMeetingsSearchChange={setMeetingsSearch}
           meetingsSyncInfo={meetingsSyncInfo}
+          views={views}
+          currentSort={currentViewSort}
+          onSaveView={handleSaveView}
+          onApplyView={handleApplyView}
+          onToggleStarView={toggleStar}
+          onDeleteView={deleteView}
+          hasChangedViewThisSession={hasChangedViewThisSession}
         />
         )
       ) : (
@@ -869,6 +1106,13 @@ export default function InboxPage() {
               meetingsSearch={meetingsSearch}
               onMeetingsSearchChange={setMeetingsSearch}
               meetingsSyncInfo={meetingsSyncInfo}
+              views={views}
+              currentSort={currentViewSort}
+              onSaveView={handleSaveView}
+              onApplyView={handleApplyView}
+              onToggleStarView={toggleStar}
+              onDeleteView={deleteView}
+              hasChangedViewThisSession={hasChangedViewThisSession}
             />
           </SheetContent>
         </Sheet>
@@ -903,6 +1147,27 @@ export default function InboxPage() {
           </h1>
           {activePanel === 'inbox' && !itemsLoading && (
             <span className="text-xs text-gray-400 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+          )}
+
+          {activePanel === 'inbox' && (
+            <div className="relative flex-shrink-0 w-full max-w-[220px] hidden sm:block">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                value={searchDraft}
+                onChange={e => setSearchDraft(e.target.value)}
+                placeholder="Search tasks, notes, briefs… ( / )"
+                className="w-full h-8 pl-8 pr-7 text-sm rounded-md border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-300 placeholder:text-gray-400"
+              />
+              {searchDraft && (
+                <button
+                  onClick={() => setSearchDraft('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           )}
 
           <div className="flex-1" />
@@ -955,6 +1220,33 @@ export default function InboxPage() {
           >
             <Flame className="h-3.5 w-3.5" />
             <span className="hidden lg:inline">Prioritize</span>
+          </button>
+          {/* Keyboard shortcuts — hidden below the progressive-disclosure
+              threshold (Section 5.4): with under 5 items there's nothing
+              meaningful to navigate between with j/k yet. */}
+          {allItems.length >= SHORTCUTS_MIN_ITEMS && (
+            <button
+              onClick={() => setShortcutsHelpOpen(true)}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className={cn(
+                'hidden sm:flex flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors',
+                isTouch ? 'h-9 w-9' : 'p-1.5',
+              )}
+            >
+              <Keyboard className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* Settings */}
+          <button
+            aria-label="Settings"
+            className={cn(
+              'hidden sm:flex flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors',
+              isTouch ? 'h-9 w-9' : 'p-1.5',
+            )}
+          >
+            <Settings className="h-4 w-4" />
           </button>
             </>
           )}
@@ -1061,7 +1353,7 @@ export default function InboxPage() {
         )}
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
-        {activePanel === 'inbox' && <div className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
           {showFirstDelegationBanner && (
             <div className="mx-3 sm:mx-4 mt-3 px-3.5 py-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-start gap-2.5">
               <div className="flex-1 min-w-0">
@@ -1077,6 +1369,14 @@ export default function InboxPage() {
               >
                 Dismiss
               </button>
+            </div>
+          )}
+          {whatsNewEligible && (
+            <div className="px-3 sm:px-4 pt-3">
+              <InboxWhatsNewBanner
+                eligible={whatsNewEligible}
+                onShowShortcuts={() => setShortcutsHelpOpen(true)}
+              />
             </div>
           )}
           {/* One-time "this showed up automatically" explainer, shown once
@@ -1160,6 +1460,11 @@ export default function InboxPage() {
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
               newItemId={lastAddedId}
+              onSnooze={handleSnooze}
+              onSnoozeUntilNext1on1={handleSnoozeUntilNext1on1}
+              onUnsnooze={filter.builtIn === 'snoozed' ? handleUnsnooze : undefined}
+              focusedItemId={focusedItemId}
+              forceEditToken={forceEditToken}
             />
           ) : (
             <InboxByProjectView
@@ -1182,6 +1487,11 @@ export default function InboxPage() {
               onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
+              onSnooze={handleSnooze}
+              onSnoozeUntilNext1on1={handleSnoozeUntilNext1on1}
+              onUnsnooze={filter.builtIn === 'snoozed' ? handleUnsnooze : undefined}
+              focusedItemId={focusedItemId}
+              forceEditToken={forceEditToken}
               prioritizeMode={prioritizeMode}
               newItemId={lastAddedId}
             />
@@ -1224,6 +1534,7 @@ export default function InboxPage() {
       />
       </div>
 
+      <ShortcutsHelpDialog open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen} />
       {/* Idea #7 (Relationship memory): first-run consent/expectations modal */}
       <PersonMemoryConsentModal
         open={showConsentModal && (activePanel === 'person' || hasPersonBriefItem)}

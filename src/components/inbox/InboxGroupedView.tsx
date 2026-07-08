@@ -45,7 +45,7 @@ function SortableItem({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, isSelected, onSelect,
-  prioritizeMode, isNew,
+  prioritizeMode, isNew, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused, forceEditToken,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
@@ -68,6 +68,11 @@ function SortableItem({
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
   isNew?: boolean;
+  onSnooze?: (id: string, until: Date) => void;
+  onSnoozeUntilNext1on1?: (id: string, teamMemberId: string) => Promise<{ ok: true } | { ok: false }>;
+  onUnsnooze?: (id: string) => void;
+  isFocused?: boolean;
+  forceEditToken?: number;
 }) {
   const isTouch = useIsTouch();
   // Weekly priorities and daily check-ins are always pinned to Now — dragging
@@ -79,6 +84,7 @@ function SortableItem({
   return (
     <div
       ref={setNodeRef}
+      data-inbox-item-id={item.id}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn('flex items-stretch', isDragging && 'opacity-40')}
     >
@@ -119,6 +125,11 @@ function SortableItem({
           onSelect={onSelect}
           prioritizeMode={prioritizeMode}
           isNew={isNew}
+          onSnooze={onSnooze}
+          onSnoozeUntilNext1on1={onSnoozeUntilNext1on1}
+          onUnsnooze={onUnsnooze}
+          isFocused={isFocused}
+          forceEditToken={forceEditToken}
         />
       </div>
     </div>
@@ -131,7 +142,7 @@ function BucketSection({
   bucket, items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
-  prioritizeMode, newItemId,
+  prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId, forceEditToken,
 }: {
   bucket: typeof BUCKETS[number];
   items: InboxItem[];
@@ -155,6 +166,11 @@ function BucketSection({
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
   newItemId?: string | null;
+  onSnooze?: (id: string, until: Date) => void;
+  onSnoozeUntilNext1on1?: (id: string, teamMemberId: string) => Promise<{ ok: true } | { ok: false }>;
+  onUnsnooze?: (id: string) => void;
+  focusedItemId?: string | null;
+  forceEditToken?: number;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: bucket.id });
 
@@ -199,6 +215,11 @@ function BucketSection({
               onSelect={onSelect}
               prioritizeMode={prioritizeMode}
               isNew={item.id === newItemId}
+              onSnooze={onSnooze}
+              onSnoozeUntilNext1on1={onSnoozeUntilNext1on1}
+              onUnsnooze={onUnsnooze}
+              isFocused={item.id === focusedItemId}
+              forceEditToken={item.id === focusedItemId ? forceEditToken : undefined}
             />
           ))}
         </SortableContext>
@@ -241,13 +262,18 @@ interface InboxGroupedViewProps {
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
   newItemId?: string | null;
+  onSnooze?: (id: string, until: Date) => void;
+  onSnoozeUntilNext1on1?: (id: string, teamMemberId: string) => Promise<{ ok: true } | { ok: false }>;
+  onUnsnooze?: (id: string) => void;
+  focusedItemId?: string | null;
+  forceEditToken?: number;
 }
 
 export function InboxGroupedView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
-  prioritizeMode, newItemId,
+  prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId, forceEditToken,
 }: InboxGroupedViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -325,6 +351,11 @@ export function InboxGroupedView({
             onSelect={onSelect}
             prioritizeMode={prioritizeMode}
             newItemId={newItemId}
+            onSnooze={onSnooze}
+            onSnoozeUntilNext1on1={onSnoozeUntilNext1on1}
+            onUnsnooze={onUnsnooze}
+            focusedItemId={focusedItemId}
+            forceEditToken={forceEditToken}
           />
         ))}
       </div>

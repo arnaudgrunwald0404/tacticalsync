@@ -29,6 +29,11 @@ interface InboxByProjectViewProps {
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
   newItemId?: string | null;
+  onSnooze?: (id: string, until: Date) => void;
+  onSnoozeUntilNext1on1?: (id: string, teamMemberId: string) => Promise<{ ok: true } | { ok: false }>;
+  onUnsnooze?: (id: string) => void;
+  focusedItemId?: string | null;
+  forceEditToken?: number;
 }
 
 export function InboxByProjectView({
@@ -36,6 +41,7 @@ export function InboxByProjectView({
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId,
+  onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId, forceEditToken,
 }: InboxByProjectViewProps) {
   const { pinnedItems, projectGroups } = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
@@ -95,6 +101,7 @@ export function InboxByProjectView({
     allTags, onArchive, onDelete, onRemoveTag, onAddTag,
     onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
     onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, prioritizeMode,
+    onSnooze, onSnoozeUntilNext1on1, onUnsnooze,
   };
 
   return (
@@ -113,14 +120,17 @@ export function InboxByProjectView({
           </div>
 
           {pinnedItems.map(item => (
-            <InboxItemRow
-              key={item.id}
-              item={item}
-              {...sharedRowProps}
-              isSelected={selectedIds?.has(item.id)}
-              onSelect={onSelect}
-              isNew={item.id === newItemId}
-            />
+            <div key={item.id} data-inbox-item-id={item.id}>
+              <InboxItemRow
+                item={item}
+                {...sharedRowProps}
+                isSelected={selectedIds?.has(item.id)}
+                onSelect={onSelect}
+                isNew={item.id === newItemId}
+                isFocused={item.id === focusedItemId}
+                forceEditToken={item.id === focusedItemId ? forceEditToken : undefined}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -160,14 +170,17 @@ export function InboxByProjectView({
           </div>
 
           {groupItems.map(item => (
-            <InboxItemRow
-              key={item.id}
-              item={item}
-              {...sharedRowProps}
-              isSelected={selectedIds?.has(item.id)}
-              onSelect={onSelect}
-              isNew={item.id === newItemId}
-            />
+            <div key={item.id} data-inbox-item-id={item.id}>
+              <InboxItemRow
+                item={item}
+                {...sharedRowProps}
+                isSelected={selectedIds?.has(item.id)}
+                onSelect={onSelect}
+                isNew={item.id === newItemId}
+                isFocused={item.id === focusedItemId}
+                forceEditToken={item.id === focusedItemId ? forceEditToken : undefined}
+              />
+            </div>
           ))}
         </div>
       ))}

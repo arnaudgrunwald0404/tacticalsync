@@ -33,6 +33,12 @@ import {
   computePriorityDueAt,
   currentPriorityTier,
   isAutoPinnedItem,
+  sanitizeSearchTerm,
+  computeSnoozeDate,
+  formatSnoozeLabel,
+  validateViewName,
+  VIEW_NAME_MAX,
+  getAdjacentItemId,
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxFilterState, InboxTag } from '@/types/inbox';
@@ -278,6 +284,9 @@ describe('resolveTargetStatus', () => {
   it('reads archived rows for the archive view', () => {
     expect(resolveTargetStatus({ builtIn: 'archive' })).toBe('archived');
   });
+  it('reads snoozed rows for the snoozed view', () => {
+    expect(resolveTargetStatus({ builtIn: 'snoozed' })).toBe('snoozed');
+  });
   it('honours an explicit status', () => {
     expect(resolveTargetStatus({ status: 'snoozed' })).toBe('snoozed');
   });
@@ -287,6 +296,9 @@ describe('resolveTargetStatus', () => {
   });
   it('archive takes precedence over an explicit status', () => {
     expect(resolveTargetStatus({ builtIn: 'archive', status: 'open' })).toBe('archived');
+  });
+  it('snoozed builtIn takes precedence over an explicit status', () => {
+    expect(resolveTargetStatus({ builtIn: 'snoozed', status: 'open' })).toBe('snoozed');
   });
 });
 
@@ -740,5 +752,235 @@ describe('isAutoPinnedItem', () => {
 
   it.each(ITEM_TYPES.filter(t => t !== 'brief_item'))('is false for %s', (type) => {
     expect(isAutoPinnedItem({ type })).toBe(false);
+  });
+});
+
+// ── sanitizeSearchTerm ───────────────────────────────────────────────────────
+
+describe('sanitizeSearchTerm', () => {
+  it('trims whitespace', () => {
+    expect(sanitizeSearchTerm('  hello  ')).toBe('hello');
+  });
+
+  it('returns empty string for empty/whitespace-only input', () => {
+    expect(sanitizeSearchTerm('')).toBe('');
+    expect(sanitizeSearchTerm('   ')).toBe('');
+  });
+
+  it('escapes ilike wildcard characters % and _', () => {
+    expect(sanitizeSearchTerm('50%')).toBe('50\\%');
+    expect(sanitizeSearchTerm('foo_bar')).toBe('foo\\_bar');
+  });
+
+  it('escapes literal backslashes', () => {
+    expect(sanitizeSearchTerm('a\\b')).toBe('a\\\\b');
+  });
+
+  it('strips PostgREST filter-string syntax characters (comma, parens)', () => {
+    // A raw comma would otherwise let a search term inject a second .or()
+    // clause into `text.ilike.%<term>%,body.ilike.%<term>%` — must be removed,
+    // not merely escaped, since PostgREST's own parser treats it as a
+    // separator regardless of backslash-escaping in the value.
+    expect(sanitizeSearchTerm('a,b')).toBe('ab');
+    expect(sanitizeSearchTerm('text.ilike.*,x')).not.toContain(',');
+    expect(sanitizeSearchTerm('foo(bar)')).toBe('foobar');
+  });
+
+  it('cannot be used to inject an additional filter clause', () => {
+    const malicious = 'x%,status.eq.done';
+    const sanitized = sanitizeSearchTerm(malicious);
+    const orClause = `text.ilike.%${sanitized}%,body.ilike.%${sanitized}%`;
+    // The malicious payload must not introduce a third top-level clause.
+    expect(orClause.split(',').length).toBe(2);
+  });
+});
+
+// ── computeSnoozeDate ────────────────────────────────────────────────────────
+
+describe('computeSnoozeDate', () => {
+  it('later_today adds 4 hours, capped at 6pm local', () => {
+    const from = new Date(2026, 6, 8, 10, 0, 0); // Wed Jul 8 2026, 10:00
+    const result = computeSnoozeDate('later_today', from);
+    expect(result.getHours()).toBe(14);
+    expect(result.getDate()).toBe(8);
+  });
+
+  it('later_today caps at 6pm when 4 hours would go past it', () => {
+    const from = new Date(2026, 6, 8, 16, 0, 0); // 16:00 + 4h = 20:00, capped to 18:00
+    const result = computeSnoozeDate('later_today', from);
+    expect(result.getHours()).toBe(18);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getDate()).toBe(8);
+  });
+
+  it('tomorrow lands at 9am the next calendar day', () => {
+    const from = new Date(2026, 6, 8, 22, 30, 0);
+    const result = computeSnoozeDate('tomorrow', from);
+    expect(result.getDate()).toBe(9);
+    expect(result.getHours()).toBe(9);
+    expect(result.getMinutes()).toBe(0);
+  });
+
+  it('weekend lands on the upcoming Saturday at 9am', () => {
+    const wednesday = new Date(2026, 6, 8, 12, 0, 0); // Wed Jul 8 2026
+    const result = computeSnoozeDate('weekend', wednesday);
+    expect(result.getDay()).toBe(6); // Saturday
+    expect(result.getHours()).toBe(9);
+    expect(result.getDate()).toBe(11); // Sat Jul 11 2026
+  });
+
+  it('weekend on a Saturday jumps to next Saturday, not today', () => {
+    const saturday = new Date(2026, 6, 11, 12, 0, 0); // Sat Jul 11 2026
+    const result = computeSnoozeDate('weekend', saturday);
+    expect(result.getDay()).toBe(6);
+    expect(result.getDate()).toBe(18); // next Saturday
+  });
+
+  it('next_week lands on the upcoming Monday at 9am', () => {
+    const wednesday = new Date(2026, 6, 8, 12, 0, 0); // Wed Jul 8 2026
+    const result = computeSnoozeDate('next_week', wednesday);
+    expect(result.getDay()).toBe(1); // Monday
+    expect(result.getHours()).toBe(9);
+    expect(result.getDate()).toBe(13); // Mon Jul 13 2026
+  });
+
+  it('next_week on a Monday jumps to next Monday, not today', () => {
+    const monday = new Date(2026, 6, 6, 12, 0, 0); // Mon Jul 6 2026
+    const result = computeSnoozeDate('next_week', monday);
+    expect(result.getDay()).toBe(1);
+    expect(result.getDate()).toBe(13); // next Monday
+  });
+});
+
+// ── formatSnoozeLabel ────────────────────────────────────────────────────────
+
+describe('formatSnoozeLabel', () => {
+  const now = new Date(2026, 6, 8, 12, 0, 0);
+
+  it('renders a fixed-date snooze as "Until <month day>"', () => {
+    const item = { snoozed_until: new Date(2026, 6, 14).toISOString(), snooze_until_member_id: null };
+    const { text, stale } = formatSnoozeLabel(item, null, now);
+    expect(text).toMatch(/^Until /);
+    expect(stale).toBe(false);
+  });
+
+  it('renders a person-bound snooze with a future resolved date as "next 1:1"', () => {
+    const item = {
+      snoozed_until: new Date(2026, 6, 20).toISOString(),
+      snooze_until_member_id: 'member-1',
+    };
+    const { text, stale } = formatSnoozeLabel(item, 'Jane', now);
+    expect(text).toBe('Until your next 1:1 with Jane');
+    expect(stale).toBe(false);
+  });
+
+  it('falls back to a generic name when the member name is unknown', () => {
+    const item = {
+      snoozed_until: new Date(2026, 6, 20).toISOString(),
+      snooze_until_member_id: 'member-1',
+    };
+    const { text } = formatSnoozeLabel(item, null, now);
+    expect(text).toBe('Until your next 1:1 with them');
+  });
+
+  it('flags a person-bound snooze as stale when the cached date has passed', () => {
+    // Simulates: the sweep could not find a replacement meeting, so the
+    // cached snoozed_until is now in the past — the meeting was presumably
+    // cancelled with nothing scheduled to replace it.
+    const item = {
+      snoozed_until: new Date(2026, 6, 1).toISOString(),
+      snooze_until_member_id: 'member-1',
+    };
+    const { text, stale } = formatSnoozeLabel(item, 'Jane', now);
+    expect(stale).toBe(true);
+    expect(text).toContain('cancelled');
+    expect(text).toContain('Jane');
+  });
+
+  it('renders a plain "Snoozed" fallback with no date at all', () => {
+    const item = { snoozed_until: null, snooze_until_member_id: null };
+    const { text, stale } = formatSnoozeLabel(item, null, now);
+    expect(text).toBe('Snoozed');
+    expect(stale).toBe(false);
+  });
+});
+
+// ── validateViewName ─────────────────────────────────────────────────────────
+
+describe('validateViewName', () => {
+  it('accepts a normal name', () => {
+    const result = validateViewName('My project view');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe('My project view');
+  });
+
+  it('trims and collapses internal whitespace', () => {
+    const result = validateViewName('  Weekly   Review  ');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe('Weekly Review');
+  });
+
+  it('rejects empty/whitespace-only names', () => {
+    expect(validateViewName('').ok).toBe(false);
+    expect(validateViewName('   ').ok).toBe(false);
+  });
+
+  it('rejects non-string input', () => {
+    expect(validateViewName(42).ok).toBe(false);
+    expect(validateViewName(null).ok).toBe(false);
+  });
+
+  it('rejects names over the max length', () => {
+    const tooLong = 'a'.repeat(VIEW_NAME_MAX + 1);
+    const result = validateViewName(tooLong);
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts a name exactly at the max length', () => {
+    const exact = 'a'.repeat(VIEW_NAME_MAX);
+    expect(validateViewName(exact).ok).toBe(true);
+  });
+});
+
+// ── getAdjacentItemId ────────────────────────────────────────────────────────
+
+describe('getAdjacentItemId', () => {
+  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('returns the first item for "next" when nothing is focused', () => {
+    expect(getAdjacentItemId(items, null, 'next')).toBe('a');
+  });
+
+  it('returns the last item for "prev" when nothing is focused', () => {
+    expect(getAdjacentItemId(items, null, 'prev')).toBe('c');
+  });
+
+  it('moves to the next item', () => {
+    expect(getAdjacentItemId(items, 'a', 'next')).toBe('b');
+    expect(getAdjacentItemId(items, 'b', 'next')).toBe('c');
+  });
+
+  it('moves to the previous item', () => {
+    expect(getAdjacentItemId(items, 'c', 'prev')).toBe('b');
+    expect(getAdjacentItemId(items, 'b', 'prev')).toBe('a');
+  });
+
+  it('stays at the last item when already at the end (no wraparound)', () => {
+    expect(getAdjacentItemId(items, 'c', 'next')).toBe('c');
+  });
+
+  it('stays at the first item when already at the start (no wraparound)', () => {
+    expect(getAdjacentItemId(items, 'a', 'prev')).toBe('a');
+  });
+
+  it('falls back to the first/last item when currentId is not found in the list', () => {
+    // e.g. the focused item was just archived/deleted and removed from `items`.
+    expect(getAdjacentItemId(items, 'not-in-list', 'next')).toBe('a');
+    expect(getAdjacentItemId(items, 'not-in-list', 'prev')).toBe('c');
+  });
+
+  it('returns null for an empty list', () => {
+    expect(getAdjacentItemId([], null, 'next')).toBeNull();
+    expect(getAdjacentItemId([], 'a', 'prev')).toBeNull();
   });
 });
