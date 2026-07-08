@@ -64,5 +64,11 @@ verify_jwt = false
 [functions.slack-add-suggestion]
 verify_jwt = false
 
+# Slack Events API (url_verification) + message-shortcut interactivity
+# receiver for "Add to TacticalSync inbox". Public endpoint — Slack
+# authenticates via the request signature, not a Supabase JWT.
+[functions.slack-inbox-capture]
+verify_jwt = false
+
 [functions.generate-weekend-banner]
 verify_jwt = true
