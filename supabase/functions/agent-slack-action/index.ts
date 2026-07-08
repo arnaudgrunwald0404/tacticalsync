@@ -6,19 +6,22 @@ import { verifySlackSignature } from "../_shared/slack.ts"
  * Slack interactive action handler.
  *
  * Receives payloads from Slack when a user clicks a button on an agent message.
- * Registered as the Slack Interactivity Request URL.
+ * Registered as the Slack Interactivity Request URL. Public endpoint
+ * (verify_jwt = false) — Slack authenticates via the request signature
+ * (X-Slack-Signature / X-Slack-Request-Timestamp), verified below using
+ * SLACK_SIGNING_SECRET before anything in the payload is trusted. This was
+ * previously MISSING on this endpoint (see PLAN_idea5_slack_surface.md §0/§4
+ * risk #1) — any client could forge a block_actions payload with an arbitrary
+ * slack_user_id and mutate that user's data. Do not remove this check.
  *
  * Supported actions:
  * - mark_done:<action_id>       — mark a cos_meeting_actions item as done
  * - snooze:<action_id>:<days>   — push due_date forward by N days
  * - dismiss_escalation:<log_id> — suppress escalation for 30 days
  * - feedback:<log_id>:<type>    — record feedback on an agent action
- *
- * This endpoint is public (verify_jwt = false), so every request's Slack
- * signature (X-Slack-Signature / X-Slack-Request-Timestamp) is verified
- * against SLACK_SIGNING_SECRET before any action is processed — otherwise
- * anyone who discovers the URL could forge actions on behalf of any Slack
- * user whose id they can obtain.
+ * - inbox_done:<item_id>            — mark an inbox_items row done
+ * - inbox_snooze:<item_id>:<hours>  — snooze an inbox_items row for N hours
+ * - inbox_delegate:<item_id>        — kick off an inbox_delegations run (fire-and-forget)
  */
 serve(async (req) => {
   if (req.method !== 'POST') {
@@ -51,13 +54,14 @@ serve(async (req) => {
     // Slack sends application/x-www-form-urlencoded with a "payload" field
     const formData = new URLSearchParams(rawBody)
     const rawPayload = formData.get('payload')
-    if (!rawPayload || typeof rawPayload !== 'string') {
+    if (!rawPayload) {
       return new Response('Missing payload', { status: 400 })
     }
 
     const payload = JSON.parse(rawPayload) as {
       type: string
       user: { id: string }
+      team?: { id: string }
       actions?: Array<{ action_id: string; value?: string }>
       trigger_id?: string
     }
@@ -68,13 +72,19 @@ serve(async (req) => {
     }
 
     const slackUserId = payload.user.id
+    const slackTeamId = payload.team?.id ?? null
 
-    // Resolve Slack user to Supabase user
-    const { data: creds } = await supabase
+    // Resolve Slack user to Supabase user. Scope by slack_team_id too (when
+    // present) so a slack_user_id can't resolve to the wrong account if two
+    // different Slack workspaces both connect to this app (PLAN §4 risk #3).
+    let credsQuery = supabase
       .from('user_slack_credentials')
       .select('user_id')
       .eq('slack_user_id', slackUserId)
-      .maybeSingle()
+    if (slackTeamId) {
+      credsQuery = credsQuery.eq('slack_team_id', slackTeamId)
+    }
+    const { data: creds } = await credsQuery.maybeSingle()
 
     if (!creds?.user_id) {
       return jsonResponse({ text: 'Could not identify your account.' })
@@ -91,7 +101,7 @@ serve(async (req) => {
         ? value
         : actionId
 
-      // ── Mark done ─────────────────────────────────────────────────
+      // ── Mark done (cos_meeting_actions) ──────────────────────────────
       if (effectiveId.startsWith('mark_done:')) {
         const meetingActionId = effectiveId.replace('mark_done:', '')
 
@@ -108,7 +118,7 @@ serve(async (req) => {
         })
       }
 
-      // ── Snooze ────────────────────────────────────────────────────
+      // ── Snooze (cos_meeting_actions) ─────────────────────────────────
       if (effectiveId.startsWith('snooze:')) {
         const parts = effectiveId.split(':')
         const meetingActionId = parts[1]
@@ -190,6 +200,107 @@ serve(async (req) => {
           response_type: 'ephemeral',
           replace_original: false,
           text: labels[feedbackType] ?? ':thumbsup: Feedback recorded.',
+        })
+      }
+
+      // ── Inbox: mark done ──────────────────────────────────────────
+      if (effectiveId.startsWith('inbox_done:')) {
+        const itemId = effectiveId.replace('inbox_done:', '')
+
+        const { data: updated } = await supabase
+          .from('inbox_items')
+          .update({ status: 'done', done_at: new Date().toISOString() })
+          .eq('id', itemId)
+          .eq('user_id', userId)
+          .select('id')
+          .maybeSingle()
+
+        if (!updated) {
+          return jsonResponse({
+            response_type: 'ephemeral',
+            replace_original: false,
+            text: "Couldn't find that item in your inbox.",
+          })
+        }
+
+        return jsonResponse({
+          response_type: 'ephemeral',
+          replace_original: false,
+          text: ':white_check_mark: Marked as done in your TacticalSync inbox.',
+        })
+      }
+
+      // ── Inbox: snooze ─────────────────────────────────────────────
+      if (effectiveId.startsWith('inbox_snooze:')) {
+        const parts = effectiveId.split(':')
+        const itemId = parts[1]
+        const hours = parseInt(parts[2] ?? '4', 10)
+        const safeHours = Number.isFinite(hours) && hours > 0 ? hours : 4
+
+        const snoozedUntil = new Date(Date.now() + safeHours * 3_600_000).toISOString()
+
+        const { data: updated } = await supabase
+          .from('inbox_items')
+          .update({ status: 'snoozed', snoozed_until: snoozedUntil })
+          .eq('id', itemId)
+          .eq('user_id', userId)
+          .select('id')
+          .maybeSingle()
+
+        if (!updated) {
+          return jsonResponse({
+            response_type: 'ephemeral',
+            replace_original: false,
+            text: "Couldn't find that item in your inbox.",
+          })
+        }
+
+        return jsonResponse({
+          response_type: 'ephemeral',
+          replace_original: false,
+          text: `:clock3: Snoozed until ${new Date(snoozedUntil).toLocaleString()}.`,
+        })
+      }
+
+      // ── Inbox: delegate ───────────────────────────────────────────
+      if (effectiveId.startsWith('inbox_delegate:')) {
+        const itemId = effectiveId.replace('inbox_delegate:', '')
+
+        // Confirm the item exists and belongs to this user before firing the
+        // delegation call, but don't await the delegation itself — it can run
+        // multi-step LLM reasoning that would blow past Slack's 3-second ack
+        // window (PLAN §4 risk #6).
+        const { data: item } = await supabase
+          .from('inbox_items')
+          .select('id')
+          .eq('id', itemId)
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (!item) {
+          return jsonResponse({
+            response_type: 'ephemeral',
+            replace_original: false,
+            text: "Couldn't find that item in your inbox.",
+          })
+        }
+
+        // Fire-and-forget: don't block the Slack ack on this.
+        fetch(`${supabaseUrl}/functions/v1/delegate-inbox-task`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ action: 'start', item_id: itemId, user_id: userId }),
+        }).catch((err) => {
+          console.error('inbox_delegate: failed to start delegation', err)
+        })
+
+        return jsonResponse({
+          response_type: 'ephemeral',
+          replace_original: false,
+          text: ':rocket: Delegated — check the app for the plan once it\'s ready.',
         })
       }
     }
