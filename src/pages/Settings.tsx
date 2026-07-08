@@ -30,6 +30,8 @@ import CosPrepSchedulePanel, { MeetingsPrepPanel, DailyBriefPanel } from "@/comp
 import { AgentSettingsPanel } from "@/components/cos/AgentSettingsPanel";
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
+import IntegrationExplainer from "@/components/cos/IntegrationExplainer";
+import { INTEGRATION_COPY } from "@/lib/integrationCopy";
 import { getPreset } from "@/types/mcp-integration";
 import { useRoles, ALL_ROLE_TAGS, type RoleTag } from "@/hooks/useRoles";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
@@ -2666,6 +2668,10 @@ const Settings = () => {
                 Connect Google Calendar to drive your 1:1 list from real meetings, and configure which events count.
               </p>
             </div>
+            <div className="mb-6 space-y-4">
+              <IntegrationExplainer copy={INTEGRATION_COPY.calendar} />
+              <IntegrationExplainer copy={INTEGRATION_COPY.gmail} />
+            </div>
             <CosCalendarSyncPanel />
           </div>
         ) : activeSection === "zoom-sync" ? (
@@ -2675,6 +2681,9 @@ const Settings = () => {
               <p className="text-muted-foreground text-sm">
                 Connect Zoom to include recent meeting recordings and transcripts in your 1:1 prep.
               </p>
+            </div>
+            <div className="mb-6">
+              <IntegrationExplainer copy={INTEGRATION_COPY.zoom} />
             </div>
             <CosZoomSyncPanel />
           </div>
@@ -2686,6 +2695,9 @@ const Settings = () => {
                 Connect Slack to include recent DMs and channel messages in your 1:1 prep, and share prep notes via Slack DM.
               </p>
             </div>
+            <div className="mb-6">
+              <IntegrationExplainer copy={INTEGRATION_COPY.slack} />
+            </div>
             <CosSlackSyncPanel />
           </div>
         ) : activeSection === "integration-stackone" ? (
@@ -2695,6 +2707,9 @@ const Settings = () => {
               <p className="text-muted-foreground text-sm">
                 Connect your team tools — HRIS, CRM, ATS, messaging, and 200+ more — through a single integration gateway.
               </p>
+            </div>
+            <div className="mb-6">
+              <IntegrationExplainer copy={INTEGRATION_COPY.stackone} />
             </div>
             <StackOnePanel />
           </div>
