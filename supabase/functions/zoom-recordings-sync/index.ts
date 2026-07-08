@@ -123,7 +123,7 @@ serve(async (req) => {
     // Load credentials.
     const { data: creds, error: credsErr } = await supabase
       .from('user_zoom_credentials')
-      .select('access_token, refresh_token, expires_at, scope')
+      .select('access_token, refresh_token, expires_at, scope, notes_folder_id')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -137,6 +137,7 @@ serve(async (req) => {
     let accessToken: string = creds.access_token
     const refreshToken: string | null = creds.refresh_token
     const expiresAt: string | null = creds.expires_at
+    let notesFolderId: string | null = creds.notes_folder_id ?? null
 
     // Refresh if expired or near-expired (30s skew).
     const needsRefresh = !expiresAt || (new Date(expiresAt).getTime() - Date.now() < 30_000)
@@ -733,6 +734,12 @@ serve(async (req) => {
     // AI Companion stores meeting transcripts as Zoom Docs (type=notes).
     // The cloud recordings API misses these entirely, so we list them directly.
     // Requires docs:read:file scope.
+    //
+    // type=notes only catches AI Companion-generated docs. To also catch docs
+    // that live in the user's "My Notes" folder but aren't tagged that way,
+    // we bootstrap that folder's id from the parent of any type=notes doc (no
+    // Zoom API exposes "get my Notes folder id" directly) and list its
+    // children on every run. The folder id is cached per user once found.
     let docsDiscovered = 0
 
     try {
@@ -744,12 +751,72 @@ serve(async (req) => {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       })
 
+      const candidateDocs = new Map<string, { file_id: string; title: string; create_time?: string }>()
+
       if (docsRes.ok) {
         const docsData = await docsRes.json() as {
           docs?: Array<{ file_id: string; title: string; create_time?: string }>
         }
+        for (const doc of docsData.docs ?? []) {
+          candidateDocs.set(doc.file_id, doc)
+        }
 
-        const docUuids = (docsData.docs ?? []).map(d => `doc:${d.file_id}`)
+        if (!notesFolderId && docsData.docs && docsData.docs.length > 0) {
+          try {
+            const metaRes = await fetch(
+              `https://api.zoom.us/v2/docs/files/${encodeURIComponent(docsData.docs[0].file_id)}`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } },
+            )
+            if (metaRes.ok) {
+              const meta = await metaRes.json() as Record<string, unknown>
+              const parentId = (meta.parent_id ?? meta.parent_file_id ?? meta.folder_id) as string | undefined
+              if (parentId) {
+                notesFolderId = parentId
+                await supabase
+                  .from('user_zoom_credentials')
+                  .update({ notes_folder_id: notesFolderId })
+                  .eq('user_id', userId)
+              }
+            } else {
+              console.warn(`Zoom Docs sync: file metadata lookup returned ${metaRes.status}`)
+            }
+          } catch (metaErr) {
+            console.warn(`Zoom Docs sync: file metadata lookup failed:`, (metaErr as Error).message)
+          }
+        }
+      } else {
+        console.warn(`Zoom Docs sync: API returned ${docsRes.status}`)
+      }
+
+      if (notesFolderId) {
+        try {
+          const childrenRes = await fetch(
+            `https://api.zoom.us/v2/docs/files/${encodeURIComponent(notesFolderId)}/children`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } },
+          )
+          if (childrenRes.ok) {
+            const childrenData = await childrenRes.json() as {
+              files?: Array<{ file_id: string; title?: string; name?: string; create_time?: string }>
+            }
+            for (const child of childrenData.files ?? []) {
+              if (!candidateDocs.has(child.file_id)) {
+                candidateDocs.set(child.file_id, {
+                  file_id: child.file_id,
+                  title: child.title ?? child.name ?? '',
+                  create_time: child.create_time,
+                })
+              }
+            }
+          } else {
+            console.warn(`Zoom Docs sync: folder children lookup returned ${childrenRes.status}`)
+          }
+        } catch (childrenErr) {
+          console.warn(`Zoom Docs sync: folder children lookup failed:`, (childrenErr as Error).message)
+        }
+      }
+
+      {
+        const docUuids = [...candidateDocs.keys()].map(id => `doc:${id}`)
         const { data: existingDocRecs } = await supabase
           .from('cos_zoom_recordings')
           .select('zoom_meeting_uuid')
@@ -759,7 +826,7 @@ serve(async (req) => {
           (existingDocRecs ?? []).map(r => r.zoom_meeting_uuid as string)
         )
 
-        for (const doc of docsData.docs ?? []) {
+        for (const doc of candidateDocs.values()) {
           const docUuid = `doc:${doc.file_id}`
           if (alreadySyncedDocs.has(docUuid)) continue
 
@@ -814,8 +881,6 @@ serve(async (req) => {
             synced++
           }
         }
-      } else {
-        console.warn(`Zoom Docs sync: API returned ${docsRes.status}`)
       }
     } catch (docsErr) {
       console.warn(`Zoom Docs sync failed:`, (docsErr as Error).message)
