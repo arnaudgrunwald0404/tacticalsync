@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Video } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Inbox, Video } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,14 @@ interface AgentConfig {
   escalate_patterns: boolean;
   recommend_format: boolean;
   recommend_tools: boolean;
+  /** Idea #4 (PLAN_idea4_agentic_followthrough.md): nudge before 1:1s about
+   *  open inbox items tagged to that person, and as fixed-due-date inbox
+   *  items approach their date. Defaults to false even when `enabled` is
+   *  true — this is the most proactive/agentic behavior shipped so far (the
+   *  agent contacts the user via Slack DM on its own), so it's turned on via
+   *  the dedicated in-app opt-in prompt, not silently bundled into the
+   *  existing "Agent" toggle. See plan Section 5.1. */
+  nudge_inbox_items: boolean;
   // User-facing on/off control for meeting-insight cards in the inbox
   // (distinct from any internal rollout gating) — plan §9.4.2.
   enable_meeting_insights: boolean;
@@ -37,6 +45,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   escalate_patterns: false,
   recommend_format: false,
   recommend_tools: false,
+  nudge_inbox_items: false,
   enable_meeting_insights: false,
   nudge_timing_hours: 24,
   nudge_max_count: 5,
@@ -304,6 +313,14 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
             />
 
             <FeatureToggle
+              icon={Inbox}
+              label="Inbox item nudges"
+              description="Get a heads-up before 1:1s about open items tagged to that person, and as due-dated items approach their date. Uses the same quiet hours and Slack settings as your other agent nudges above."
+              checked={config.nudge_inbox_items}
+              onChange={nudge_inbox_items => update({ nudge_inbox_items })}
+            />
+
+            <FeatureToggle
               icon={Video}
               label="Meeting insights"
               description="Surface standout quotes from your meeting recordings in the inbox to confirm, save, or dismiss"
@@ -371,7 +388,7 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
           {/* ── Group 4: When it contacts you ─────────────────────────────── */}
           <SettingsGroup
             title="When it contacts you"
-            description="Control delivery channel, timing, and quiet hours."
+            description="Control delivery channel, timing, and quiet hours. Applies to all agent nudges, including inbox item nudges above."
           >
             {/* Link to the consolidated Notifications settings page */}
             <div className="flex items-center justify-between px-3 py-2.5 rounded-md border border-dashed border-border bg-muted/30">
