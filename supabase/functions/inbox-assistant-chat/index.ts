@@ -67,6 +67,22 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['team_member_id'],
     },
   },
+  {
+    name: 'get_rcdo_context',
+    description: "Fetch the user's active strategy: the current cycle's Rallying Cry, its Defining Objectives (with status/health/confidence), and each objective's Strategic Initiatives. Use this whenever the user asks about their strategic priorities, goals, objectives, or 'what I'm working towards' — as distinct from day-to-day inbox items.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_person_context',
+    description: "Fetch the accumulated relationship brief for a specific teammate — a running summary built from past 1:1s and prep notes (their priorities, recurring themes, open threads). Requires the team member's id, resolved from an @mention. Use this for questions about a specific person that aren't just 'what's overdue with them' (that's get_inbox_items).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        team_member_id: { type: 'string', description: 'UUID of the team member (cos_team_members.id) to fetch context for.' },
+      },
+      required: ['team_member_id'],
+    },
+  },
 ]
 
 // Anthropic-executed web search — the API runs the search itself and returns
@@ -174,6 +190,62 @@ async function toolGetOnboardingStatus(db: any, userId: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function toolGetRcdoContext(db: any, userId: string) {
+  const { data: teamRows } = await db.from('team_members').select('team_id').eq('user_id', userId)
+  const teamIds = (teamRows ?? []).map((r: { team_id: string }) => r.team_id as string)
+  if (teamIds.length === 0) return { hasActiveCycle: false }
+
+  const { data: doRows } = await db.from('rc_defining_objectives')
+    .select(`
+      title, hypothesis, status, health, confidence_pct, display_order,
+      rc_strategic_initiatives(title, status, description, display_order),
+      rc_rallying_cries!inner(title, narrative, rc_cycles!inner(status, team_id))
+    `)
+    .in('rc_rallying_cries.rc_cycles.status', ['active', 'locked'])
+    .in('rc_rallying_cries.rc_cycles.team_id', teamIds)
+    .order('display_order')
+
+  if (!doRows || doRows.length === 0) return { hasActiveCycle: false }
+
+  type Row = {
+    title: string; hypothesis: string | null; status: string; health: string | null; confidence_pct: number | null
+    rc_strategic_initiatives: Array<{ title: string; status: string; description: string | null }>
+    rc_rallying_cries: { title: string; narrative: string | null }
+  }
+  const rows = doRows as Row[]
+
+  return {
+    hasActiveCycle: true,
+    rallyingCry: { title: rows[0].rc_rallying_cries.title, narrative: rows[0].rc_rallying_cries.narrative },
+    definingObjectives: rows.map(r => ({
+      title: r.title,
+      hypothesis: r.hypothesis,
+      status: r.status,
+      health: r.health,
+      confidencePct: r.confidence_pct,
+      strategicInitiatives: (r.rc_strategic_initiatives ?? []).map(si => ({
+        title: si.title, status: si.status, description: si.description,
+      })),
+    })),
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function toolGetPersonContext(db: any, userId: string, teamMemberId: string) {
+  const { data: member } = await db.from('cos_team_members').select('name').eq('id', teamMemberId).eq('user_id', userId).maybeSingle()
+  if (!member) return { found: false, error: 'team_member_not_found' }
+
+  const { data: doc } = await db.from('cos_relationship_documents')
+    .select('content, last_updated_at')
+    .eq('user_id', userId).eq('team_member_id', teamMemberId)
+    .maybeSingle()
+
+  if (!doc?.content) return { found: true, name: member.name, hasBrief: false }
+
+  return { found: true, name: member.name, hasBrief: true, brief: doc.content, lastUpdatedAt: doc.last_updated_at }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function upsertBriefItem(db: any, userId: string, kind: 'daily' | 'weekly', priorities: string[], summaryText: string) {
   const sourceType = kind === 'weekly' ? 'dci_weekly_brief' : 'dci_brief'
   const date = new Date().toISOString().slice(0, 10)
@@ -263,8 +335,10 @@ RULES:
 - Before offering setup help, call get_onboarding_status and only discuss whichever steps are NOT yet done (calendar connection, Zoom connection, Rallying Cry, Defining Objectives). Don't mention steps that are already complete.
 - If calendar and/or Zoom aren't connected, do NOT tell the user to go to Settings or Integrations — the app already renders "Connect Calendar"/"Connect Zoom" buttons directly under your reply whenever those are missing, so just say something like "I've added a button below to connect it" rather than giving navigation instructions.
 - Never propose "schedule your 1:1s" as a manual to-do. Once the calendar is connected and synced, 1:1s appear on their own — if it's relevant, mention that instead of asking the user to schedule anything themselves.
-- If the user's message includes a "[Mentioned: ...]" hint, use the id(s) it provides to scope get_inbox_items (project_tag_id / person_tag_id) or run_one_on_one_prep (team_member_id) — don't guess ids from names.
+- If the user's message includes a "[Mentioned: ...]" hint, use the id(s) it provides to scope get_inbox_items (project_tag_id / person_tag_id), run_one_on_one_prep (team_member_id), or get_person_context (team_member_id) — don't guess ids from names.
 - When get_inbox_items returns a projectContext, treat it as the authoritative background for that project. If a project is mentioned but projectContext is empty, say so and suggest the user add a description via that project's settings.
+- When asked about strategic priorities, goals, or "what I'm working towards" (as opposed to day-to-day tasks), call get_rcdo_context rather than get_inbox_items. If hasActiveCycle is false, say there's no active Rallying Cry/Defining Objective cycle yet rather than guessing.
+- For questions about a specific person beyond what's overdue with them, call get_person_context. If hasBrief is false, say you don't have an accumulated brief for them yet — one builds up automatically after their first 1:1 prep.
 - When you're proposing concrete next-step items the user could add to their inbox (e.g. after a setup conversation), end your reply with a fenced json block as the LAST thing in your message, shaped exactly like:
 \`\`\`json
 {"proposedItems":[{"text":"..."}]}
@@ -374,6 +448,12 @@ serve(async (req) => {
             }
             case 'run_one_on_one_prep':
               result = await runOneOnOnePrep(userId, supabaseUrl, serviceRoleKey, (block.input as { team_member_id: string }).team_member_id)
+              break
+            case 'get_rcdo_context':
+              result = await toolGetRcdoContext(db, userId)
+              break
+            case 'get_person_context':
+              result = await toolGetPersonContext(db, userId, (block.input as { team_member_id: string }).team_member_id)
               break
             default:
               result = { error: 'unknown_tool' }
