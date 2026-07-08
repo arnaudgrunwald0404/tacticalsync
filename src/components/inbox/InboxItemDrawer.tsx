@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { X, Hash, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { WORKFLOW_STATUS_LABELS } from '@/lib/inboxValidation';
 import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
 import type { InboxItem, InboxTag, BriefPriority } from '@/types/inbox';
@@ -93,7 +94,7 @@ export function InboxItemDrawer({
                       : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
                   )}
                 >
-                  {item.workflow_status ?? 'Set status'}
+                  {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
                 </button>
               </div>
             )}

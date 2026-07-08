@@ -15,6 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { formatHourLabel, getBrowserTimezone } from '@/hooks/usePrepScheduleConfig';
+import IntegrationInfoPopover from '@/components/cos/IntegrationInfoPopover';
+import { INTEGRATION_COPY } from '@/lib/integrationCopy';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -256,7 +258,7 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly',
+        scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly',
         queryParams: { access_type: 'offline', prompt: 'consent' },
         redirectTo: `${origin}/chief-of-staff?calendar=connected`,
       },
@@ -425,7 +427,10 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
               <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                 <Calendar className="h-6 w-6 text-primary" />
               </div>
-              <h2 className="text-xl font-semibold">Sync my calendar</h2>
+              <h2 className="text-xl font-semibold inline-flex items-center gap-1.5">
+                Sync my calendar
+                <IntegrationInfoPopover copy={INTEGRATION_COPY.calendar} />
+              </h2>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
                 We'll find your 1:1 meetings automatically. This is the only required step
                 — everything else makes your briefs richer.
@@ -588,7 +593,10 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
                   <MessageSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Slack</p>
+                  <p className="text-sm font-medium inline-flex items-center gap-1.5">
+                    Slack
+                    <IntegrationInfoPopover copy={INTEGRATION_COPY.slack} />
+                  </p>
                   <p className="text-xs text-muted-foreground">Recent DMs, channel discussions, decisions</p>
                 </div>
                 {integrations.slack ? (
@@ -611,7 +619,10 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
                   <Video className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Zoom</p>
+                  <p className="text-sm font-medium inline-flex items-center gap-1.5">
+                    Zoom
+                    <IntegrationInfoPopover copy={INTEGRATION_COPY.zoom} />
+                  </p>
                   <p className="text-xs text-muted-foreground">Meeting recordings, transcripts, AI summaries</p>
                 </div>
                 {integrations.zoom ? (
