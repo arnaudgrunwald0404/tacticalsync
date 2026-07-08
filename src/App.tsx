@@ -25,6 +25,7 @@ const TeamInvite = lazyWithRetry(() => import("./pages/TeamInvite"));
 const TeamMeetingSetup = lazyWithRetry(() => import("./pages/TeamMeetingSetup"));
 const MeetingSettings = lazyWithRetry(() => import("./pages/MeetingSettings"));
 const JoinTeam = lazyWithRetry(() => import("./pages/JoinTeam"));
+const ClaimTeamMemberInvite = lazyWithRetry(() => import("./pages/ClaimTeamMemberInvite"));
 const Profile = lazyWithRetry(() => import("./pages/Profile"));
 const Settings = lazyWithRetry(() => import("./pages/Settings"));
 const BrandingShowcase = lazyWithRetry(() => import("./pages/BrandingShowcase"));
@@ -80,6 +81,11 @@ const App = () => (
           <Route path="/join/:inviteCode" element={
             <Suspense fallback={<PageSkeleton />}>
               <JoinTeam />
+            </Suspense>
+          } />
+          <Route path="/claim-team-member/:inviteCode" element={
+            <Suspense fallback={<PageSkeleton />}>
+              <ClaimTeamMemberInvite />
             </Suspense>
           } />
           {/* Meeting page — has its own specialized header */}

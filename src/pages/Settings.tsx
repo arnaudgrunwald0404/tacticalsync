@@ -26,6 +26,7 @@ import CosSettingsPanel from "@/components/cos/CosSettingsPanel";
 import CosCalendarSyncPanel from "@/components/cos/CosCalendarSyncPanel";
 import CosZoomSyncPanel from "@/components/cos/CosZoomSyncPanel";
 import CosSlackSyncPanel from "@/components/cos/CosSlackSyncPanel";
+import ConnectionsPanel from "@/components/cos/ConnectionsPanel";
 import CosPrepSchedulePanel, { MeetingsPrepPanel, DailyBriefPanel } from "@/components/cos/CosPrepSchedulePanel";
 import { AgentSettingsPanel } from "@/components/cos/AgentSettingsPanel";
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
@@ -2699,6 +2700,16 @@ const Settings = () => {
               <IntegrationExplainer copy={INTEGRATION_COPY.slack} />
             </div>
             <CosSlackSyncPanel />
+          </div>
+        ) : activeSection === "connections" ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Connections</h2>
+              <p className="text-muted-foreground text-sm">
+                Link your team members' TacticalSync accounts so you can send items directly to their inbox, and manage who can send items to you.
+              </p>
+            </div>
+            <ConnectionsPanel />
           </div>
         ) : activeSection === "integration-stackone" ? (
           <div className="mb-8">

@@ -35,6 +35,9 @@ const rowToItem = (r: InboxItemRow): InboxItem => ({
     : [],
   priority_due_at: ((r as Record<string, unknown>).priority_due_at as string | null) ?? null,
   priority_fixed: ((r as Record<string, unknown>).priority_fixed as boolean | null) ?? false,
+  // Person delegation (Idea #8) — active_delegation_id (20260723000000) isn't
+  // in the generated types yet; same escape hatch as priority_due_at above.
+  active_delegation_id: ((r as Record<string, unknown>).active_delegation_id as string | null) ?? null,
 });
 
 type ItemsPatcher = (prev: InboxItem[]) => InboxItem[];
