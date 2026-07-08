@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Bell, FileText, AlertTriangle, BarChart3, ListChecks, Sun, Slack, ArrowRight } from 'lucide-react';
+import { Loader2, Bell, FileText, AlertTriangle, BarChart3, ListChecks, Sun, Slack, ArrowRight, Inbox } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -130,6 +130,15 @@ export function NotificationSettingsPanel({ className, onNavigateToSection }: No
           checked={prefs.meeting_followups}
           disabled={!slackConnected}
           onChange={meeting_followups => update({ meeting_followups })}
+        />
+
+        <NotificationToggle
+          icon={Inbox}
+          label="Inbox item nudges"
+          description="A Slack DM before a 1:1 with open items tagged to that person, or when a fixed-due-date item is approaching"
+          checked={prefs.inbox_item_nudges}
+          disabled={!slackConnected}
+          onChange={inbox_item_nudges => update({ inbox_item_nudges })}
         />
 
         <NotificationToggle
