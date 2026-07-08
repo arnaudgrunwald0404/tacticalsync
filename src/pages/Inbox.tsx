@@ -4,7 +4,7 @@ import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
+  AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
   Inbox as InboxIcon, Zap, Clock, Archive as ArchiveIcon, Hash, User, FolderOpen,
   Loader2, CheckSquare, type LucideIcon,
 } from 'lucide-react';
@@ -28,6 +28,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
+import { useToast } from '@/hooks/use-toast';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag } from '@/types/inbox';
 import { planTagGroupReindex, isAutoPinnedItem } from '@/lib/inboxValidation';
@@ -194,6 +195,7 @@ function emptyStateFor(filter: InboxFilterState, tags: InboxTag[]): EmptyStateCo
 export default function InboxPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   // Derived from the URL so navigating between /inbox and /inbox/meetings always
   // switches the middle view — InboxPage stays mounted across those routes, so a
   // one-time useState initializer would go stale and leave the wrong panel showing.
@@ -212,9 +214,13 @@ export default function InboxPage() {
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('byProject');
   const [prioritizeMode, setPrioritizeMode] = useState(false);
-  const [drawerItem, setDrawerItem] = useState<InboxItem | null>(null);
+  // Stores only the id, not a snapshot of the item — drawerItem below is
+  // derived live from `items` so edits made through the detail panel (status,
+  // tags, Done) are reflected immediately instead of the panel showing a
+  // stale copy until it's closed and reopened.
+  const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
   const [editingProjectTag, setEditingProjectTag] = useState<import('@/types/inbox').InboxTag | null>(null);
-  const openDrawer = useCallback((item: import('@/types/inbox').InboxItem) => { setDrawerItem(item); setEditingProjectTag(null); }, []);
+  const openDrawer = useCallback((item: InboxItem) => { setDrawerItemId(item.id); setEditingProjectTag(null); }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDesktop = useIsDesktop();
   const isMobile = useIsMobile();
@@ -389,8 +395,30 @@ export default function InboxPage() {
     syncBriefItem(mondayDate, priorities, summaryText, 'weekly');
   }, [brief, userId, syncBriefItem]);
 
+  // Done/Archive badges need counts of items *outside* the "open" status that
+  // `allItems` above is scoped to — a cheap head-only count query rather than
+  // a third full useInboxItems mount. Re-queried whenever `allItems` changes
+  // (any add/done/archive/tag mutation), which is a superset of what's
+  // strictly needed but keeps the badges correct without extra plumbing.
+  const [doneCount, setDoneCount] = useState(0);
+  const [archiveCount, setArchiveCount] = useState(0);
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const [{ count: done }, { count: archived }] = await Promise.all([
+        supabase.from('inbox_items').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'done'),
+        supabase.from('inbox_items').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'archived'),
+      ]);
+      if (cancelled) return;
+      setDoneCount(done ?? 0);
+      setArchiveCount(archived ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [userId, allItems]);
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: 0, archive: 0 };
+    const c: Record<string, number> = { all: 0, asap: 0, waiting: 0, done: doneCount, archive: archiveCount };
     for (const item of allItems) {
       c['all']++;
       if (item.workflow_status === 'Do Now') c['asap']++;
@@ -400,31 +428,33 @@ export default function InboxPage() {
       }
     }
     return c;
-  }, [allItems]);
+  }, [allItems, doneCount, archiveCount]);
 
   const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
     const item = await addItem(text, type, tagIds);
-    if (item?.id) {
-      // The active filter may hide what was just added (e.g. viewing "Do Now"
-      // and adding a plain task) — switch to "All" so the add is never invisible.
-      const visibleUnderCurrentFilter =
-        filter.builtIn === 'asap' ? item.workflow_status === 'Do Now' :
-        filter.builtIn === 'waiting' ? item.type === 'agent_question' && Boolean(item.agent_payload?.action_required) :
-        filter.tagIds?.length ? filter.tagIds.every(tid => tagIds.includes(tid)) :
-        true;
-      if (!visibleUnderCurrentFilter) setFilter(allFilter);
-
-      setLastAddedId(item.id);
-      setTimeout(() => setLastAddedId(null), 2000);
-
-      // Fire tag suggestion agent async — only when item has no tags already
-      if (tagIds.length === 0 && userId) {
-        supabase.functions.invoke('suggest-inbox-tags', {
-          body: { item_id: item.id, user_id: userId },
-        }).then(() => reloadItems());
-      }
+    if (!item?.id) {
+      toast({ title: "Couldn't add that item", description: 'Please try again.', variant: 'destructive' });
+      return;
     }
-  }, [addItem, userId, reloadItems, filter, allFilter]);
+    // The active filter may hide what was just added (e.g. viewing "Do Now"
+    // and adding a plain task) — switch to "All" so the add is never invisible.
+    const visibleUnderCurrentFilter =
+      filter.builtIn === 'asap' ? item.workflow_status === 'Do Now' :
+      filter.builtIn === 'waiting' ? item.type === 'agent_question' && Boolean(item.agent_payload?.action_required) :
+      filter.tagIds?.length ? filter.tagIds.every(tid => tagIds.includes(tid)) :
+      true;
+    if (!visibleUnderCurrentFilter) setFilter(allFilter);
+
+    setLastAddedId(item.id);
+    setTimeout(() => setLastAddedId(null), 2000);
+
+    // Fire tag suggestion agent async — only when item has no tags already
+    if (tagIds.length === 0 && userId) {
+      supabase.functions.invoke('suggest-inbox-tags', {
+        body: { item_id: item.id, user_id: userId },
+      }).then(() => reloadItems());
+    }
+  }, [addItem, userId, reloadItems, filter, allFilter, toast]);
 
   const handleCreateTag = useCallback(async (name: string, type: 'project' | 'person', color: string) => {
     return getOrCreate(name, type, color);
@@ -485,12 +515,13 @@ export default function InboxPage() {
   [tags]);
 
   // For date/grouped views: weekly priorities and daily check-ins float first,
-  // then items with pending suggestions, then pinned-project items
+  // then manually-pinned items, then items with pending suggestions, then
+  // pinned-project items
   const sortedItems = useMemo(() => {
     const base = sortMode === 'byProject' ? items : [...items].sort((a, b) => {
-      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
-      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
-      if (bPinned !== aPinned) return bPinned - aPinned;
+      const aAutoPinned = isAutoPinnedItem(a) ? 2 : (a.pinned ? 1 : 0);
+      const bAutoPinned = isAutoPinnedItem(b) ? 2 : (b.pinned ? 1 : 0);
+      if (bAutoPinned !== aAutoPinned) return bAutoPinned - aAutoPinned;
       const aSug = (a.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       const bSug = (b.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       if (bSug !== aSug) return bSug - aSug;
@@ -500,11 +531,12 @@ export default function InboxPage() {
     });
     // Prioritize mode ranks by the informal due date (soonest first), regardless
     // of the sort mode underneath — items without one yet sort to the end.
-    // Weekly priorities and daily check-ins stay pinned to the top even here.
+    // Weekly priorities, daily check-ins, and manually-pinned items stay
+    // pinned to the top even here.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
-      const aPinned = isAutoPinnedItem(a) ? 1 : 0;
-      const bPinned = isAutoPinnedItem(b) ? 1 : 0;
+      const aPinned = isAutoPinnedItem(a) || a.pinned ? 1 : 0;
+      const bPinned = isAutoPinnedItem(b) || b.pinned ? 1 : 0;
       if (bPinned !== aPinned) return bPinned - aPinned;
       const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
       const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
@@ -565,7 +597,10 @@ export default function InboxPage() {
   const handleDelegateToAssistant = useCallback(async () => {
     if (!userId) return;
     const { data: { session } } = await supabase.auth.getSession();
-    for (const itemId of selected) {
+    const itemIds = [...selected];
+    setSelected(new Set());
+    setDelegateOpen(false);
+    const results = await Promise.allSettled(itemIds.map(itemId =>
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delegate-inbox-task`, {
         method: 'POST',
         headers: {
@@ -573,11 +608,17 @@ export default function InboxPage() {
           Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({ action: 'start', item_id: itemId, user_id: userId }),
+      }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); }),
+    ));
+    const failures = results.filter(r => r.status === 'rejected').length;
+    if (failures > 0) {
+      toast({
+        title: failures === itemIds.length ? 'Delegation failed' : 'Some items failed to delegate',
+        description: `${failures} of ${itemIds.length} item${itemIds.length === 1 ? '' : 's'} couldn't be delegated.`,
+        variant: 'destructive',
       });
     }
-    setSelected(new Set());
-    setDelegateOpen(false);
-  }, [selected, userId]);
+  }, [selected, userId, toast]);
 
   const handleMoveBucket = useCallback(async (itemId: string, bucket: InboxBucket) => {
     await supabase
@@ -590,6 +631,16 @@ export default function InboxPage() {
 
   const title = filterLabel(filter, tags);
   const emptyState = useMemo(() => emptyStateFor(filter, tags), [filter, tags]);
+
+  // Looked up from the currently-filtered `items` (the same list the row was
+  // opened from) rather than kept as a static snapshot, so edits made in the
+  // detail panel — status, tags, Done — show up immediately. If the item
+  // leaves this list (e.g. marked done while viewing "All"), the drawer
+  // clears on its own instead of showing a stale, already-gone item.
+  const drawerItem = useMemo(
+    () => (drawerItemId ? items.find(i => i.id === drawerItemId) ?? null : null),
+    [drawerItemId, items],
+  );
 
   // The person tag selected in the sidebar's People section, if the current
   // filter is scoped to exactly one such tag — drives the assistant panel's
@@ -626,7 +677,7 @@ export default function InboxPage() {
           onRenameTag={renameTag}
           onCreateWorkstream={createWorkstream}
           onUpdateTag={updateTag}
-          onEditProject={tag => { setEditingProjectTag(tag); setDrawerItem(null); }} onTogglePin={handleTogglePin}
+          onEditProject={tag => { setEditingProjectTag(tag); setDrawerItemId(null); }} onTogglePin={handleTogglePin}
           meetingsSearch={meetingsSearch}
           onMeetingsSearchChange={setMeetingsSearch}
           meetingsSyncInfo={meetingsSyncInfo}
@@ -645,7 +696,7 @@ export default function InboxPage() {
               onRenameTag={renameTag}
               onCreateWorkstream={createWorkstream}
               onUpdateTag={updateTag}
-              onEditProject={tag => { setEditingProjectTag(tag); setDrawerItem(null); setSidebarOpen(false); }} onTogglePin={handleTogglePin}
+              onEditProject={tag => { setEditingProjectTag(tag); setDrawerItemId(null); setSidebarOpen(false); }} onTogglePin={handleTogglePin}
               meetingsSearch={meetingsSearch}
               onMeetingsSearchChange={setMeetingsSearch}
               meetingsSyncInfo={meetingsSyncInfo}
@@ -732,17 +783,6 @@ export default function InboxPage() {
           >
             <Flame className="h-3.5 w-3.5" />
             <span className="hidden lg:inline">Prioritize</span>
-          </button>
-
-          {/* Settings */}
-          <button
-            aria-label="Settings"
-            className={cn(
-              'hidden sm:flex flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors',
-              isTouch ? 'h-9 w-9' : 'p-1.5',
-            )}
-          >
-            <Settings className="h-4 w-4" />
           </button>
             </>
           )}
@@ -929,12 +969,13 @@ export default function InboxPage() {
         item={drawerItem}
         allTags={tags}
         userName={userName}
-        onClose={() => setDrawerItem(null)}
+        onClose={() => setDrawerItemId(null)}
         onCycleWorkflowStatus={cycleWorkflowStatus}
         onRemoveTag={removeTagFromItem}
         onAddTag={addTagToItem}
         onCreateWorkstream={createWorkstream}
         onUpdateItem={updateItem}
+        onItemDone={handleItemDone}
         onAddItem={handleSubmit}
         onCreateTag={handleCreateTag}
         projectTag={editingProjectTag}

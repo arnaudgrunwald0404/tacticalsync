@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { format } from 'date-fns';
 import {
-  CheckSquare, Square, FileText, Zap, HelpCircle, Video, Calendar,
+  FileText, Zap, HelpCircle, Video, Calendar,
   Check, Pin, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ import { useIsTouch } from '@/hooks/use-breakpoint';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
 import {
-  WORKFLOW_STATUS_COLORS, tagStyle,
+  WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle,
   PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
 } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
@@ -44,8 +44,8 @@ interface InboxItemRowProps {
   prioritizeMode?: boolean;
 }
 
-const TYPE_ICON: Record<InboxItem['type'], React.ReactNode> = {
-  task:             <Square className="h-4 w-4" />,
+// No entry for 'task' — task rows render no type icon (see below).
+const TYPE_ICON: Partial<Record<InboxItem['type'], React.ReactNode>> = {
   note:             <FileText className="h-4 w-4" />,
   agent_nudge:      <Zap className="h-4 w-4" />,
   agent_question:   <HelpCircle className="h-4 w-4" />,
@@ -144,43 +144,45 @@ export function InboxItemRow({
         // Explicit grid tracks, not flex + absolute percentages: each column
         // gets a real, reserved slot, so nothing can ever overlap regardless
         // of how much text a tag or status label holds or how many lines
-        // Tags wraps to. Column boundaries: 50% / 75% normally; 50% / 70% /
+        // Tags wraps to. Column boundaries: 45% / 75% normally; 45% / 70% /
         // 77% in Prioritize mode (Tags narrows slightly there to make room
         // for Status + the tier pills).
-        prioritizeMode ? 'grid-cols-[50%_20%_7%_1fr]' : 'grid-cols-[50%_25%_1fr]',
+        prioritizeMode ? 'grid-cols-[45%_25%_7%_1fr]' : 'grid-cols-[45%_30%_1fr]',
       )}>
         {/* Main content — checkbox, type icon, text, pin. */}
         <div className="flex items-center gap-3 min-w-0">
-          {/* Select checkbox and type icon share one slot and never show at
-              once — for tasks the type icon is itself a checkbox glyph
-              (Square/CheckSquare), so showing both side by side on hover
-              read as two checkmarks on the same row. The select checkbox
-              swaps in for the icon instead of sitting next to it. */}
-          {isSelected || revealControls ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
-              aria-label={isSelected ? 'Deselect item' : 'Select item'}
-              className={cn(
-                'flex-shrink-0 flex items-center justify-center transition-all',
-                // Larger tap surface on touch, compact box on pointer devices.
-                isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
-              )}
-            >
-              <span className={cn(
-                'w-4 h-4 rounded border flex items-center justify-center',
-                isSelected
-                  ? 'bg-gray-900 border-gray-900 text-white'
-                  : 'border-gray-300 text-transparent hover:border-gray-500',
-              )}>
-                <Check className="h-2.5 w-2.5" strokeWidth={3} />
-              </span>
-            </button>
-          ) : (
+          {/* Multi-select checkbox — shown on hover/touch or when selected.
+              This is the only checkbox-shaped control on the row; marking a
+              task done happens via multi-select + the "Mark Done" bulk
+              action, not a per-row checkmark, so there's nothing here to
+              double up with. */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, !isSelected); }}
+            aria-label={isSelected ? 'Deselect item' : 'Select item'}
+            className={cn(
+              'flex-shrink-0 flex items-center justify-center transition-all',
+              // Larger tap surface on touch, compact box on pointer devices.
+              isTouch ? 'w-8 h-8 -ml-1' : 'w-4 h-4',
+              !isSelected && !revealControls && 'opacity-0',
+            )}
+          >
             <span className={cn(
-              'flex-shrink-0',
-              isDone ? 'text-emerald-500' : isAgentItem ? 'text-gray-400' : 'text-gray-300',
+              'w-4 h-4 rounded border flex items-center justify-center',
+              isSelected
+                ? 'bg-gray-900 border-gray-900 text-white'
+                : 'border-gray-300 text-transparent hover:border-gray-500',
             )}>
-              {item.type === 'task' && isDone ? <CheckSquare className="h-4 w-4" /> : TYPE_ICON[item.type]}
+              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+            </span>
+          </button>
+
+          {/* Type icon — tasks show no icon at all (done state reads from
+              the strikethrough/opacity on the text below), so this slot
+              never renders a checkbox-shaped glyph next to the select
+              checkbox above. */}
+          {item.type !== 'task' && (
+            <span className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}>
+              {TYPE_ICON[item.type]}
             </span>
           )}
 
@@ -218,7 +220,7 @@ export function InboxItemRow({
           )}
         </div>
 
-        {/* Tags — its own grid column (50%-75%, or 50%-70% in Prioritize mode).
+        {/* Tags — its own grid column (45%-75%, or 45%-70% in Prioritize mode).
             Wraps to a second line — since Status/Pills are separate columns,
             not absolutely positioned over this one, a wrapped second line
             can't overlap them the way it could before. */}
@@ -351,7 +353,7 @@ export function InboxItemRow({
               )}
               style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
             >
-              {item.workflow_status ?? 'Set status'}
+              {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
             </button>
           )}
         </div>
@@ -435,7 +437,7 @@ export function InboxItemRow({
             columns exist. */}
         {item.type === 'agent_question' && item.agent_payload?.action_required && (
           <button
-            onClick={() => onCtaClick?.(item)}
+            onClick={() => (onCtaClick ?? onOpenDrawer)?.(item)}
             style={{ gridColumn: '-1' }}
             className="justify-self-end px-2.5 py-1 text-xs rounded-md bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
           >

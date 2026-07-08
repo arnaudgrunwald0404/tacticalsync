@@ -3841,7 +3841,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
             // Google access tokens default to ~3600s; the session payload doesn't carry expires_in.
             expires_in: 3600,
             scope: s.user?.app_metadata?.providers?.includes?.('google')
-              ? 'https://www.googleapis.com/auth/calendar.events.readonly'
+              ? 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly'
               : '',
           },
         });
@@ -3884,7 +3884,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly',
+          scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly',
           queryParams: { access_type: 'offline', prompt: 'consent' },
           redirectTo: `${origin}/chief-of-staff?calendar=connected`,
         },

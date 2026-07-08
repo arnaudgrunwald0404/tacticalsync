@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
   ArrowLeft, CalendarDays, Sparkles, Send, Video, Loader2,
-  FileText, History, Settings, X,
+  FileText, History, X, EyeOff, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { parsePrepMarkdown, type TopicSection } from '@/components/cos/OneOnOnePrepDrawer';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
+import { PrepSettingsPanel } from '@/components/inbox/PrepSettingsPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
@@ -56,11 +57,22 @@ function initials(name: string) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function TopicCard({ section }: { section: TopicSection }) {
+function TopicCard({ section, dismissed, onRemove, onRestore }: {
+  section: TopicSection;
+  dismissed?: boolean;
+  onRemove?: () => void;
+  onRestore?: () => void;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
+    <div className={cn(
+      'group relative bg-white rounded-xl border border-gray-200/80 shadow-sm p-4',
+      dismissed && 'opacity-50',
+    )}>
       {section.heading && (
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-3">{section.heading}</h3>
+        <h3 className={cn(
+          'text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-3 pr-6',
+          dismissed && 'line-through',
+        )}>{section.heading}</h3>
       )}
       {section.paragraphs.map((p, i) => (
         <p key={i} className="text-sm text-gray-700 leading-relaxed mb-2 last:mb-0">{p}</p>
@@ -74,6 +86,23 @@ function TopicCard({ section }: { section: TopicSection }) {
             </li>
           ))}
         </ul>
+      )}
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          title="Remove from agenda — not accurate or not worth discussing"
+          className="absolute top-3 right-3 p-1 rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onRestore && (
+        <button
+          onClick={onRestore}
+          className="mt-2 text-[11px] font-medium text-primary hover:underline"
+        >
+          Restore to agenda
+        </button>
       )}
     </div>
   );
@@ -100,6 +129,8 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
   const [sections, setSections] = useState<TopicSection[] | null>(null);
   const [loadingPrep, setLoadingPrep] = useState(true);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [excludedPoints, setExcludedPoints] = useState<Set<string>>(new Set());
+  const [showDismissed, setShowDismissed] = useState(false);
 
   // Past 1:1s tab
   const [zoomRecs, setZoomRecs] = useState<ZoomRec[]>([]);
@@ -136,12 +167,40 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
       .limit(8)
       .then(({ data }: { data: ZoomRec[] | null }) => setZoomRecs(data ?? []))
       .catch(() => setZoomRecs([]));
+
+    db.from('cos_team_members')
+      .select('agent_overrides')
+      .eq('id', member.id)
+      .single()
+      .then(({ data }: { data: { agent_overrides: Record<string, unknown> } | null }) => {
+        const excluded = (data?.agent_overrides?.excluded_talking_points ?? []) as string[];
+        setExcludedPoints(new Set(excluded));
+      });
   }, [member?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prepAvailable = sections !== null && sections.length > 0;
 
+  const togglePoint = (key: string) => {
+    if (!member) return;
+    setExcludedPoints(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      const excluded = Array.from(next);
+      const db = supabase as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      db.from('cos_team_members').select('agent_overrides').eq('id', member.id).single()
+        .then(({ data }: { data: { agent_overrides: Record<string, unknown> } | null }) => {
+          const overrides = (data?.agent_overrides ?? {}) as Record<string, unknown>;
+          db.from('cos_team_members')
+            .update({ agent_overrides: { ...overrides, excluded_talking_points: excluded } })
+            .eq('id', member.id);
+        });
+      return next;
+    });
+  };
+
   const NAV_TABS: Array<{ key: TabKey; label: string; badge?: number }> = [
     { key: 'prep', label: 'Prep' },
+    { key: 'settings', label: 'Prep settings' },
     { key: 'past', label: 'Past 1:1s', badge: zoomRecs.length || undefined },
     { key: 'timeline', label: 'Timeline' },
   ];
@@ -210,22 +269,6 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
             );
           })}
         </nav>
-
-        {/* Settings at the bottom */}
-        <div className="mt-auto pt-4 border-t border-gray-100">
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={cn(
-              'flex items-center gap-2 px-2 py-2.5 rounded-lg text-sm transition-colors w-full',
-              activeTab === 'settings'
-                ? 'font-semibold text-gray-900 bg-gray-100'
-                : 'font-normal text-gray-400 hover:text-gray-700 hover:bg-gray-50',
-            )}
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </button>
-        </div>
       </div>
       )}
 
@@ -271,9 +314,33 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
                   </div>
                 )}
 
-                {!loadingPrep && prepAvailable && sections!.map((section, i) => (
-                  <TopicCard key={i} section={section} />
-                ))}
+                {!loadingPrep && prepAvailable && sections!.map((section, i) => {
+                  const key = `tp-${i}`;
+                  if (excludedPoints.has(key)) return null;
+                  return <TopicCard key={i} section={section} onRemove={() => togglePoint(key)} />;
+                })}
+
+                {!loadingPrep && prepAvailable && (() => {
+                  const dismissedCount = sections!.filter((_, i) => excludedPoints.has(`tp-${i}`)).length;
+                  if (dismissedCount === 0) return null;
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={() => setShowDismissed(v => !v)}
+                        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors self-start"
+                      >
+                        <EyeOff className="h-3.5 w-3.5" />
+                        {dismissedCount} removed from agenda
+                        {showDismissed ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+                      {showDismissed && sections!.map((section, i) => {
+                        const key = `tp-${i}`;
+                        if (!excludedPoints.has(key)) return null;
+                        return <TopicCard key={i} section={section} dismissed onRestore={() => togglePoint(key)} />;
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {!loadingPrep && !prepAvailable && (
                   <div className="bg-white rounded-xl border border-gray-200/80 border-dashed p-8 text-center">
@@ -377,11 +444,16 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
             </div>
           )}
 
-          {/* ── Settings tab ── */}
+          {/* ── Prep settings tab ── */}
           {activeTab === 'settings' && (
-            <div className="p-5 flex flex-col gap-4">
-              <div className="text-sm font-semibold text-gray-700">Settings</div>
-              <div className="text-sm text-gray-400">Settings for this 1:1 will appear here.</div>
+            <div className="p-5">
+              {member ? (
+                <PrepSettingsPanel memberId={member.id} memberName={firstName} contextNotes={member.context_notes} />
+              ) : (
+                <div className="text-center py-16 text-sm text-muted-foreground">
+                  Link this contact to a relationship to configure prep settings.
+                </div>
+              )}
             </div>
           )}
 

@@ -494,27 +494,17 @@ serve(async (req) => {
                 if (matchedInstance) {
                   const encodedUuid = encodeURIComponent(encodeURIComponent(matchedInstance.uuid))
 
-                  // Try AI Companion transcript first (requires meeting:read:meeting_transcript scope).
+                  // Try AI Companion transcript first (requires cloud_recording:read:meeting_transcript scope).
                   let transcriptContent: string | null = null
                   try {
-                    const transcriptListRes = await fetch(
-                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_transcripts`,
+                    const transcriptRes = await fetch(
+                      `https://api.zoom.us/v2/meetings/${encodedUuid}/transcript`,
                       { headers: { 'Authorization': `Bearer ${accessToken}` } },
                     )
-                    if (transcriptListRes.ok) {
-                      const transcriptListData = await transcriptListRes.json() as {
-                        meeting_transcripts?: Array<{ download_url?: string; status?: string }>
-                      }
-                      const transcriptFile = (transcriptListData.meeting_transcripts ?? [])
-                        .find(f => f.download_url && (!f.status || f.status === 'completed'))
-                      if (transcriptFile?.download_url) {
-                        const tRes = await fetch(transcriptFile.download_url, {
-                          headers: { 'Authorization': `Bearer ${accessToken}` },
-                        })
-                        if (tRes.ok) transcriptContent = await tRes.text()
-                      }
+                    if (transcriptRes.ok) {
+                      transcriptContent = await transcriptRes.text()
                     } else {
-                      console.warn(`Calendar discovery: meeting_transcripts returned ${transcriptListRes.status} for ${matchedInstance.uuid}`)
+                      console.warn(`Calendar discovery: transcript returned ${transcriptRes.status} for ${matchedInstance.uuid}`)
                     }
                   } catch (tErr) {
                     console.warn(`Calendar discovery: transcript fetch failed for ${matchedInstance.uuid}:`, (tErr as Error).message)
@@ -896,7 +886,6 @@ serve(async (req) => {
       synced,
       transcripts_fetched: transcriptsFetched,
       calendar_discovered: calendarDiscovered,
-      docs_discovered: docsDiscovered,
     }, 200)
   } catch (error) {
     return jsonResponse({ error: (error as Error).message }, 500)

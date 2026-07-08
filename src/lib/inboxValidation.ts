@@ -91,6 +91,17 @@ export const WORKFLOW_STATUS_COLORS: Record<WorkflowStatus, string> = {
   'Blocked':             '#ef4444',
 };
 
+/** Display text per workflow status — the stored value stays "Work in progress"
+ *  / "Waiting on someone" (they're DB CHECK constraint values); only the
+ *  on-screen label is abbreviated. */
+export const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
+  'Do Now':              'Do Now',
+  'Not started':         'Not started',
+  'Work in progress':    'WIP',
+  'Waiting on someone':  'WOS',
+  'Blocked':             'Blocked',
+};
+
 /** Soft tint pill style for a given accent color — shared by tag pills and status chips. */
 export function tagStyle(color: string) {
   return { backgroundColor: color + '22', color, borderColor: color + '44' };
@@ -420,4 +431,23 @@ export function currentPriorityTier(
     if (tier.days <= remainingDays) result = tier.key;
   }
   return result;
+}
+
+/**
+ * Urgency rank for ordering items, lowest number = most urgent = sorts first.
+ * Mirrors the display hierarchy: an explicit "Do Now" workflow status beats
+ * the informal due-date tiers, which then follow `PRIORITY_TIERS` order
+ * (now/1d/3d/1w/2w/1m). Items with no due date rank least urgent, alongside
+ * the 1-month tier. Pinning is handled separately by callers — this only
+ * ranks urgency within a non-pinned set (or within the pinned set, if callers
+ * want pinned items themselves ordered by urgency too).
+ */
+export function priorityRank(
+  item: Pick<InboxItem, 'workflow_status' | 'priority_due_at'>,
+  now: Date = new Date(),
+): number {
+  if (item.workflow_status === 'Do Now') return 0;
+  const tier = currentPriorityTier(item.priority_due_at, now);
+  if (!tier) return PRIORITY_TIERS.length + 1;
+  return 1 + PRIORITY_TIERS.findIndex(t => t.key === tier);
 }

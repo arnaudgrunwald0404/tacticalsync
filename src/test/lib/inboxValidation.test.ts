@@ -32,6 +32,7 @@ import {
   PRIORITY_TIERS,
   computePriorityDueAt,
   currentPriorityTier,
+  priorityRank,
   isAutoPinnedItem,
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
@@ -704,6 +705,31 @@ describe('currentPriorityTier', () => {
       const momentsLater = new Date(now.getTime() + 50);
       expect(currentPriorityTier(due, momentsLater)).toBe(tier.key);
     }
+  });
+});
+
+describe('priorityRank', () => {
+  const now = new Date('2026-07-05T12:00:00.000Z');
+
+  it('ranks "Do Now" workflow status above every due-date tier', () => {
+    const doNow = priorityRank({ workflow_status: 'Do Now', priority_due_at: computePriorityDueAt('1m', now) }, now);
+    const nowTier = priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt('now', now) }, now);
+    expect(doNow).toBeLessThan(nowTier);
+  });
+
+  it('ranks tiers in PRIORITY_TIERS order (now < 1d < 3d < 1w < 2w < 1m)', () => {
+    const ranks = PRIORITY_TIERS.map(tier =>
+      priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt(tier.key, now) }, now),
+    );
+    for (let i = 1; i < ranks.length; i++) {
+      expect(ranks[i]).toBeGreaterThan(ranks[i - 1]);
+    }
+  });
+
+  it('ranks items with no due date as least urgent, alongside the 1-month tier', () => {
+    const noDueDate = priorityRank({ workflow_status: null, priority_due_at: null }, now);
+    const oneMonth = priorityRank({ workflow_status: null, priority_due_at: computePriorityDueAt('1m', now) }, now);
+    expect(noDueDate).toBeGreaterThan(oneMonth);
   });
 });
 
