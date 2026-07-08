@@ -108,6 +108,14 @@ const App = () => (
                 <InboxPage />
               </Suspense>
             } />
+            {/* Idea #7 (Relationship memory): person page. Rendered inside
+                InboxPage (like /inbox/meetings) rather than as a separate
+                lazy component, so it shares the same sidebar/layout shell. */}
+            <Route path="/inbox/person/:memberId" element={
+              <Suspense fallback={<PageSkeleton />}>
+                <InboxPage />
+              </Suspense>
+            } />
             <Route element={<RCDODetailProvider><RCDODetailLayout /></RCDODetailProvider>}>
               <Route path="/rcdo/detail/do/:doId" element={<DODetail />} />
               <Route path="/rcdo/detail/si/:siId" element={<SIDetail />} />
