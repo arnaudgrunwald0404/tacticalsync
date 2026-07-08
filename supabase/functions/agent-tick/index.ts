@@ -84,6 +84,7 @@ interface NotificationPreferences {
   format_suggestions: boolean
   meeting_followups: boolean
   daily_brief: boolean
+  inbox_item_nudges: boolean
 }
 
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -93,6 +94,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   format_suggestions: true,
   meeting_followups: true,
   daily_brief: true,
+  inbox_item_nudges: true,
 }
 
 /**
@@ -400,7 +402,7 @@ serve(async (req) => {
       // toggle and `nudge_inbox_items` config value — see
       // maybeNudgeInboxItems() for the opt-in prompt/cooldown logic.
       try {
-        inboxItemsNudged = await maybeNudgeInboxItems(supabase, userId, config)
+        inboxItemsNudged = await maybeNudgeInboxItems(supabase, userId, config, notifPrefs)
       } catch (err) {
         await logAgentEvent(supabase, userId, 'error', {
           handler: 'nudge_inbox_items',
@@ -1329,6 +1331,7 @@ async function maybeNudgeInboxItems(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
+  notifPrefs: NotificationPreferences,
 ): Promise<number> {
   const [dueResult, meetingResults] = await Promise.all([
     fetchDueNudgeCandidates(supabase, userId, config),
@@ -1469,7 +1472,7 @@ async function maybeNudgeInboxItems(
     }
   }
 
-  if (config.slack_notifications && blocks.length > 0) {
+  if (notifPrefs.inbox_item_nudges && blocks.length > 0) {
     const explainer = await maybeSendFirstDmExplainer(supabase, userId)
     const summaryParts: string[] = []
     if (meetingResults.length > 0) summaryParts.push('1:1 prep')

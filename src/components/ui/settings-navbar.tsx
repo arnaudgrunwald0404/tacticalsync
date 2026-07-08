@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { id: "calendar-sync",               label: "Calendar",          group: "Integrations" },
   { id: "zoom-sync",                   label: "Zoom",              group: "Integrations" },
   { id: "slack-sync",                  label: "Slack",             group: "Integrations" },
+  { id: "connections",                 label: "Connections",       group: "Integrations" },
   { id: "integration-cleargo",         label: "ClearGo",           group: "Integrations" },
   { id: "integration-stackone",        label: "StackOne",          group: "Integrations" },
   { id: "agenda-templates",            label: "Agenda Templates",  group: null },

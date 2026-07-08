@@ -28,9 +28,16 @@ const Auth = () => {
       localStorage.removeItem('pendingInviteCode');
       return `/join/${storedInvite}`;
     }
+    const storedCosInvite = localStorage.getItem('pendingCosInviteCode');
+    if (storedCosInvite) {
+      localStorage.removeItem('pendingCosInviteCode');
+      return `/claim-team-member/${storedCosInvite}`;
+    }
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     if (inviteCode) return `/join/${inviteCode}`;
+    const cosInviteCode = params.get('cosInvite');
+    if (cosInviteCode) return `/claim-team-member/${cosInviteCode}`;
     const storedReturnTo = localStorage.getItem('pendingReturnTo');
     if (storedReturnTo) {
       localStorage.removeItem('pendingReturnTo');
@@ -64,9 +71,11 @@ const Auth = () => {
         if (hasCode || hasAccessToken) {
           const currentParams = new URLSearchParams(window.location.search);
           const currentInviteCode = currentParams.get('invite');
+          const currentCosInviteCode = currentParams.get('cosInvite');
           const currentReturnTo = currentParams.get('returnTo');
           const preservedParams = new URLSearchParams();
           if (currentInviteCode) preservedParams.set('invite', currentInviteCode);
+          if (currentCosInviteCode) preservedParams.set('cosInvite', currentCosInviteCode);
           if (currentReturnTo) preservedParams.set('returnTo', currentReturnTo);
           const qs = preservedParams.toString();
           window.history.replaceState({}, '', qs ? `/auth?${qs}` : '/auth');
@@ -82,6 +91,8 @@ const Auth = () => {
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     if (inviteCode) localStorage.setItem('pendingInviteCode', inviteCode);
+    const cosInviteCode = params.get('cosInvite');
+    if (cosInviteCode) localStorage.setItem('pendingCosInviteCode', cosInviteCode);
     const returnTo = params.get('returnTo');
     if (returnTo) localStorage.setItem('pendingReturnTo', returnTo);
 

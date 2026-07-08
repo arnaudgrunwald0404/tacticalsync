@@ -18,7 +18,8 @@ vi.mock('@/integrations/supabase/client', () => {
   const chain: Record<string, unknown> = {};
   const builder = () => {
     const q = {
-      select: () => q, eq: () => q, not: () => q, order: () => q, limit: () => q,
+      select: () => q, eq: () => q, not: () => q, order: () => q, limit: () => q, in: () => q,
+      maybeSingle: async () => ({ data: null }),
       then: (resolve: (v: { data: null }) => void) => resolve({ data: null }),
     };
     return q;

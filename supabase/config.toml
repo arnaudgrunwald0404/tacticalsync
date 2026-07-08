@@ -66,3 +66,9 @@ verify_jwt = false
 
 [functions.generate-weekend-banner]
 verify_jwt = true
+
+[functions.send-cos-team-member-invite]
+verify_jwt = true
+
+[functions.delegate-inbox-item-to-person]
+verify_jwt = true

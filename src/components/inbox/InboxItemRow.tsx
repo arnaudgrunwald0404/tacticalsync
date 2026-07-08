@@ -8,8 +8,10 @@ import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
 import { TagPickerDropdown } from './TagPickerDropdown';
 import { DelegationStatusRow } from './DelegationStatusRow';
+import { WaitingOnBadge, FromBadge } from './DelegatedBadge';
 import { SnoozePopover } from './SnoozePopover';
 import { useInboxDelegation } from '@/hooks/useInboxDelegation';
+import { useOutgoingDelegation, useIncomingDelegationForItem } from '@/hooks/useInboxItemDelegation';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
@@ -122,6 +124,15 @@ export function InboxItemRow({
   const isDone = item.status === 'done';
   const isSnoozed = item.status === 'snoozed';
   const { delegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(item.id);
+  // Person delegation (Idea #8) — only fetches when this row actually points
+  // at an active delegation, so rows without one don't pay for the query.
+  const { delegation: outgoingDelegation } = useOutgoingDelegation(
+    item.active_delegation_id ? item.id : null,
+  );
+  // Delegatee-side: is this row itself a copy someone delegated to the
+  // current user? Cheap no-op query (maybeSingle on an indexed column) when
+  // it isn't.
+  const incomingDelegation = useIncomingDelegationForItem(item.id);
   const personTags = allTags.filter(t => t.type === 'person');
   const snoozeLabel = isSnoozed ? formatSnoozeLabel(item, personTags.find(t => t.member_id === item.snooze_until_member_id)?.name ?? null) : null;
 
@@ -289,6 +300,17 @@ export function InboxItemRow({
               check-ins are always pinned; other items can be pinned manually. */}
           {(item.pinned || isAutoPinnedItem(item)) && (
             <Pin className="h-3 w-3 flex-shrink-0 text-amber-400 rotate-45" />
+          )}
+
+          {/* Person delegation (Idea #8, PLAN §8.3): persistent origin badge
+              on items a colleague delegated to this user — always visible,
+              not hover-only, since the point is a scannable paper trail. */}
+          {incomingDelegation && (
+            <FromBadge
+              delegatorName={incomingDelegation.delegatorName}
+              since={incomingDelegation.created_at}
+              note={incomingDelegation.note}
+            />
           )}
 
           {/* Snooze button — hover-revealed, next to the pin indicator.
@@ -486,20 +508,32 @@ export function InboxItemRow({
             x-position on every row instead of a shared, strict start point. */}
         <div className="flex items-center justify-self-start min-w-0 overflow-hidden">
           {item.type !== 'brief_item' && (
-            <button
-              title="Click to change status"
-              onClick={e => {
-                e.stopPropagation();
-                onCycleWorkflowStatus(item.id, item.workflow_status ?? null);
-              }}
-              className={cn(
-                'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap transition-opacity hover:opacity-75 max-w-full truncate',
-                !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
-              )}
-              style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
-            >
-              {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
-            </button>
+            item.active_delegation_id && outgoingDelegation ? (
+              // Person delegation (Idea #8, PLAN §8.3): a live delegation
+              // replaces the generic cycle-through-statuses chip with a
+              // named, timestamped badge — "Waiting on someone" only applies
+              // to the self-referential case with no real delegatee.
+              <WaitingOnBadge
+                delegateeName={outgoingDelegation.delegateeName}
+                since={outgoingDelegation.created_at}
+                note={outgoingDelegation.note}
+              />
+            ) : (
+              <button
+                title="Click to change status"
+                onClick={e => {
+                  e.stopPropagation();
+                  onCycleWorkflowStatus(item.id, item.workflow_status ?? null);
+                }}
+                className={cn(
+                  'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap transition-opacity hover:opacity-75 max-w-full truncate',
+                  !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
+                )}
+                style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
+              >
+                {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
+              </button>
+            )
           )}
         </div>
 

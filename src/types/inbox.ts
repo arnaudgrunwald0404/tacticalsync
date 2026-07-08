@@ -157,6 +157,11 @@ export interface InboxItem {
   created_at: string;
   updated_at: string;
   workflow_status: 'Do Now' | 'Not started' | 'Work in progress' | 'Waiting on someone' | 'Blocked' | null;
+  /** Person delegation (Idea #8): set on the delegator's row while a
+   *  delegation to a teammate is live (pending/accepted). Drives the
+   *  "Waiting on X · 3d" badge — see useOutgoingDelegation. Cleared (via DB
+   *  trigger) once the delegation resolves (done/cancelled). */
+  active_delegation_id: string | null;
   // joined
   tags?: InboxTag[];
   tag_suggestions?: TagSuggestion[];

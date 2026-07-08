@@ -149,6 +149,12 @@ serve(async (req) => {
       relTopicsRes,
       forgottenRes,
       prepScheduleRes,
+      // Idea #8: open person-delegations routed through this team member —
+      // PLAN_idea8_people_delegation.md §5 Option A (query-time injection,
+      // not a structured agenda table). team_member_id is populated on
+      // inbox_item_delegations at delegation time by
+      // delegate-inbox-item-to-person specifically so this lookup works.
+      delegationsRes,
     ] = await Promise.all([
       supabase
         .from('cos_team_members')
@@ -243,6 +249,17 @@ serve(async (req) => {
         .select('tool_tiers')
         .eq('user_id', userId)
         .maybeSingle(),
+      // Idea #8: open delegations to this team member (still pending or
+      // accepted — not done/cancelled) so the agent surfaces "you delegated
+      // X to them, here's where it stands" without the manager having to
+      // remember and re-raise it manually.
+      supabase
+        .from('inbox_item_delegations')
+        .select('note, status, created_at, source_item_id')
+        .eq('delegator_user_id', userId)
+        .eq('team_member_id', team_member_id)
+        .in('status', ['pending', 'accepted'])
+        .order('created_at', { ascending: false }),
     ])
 
     if (memberRes.error || !memberRes.data) {
@@ -468,6 +485,24 @@ serve(async (req) => {
       text: string; due_date: string | null; days_pending: number; urgency: string;
     }>
 
+    // Idea #8: open delegations to this team member. The delegation row
+    // doesn't carry the task text itself (only an optional note) — fetch it
+    // from the source inbox_items rows in one follow-up query rather than a
+    // join, to keep this additive to the existing query batch above.
+    const openDelegations = (delegationsRes.data ?? []) as Array<{
+      note: string | null; status: string; created_at: string; source_item_id: string;
+    }>
+    let delegationItemTexts: Record<string, string> = {}
+    if (openDelegations.length > 0) {
+      const { data: delegationItems } = await supabase
+        .from('inbox_items')
+        .select('id, text')
+        .in('id', openDelegations.map(d => d.source_item_id))
+      delegationItemTexts = Object.fromEntries(
+        ((delegationItems ?? []) as Array<{ id: string; text: string }>).map(i => [i.id, i.text]),
+      )
+    }
+
     // Tool tier overrides from prep schedule (JSONB: {"salesforce": 1, "stackone": 2})
     const toolTierOverrides = (prepScheduleRes.data as { tool_tiers?: Record<string, number> } | null)?.tool_tiers ?? {}
     const toolTier = (id: string): 1 | 2 | 3 => {
@@ -480,6 +515,7 @@ serve(async (req) => {
     const dataSources = ['priorities', 'commitments', 'actions', 'context']
     if (relTopics.length > 0) dataSources.push('relationship_memory')
     if (forgottenItems.length > 0) dataSources.push('forgotten_commitments')
+    if (openDelegations.length > 0) dataSources.push('open_delegations')
 
     // ── Build prompt ───────────────────────────────────────────────────────
     // Order: real signal first (Slack, Zoom), then commitments/accountabilities,
@@ -649,6 +685,22 @@ serve(async (req) => {
       }
     }
 
+    // Idea #8 (PLAN §5, Option A): items you delegated to this person that
+    // are still open — auto-surfaces on the next shared 1:1 agenda so a
+    // delegation doesn't silently drop out of view once it leaves your own
+    // inbox's "Waiting on" list.
+    if (openDelegations.length > 0) {
+      contextParts.push(`\n=== ITEMS YOU DELEGATED TO ${member.name.toUpperCase()} — still open ===`)
+      for (const d of openDelegations) {
+        const taskText = delegationItemTexts[d.source_item_id] ?? '(item text unavailable)'
+        const days = Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86_400_000)
+        const ageLabel = days === 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`
+        const noteLabel = d.note ? ` — note to ${member.name}: "${d.note}"` : ''
+        contextParts.push(`  - "${taskText}" (delegated ${ageLabel}, status: ${d.status})${noteLabel}`)
+      }
+      contextParts.push(`  Suggest checking in on these during the 1:1 rather than letting them go unmentioned.`)
+    }
+
     const staleTopics = relTopics.filter(t => t.status === 'stale')
     if (staleTopics.length > 0) {
       contextParts.push(`\n⚠ STALE TOPICS — discussed before but dropped off recently:`)
@@ -704,7 +756,8 @@ serve(async (req) => {
       topics.length > 0 ||
       pendingActions.length > 0 ||
       relTopics.length > 0 ||
-      forgottenItems.length > 0
+      forgottenItems.length > 0 ||
+      openDelegations.length > 0
 
     const isExternal = member.relationship_type === 'external'
 
@@ -783,6 +836,7 @@ Output structure:
 - Be direct and specific — no filler or generic advice
 - If there are pending action items, include a "Follow up on open items" section
 - If there are FORGOTTEN COMMITMENTS (marked with ⚠), always include a dedicated "Stale commitments" section near the top — these are trust-eroding items that need explicit follow-up. Suggest a specific question to address each one.
+- If there are ITEMS YOU DELEGATED, always include a "Check on delegated items" section — these are things you asked this person to do that are still open. Suggest asking for a status update on each one by name.
 - If there are STALE TOPICS (marked with ⚠), consider whether to raise them ("We haven't discussed X in a while — is it resolved or still relevant?")
 - If recurring themes are provided, use them to add depth — these are the threads that define this relationship
 - If external system data is provided (HRIS, tickets, CRM), weave relevant context naturally — mention upcoming PTO, blocked tickets, or deal activity where it helps prepare talking points

@@ -37,6 +37,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
 import { useDciBrief } from '@/hooks/useDciAiSuggestions';
+import { delegateInboxItemToPerson, useIncomingDelegations } from '@/hooks/useInboxItemDelegation';
 import { useToast } from '@/hooks/use-toast';
 import { usePersonMemoryConsent } from '@/hooks/usePersonMemoryConsent';
 import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsentModal';
@@ -465,6 +466,22 @@ export default function InboxPage() {
     [allItems],
   );
 
+  // Person delegation (Idea #8): items delegated TO this user by a colleague.
+  // InboxItemRow fetches its own per-row badge data (useIncomingDelegationForItem),
+  // so this batched map is used only to decide whether to show the one-time
+  // first-delegation banner below (PLAN §8.2A) — "does the user have any
+  // incoming delegations at all," not per-row rendering.
+  const { byDelegateeItemId: incomingDelegations } = useIncomingDelegations(userId);
+  const [firstDelegationBannerDismissed, setFirstDelegationBannerDismissed] = useState(
+    () => typeof window !== 'undefined' && window.localStorage.getItem('inbox_first_delegation_banner_seen') === '1',
+  );
+  const showFirstDelegationBanner =
+    !firstDelegationBannerDismissed && Object.keys(incomingDelegations).length > 0;
+  const dismissFirstDelegationBanner = useCallback(() => {
+    window.localStorage.setItem('inbox_first_delegation_banner_seen', '1');
+    setFirstDelegationBannerDismissed(true);
+  }, []);
+
   // Sync daily brief → brief_item in inbox (once per brief load)
   const { brief } = useDciBrief();
   const syncedBriefDate = useRef<string | null>(null);
@@ -805,6 +822,44 @@ export default function InboxPage() {
       });
     }
   }, [selected, userId, toast]);
+
+  // Person delegation (Idea #8, PLAN §6): wires the previously-stubbed
+  // `// person delegation — future` branch. Delegates every selected item to
+  // the chosen teammate; a `not_linked` response (the team member picked
+  // hasn't actually linked their account) shouldn't be reachable from the
+  // dropdown UI anymore (DelegateDropdown only makes linked members
+  // clickable), but is handled defensively since it's a real edge-function
+  // error path.
+  const handleDelegateToPerson = useCallback(async (member: { id: string; name: string }) => {
+    if (!userId || selected.size === 0) return;
+    const itemIds = Array.from(selected);
+    setSelected(new Set());
+    setDelegateOpen(false);
+
+    const results = await Promise.all(
+      itemIds.map(itemId => delegateInboxItemToPerson(itemId, member.id)),
+    );
+    const failures = results.filter(r => !r.success);
+    const successCount = results.length - failures.length;
+
+    if (successCount > 0) {
+      toast({
+        title: successCount === 1 ? `Delegated to ${member.name}` : `Delegated ${successCount} items to ${member.name}`,
+        description: `They'll see ${successCount === 1 ? 'it' : 'them'} in their inbox. You'll see "Waiting on ${member.name.split(' ')[0]}" until it's done.`,
+      });
+      await reloadItems();
+    }
+    if (failures.length > 0) {
+      const notLinked = failures.some(f => f.error === 'not_linked');
+      toast({
+        title: 'Could not delegate',
+        description: notLinked
+          ? `${member.name} hasn't linked their account yet — invite them from the Delegate menu first.`
+          : failures[0].error ?? 'Something went wrong.',
+        variant: 'destructive',
+      });
+    }
+  }, [userId, selected, toast, reloadItems]);
 
   const handleMoveBucket = useCallback(async (itemId: string, bucket: InboxBucket) => {
     await supabase
@@ -1269,7 +1324,7 @@ export default function InboxPage() {
                   userId={userId}
                   onSelect={(target) => {
                     if (target.type === 'assistant') handleDelegateToAssistant();
-                    else setDelegateOpen(false); // person delegation — future
+                    else handleDelegateToPerson(target.member);
                   }}
                   onClose={() => setDelegateOpen(false)}
                 />
@@ -1299,6 +1354,23 @@ export default function InboxPage() {
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
         {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+          {showFirstDelegationBanner && (
+            <div className="mx-3 sm:mx-4 mt-3 px-3.5 py-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-start gap-2.5">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-indigo-900">New: items delegated to you show up here</p>
+                <p className="text-[11px] text-indigo-700 leading-snug mt-0.5">
+                  A colleague sent you something — it showed up in your inbox because they delegated it to you.
+                  Mark it done and they'll see it update automatically.
+                </p>
+              </div>
+              <button
+                onClick={dismissFirstDelegationBanner}
+                className="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           {whatsNewEligible && (
             <div className="px-3 sm:px-4 pt-3">
               <InboxWhatsNewBanner
