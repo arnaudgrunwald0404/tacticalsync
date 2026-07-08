@@ -63,17 +63,21 @@ export function DelegateDropdown({ userId, onSelect, onClose }: DelegateDropdown
 
   const showAssistant = !query || 'assistant'.includes(query.toLowerCase());
 
+  // Person delegation isn't implemented yet — render as disabled with a
+  // "Coming soon" affix instead of a clickable row that silently discards the
+  // pick (Inbox.tsx's onSelect just closes the menu for `type: 'person'`).
   const MemberRow = ({ m }: { m: CosMember }) => (
-    <button
+    <div
       key={m.id}
-      onClick={() => onSelect({ type: 'person', member: m })}
-      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-gray-50 transition-colors rounded-md"
+      title="Delegating to a person isn't available yet"
+      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left rounded-md opacity-50 cursor-not-allowed"
     >
       <span className="h-5 w-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
         {m.name.charAt(0).toUpperCase()}
       </span>
-      <span className="truncate text-gray-700">{m.name}</span>
-    </button>
+      <span className="truncate text-gray-700 flex-1">{m.name}</span>
+      <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-gray-400">Soon</span>
+    </div>
   );
 
   const Section = ({ label, items }: { label: string; items: CosMember[] }) =>
