@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { Target } from 'lucide-react';
 import { PrioritySlot } from './PrioritySlot';
 import { CommitmentCell } from './CommitmentCell';
 import type {
@@ -71,8 +72,22 @@ export function MyCommitmentsPanel({
     });
   }, [commitments, quarter.id, userId, onUpsertCommitment]);
 
+  const isEmpty = priorities.length === 0 && commitments.length === 0;
+
   return (
     <div className="space-y-8">
+      {isEmpty && (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/30 px-6 py-10 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+            <Target className="h-5 w-5 text-primary" />
+          </div>
+          <p className="text-sm font-medium text-foreground">Set up your quarter</p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            Pick up to 3 quarterly priorities below, then break each month into concrete commitments that ladder up to them. Your manager and peers will see these too.
+          </p>
+        </div>
+      )}
+
       {/* Quarterly Priorities */}
       <section>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">

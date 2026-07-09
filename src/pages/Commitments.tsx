@@ -15,6 +15,7 @@ interface Profile {
   full_name: string;
   avatar_url: string | null;
   avatar_name: string | null;
+  email: string | null;
 }
 
 export default function Commitments() {
@@ -48,7 +49,7 @@ export default function Commitments() {
       // Load all org profiles so peers/managers outside the team render correctly
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, avatar_name');
+        .select('id, full_name, avatar_url, avatar_name, email');
       setTeamMembers((profiles ?? []) as Profile[]);
       setProfilesLoading(false);
     }
