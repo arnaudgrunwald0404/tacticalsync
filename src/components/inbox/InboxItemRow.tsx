@@ -201,13 +201,19 @@ export function InboxItemRow({
     >
       <div className={cn(
         'grid items-start gap-3 py-2.5 min-h-[44px]',
-        // Explicit grid tracks, not flex + absolute percentages: each column
-        // gets a real, reserved slot, so nothing can ever overlap regardless
-        // of how much text a tag or status label holds or how many lines
-        // Tags wraps to. Column boundaries: 45% / 75% normally; 45% / 70% /
-        // 77% in Prioritize mode (Tags narrows slightly there to make room
-        // for Status + the tier pills).
-        prioritizeMode ? 'grid-cols-[45%_25%_7%_1fr]' : 'grid-cols-[45%_30%_1fr]',
+        // Single column on mobile — text runs the full row width and every
+        // other column (tags, status, pills) stacks underneath it instead of
+        // being squeezed into a narrow percentage slot, which is what caused
+        // pills/badges to overlap on small screens. Explicit percentage
+        // tracks only kick in at `sm` and up, where each column has enough
+        // room to actually hold its content: each gets a real, reserved
+        // slot, so nothing can ever overlap regardless of how much text a
+        // tag or status label holds or how many lines Tags wraps to. Column
+        // boundaries: 45% / 75% normally; 45% / 70% / 77% in Prioritize mode
+        // (Tags narrows slightly there to make room for Status + the tier
+        // pills).
+        'grid-cols-1',
+        prioritizeMode ? 'sm:grid-cols-[45%_25%_7%_1fr]' : 'sm:grid-cols-[45%_30%_1fr]',
       )}>
         {/* Main content — checkbox, type icon, text, pin. */}
         <div className="flex items-center gap-3 min-w-0">
