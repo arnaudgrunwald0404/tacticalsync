@@ -304,6 +304,27 @@ export function useInboxItems(
 
     const sourceType = kind === 'weekly' ? 'dci_weekly_brief' : 'dci_brief';
 
+    // Archive open brief_items of this kind from earlier dates — only the
+    // latest brief should stay actionable in the inbox, older ones are
+    // superseded rather than duplicated on top of each other.
+    const { data: staleBriefs } = await supabase
+      .from('inbox_items')
+      .select('id, source_ref')
+      .eq('user_id', userId)
+      .eq('type', 'brief_item')
+      .eq('status', 'open')
+      .contains('source_ref', { type: sourceType });
+    const staleIds = (staleBriefs ?? [])
+      .filter(row => (row.source_ref as SourceRef | null)?.id !== date)
+      .map(row => row.id);
+    if (staleIds.length > 0) {
+      await supabase
+        .from('inbox_items')
+        .update({ status: 'archived', archived_at: new Date().toISOString() })
+        .in('id', staleIds);
+      applyPatch(prev => prev.filter(i => !staleIds.includes(i.id)));
+    }
+
     const { data: existing } = await supabase
       .from('inbox_items')
       .select('id, agent_payload')
