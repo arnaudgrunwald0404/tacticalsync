@@ -41,15 +41,20 @@ export function useOnboardingState() {
   }, []);
 
   const markComplete = useCallback(async (key: keyof OnboardingState) => {
-    const next = { ...onboarding, [key]: true };
-    setOnboarding(next);
+    // Optimistic — the tutorial/banner should disappear immediately on dismiss.
+    setOnboarding((prev) => ({ ...prev, [key]: true }));
     if (!userId) return;
-    const db = supabase as unknown as SupabaseClient;
-    await db.from('cos_settings').upsert(
-      { user_id: userId, onboarding_completed: next, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' },
-    );
-  }, [onboarding, userId]);
+    // Merged atomically server-side (see set_onboarding_flag in
+    // 20260728000000_atomic_flag_merge_rpc.sql) rather than read-then-write
+    // from the client, so a concurrently-mounted useOnboardingState()
+    // instance (e.g. a nested tab section) can't clobber this flag back to
+    // false with its own stale snapshot.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any).rpc('set_onboarding_flag', { p_key: key, p_value: true });
+    if (data) {
+      setOnboarding({ ...DEFAULT_STATE, ...(data as Partial<OnboardingState>) });
+    }
+  }, [userId]);
 
   return { onboarding, loading, markComplete };
 }
