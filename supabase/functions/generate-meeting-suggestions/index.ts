@@ -314,9 +314,23 @@ serve(async (req) => {
     const recordingIds = transcripts.map(t => t.recording_id)
     const { data: recordings } = await supabase
       .from('cos_zoom_recordings')
-      .select('id, team_member_id, zoom_meeting_id, topic, start_time, participant_names')
+      .select('id, team_member_id, group_meeting_id, zoom_meeting_id, topic, start_time, participant_names')
       .in('id', recordingIds)
     const recordingById = new Map((recordings ?? []).map(r => [r.id, r]))
+
+    // Tracked group meetings, so suggestions can be labeled with the meeting's
+    // subject instead of the raw Zoom topic (which is often generic or stale).
+    const groupMeetingIds = [...new Set(
+      (recordings ?? []).map(r => r.group_meeting_id).filter((id): id is string => !!id)
+    )]
+    let groupMeetingById = new Map<string, { id: string; title: string; subject: string | null }>()
+    if (groupMeetingIds.length > 0) {
+      const { data: groupMeetingRows } = await supabase
+        .from('cos_group_meetings')
+        .select('id, title, subject')
+        .in('id', groupMeetingIds)
+      groupMeetingById = new Map((groupMeetingRows ?? []).map(g => [g.id as string, g as { id: string; title: string; subject: string | null }]))
+    }
 
     // Recurring meetings reuse the same zoom_meeting_id across recordings.
     const { data: allRecordings } = await supabase
@@ -355,11 +369,16 @@ serve(async (req) => {
       const isRecurring = recording?.zoom_meeting_id
         ? (meetingIdCounts.get(recording.zoom_meeting_id) ?? 0) > 1
         : false
+      const groupMeeting = recording?.group_meeting_id ? groupMeetingById.get(recording.group_meeting_id) : undefined
+
       let sourceType: string
       let sourceLabel: string
       if (member && participantNames.length <= 2) {
         sourceType = 'one_on_one'
         sourceLabel = `1:1 with ${member.name}`
+      } else if (groupMeeting) {
+        sourceType = 'group_meeting'
+        sourceLabel = groupMeeting.subject ?? groupMeeting.title
       } else if (isRecurring) {
         sourceType = 'recurring_meeting'
         sourceLabel = recording?.topic ?? 'Recurring meeting'
@@ -466,6 +485,7 @@ serve(async (req) => {
             rationale: item.rationale ?? null,
             raw_context: item.raw_context ?? null,
             member_id: recording?.team_member_id ?? null,
+            group_meeting_id: recording?.group_meeting_id ?? null,
             recording_id: transcript.recording_id,
             tag_suggestions: tagSuggestions,
           })
@@ -550,6 +570,7 @@ serve(async (req) => {
                 rationale: item.rationale ?? null,
                 raw_context: item.raw_context ?? null,
                 member_id: recording?.team_member_id ?? null,
+                group_meeting_id: recording?.group_meeting_id ?? null,
                 recording_id: transcript.recording_id,
                 assignee_member_id: matched.id,
               })

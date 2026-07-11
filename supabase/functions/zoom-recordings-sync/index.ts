@@ -213,6 +213,20 @@ serve(async (req) => {
       .eq('user_id', userId)
     const members: MinimalMember[] = (membersRows ?? []) as MinimalMember[]
 
+    // Load the user's tracked (included) group meetings that have a known Zoom
+    // meeting ID (extracted from their calendar invite by google-calendar-sync),
+    // so recordings can be attributed back to the specific meeting instead of
+    // landing as an unlinked "group meeting" suggestion.
+    const { data: groupMeetingRows } = await supabase
+      .from('cos_group_meetings')
+      .select('id, zoom_meeting_id, title, last_seen_at, next_start_at')
+      .eq('user_id', userId)
+      .eq('included', true)
+      .not('zoom_meeting_id', 'is', null)
+    const groupMeetingsByZoomId = new Map(
+      (groupMeetingRows ?? []).map(g => [g.zoom_meeting_id as string, g.id as string])
+    )
+
     // Load sync rules for member matching.
     const { data: settingsRow } = await supabase
       .from('cos_settings')
@@ -334,6 +348,7 @@ serve(async (req) => {
       const row = {
         user_id: userId,
         team_member_id: resolvedMemberId,
+        group_meeting_id: groupMeetingsByZoomId.get(String(meeting.id)) ?? null,
         zoom_meeting_id: String(meeting.id),
         zoom_meeting_uuid: meeting.uuid,
         topic: meeting.topic ?? null,
@@ -431,10 +446,42 @@ serve(async (req) => {
       .gte('start_time', from.toISOString())
       .lte('start_time', to.toISOString())
 
-    if (calendarEvents && calendarEvents.length > 0) {
+    interface DiscoveryTarget {
+      zoom_meeting_id: string
+      team_member_id: string | null
+      group_meeting_id: string | null
+      title: string | null
+      start_time: string
+    }
+
+    // Group meetings have no per-occurrence calendar row (cos_group_meetings is
+    // one row per recurring series), so there's no exact "this instance just
+    // ended" timestamp to filter on the way 1:1 events have. Use last_seen_at
+    // (falling back to the next scheduled occurrence) as the anchor for Zoom
+    // instance-proximity matching below.
+    const groupDiscoveryTargets: DiscoveryTarget[] = (groupMeetingRows ?? []).map(g => ({
+      zoom_meeting_id: g.zoom_meeting_id as string,
+      team_member_id: null,
+      group_meeting_id: g.id as string,
+      title: g.title as string | null,
+      start_time: (g.last_seen_at as string | null) ?? (g.next_start_at as string | null) ?? new Date().toISOString(),
+    }))
+
+    const discoveryTargets: DiscoveryTarget[] = [
+      ...(calendarEvents ?? []).map(e => ({
+        zoom_meeting_id: e.zoom_meeting_id as string,
+        team_member_id: e.team_member_id as string | null,
+        group_meeting_id: null,
+        title: e.title as string | null,
+        start_time: e.start_time as string,
+      })),
+      ...groupDiscoveryTargets,
+    ]
+
+    if (discoveryTargets.length > 0) {
       // Find which Zoom meeting IDs we already have recordings for.
       const calendarZoomIds = [...new Set(
-        calendarEvents.map(e => e.zoom_meeting_id as string)
+        discoveryTargets.map(e => e.zoom_meeting_id)
       )]
       const { data: existingRecordings } = await supabase
         .from('cos_zoom_recordings')
@@ -447,8 +494,8 @@ serve(async (req) => {
       )
 
       // For each new meeting ID, try to fetch recordings via the per-meeting endpoint.
-      for (const calEvent of calendarEvents) {
-        const zoomId = calEvent.zoom_meeting_id as string
+      for (const calEvent of discoveryTargets) {
+        const zoomId = calEvent.zoom_meeting_id
         if (alreadySynced.has(zoomId)) continue
         alreadySynced.add(zoomId) // prevent duplicate attempts within this run
 
@@ -479,7 +526,7 @@ serve(async (req) => {
                 }
 
                 // Match instance to calendar event by date proximity.
-                const eventTime = new Date(calEvent.start_time as string).getTime()
+                const eventTime = new Date(calEvent.start_time).getTime()
                 const instances = (instancesData.meetings ?? [])
                   .map(m => ({
                     uuid: m.uuid,
@@ -539,11 +586,12 @@ serve(async (req) => {
 
                   const row = {
                     user_id: userId,
-                    team_member_id: (calEvent.team_member_id as string) ?? null,
+                    team_member_id: calEvent.team_member_id,
+                    group_meeting_id: calEvent.group_meeting_id,
                     zoom_meeting_id: zoomId,
                     zoom_meeting_uuid: matchedInstance.uuid,
-                    topic: meetingTopic ?? (calEvent.title as string) ?? null,
-                    start_time: meetingStartTime ?? matchedInstance.startTime ?? (calEvent.start_time as string),
+                    topic: meetingTopic ?? calEvent.title ?? null,
+                    start_time: meetingStartTime ?? matchedInstance.startTime ?? calEvent.start_time,
                     duration_minutes: null,
                     participant_emails: [] as string[],
                     participant_names: [] as string[],
@@ -631,7 +679,7 @@ serve(async (req) => {
           // Use calendar event's team_member_id if participant matching fails.
           const syntheticEvent: MinimalEvent = {
             id: recData.uuid,
-            summary: recData.topic ?? (calEvent.title as string) ?? '',
+            summary: recData.topic ?? calEvent.title ?? '',
             attendees: participantEmails.map((email, i) => ({
               email,
               displayName: participantNames[i] ?? null,
@@ -647,7 +695,7 @@ serve(async (req) => {
             ],
           }
           const match = findMatchingMember(syntheticEvent, members, zoomRules)
-          const teamMemberId = match?.member.id ?? (calEvent.team_member_id as string) ?? null
+          const teamMemberId = match?.member.id ?? calEvent.team_member_id ?? null
 
           const hasTranscript = (recData.recording_files ?? []).some(
             f => f.file_type === 'TRANSCRIPT' || f.recording_type === 'audio_transcript'
@@ -656,10 +704,11 @@ serve(async (req) => {
           const row = {
             user_id: userId,
             team_member_id: teamMemberId,
+            group_meeting_id: calEvent.group_meeting_id,
             zoom_meeting_id: zoomId,
             zoom_meeting_uuid: recData.uuid,
-            topic: recData.topic ?? (calEvent.title as string) ?? null,
-            start_time: recData.start_time ?? (calEvent.start_time as string),
+            topic: recData.topic ?? calEvent.title ?? null,
+            start_time: recData.start_time ?? calEvent.start_time,
             duration_minutes: recData.duration ?? null,
             participant_emails: participantEmails,
             participant_names: participantNames,
