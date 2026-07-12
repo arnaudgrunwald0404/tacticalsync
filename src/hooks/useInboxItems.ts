@@ -17,17 +17,19 @@ import { resolveNextOneOnOne } from '@/lib/oneOnOneResolution';
 import { planTriageInsert, planTriagePatch, type TriageAction } from '@/lib/meetingInsights';
 import { useToast } from '@/hooks/use-toast';
 
-// "Open the source" affordance for the two DB-trigger-synced source_ref
-// kinds (see src/types/inbox.ts). There's no per-series or per-member deep
-// link route today — /my-meetings and /check-ins/meetings (the 1:1s tab of
-// the Chief of Staff page, see src/pages/ChiefOfStaff.tsx's TeamSection
-// basePath) are the closest real routes, so we link there rather than
-// inventing a query-param scheme the app doesn't support yet.
+// "Open the source" affordance for the DB-trigger-synced source_ref kinds
+// (see src/types/inbox.ts). /check-ins/meetings (the 1:1s tab of the Chief
+// of Staff page, see src/pages/ChiefOfStaff.tsx's TeamSection basePath) is
+// the closest real route, so we link there rather than inventing a
+// query-param scheme the app doesn't support yet.
+//
+// meeting_action_item has no deep link: it used to point at /my-meetings,
+// but the RCDO meetings feature that route served has been decommissioned
+// (see src/App.tsx). The item still syncs from meeting_series_action_items
+// (isSyncedSourceRef stays true below) — there's just nowhere to send you.
 export function getSourceLink(sourceRef: SourceRef | null | undefined): { label: string; href: string } | null {
   if (!sourceRef) return null;
   switch (sourceRef.type) {
-    case 'meeting_action_item':
-      return { label: 'Open the meeting this came from', href: '/my-meetings' };
     case 'cos_meeting_action':
       return { label: 'Open your 1:1 prep', href: '/check-ins/meetings' };
     default:
