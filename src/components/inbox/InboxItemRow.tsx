@@ -88,6 +88,16 @@ const TYPE_ACCENT: Record<InboxItem['type'], string> = {
 // the two visually read as the same thing.
 const PRIORITY_DATE_COLOR = '#2563eb';
 
+// Slate for a soft (decaying) tier tag — deliberately distinct from
+// PRIORITY_DATE_COLOR (a hard due date) and from the rose used by workflow
+// status's "Do Now" (an operational state, not a schedule). Shown even
+// outside Prioritize mode so picking a tier leaves a visible trace.
+const PRIORITY_SOFT_COLOR = '#64748b';
+// A soft tier that has fully decayed reads as "now" — same urgency as Do Now,
+// so it borrows that color, but only for this passive readout, never for a
+// clickable "set to Do Now" control (see the tier pills below).
+const PRIORITY_OVERDUE_COLOR = '#f43f5e';
+
 // Source label for items auto-synced in by a DB trigger (meeting action items
 // / 1:1 "for me" commitments — see src/types/inbox.ts's SourceRef doc
 // comment). Generic on purpose: the meeting title / 1:1 counterpart's name
@@ -154,7 +164,11 @@ export function InboxItemRow({
   const fixedDueDate = item.priority_fixed && item.priority_due_at
     ? new Date(item.priority_due_at)
     : null;
-  const activeTier = prioritizeMode && !item.priority_fixed ? currentPriorityTier(item.priority_due_at) : null;
+  // The soft (decaying) tier, computed regardless of prioritizeMode so it can
+  // render as a small always-visible tag (see the Tags column below) — a tier
+  // pick otherwise left zero trace once you toggled Prioritize back off.
+  const softTier = !item.priority_fixed ? currentPriorityTier(item.priority_due_at) : null;
+  const activeTier = prioritizeMode ? softTier : null;
   const syncSourceLabel = item.source_ref ? SYNC_SOURCE_LABEL[item.source_ref.type] : undefined;
 
   // Tier pills are "loosey goosey" — the tier they read as decays over time.
@@ -449,6 +463,22 @@ export function InboxItemRow({
               {format(fixedDueDate, 'MMM d')}
             </span>
           )}
+          {/* Soft (decaying) tier — the informal-priority equivalent of the
+              fixed-due-date tag above, so picking a tier pill in Prioritize
+              mode leaves a visible trace once the mode is toggled back off.
+              Slate normally; switches to the "overdue" rose once the picked
+              tier has fully decayed (same urgency as workflow Do Now, but
+              this is a readout, not a second way to set it). */}
+          {softTier && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+              style={tagStyle(softTier === 'now' ? PRIORITY_OVERDUE_COLOR : PRIORITY_SOFT_COLOR)}
+              title={softTier === 'now' ? 'Overdue — past its informal priority tier' : `Informal priority — due around ${format(new Date(item.priority_due_at!), 'MMM d')}`}
+            >
+              <Clock className="h-3 w-3" />
+              {softTier === 'now' ? 'Overdue' : softTier}
+            </span>
+          )}
           {/* "View in recording" — meeting_insight only, links back to the
               source Zoom recording (plan §3/§9.2). Doesn't promise seeking to
               the exact quote timestamp — that deep-link isn't built yet. */}
@@ -544,28 +574,26 @@ export function InboxItemRow({
         </div>
 
         {/* Prioritize mode — per-row tier pills for setting the informal due
-            date. Its own grid column (the 4th track), right after Status. */}
+            date. Its own grid column (the 4th track), right after Status.
+            No pill sets "now" directly — that's what workflow Status's Do Now
+            is for (a manual, always-visible operational state). These tiers
+            are purely deferral ("push N days/weeks"); a picked tier decaying
+            past its threshold reads as overdue automatically (the indicator
+            below), not by user action. Keeps the two urgency signals from
+            overlapping: Status says "handle this now", tiers say "resurface
+            this by then". */}
         {prioritizeMode && (
           <div className="flex flex-wrap items-center gap-1 justify-self-start">
-            {PRIORITY_TIERS.map(tier => {
+            {activeTier === 'now' && (
+              <span
+                title="Overdue — past its informal priority tier. Use Status → Do Now if this needs to jump the queue instead."
+                className="flex-shrink-0 flex items-center justify-center h-5 w-5 rounded-full bg-rose-100 text-rose-600"
+              >
+                <Clock className="h-3 w-3" />
+              </span>
+            )}
+            {PRIORITY_TIERS.filter(tier => tier.key !== 'now').map(tier => {
               const active = activeTier === tier.key;
-              if (tier.key === 'now') {
-                return (
-                  <button
-                    key={tier.key}
-                    title="Do now"
-                    onClick={e => { e.stopPropagation(); setTier(tier.key); }}
-                    className={cn(
-                      'flex-shrink-0 flex items-center justify-center h-5 w-5 rounded-full border transition-colors',
-                      active
-                        ? 'bg-rose-500 border-rose-500 text-white'
-                        : 'border-gray-200 text-gray-300 hover:text-rose-400 hover:border-rose-300',
-                    )}
-                  >
-                    <Zap className="h-3 w-3" fill={active ? 'currentColor' : 'none'} />
-                  </button>
-                );
-              }
               return (
                 <button
                   key={tier.key}
