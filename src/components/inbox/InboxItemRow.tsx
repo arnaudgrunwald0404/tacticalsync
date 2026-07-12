@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle,
+  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -320,6 +320,23 @@ export function InboxItemRow({
               check-ins are always pinned; other items can be pinned manually. */}
           {(item.pinned || isAutoPinnedItem(item)) && (
             <Pin className="h-3 w-3 flex-shrink-0 text-amber-400 rotate-45" />
+          )}
+
+          {/* Rename — hover-revealed on pointer devices, always visible on
+              touch (mirrors InboxSidebar's TagItem rename affordance), since
+              onDoubleClick above has no reliable touch equivalent and is
+              preempted by the row's own tap-to-open onClick. */}
+          {onUpdateItem && revealControls && (
+            <button
+              onClick={e => { e.stopPropagation(); startEditText(); }}
+              title="Rename"
+              className={cn(
+                'flex-shrink-0 rounded hover:bg-gray-200 text-gray-300 hover:text-gray-600 transition-colors flex items-center justify-center',
+                isTouch ? 'h-8 w-8' : 'p-0.5',
+              )}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
           )}
 
           {/* Person delegation (Idea #8, PLAN §8.3): persistent origin badge
