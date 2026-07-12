@@ -44,7 +44,7 @@ import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsent
 import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMemoryBanner';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag, InboxView, InboxViewSort } from '@/types/inbox';
-import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId } from '@/lib/inboxValidation';
+import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId, priorityRank } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
@@ -733,18 +733,17 @@ export default function InboxPage() {
       const bFloat = b.tags?.some(t => pinnedProjectIds.has(t.id)) ? 1 : 0;
       return bFloat - aFloat;
     });
-    // Prioritize mode ranks by the informal due date (soonest first), regardless
-    // of the sort mode underneath — items without one yet sort to the end.
-    // Weekly priorities, daily check-ins, and manually-pinned items stay
-    // pinned to the top even here.
+    // Prioritize mode ranks by urgency (Do Now status first, then the informal
+    // due-date tiers soonest-first — see priorityRank), regardless of the sort
+    // mode underneath. Weekly priorities, daily check-ins, and manually-pinned
+    // items stay pinned to the top even here. Shared with InboxByProjectView's
+    // own prioritizeMode-gated sort so both sort modes rank items identically.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
       const aPinned = isAutoPinnedItem(a) || a.pinned ? 1 : 0;
       const bPinned = isAutoPinnedItem(b) || b.pinned ? 1 : 0;
       if (bPinned !== aPinned) return bPinned - aPinned;
-      const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
-      const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
-      return aDue - bDue;
+      return priorityRank(a) - priorityRank(b);
     });
   }, [items, pinnedProjectIds, sortMode, prioritizeMode]);
 
