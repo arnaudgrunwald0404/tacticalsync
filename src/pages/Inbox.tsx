@@ -273,6 +273,7 @@ export default function InboxPage() {
   // stale copy until it's closed and reopened.
   const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [forceEditToken, setForceEditToken] = useState(0);
@@ -1126,7 +1127,7 @@ export default function InboxPage() {
       )}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200/80">
         {/* Top bar */}
-        <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
+        <div className="relative flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
           {/* Hamburger — opens sidebar sheet below lg */}
           {!isDesktop && (
             <button
@@ -1148,24 +1149,57 @@ export default function InboxPage() {
             <span className="text-xs text-gray-400 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''}</span>
           )}
 
+          {activePanel === 'inbox' && !searchExpanded && !searchDraft && (
+            <button
+              onClick={() => setSearchExpanded(true)}
+              aria-label="Search"
+              title="Search ( / )"
+              className="hidden sm:flex flex-shrink-0 items-center justify-center h-8 w-8 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          )}
+
           {activePanel === 'inbox' && (
-            <div className="relative flex-shrink-0 w-full max-w-[220px] hidden sm:block">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+            <div
+              className={cn(
+                'items-center bg-white gap-2',
+                searchExpanded || searchDraft
+                  ? 'flex absolute inset-y-0 left-0 right-0 z-20 px-3 sm:px-4'
+                  : 'hidden',
+              )}
+            >
+              <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
               <input
                 ref={searchInputRef}
                 value={searchDraft}
                 onChange={e => setSearchDraft(e.target.value)}
-                placeholder="Search tasks, notes, briefs… ( / )"
-                className="w-full h-8 pl-8 pr-7 text-sm rounded-md border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-300 placeholder:text-gray-400"
+                onFocus={() => setSearchExpanded(true)}
+                onBlur={() => { if (!searchDraft) setSearchExpanded(false); }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setSearchDraft('');
+                    setSearchExpanded(false);
+                    searchInputRef.current?.blur();
+                  }
+                }}
+                placeholder="Search tasks, notes, briefs…"
+                className="flex-1 h-8 min-w-0 text-sm bg-transparent focus:outline-none placeholder:text-gray-400"
               />
-              {searchDraft && (
-                <button
-                  onClick={() => setSearchDraft('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (searchDraft) {
+                    setSearchDraft('');
+                    searchInputRef.current?.focus();
+                  } else {
+                    setSearchExpanded(false);
+                  }
+                }}
+                aria-label={searchDraft ? 'Clear search' : 'Close search'}
+                className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
 
