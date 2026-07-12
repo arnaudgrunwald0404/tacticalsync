@@ -327,6 +327,7 @@ serve(async (req) => {
       participants: Map<string, { name: string | null; email: string; team_member_id: string | null }>
       times: string[]
       nextStart: string | null
+      zoomMeetingId: string | null
     }
     const nowIso = new Date().toISOString()
     const groupMeetings = new Map<string, GroupAcc>()
@@ -360,6 +361,15 @@ serve(async (req) => {
           participants: new Map<string, { name: string | null; email: string; team_member_id: string | null }>(),
           times: [],
           nextStart: null,
+          zoomMeetingId: null,
+        }
+        // Extract Zoom meeting ID from location/description, same as 1:1 events —
+        // this is what lets zoom-recordings-sync discover non-hosted recordings
+        // for a tracked group meeting.
+        if (!acc.zoomMeetingId) {
+          acc.zoomMeetingId =
+            (event.location ? extractZoomMeetingId(event.location) : null) ??
+            (event.description ? extractZoomMeetingId(event.description) : null)
         }
         const roster = matchEventToMembers(event, members, rules)
         const memberByEmail = new Map<string, string>()
@@ -615,14 +625,16 @@ serve(async (req) => {
 
         let groupId = existing?.id ?? null
         if (existing) {
+          const update: Record<string, unknown> = {
+            title: acc.title,
+            cadence,
+            last_seen_at: nowIso,
+            next_start_at: acc.nextStart,
+          }
+          if (acc.zoomMeetingId) update.zoom_meeting_id = acc.zoomMeetingId
           await supabase
             .from('cos_group_meetings')
-            .update({
-              title: acc.title,
-              cadence,
-              last_seen_at: nowIso,
-              next_start_at: acc.nextStart,
-            })
+            .update(update)
             .eq('id', existing.id)
         } else {
           const { data: inserted, error: insErr } = await supabase
@@ -636,6 +648,7 @@ serve(async (req) => {
               cadence,
               last_seen_at: nowIso,
               next_start_at: acc.nextStart,
+              zoom_meeting_id: acc.zoomMeetingId,
             })
             .select('id')
             .single()

@@ -25,6 +25,7 @@ export interface MeetingSuggestion {
   suggested_category: string | null;
   member_id: string | null;
   memberName: string | null;
+  group_meeting_id: string | null;
   date: string;
   tag_suggestions: SuggestionTagRecommendation[];
 }
@@ -74,7 +75,7 @@ export function useMeetingSuggestions({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase as any)
       .from('dci_suggested_tasks')
-      .select('id, title, source, source_type, urgency, rationale, raw_context, suggested_category, member_id, date, tag_suggestions')
+      .select('id, title, source, source_type, urgency, rationale, raw_context, suggested_category, member_id, group_meeting_id, date, tag_suggestions')
       .eq('user_id', userId)
       .eq('status', 'pending')
       .is('assignee_member_id', null)

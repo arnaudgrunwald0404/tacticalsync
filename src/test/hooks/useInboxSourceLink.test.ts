@@ -33,11 +33,8 @@ describe('getSourceLink', () => {
     expect(getSourceLink({ type: 'calendar', id: 'abc' })).toBeNull();
   });
 
-  it('links meeting_action_item to /my-meetings with an explanatory label', () => {
-    const link = getSourceLink({ type: 'meeting_action_item', id: 'item-1' });
-    expect(link).not.toBeNull();
-    expect(link?.href).toBe('/my-meetings');
-    expect(link?.label).toMatch(/meeting/i);
+  it('returns null for meeting_action_item now that the RCDO meetings feature (and its /my-meetings route) is decommissioned', () => {
+    expect(getSourceLink({ type: 'meeting_action_item', id: 'item-1' })).toBeNull();
   });
 
   it('links cos_meeting_action to the 1:1s tab with an explanatory label', () => {
