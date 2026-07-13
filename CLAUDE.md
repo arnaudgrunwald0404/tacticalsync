@@ -49,9 +49,9 @@ Custom hooks in `src/hooks/` encapsulate all data fetching. The primary RCDO hoo
 ### RCDO Domain Model
 Core cycle: **Create cycle → Draft strategy → Review → Lock → Link execution → Checkins → Review → Archive**
 
-Key tables: `rc_cycles`, `rc_defining_objectives`, `rc_strategic_initiatives`, `rc_do_metrics`, `rc_checkins`, `rc_links`, `rc_tasks`. All rows are scoped to a team via `team_id`. RLS policies enforce access control.
+Key tables: `rc_cycles`, `rc_defining_objectives`, `rc_strategic_initiatives`, `rc_do_metrics`, `rc_checkins`, `rc_links`, `rc_tasks`. RCDO is **company-wide**, not team-scoped: `20251112100000_make_rcdo_company_wide.sql` dropped `rc_cycles.team_id`'s FK/NOT NULL constraint (kept only for backward compatibility) and rewrote RLS to gate on `owner_user_id`/`created_by`/admin flags instead. RLS policies enforce access control.
 
-Database migrations are in `supabase/migrations/` (80+ files, timestamp-named). All schema changes require a new migration file.
+Database migrations are in `supabase/migrations/` (220+ files, timestamp-named). All schema changes require a new migration file.
 
 ### Design System
 Design tokens and layout patterns are documented in `src/design-system/`. The `LAYOUT_PATTERNS.md` and `DESIGN_SYSTEM.md` files define component patterns used across detail pages. Shared detail page structure uses `DetailPageHeader` + `DetailPageNavigation` components.
@@ -60,7 +60,7 @@ Design tokens and layout patterns are documented in `src/design-system/`. The `L
 **Always use `parseLocalDate()` from `@/lib/dateUtils` when displaying date-only strings (YYYY-MM-DD) from the database.** Never use `new Date("2025-07-01")` directly — it parses as UTC midnight, which shifts to the previous day in western timezones. `parseLocalDate` appends `T00:00:00` to force local-time parsing.
 
 ### Session & Auth
-`useSessionManager.ts` handles 30-minute idle timeout and token refresh. Auth uses Supabase OAuth with PKCE flow.
+`useSessionManager.ts` polls every minute and silently refreshes the Supabase session when it's within 5 minutes of token expiry — there is no idle-based timeout/logout. Auth uses Supabase OAuth with PKCE flow.
 
 ## Environment Setup
 
