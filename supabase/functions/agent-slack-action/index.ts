@@ -68,9 +68,15 @@ serve(async (req) => {
     const payload = JSON.parse(rawPayload) as {
       type: string
       user: { id: string }
-      actions?: Array<{ action_id: string; value?: string; selected_option?: { value?: string } }>
+      actions?: Array<{
+        action_id: string
+        block_id?: string
+        value?: string
+        selected_option?: { value?: string }
+      }>
       trigger_id?: string
       response_url?: string
+      message?: { text?: string; blocks?: Array<Record<string, unknown>> }
     }
 
     if (payload.type !== 'block_actions' || !payload.actions?.length) {
@@ -115,11 +121,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return respond(payload.response_url, {
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: ':white_check_mark: Marked as done.',
-        })
+        return respondWithIcon(payload, action.block_id, ':white_check_mark:', 'Done')
       }
 
       // ── Snooze ────────────────────────────────────────────────────
@@ -148,11 +150,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return respond(payload.response_url, {
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: `:clock3: Snoozed to ${newDateStr}.`,
-        })
+        return respondWithIcon(payload, action.block_id, ':clock3:', `Snoozed to ${newDateStr}`)
       }
 
       // ── Inbox: mark done (Idea #4) ───────────────────────────────────
@@ -165,11 +163,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return respond(payload.response_url, {
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: ':white_check_mark: Marked as done.',
-        })
+        return respondWithIcon(payload, action.block_id, ':white_check_mark:', 'Done')
       }
 
       // ── Inbox: push due date (Idea #4) ────────────────────────────────
@@ -193,6 +187,7 @@ serve(async (req) => {
 
         const baseDate = existing?.priority_due_at ? new Date(existing.priority_due_at) : new Date()
         const newDate = new Date(baseDate.getTime() + days * 86_400_000)
+        const newDateStr = newDate.toISOString().slice(0, 10)
 
         await supabase
           .from('inbox_items')
@@ -200,11 +195,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return respond(payload.response_url, {
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: `:clock3: Snoozed to ${newDate.toISOString().slice(0, 10)}.`,
-        })
+        return respondWithIcon(payload, action.block_id, ':clock3:', `Snoozed to ${newDateStr}`)
       }
 
       // ── Dismiss escalation ────────────────────────────────────────
@@ -282,4 +273,46 @@ async function respond(responseUrl: string | undefined, body: unknown): Promise<
     })
   }
   return new Response('', { status: 200 })
+}
+
+// Swaps the acted-on item's overflow menu (the "..." icon) for a plain status
+// icon so the message itself reflects what happened, instead of (or in
+// addition to) a transient ephemeral confirmation. Falls back to an ephemeral
+// text reply if the original message/block can't be found — e.g. an overflow
+// selection whose block_id Slack didn't echo back.
+async function respondWithIcon(
+  payload: { response_url?: string; message?: { text?: string; blocks?: Array<Record<string, unknown>> } },
+  blockId: string | undefined,
+  icon: string,
+  note: string,
+): Promise<Response> {
+  const blocks = payload.message?.blocks
+  const block = blockId ? blocks?.find((b) => b.block_id === blockId) : undefined
+
+  if (!blocks || !block) {
+    return respond(payload.response_url, {
+      response_type: 'ephemeral',
+      replace_original: false,
+      text: `${icon} ${note}.`,
+    })
+  }
+
+  const updatedBlocks = blocks.map((b) => {
+    if (b !== block) return b
+    const { accessory: _accessory, text, ...rest } = b as {
+      accessory?: unknown
+      text?: { type: string; text: string }
+      [key: string]: unknown
+    }
+    return {
+      ...rest,
+      ...(text ? { text: { ...text, text: `${text.text} — ${icon} _${note}_` } } : {}),
+    }
+  })
+
+  return respond(payload.response_url, {
+    replace_original: true,
+    text: payload.message?.text,
+    blocks: updatedBlocks,
+  })
 }
