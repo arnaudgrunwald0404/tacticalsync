@@ -703,6 +703,21 @@ export default function InboxPage() {
     await archive(id);
   }, [allItems, archive]);
 
+  // "Add to inbox" on an AI-extracted suggestion (Slack DM/channel, Gmail,
+  // Zoom commitment — see extract-inbox-action-items/index.ts and
+  // extract-zoom-quotes/index.ts) is the user's explicit approval: flip it
+  // from 'agent_question' to a real 'task' so it becomes eligible for the
+  // daily digest (fetchDoNowItems/fetchDueNowTierItems/fetchNeedsInputItems/
+  // fetchBlockingOthersItems in agentInboxNudges.ts all exclude
+  // type = 'agent_question'). Everything else on the row (text, source_ref,
+  // owed_by, priority_due_at) carries over untouched.
+  const handleApproveSuggestion = useCallback(async (item: InboxItem) => {
+    await updateItem(item.id, {
+      type: 'task',
+      agent_payload: item.agent_payload ? { ...item.agent_payload, action_required: false } : null,
+    } as Partial<InboxItem>);
+  }, [updateItem]);
+
   // Dispatch table for agent_question CTA clicks, keyed by cta_action —
   // mirrors the existing cta_action convention used for
   // 'delete_onboarding_project' above (handled via handleItemDone instead,
@@ -711,8 +726,10 @@ export default function InboxPage() {
     const ctaAction = item.agent_payload?.cta_action;
     if (ctaAction === 'enable_inbox_nudges') {
       await handleEnableInboxNudges(item);
+    } else if (ctaAction === 'approve_suggestion') {
+      await handleApproveSuggestion(item);
     }
-  }, [handleEnableInboxNudges]);
+  }, [handleEnableInboxNudges, handleApproveSuggestion]);
 
   const pinnedProjectIds = useMemo(() =>
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),

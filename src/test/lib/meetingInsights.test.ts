@@ -8,8 +8,13 @@ import {
   planTriageInsert,
   planTriagePatch,
   MEETING_INSIGHT_CAP_PER_TRANSCRIPT,
+  commitmentDedupKey,
+  buildCommitmentSourceRef,
+  buildCommitmentText,
+  COMMITMENT_CAP_PER_TRANSCRIPT,
   type ExtractedQuote,
   type MeetingInsightContext,
+  type ExtractedCommitment,
 } from '@/lib/meetingInsights';
 import type { InboxItem } from '@/types/inbox';
 
@@ -197,6 +202,89 @@ describe('planTriageInsert', () => {
     const noRef = { text: 'Something said in a meeting', source_ref: null };
     const plan = planTriageInsert(noRef, 'confirm');
     expect(plan!.source_ref).toEqual({ type: 'manual' });
+  });
+});
+
+describe('commitmentDedupKey', () => {
+  it('trims owner and commitment for a stable key', () => {
+    const key = commitmentDedupKey('t1', '  Marcus  ', '  Send the numbers by EOD.  ');
+    expect(key).toEqual({ transcript_id: 't1', speaker_name: 'Marcus', commitment: 'Send the numbers by EOD.' });
+  });
+
+  it('produces different keys for different transcripts even with the same commitment', () => {
+    const a = commitmentDedupKey('t1', 'Marcus', 'Same commitment');
+    const b = commitmentDedupKey('t2', 'Marcus', 'Same commitment');
+    expect(a).not.toEqual(b);
+  });
+});
+
+describe('buildCommitmentSourceRef', () => {
+  const ctx: MeetingInsightContext = {
+    userId: 'u1',
+    transcriptId: 'tr1',
+    recordingId: 'rec1',
+    meetingTopic: 'Product Sync',
+    saidOn: '2026-07-03',
+  };
+
+  it('sets type to zoom_recording and mirrors id onto recording_id', () => {
+    const ref = buildCommitmentSourceRef(ctx, { owner_name: 'Marcus' });
+    expect(ref.type).toBe('zoom_recording');
+    expect(ref.id).toBe('rec1');
+    expect(ref.recording_id).toBe('rec1');
+  });
+
+  it('carries transcript_id, speaker_name (from owner_name), meeting_topic, said_on', () => {
+    const ref = buildCommitmentSourceRef(ctx, { owner_name: '  Marcus  ' });
+    expect(ref.transcript_id).toBe('tr1');
+    expect(ref.speaker_name).toBe('Marcus');
+    expect(ref.meeting_topic).toBe('Product Sync');
+    expect(ref.said_on).toBe('2026-07-03');
+  });
+});
+
+describe('buildCommitmentText', () => {
+  const meFixture: Pick<ExtractedCommitment, 'owner_name' | 'owed_by' | 'commitment'> = {
+    owner_name: 'Host',
+    owed_by: 'me',
+    commitment: 'Send the updated deck by Friday.',
+  };
+  const themFixture: Pick<ExtractedCommitment, 'owner_name' | 'owed_by' | 'commitment'> = {
+    owner_name: 'Marcus',
+    owed_by: 'them',
+    commitment: 'Get you the numbers by EOD.',
+  };
+
+  it('renders a "You committed" headline for owed_by: me', () => {
+    const text = buildCommitmentText(meFixture, 'Product Sync', '2026-07-03');
+    expect(text).toBe('You committed: Send the updated deck by Friday. — from Product Sync, Jul 3');
+  });
+
+  it('renders an "<Owner> committed" headline for owed_by: them', () => {
+    const text = buildCommitmentText(themFixture, 'Product Sync', '2026-07-03');
+    expect(text).toBe('Marcus committed: Get you the numbers by EOD. — from Product Sync, Jul 3');
+  });
+
+  it('falls back to omitting the date when saidOn is missing', () => {
+    const text = buildCommitmentText(themFixture, 'Product Sync', null);
+    expect(text).toBe('Marcus committed: Get you the numbers by EOD. — from Product Sync');
+  });
+
+  it('falls back to just the commitment when meetingTopic is missing', () => {
+    const text = buildCommitmentText(themFixture, null, '2026-07-03');
+    expect(text).toBe('Marcus committed: Get you the numbers by EOD.');
+  });
+
+  it('trims owner_name and commitment', () => {
+    const text = buildCommitmentText({ owner_name: '  Marcus  ', owed_by: 'them', commitment: '  Ship it.  ' }, null, null);
+    expect(text).toBe('Marcus committed: Ship it.');
+  });
+});
+
+describe('COMMITMENT_CAP_PER_TRANSCRIPT', () => {
+  it('defaults to 5 and works with capMeetingInsights (shared prefix-take helper)', () => {
+    expect(COMMITMENT_CAP_PER_TRANSCRIPT).toBe(5);
+    expect(capMeetingInsights([1, 2, 3, 4, 5, 6], COMMITMENT_CAP_PER_TRANSCRIPT)).toEqual([1, 2, 3, 4, 5]);
   });
 });
 

@@ -13,6 +13,8 @@
 // that requires idea #8 (people delegation / cross-user account linking) and
 // is out of scope until that lands.
 
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface InboxNudgeAgentConfig {
@@ -195,4 +197,240 @@ export function buildMeetingNudgeRationale(memberName: string, dayLabel: string,
 /** Builds the always-visible rationale string for a due-date inbox nudge. */
 export function buildDueDateNudgeRationale(): string {
   return 'Suggested by your agent · due date approaching'
+}
+
+// ── Consolidated daily digest — additional nudge-candidate fetchers ────────────
+//
+// Four more inbox segments for the daily Slack digest, alongside the
+// meeting-action/due-date nudge candidates above. Unlike the pure select*()
+// functions above (which operate on data the caller already fetched), each
+// fetch*() function here owns its own Supabase query — the caller just passes
+// its own client + userId, matching agent-tick/index.ts's existing internal
+// fetchDueNudgeCandidates()/fetchMeetingNudgeCandidates() shape. Slack Block
+// Kit generation from these candidates is wired up separately in agent-tick;
+// this file only produces the (small, capped, deduped) candidate lists.
+
+/** Minimal shape shared by the digest sections below — just enough for a
+ *  caller to render a line item and deep-link back to the source row. */
+export interface InboxNudgeCandidateItem {
+  id: string
+  text: string
+  workflow_status: string | null
+  priority_due_at: string | null
+}
+
+/** Default cap per digest section, matching the "top 5-10" guidance — keeps
+ *  a single noisy inbox from producing a wall-of-text Slack message. */
+const DEFAULT_SECTION_CAP = 10
+
+/** Safety-valve scan size for sections that can't express their condition as
+ *  a single clean PostgREST filter (see fetchNeedsInputItems) and instead
+ *  filter in JS after a broad fetch. A real user's open inbox realistically
+ *  never approaches this; it just bounds the worst case. */
+const SCAN_LIMIT = 200
+
+/** workflow_status values that mean "the ball is in the user's court, and it
+ *  isn't already flagged Do Now" — see fetchNeedsInputItems. */
+const NEEDS_INPUT_STATUSES = ['Not started', 'Work in progress']
+
+/**
+ * Reimplements currentPriorityTier()'s "now" tier check
+ * (src/lib/inboxValidation.ts, ~line 586) using plain calendar-day math
+ * instead of date-fns, since this edge function can't import from src/.
+ * `remainingDays <= 0` there corresponds to `true` here: a due date whose
+ * calendar day has already arrived or passed. A null due date is *not* the
+ * "now" tier (mirrors currentPriorityTier returning null, not 'now', for a
+ * null dueAt).
+ *
+ * Calendar days are computed in UTC — there's no per-user timezone available
+ * in this pipeline, so this is an approximation of the client-side "local
+ * day" comparison currentPriorityTier makes. Good enough for a candidate
+ * fetch feeding a once-daily digest; not used for anything display-precise.
+ */
+export function isDueNowTier(priorityDueAt: string | null, now: Date = new Date()): boolean {
+  if (!priorityDueAt) return false
+  const due = new Date(priorityDueAt)
+  if (Number.isNaN(due.getTime())) return false
+  const dueDay = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate())
+  const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  return dueDay <= nowDay
+}
+
+/** Open inbox_items with workflow_status = 'Do Now' for this user, oldest
+ *  first (the longest-standing "Do Now" items surface at the top).
+ *
+ *  Excludes type = 'agent_question' — those are AI-extracted *suggestions*
+ *  (see extract-inbox-action-items/index.ts, extract-zoom-quotes/index.ts)
+ *  that haven't been approved via the "Add to inbox" CTA yet (Inbox.tsx's
+ *  handleApproveSuggestion, which flips type to 'task'). The digest must
+ *  never surface a suggestion the user hasn't confirmed. */
+export async function fetchDoNowItems(
+  supabase: SupabaseClient,
+  userId: string,
+  cap: number = DEFAULT_SECTION_CAP,
+): Promise<InboxNudgeCandidateItem[]> {
+  const { data } = await supabase
+    .from('inbox_items')
+    .select('id, text, workflow_status, priority_due_at')
+    .eq('user_id', userId)
+    .eq('status', 'open')
+    .eq('workflow_status', 'Do Now')
+    .neq('type', 'agent_question')
+    .order('created_at', { ascending: true })
+    .limit(cap)
+
+  return (data ?? []) as InboxNudgeCandidateItem[]
+}
+
+/**
+ * Open inbox_items due now or overdue — the informal "gut feel" priority
+ * tier (see PRIORITY_TIERS / currentPriorityTier in inboxValidation.ts)
+ * reading as 'now', OR a *real* fixed due date (priority_fixed = true, e.g.
+ * one extracted from a Slack DM/channel message or Gmail email — see
+ * extract-inbox-action-items/index.ts) that has arrived or passed.
+ *
+ * Fixed due dates also feed agent-tick's separate fetchDueNudgeCandidates()/
+ * selectDueItemsToNudge() due-date-approaching nudge (its own opt-in,
+ * future-looking window). An item due today can appear in both if a user
+ * has opted into that older feature too — accepted overlap, not
+ * cross-deduped, since most users only get this digest.
+ *
+ * Excludes type = 'agent_question' — an unapproved AI-extracted suggestion
+ * (e.g. a due date pulled from a Slack DM) must not reach the digest until
+ * the user approves it via "Add to inbox" (see fetchDoNowItems above).
+ */
+export async function fetchDueNowTierItems(
+  supabase: SupabaseClient,
+  userId: string,
+  cap: number = DEFAULT_SECTION_CAP,
+  now: Date = new Date(),
+): Promise<InboxNudgeCandidateItem[]> {
+  const { data } = await supabase
+    .from('inbox_items')
+    .select('id, text, workflow_status, priority_due_at, type')
+    .eq('user_id', userId)
+    .eq('status', 'open')
+    .neq('type', 'agent_question')
+    .not('priority_due_at', 'is', null)
+
+  const candidates = (data ?? []) as Array<InboxNudgeCandidateItem & { type: string }>
+  return candidates
+    .filter((item) => isDueNowTier(item.priority_due_at, now))
+    .sort((a, b) => new Date(a.priority_due_at!).getTime() - new Date(b.priority_due_at!).getTime())
+    .slice(0, cap)
+    .map(({ id, text, workflow_status, priority_due_at }) => ({ id, text, workflow_status, priority_due_at }))
+}
+
+/**
+ * Open inbox_items that still need the user's own input/action: workflow
+ * status is unset, 'Not started', or 'Work in progress' — i.e. not already
+ * 'Do Now' (its own digest section above), and not 'Waiting on someone' /
+ * 'Blocked' (the ball isn't in the user's court for those).
+ *
+ * No single PostgREST filter expresses "status IS NULL OR status IN (...)"
+ * without excluding NULL rows outright (a bare `not.in` treats NULL as
+ * "doesn't match", dropping unset items we want to keep) — so this scans
+ * open items broadly (bounded by SCAN_LIMIT) and applies the whitelist in
+ * JS instead.
+ *
+ * This does not exclude items also captured by fetchDueNowTierItems (a
+ * 'Not started' item due today would appear in both sections) — matching
+ * the existing convention in this file of independent candidate fetchers
+ * that don't cross-dedupe against each other (see selectDueItemsToNudge vs.
+ * selectMeetingsForInboxNudge, which never check each other's output either).
+ *
+ * Excludes type = 'agent_question' — an unapproved AI-extracted suggestion
+ * must not reach the digest until approved (see fetchDoNowItems above).
+ */
+export async function fetchNeedsInputItems(
+  supabase: SupabaseClient,
+  userId: string,
+  cap: number = DEFAULT_SECTION_CAP,
+): Promise<InboxNudgeCandidateItem[]> {
+  const { data } = await supabase
+    .from('inbox_items')
+    .select('id, text, workflow_status, priority_due_at, updated_at')
+    .eq('user_id', userId)
+    .eq('status', 'open')
+    .neq('type', 'agent_question')
+    .order('updated_at', { ascending: true })
+    .limit(SCAN_LIMIT)
+
+  const rows = (data ?? []) as Array<InboxNudgeCandidateItem & { updated_at: string }>
+  return rows
+    .filter((item) => item.workflow_status == null || NEEDS_INPUT_STATUSES.includes(item.workflow_status))
+    .slice(0, cap)
+    .map(({ id, text, workflow_status, priority_due_at }) => ({ id, text, workflow_status, priority_due_at }))
+}
+
+/** Which of the three "blocking others" signals matched this item — lets a
+ *  caller vary the digest copy without re-deriving it from source_ref. */
+export type BlockingOthersReason = 'owed_by' | 'meeting_action_item' | 'cos_meeting_action'
+
+export interface BlockingOthersItem {
+  id: string
+  text: string
+  via: BlockingOthersReason
+}
+
+/**
+ * Open inbox_items where the user is blocking someone else — the union of:
+ *  - owed_by = 'me' (new explicit classification, populated by concurrent
+ *    Slack/Zoom extraction work — see 20260728000001_inbox_items_owed_by.sql)
+ *  - source_ref.type = 'meeting_action_item' (already assigned_to-filtered
+ *    upstream by the sync trigger — see
+ *    20260723000003_meeting_action_items_inbox_sync.sql)
+ *  - source_ref.type = 'cos_meeting_action' (already owner='me'-filtered
+ *    upstream — see 20260723000001_cos_meeting_actions_inbox_sync.sql)
+ *
+ * Deduped by item id: an item matching more than one condition (e.g. an
+ * owed_by='me' row that's also a synced meeting_action_item) is reported
+ * once, with 'owed_by' taking precedence as the most directly-classified
+ * signal.
+ *
+ * All three queries exclude type = 'agent_question': owed_by is populated
+ * directly on freshly-extracted Slack/Zoom suggestion rows (see
+ * extract-inbox-action-items/index.ts, extract-zoom-quotes/index.ts), which
+ * must not reach the digest until approved via "Add to inbox" (see
+ * fetchDoNowItems above).
+ */
+export async function fetchBlockingOthersItems(
+  supabase: SupabaseClient,
+  userId: string,
+  cap: number = DEFAULT_SECTION_CAP,
+): Promise<BlockingOthersItem[]> {
+  const [{ data: owedByMe }, { data: meetingActionItems }, { data: cosMeetingActions }] = await Promise.all([
+    supabase.from('inbox_items').select('id, text').eq('user_id', userId).eq('status', 'open').eq('owed_by', 'me').neq('type', 'agent_question'),
+    supabase
+      .from('inbox_items')
+      .select('id, text')
+      .eq('user_id', userId)
+      .eq('status', 'open')
+      .neq('type', 'agent_question')
+      .contains('source_ref', { type: 'meeting_action_item' }),
+    supabase
+      .from('inbox_items')
+      .select('id, text')
+      .eq('user_id', userId)
+      .eq('status', 'open')
+      .neq('type', 'agent_question')
+      .contains('source_ref', { type: 'cos_meeting_action' }),
+  ])
+
+  const seen = new Set<string>()
+  const result: BlockingOthersItem[] = []
+
+  const addAll = (rows: Array<{ id: string; text: string }> | null, via: BlockingOthersReason) => {
+    for (const row of rows ?? []) {
+      if (seen.has(row.id)) continue
+      seen.add(row.id)
+      result.push({ id: row.id, text: row.text, via })
+    }
+  }
+
+  addAll(owedByMe as Array<{ id: string; text: string }> | null, 'owed_by')
+  addAll(meetingActionItems as Array<{ id: string; text: string }> | null, 'meeting_action_item')
+  addAll(cosMeetingActions as Array<{ id: string; text: string }> | null, 'cos_meeting_action')
+
+  return result.slice(0, cap)
 }

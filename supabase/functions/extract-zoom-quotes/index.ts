@@ -109,19 +109,91 @@ function buildMeetingInsightSourceRef(opts: {
   }
 }
 
-const EXTRACT_PROMPT = `You are analyzing a meeting transcript. Extract 1-3 standout quotes — things a team member said that are insightful, inspiring, funny, or show strong leadership/ownership.
+// ── Commitment helpers (mirror of the ExtractedCommitment additions in
+// src/lib/meetingInsights.ts — see the file-level comment above. Feeds the
+// `owed_by` column added in 20260728000001_inbox_items_owed_by.sql, which
+// powers the daily digest's "you're blocking these people" section.) ────────
 
-Rules:
+// Max commitment rows created per transcript — kept modest since commitments
+// are a coarser, higher-signal-per-row surface than quotes.
+const COMMITMENT_CAP_PER_TRANSCRIPT = 5
+
+interface ExtractedCommitment {
+  owner_name: string
+  owed_by: 'me' | 'them'
+  commitment: string
+}
+
+interface CommitmentSourceRef {
+  type: 'zoom_recording'
+  id: string
+  recording_id: string
+  transcript_id: string
+  speaker_name: string
+  meeting_topic?: string
+  said_on: string
+}
+
+function buildCommitmentSourceRef(opts: {
+  recordingId: string
+  transcriptId: string
+  meetingTopic?: string | null
+  saidOn: string
+}, c: ExtractedCommitment): CommitmentSourceRef {
+  return {
+    type: 'zoom_recording',
+    id: opts.recordingId,
+    recording_id: opts.recordingId,
+    transcript_id: opts.transcriptId,
+    speaker_name: c.owner_name.trim(),
+    meeting_topic: opts.meetingTopic ?? undefined,
+    said_on: opts.saidOn,
+  }
+}
+
+// Shape the commitment inbox row's own headline text, mirroring
+// buildMeetingInsightText's "per-card origin clarity" goal.
+function buildCommitmentText(
+  c: ExtractedCommitment,
+  meetingTopic: string | null | undefined,
+  saidOn: string | null | undefined,
+): string {
+  const commitment = c.commitment.trim()
+  const base = c.owed_by === 'me'
+    ? `You committed: ${commitment}`
+    : `${c.owner_name.trim()} committed: ${commitment}`
+  const meetingLabel = meetingTopic?.trim()
+  if (!meetingLabel) return base
+  const dateLabel = formatShortDate(saidOn)
+  return dateLabel ? `${base} — from ${meetingLabel}, ${dateLabel}` : `${base} — from ${meetingLabel}`
+}
+
+const EXTRACT_PROMPT = `You are analyzing a meeting transcript. Do two independent extraction passes over it.
+
+PASS 1 — QUOTES: Extract 1-3 standout quotes — things a team member said that are insightful, inspiring, funny, or show strong leadership/ownership.
 - Only extract quotes actually spoken by someone (not the meeting host/user asking questions)
 - Each quote must be a direct, verbatim phrase (clean up filler words like "um", "uh", "you know")
 - Keep quotes concise (1-3 sentences max)
 - Include the speaker's name exactly as it appears in the transcript
 - If no noteworthy quotes exist, return an empty array
 
-Return ONLY valid JSON — no markdown fences, no commentary:
-[
-  { "speaker": "Jane Smith", "quote": "The exact quote here.", "context": "Brief 5-word context" }
-]
+PASS 2 — COMMITMENTS: Extract explicit commitments/action items — someone in the meeting explicitly promising to do something for someone else, with clear ownership. For each, classify direction relative to the meeting HOST (the user running the meeting — usually whoever is driving the agenda or asking the questions, not a named external participant):
+- "owed_by": "me" — the HOST/USER committed to do something for a participant. Example: Host says "I'll send you the updated deck by Friday" or "Let me follow up with legal and get back to you." → owner_name can be "Host" if the transcript never names the user.
+- "owed_by": "them" — a PARTICIPANT committed to do something for the host/user. Example: "Jane: I'll get you the numbers by end of day" or "Marcus: I'll loop in the design team and report back to you." → owner_name is that participant's name as it appears in the transcript.
+- Only extract EXPLICIT commitments — a clear, stated promise to do something in the future. Do NOT include vague possibilities ("we should maybe..."), completed past actions, or generic small talk.
+- Keep each commitment to one concise sentence describing what was promised (who it's for should be implied by owed_by, not repeated in the sentence).
+- Extract at most 5 commitments. If none exist, return an empty array.
+
+Return ONLY valid JSON — no markdown fences, no commentary — matching this exact shape:
+{
+  "quotes": [
+    { "speaker": "Jane Smith", "quote": "The exact quote here.", "context": "Brief 5-word context" }
+  ],
+  "commitments": [
+    { "owner_name": "Jane Smith", "owed_by": "them", "commitment": "Send the updated numbers by EOD Friday." },
+    { "owner_name": "Host", "owed_by": "me", "commitment": "Follow up with legal on the contract language." }
+  ]
+}
 
 Transcript:
 `
@@ -194,7 +266,7 @@ serve(async (req) => {
     const { data: transcripts, error: fetchErr } = await query
     if (fetchErr) return jsonResponse({ error: fetchErr.message }, 500)
     if (!transcripts || transcripts.length === 0) {
-      return jsonResponse({ processed: 0, quotes_added: 0, insights_added: 0, message: 'No unprocessed transcripts found' }, 200)
+      return jsonResponse({ processed: 0, quotes_added: 0, insights_added: 0, commitments_added: 0, message: 'No unprocessed transcripts found' }, 200)
     }
 
     // Load team members for speaker matching
@@ -214,6 +286,7 @@ serve(async (req) => {
 
     let totalQuotesAdded = 0
     let totalInsightsAdded = 0
+    let totalCommitmentsAdded = 0
 
     for (const transcript of transcripts) {
       const text = transcript.content_type === 'vtt'
@@ -254,16 +327,24 @@ serve(async (req) => {
       const geminiData = await geminiRes.json() as any
       const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
-      // Parse JSON from response (strip markdown fences if present)
+      // Parse JSON from response (strip markdown fences if present). Expected
+      // shape is { quotes: [...], commitments: [...] } — see EXTRACT_PROMPT.
       const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-      // deno-lint-ignore no-explicit-any
       let quotes: Array<{ speaker: string; quote: string; context?: string }> = []
+      let commitments: ExtractedCommitment[] = []
       try {
-        quotes = JSON.parse(jsonStr)
-        if (!Array.isArray(quotes)) quotes = []
+        const parsed = JSON.parse(jsonStr)
+        if (Array.isArray(parsed)) {
+          // Defensive fallback: tolerate a bare quotes array (older prompt shape).
+          quotes = parsed
+        } else if (parsed && typeof parsed === 'object') {
+          quotes = Array.isArray(parsed.quotes) ? parsed.quotes : []
+          commitments = Array.isArray(parsed.commitments) ? parsed.commitments : []
+        }
       } catch {
-        console.warn(`Failed to parse quotes JSON for transcript ${transcript.id}:`, jsonStr.slice(0, 200))
+        console.warn(`Failed to parse quotes/commitments JSON for transcript ${transcript.id}:`, jsonStr.slice(0, 200))
         quotes = []
+        commitments = []
       }
 
       const recording = recordingById.get(transcript.recording_id)
@@ -390,6 +471,78 @@ serve(async (req) => {
         }
       }
 
+      // ── Commitments: surface directional "who owes whom" rows in the inbox ──
+      // Additive to the quote/meeting_insight pass above — same transcript,
+      // same Gemini call, independent insert target (type: agent_question,
+      // matching the convention in extract-inbox-action-items/index.ts for
+      // actionable Slack/Gmail findings) so this reuses the exact same
+      // `quotes_extracted_at` cursor/gate as quotes: no separate dedup
+      // mechanism needed at the transcript level, only per-row (below).
+      let commitmentsAddedForTranscript = 0
+      for (const c of commitments) {
+        if (!c.owner_name || !c.commitment || (c.owed_by !== 'me' && c.owed_by !== 'them')) continue
+        if (isNoisySpeakerName(c.owner_name)) {
+          console.log(`Commitment owner "${c.owner_name}" looks like a placeholder/dial-in — skipping`)
+          continue
+        }
+        if (commitmentsAddedForTranscript >= COMMITMENT_CAP_PER_TRANSCRIPT) {
+          console.log(`Commitment cap (${COMMITMENT_CAP_PER_TRANSCRIPT}) reached for transcript ${transcript.id} — skipping remaining commitments`)
+          break
+        }
+
+        const commitmentSourceRef = buildCommitmentSourceRef({
+          recordingId: transcript.recording_id,
+          transcriptId: transcript.id,
+          meetingTopic: recording?.topic ?? null,
+          saidOn,
+        }, c)
+
+        // Dedup on (transcript, owner, commitment) — same idempotency pattern
+        // as the meeting_insight check above — so a manual re-extract (via
+        // transcript_id) never duplicates rows.
+        const commitmentText = buildCommitmentText(c, recording?.topic, saidOn)
+        const { data: existingCommitment } = await supabase
+          .from('inbox_items')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('type', 'agent_question')
+          .eq('text', commitmentText)
+          .contains('source_ref', { transcript_id: transcript.id, speaker_name: c.owner_name.trim() })
+          .maybeSingle()
+
+        if (existingCommitment) {
+          console.log(`Commitment already exists for transcript ${transcript.id} / owner "${c.owner_name}" — skipping`)
+          continue
+        }
+
+        const { error: commitmentErr } = await supabase
+          .from('inbox_items')
+          .insert({
+            user_id: userId,
+            type: 'agent_question',
+            text: commitmentText,
+            status: 'open',
+            owed_by: c.owed_by,
+            agent_payload: {
+              source: 'zoom',
+              rationale: c.owed_by === 'me'
+                ? 'You committed to this in the meeting'
+                : 'They committed to this in the meeting',
+              action_required: true,
+              cta_label: 'Add to inbox',
+              cta_action: 'approve_suggestion',
+            },
+            source_ref: commitmentSourceRef,
+          })
+
+        if (commitmentErr) {
+          console.error(`Failed to insert commitment for transcript ${transcript.id}:`, commitmentErr.message)
+        } else {
+          commitmentsAddedForTranscript++
+          totalCommitmentsAdded++
+        }
+      }
+
       // Mark transcript as processed
       await supabase
         .from('cos_zoom_transcripts')
@@ -401,6 +554,7 @@ serve(async (req) => {
       processed: transcripts.length,
       quotes_added: totalQuotesAdded,
       insights_added: totalInsightsAdded,
+      commitments_added: totalCommitmentsAdded,
     }, 200)
 
   } catch (err) {

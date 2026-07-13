@@ -68,8 +68,15 @@ serve(async (req) => {
     const payload = JSON.parse(rawPayload) as {
       type: string
       user: { id: string }
-      actions?: Array<{ action_id: string; value?: string }>
+      actions?: Array<{
+        action_id: string
+        block_id?: string
+        value?: string
+        selected_option?: { value?: string }
+      }>
       trigger_id?: string
+      response_url?: string
+      message?: { text?: string; blocks?: Array<Record<string, unknown>> }
     }
 
     if (payload.type !== 'block_actions' || !payload.actions?.length) {
@@ -87,14 +94,17 @@ serve(async (req) => {
       .maybeSingle()
 
     if (!creds?.user_id) {
-      return jsonResponse({ text: 'Could not identify your account.' })
+      return respond(payload.response_url, { text: 'Could not identify your account.' })
     }
 
     const userId = creds.user_id
 
     for (const action of payload.actions) {
       const actionId = action.action_id
-      const value = action.value ?? ''
+      // Overflow menus deliver the chosen option under `selected_option.value`
+      // rather than a top-level `value` (that field only exists on plain
+      // buttons), so both must be checked here.
+      const value = action.value ?? action.selected_option?.value ?? ''
 
       // Overflow menus send the selected option's value, not the action_id
       const effectiveId = actionId.startsWith('action_overflow:')
@@ -111,11 +121,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return jsonResponse({
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: ':white_check_mark: Marked as done.',
-        })
+        return respondWithIcon(payload, action.block_id, ':white_check_mark:', 'Done')
       }
 
       // ── Snooze ────────────────────────────────────────────────────
@@ -144,11 +150,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return jsonResponse({
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: `:clock3: Snoozed to ${newDateStr}.`,
-        })
+        return respondWithIcon(payload, action.block_id, ':clock3:', `Snoozed to ${newDateStr}`)
       }
 
       // ── Inbox: mark done (Idea #4) ───────────────────────────────────
@@ -161,11 +163,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return jsonResponse({
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: ':white_check_mark: Marked as done.',
-        })
+        return respondWithIcon(payload, action.block_id, ':white_check_mark:', 'Done')
       }
 
       // ── Inbox: push due date (Idea #4) ────────────────────────────────
@@ -189,6 +187,7 @@ serve(async (req) => {
 
         const baseDate = existing?.priority_due_at ? new Date(existing.priority_due_at) : new Date()
         const newDate = new Date(baseDate.getTime() + days * 86_400_000)
+        const newDateStr = newDate.toISOString().slice(0, 10)
 
         await supabase
           .from('inbox_items')
@@ -196,11 +195,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return jsonResponse({
-          response_type: 'ephemeral',
-          replace_original: false,
-          text: `:clock3: Snoozed to ${newDate.toISOString().slice(0, 10)}.`,
-        })
+        return respondWithIcon(payload, action.block_id, ':clock3:', `Snoozed to ${newDateStr}`)
       }
 
       // ── Dismiss escalation ────────────────────────────────────────
@@ -221,7 +216,7 @@ serve(async (req) => {
           payload: logEntry?.payload ?? { log_id: logId },
         })
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: ':mute: Escalation dismissed for 30 days.',
@@ -248,7 +243,7 @@ serve(async (req) => {
           wrong_format: ':bar_chart: Noted — will recalibrate.',
         }
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: labels[feedbackType] ?? ':thumbsup: Feedback recorded.',
@@ -265,9 +260,59 @@ serve(async (req) => {
   }
 })
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
+// Slack does not render a message from the initial block_actions response
+// body the way it does for slash commands — a confirmation message must be
+// posted to the payload's response_url instead. This acknowledges the
+// interaction with an empty 200 either way so Slack doesn't show an error.
+async function respond(responseUrl: string | undefined, body: unknown): Promise<Response> {
+  if (responseUrl) {
+    await fetch(responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+  return new Response('', { status: 200 })
+}
+
+// Swaps the acted-on item's overflow menu (the "..." icon) for a plain status
+// icon so the message itself reflects what happened, instead of (or in
+// addition to) a transient ephemeral confirmation. Falls back to an ephemeral
+// text reply if the original message/block can't be found — e.g. an overflow
+// selection whose block_id Slack didn't echo back.
+async function respondWithIcon(
+  payload: { response_url?: string; message?: { text?: string; blocks?: Array<Record<string, unknown>> } },
+  blockId: string | undefined,
+  icon: string,
+  note: string,
+): Promise<Response> {
+  const blocks = payload.message?.blocks
+  const block = blockId ? blocks?.find((b) => b.block_id === blockId) : undefined
+
+  if (!blocks || !block) {
+    return respond(payload.response_url, {
+      response_type: 'ephemeral',
+      replace_original: false,
+      text: `${icon} ${note}.`,
+    })
+  }
+
+  const updatedBlocks = blocks.map((b) => {
+    if (b !== block) return b
+    const { accessory: _accessory, text, ...rest } = b as {
+      accessory?: unknown
+      text?: { type: string; text: string }
+      [key: string]: unknown
+    }
+    return {
+      ...rest,
+      ...(text ? { text: { ...text, text: `${text.text} — ${icon} _${note}_` } } : {}),
+    }
+  })
+
+  return respond(payload.response_url, {
+    replace_original: true,
+    text: payload.message?.text,
+    blocks: updatedBlocks,
   })
 }
