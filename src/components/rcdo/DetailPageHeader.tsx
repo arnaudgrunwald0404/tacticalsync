@@ -400,11 +400,11 @@ export function DetailPageHeader({
         )}
         {type === 'si' && status && (
           <Badge className={
-            status === 'draft' ? 'bg-[#5B6E7A]' :
-            status === 'initialized' ? 'bg-cyan-500' :
+            status === 'not_started' ? 'bg-[#5B6E7A]' :
             status === 'on_track' ? 'bg-green-500' :
-            status === 'delayed' ? 'bg-yellow-500' :
-            status === 'cancelled' ? 'bg-red-500' :
+            status === 'at_risk' ? 'bg-yellow-500' :
+            status === 'off_track' ? 'bg-yellow-500' :
+            status === 'completed' ? 'bg-green-500' :
             'bg-gray-500'
           }>
             {status.replace('_', ' ').toUpperCase()}

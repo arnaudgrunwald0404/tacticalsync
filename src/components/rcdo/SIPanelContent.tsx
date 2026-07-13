@@ -105,50 +105,50 @@ export function SIPanelContent({
   const siDbId = si.dbId;
   const { siData: siWithProgress, refetch: refetchSI } = useSIWithProgress(siDbId);
   
-  // Get current status from database or default to 'draft'
-  // Handle potential null/undefined or old status values
+  // Get current status from database or default to 'not_started'
+  // Handle potential null/undefined or legacy pre-migration status values
   const getStatusLabel = (status: string | null | undefined): string => {
-    if (!status) return 'Draft';
+    if (!status) return 'Not Started';
     const statusMap: Record<string, string> = {
-      'draft': 'Draft',
-      'initialized': 'Initialized',
+      'not_started': 'Not Started',
       'on_track': 'On Track',
-      'delayed': 'Delayed',
-      'cancelled': 'Cancelled',
-      // Handle old values that might still exist
-      'not_started': 'Draft',
-      'at_risk': 'Delayed',
-      'off_track': 'Delayed',
-      'completed': 'On Track',
+      'at_risk': 'At Risk',
+      'off_track': 'Off Track',
+      'completed': 'Completed',
+      // Handle legacy values that might still exist from before the status vocabulary migration
+      'draft': 'Not Started',
+      'initialized': 'Not Started',
+      'delayed': 'At Risk',
+      'cancelled': 'Off Track',
       'active': 'On Track',
-      'blocked': 'Delayed',
-      'done': 'On Track',
+      'blocked': 'At Risk',
+      'done': 'Completed',
     };
-    return statusMap[status] || 'Draft';
+    return statusMap[status] || 'Not Started';
   };
 
   // Normalize status value to ensure it matches one of the valid SelectItem values
   const normalizeStatus = (status: string | null | undefined): InitiativeStatus => {
-    if (!status) return 'draft';
-    const validStatuses: InitiativeStatus[] = ['draft', 'initialized', 'on_track', 'delayed', 'cancelled'];
+    if (!status) return 'not_started';
+    const validStatuses: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
     // If it's already a valid status, return it
     if (validStatuses.includes(status as InitiativeStatus)) {
       return status as InitiativeStatus;
     }
-    // Map old values to new values
+    // Map legacy pre-migration values to current values
     const statusMapping: Record<string, InitiativeStatus> = {
-      'not_started': 'draft',
-      'at_risk': 'delayed',
-      'off_track': 'delayed',
-      'completed': 'on_track',
+      'draft': 'not_started',
+      'initialized': 'not_started',
+      'delayed': 'at_risk',
+      'cancelled': 'off_track',
       'active': 'on_track',
-      'blocked': 'delayed',
-      'done': 'on_track',
+      'blocked': 'at_risk',
+      'done': 'completed',
     };
-    return statusMapping[status] || 'draft';
+    return statusMapping[status] || 'not_started';
   };
 
-  const rawStatus = siWithProgress?.status || 'draft';
+  const rawStatus = siWithProgress?.status || 'not_started';
   const currentStatus: InitiativeStatus = normalizeStatus(rawStatus);
   const statusLabel = getStatusLabel(rawStatus);
   
@@ -486,11 +486,11 @@ export function SIPanelContent({
               <SelectValue placeholder="Select status">{statusLabel}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="initialized">Initialized</SelectItem>
+              <SelectItem value="not_started">Not Started</SelectItem>
               <SelectItem value="on_track">On Track</SelectItem>
-              <SelectItem value="delayed">Delayed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="at_risk">At Risk</SelectItem>
+              <SelectItem value="off_track">Off Track</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -569,7 +569,7 @@ export function SIPanelContent({
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{sub.title}</div>
                         <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                          <span className="capitalize">{(sub.status || 'draft').replace('_', ' ')}</span>
+                          <span className="capitalize">{(sub.status || 'not_started').replace('_', ' ')}</span>
                           {subOwner && (
                             <>
                               <span>•</span>

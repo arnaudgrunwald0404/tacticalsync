@@ -51,7 +51,7 @@ type NodeKind = "strategy" | "do" | "sai" | "rally";
 
 type NodeData = {
   title: string;
-  status?: "draft" | "final";
+  status?: "draft" | "locked";
   ownerId?: string; // owner user ID for DOs
   hypothesis?: string; // DO hypothesis (rich text)
   primarySuccessMetric?: string; // DO primary success metric
@@ -177,7 +177,7 @@ const createDoNode = (
   return (
     <div
       className={`rounded-xl border-2 shadow-lg p-4 min-w-[160px] flex flex-col relative overflow-visible ${
-        status === "final" 
+        status === "locked" 
           ? "border-[#4A5D5F] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]" 
           : "border-[#9FA8B3] bg-gradient-to-br from-[#F5F3F0] to-[#F8F6F2]"
       }`}
@@ -185,12 +185,12 @@ const createDoNode = (
         backgroundColor: data.bgColor, 
         width: data.size?.w, 
         minHeight: data.size?.h,
-        boxShadow: status === "final" ? "0 4px 20px rgba(74, 93, 95, 0.2)" : "0 4px 20px rgba(74, 93, 95, 0.15)"
+        boxShadow: status === "locked" ? "0 4px 20px rgba(74, 93, 95, 0.2)" : "0 4px 20px rgba(74, 93, 95, 0.15)"
       }}
     >
       {/* Decorative corner accent */}
       <div className={`absolute top-0 right-0 w-20 h-20 ${
-        status === "final" ? "bg-[#4A5D5F]/10" : "bg-[#4A5D5F]/10"
+        status === "locked" ? "bg-[#4A5D5F]/10" : "bg-[#4A5D5F]/10"
       } rounded-bl-full`} />
       
       {/* Red dot indicator for missing required fields */}
@@ -200,7 +200,7 @@ const createDoNode = (
       
       <div className="flex items-start justify-between gap-2 flex-shrink-0 relative z-10">
         <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap bg-[#4A5D5F] text-white`}>Defining Objective</span>
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${status === "final" ? "bg-[#5B6E7A] text-white" : "bg-[#F5F3F0] text-[#4A5D5F]"}`}>{status === "final" ? "locked" : "draft"}</span>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium whitespace-nowrap ${status === "locked" ? "bg-[#5B6E7A] text-white" : "bg-[#F5F3F0] text-[#4A5D5F]"}`}>{status === "locked" ? "locked" : "draft"}</span>
       </div>
       <div className="flex items-start gap-2 mt-3 relative z-10">
               <span className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] flex-shrink-0 mt-0.5 bg-white border-[#4A5D5F]`}>
@@ -885,7 +885,7 @@ export default function StrategyCanvasPage() {
             position: { x: posX, y: startY },
             data: {
               title: d.title,
-              status: d.status === 'final' ? 'final' : 'draft',
+              status: d.status === 'locked' ? 'locked' : 'draft',
               ownerId: d.owner_user_id || undefined,
               hypothesis: d.hypothesis || '',
               primarySuccessMetric: metricsMap.get(d.id) || '',
@@ -1362,7 +1362,7 @@ const duplicateSelectedDo = useCallback(() => {
     // 1) Lock all DOs locally and finalize the Rallying Cry
     setNodes((curr) => curr.map((n) => {
       if (n.type === 'do') {
-        return { ...n, data: { ...n.data, status: 'final' } } as Node<NodeData>;
+        return { ...n, data: { ...n.data, status: 'locked' } } as Node<NodeData>;
       }
       if (n.type === 'rally') {
         const d = n.data || {} as NodeData;
@@ -1418,8 +1418,8 @@ const duplicateSelectedDo = useCallback(() => {
       const nowIso = new Date().toISOString();
       const { error: doLockErr } = await supabase
         .from('rc_defining_objectives')
-        .update({ 
-          status: 'final', 
+        .update({
+          status: 'locked',
           locked_at: nowIso,
           locked_by: user.id
         })
@@ -1488,7 +1488,7 @@ const duplicateSelectedDo = useCallback(() => {
 
     // 1) Update local UI state
     setNodes((curr) => curr.map((n) =>
-      n.id === doNodeId ? { ...n, data: { ...n.data, status: 'final' as const } } as Node<NodeData> : n
+      n.id === doNodeId ? { ...n, data: { ...n.data, status: 'locked' as const } } as Node<NodeData> : n
     ));
 
     const existingStatus = doLockedStatus.get(doNodeId);
@@ -1529,7 +1529,7 @@ const duplicateSelectedDo = useCallback(() => {
       const nowIso = new Date().toISOString();
       const { error: doErr } = await supabase
         .from('rc_defining_objectives')
-        .update({ status: 'final', locked_at: nowIso, locked_by: user.id })
+        .update({ status: 'locked', locked_at: nowIso, locked_by: user.id })
         .eq('id', doDbId);
 
       if (doErr) {
@@ -1844,7 +1844,7 @@ const duplicateSelectedDo = useCallback(() => {
           position: { x: posX, y: startY },
           data: {
             title: d.title,
-            status: d.status === 'final' ? 'final' : 'draft',
+            status: d.status === 'locked' ? 'locked' : 'draft',
             ownerId: d.owner_user_id || undefined,
             hypothesis: d.hypothesis || '',
             primarySuccessMetric: importMetricsMap.get(d.id) || '',
@@ -1881,7 +1881,7 @@ const duplicateSelectedDo = useCallback(() => {
             setImportProgress(prev => [...prev, { label: 'Locking Defining Objectives', status: 'loading' }]);
             const { error: doLockErr } = await supabase
               .from('rc_defining_objectives')
-              .update({ status: 'final', locked_at: nowIso })
+              .update({ status: 'locked', locked_at: nowIso })
               .in('id', doIds);
             setImportProgress(prev => prev.map(item => item.label === 'Locking Defining Objectives' ? { ...item, status: doLockErr ? 'error' : 'success' } : item));
           }
@@ -3249,7 +3249,7 @@ function StrategyCanvasMobileView({
 
   const getSIStatus = (siId: string) => {
     const siItem = sis.find(s => s.id === siId);
-    return siItem?.status || 'draft';
+    return siItem?.status || 'not_started';
   };
 
   // Fetch DO details when selected
@@ -3598,7 +3598,7 @@ function StrategyCanvasMobileView({
                   <label className="text-sm font-medium text-muted-foreground">Status</label>
                   <div className="mt-1">
                     <Badge variant="outline" className="capitalize">
-                      {selectedSIDetails.status || 'draft'}
+                      {selectedSIDetails.status || 'not_started'}
                     </Badge>
                   </div>
                 </div>
@@ -3648,7 +3648,7 @@ function StrategyCanvasMobileView({
                                   {sub.title}
                                 </div>
                                 <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-                                  <span className="capitalize">{sub.status || 'draft'}</span>
+                                  <span className="capitalize">{sub.status || 'not_started'}</span>
                                   {subOwner && (
                                     <>
                                       <span>•</span>
@@ -3726,7 +3726,7 @@ function StrategyCanvasMobileView({
                   <label className="text-sm font-medium text-muted-foreground">Status</label>
                   <div className="mt-1">
                     <Badge variant="outline" className="capitalize">
-                      {(selectedSubSIDetails.status as string) || 'draft'}
+                      {(selectedSubSIDetails.status as string) || 'not_started'}
                     </Badge>
                   </div>
                 </div>
