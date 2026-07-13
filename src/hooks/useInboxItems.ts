@@ -209,29 +209,38 @@ export function useInboxItems(
     return newItem;
   }, [userId, filter, mirror]);
 
-  const updateItem = useCallback(async (id: string, patch: Partial<InboxItem>) => {
+  const updateItem = useCallback(async (id: string, patch: Partial<InboxItem>): Promise<boolean> => {
     // Guard text/body edits with the same rules as inserts. Invalid edits are
     // dropped rather than persisting a bad row.
     if ('text' in patch) {
       const r = validateItemText(patch.text);
-      if (!r.ok) return;
+      if (!r.ok) return false;
       patch = { ...patch, text: r.value };
     }
     if ('body' in patch) {
       const r = validateItemBody(patch.body);
-      if (!r.ok) return;
+      if (!r.ok) return false;
       patch = { ...patch, body: r.value };
     }
     // The outgoing payload crosses the domain→Json seam (agent_payload etc.),
     // so cast to the generated Update type at the boundary. Table + column names
     // are still checked by the typed client on the query itself.
     const dbPatch = { ...patch, updated_at: new Date().toISOString() } as unknown as InboxItemUpdate;
-    await supabase
+    const { error } = await supabase
       .from('inbox_items')
       .update(dbPatch)
       .eq('id', id);
+    if (error) {
+      // Don't apply the optimistic patch (or any status-driven removal in the
+      // caller) when the write didn't actually persist — otherwise the item
+      // vanishes from the UI now and silently reappears on the next refresh,
+      // looking like the action was reverted instead of never having worked.
+      toast({ title: 'Failed to save change', description: 'Please try again.', variant: 'destructive' });
+      return false;
+    }
     applyPatch(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
-  }, [applyPatch]);
+    return true;
+  }, [applyPatch, toast]);
 
   const markDone = useCallback(async (id: string, done: boolean) => {
     const patch = done
@@ -243,7 +252,8 @@ export function useInboxItems(
     // single highest-trust-risk moment for this feature (see
     // PLAN_idea1_unified_funnel.md §6.2 item 2).
     const item = items.find(i => i.id === id);
-    await updateItem(id, patch as Partial<InboxItem>);
+    const ok = await updateItem(id, patch as Partial<InboxItem>);
+    if (!ok) return;
     // Drop the item from the current list whenever its new status no longer
     // matches what this view is showing — e.g. marking done removes it from
     // an open list, and un-marking removes it from the Done view.
@@ -257,7 +267,8 @@ export function useInboxItems(
   }, [updateItem, applyPatch, filter, items, toast]);
 
   const archive = useCallback(async (id: string) => {
-    await updateItem(id, { status: 'archived', archived_at: new Date().toISOString() } as Partial<InboxItem>);
+    const ok = await updateItem(id, { status: 'archived', archived_at: new Date().toISOString() } as Partial<InboxItem>);
+    if (!ok) return;
     applyPatch(prev => prev.filter(i => i.id !== id));
   }, [updateItem, applyPatch]);
 
@@ -391,11 +402,12 @@ export function useInboxItems(
 
   /** Snooze an item until a fixed date/time. */
   const snoozeItem = useCallback(async (id: string, until: Date) => {
-    await updateItem(id, {
+    const ok = await updateItem(id, {
       status: 'snoozed',
       snoozed_until: until.toISOString(),
       snooze_until_member_id: null,
     } as Partial<InboxItem>);
+    if (!ok) return;
     applyPatch(prev => prev.filter(i => i.id !== id));
   }, [updateItem, applyPatch]);
 
@@ -416,22 +428,24 @@ export function useInboxItems(
     const next = await resolveNextOneOnOne(userId, teamMemberId);
     if (!next) return { ok: false };
 
-    await updateItem(id, {
+    const ok = await updateItem(id, {
       status: 'snoozed',
       snoozed_until: next.start_time,
       snooze_until_member_id: teamMemberId,
     } as Partial<InboxItem>);
+    if (!ok) return { ok: false };
     applyPatch(prev => prev.filter(i => i.id !== id));
     return { ok: true, resolvedAt: next.start_time };
   }, [userId, updateItem, applyPatch]);
 
   /** Manually bring a snoozed item back to the open inbox. */
   const unsnoozeItem = useCallback(async (id: string) => {
-    await updateItem(id, {
+    const ok = await updateItem(id, {
       status: 'open',
       snoozed_until: null,
       snooze_until_member_id: null,
     } as Partial<InboxItem>);
+    if (!ok) return;
     if (resolveTargetStatus(filter) !== 'open') {
       applyPatch(prev => prev.filter(i => i.id !== id));
     }
