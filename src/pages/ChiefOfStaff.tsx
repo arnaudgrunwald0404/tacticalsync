@@ -742,7 +742,7 @@ function DciEditableText({
     <span
       onClick={() => { setDraft(value ?? ''); setEditing(true); }}
       className={cn(
-        'cursor-pointer hover:bg-primary/5 rounded px-0.5 -mx-0.5 transition-colors',
+        'cursor-pointer hover:bg-primary/5 rounded px-0.5 -mx-0.5 transition-colors break-words',
         className,
       )}
       title="Click to edit"
@@ -3299,7 +3299,8 @@ function DciHistory({ logs, onUpdate }: {
                 <p className="text-sm text-muted-foreground mb-1.5">
                   Week of {format(monday, 'MMM d')} – {format(fri, 'MMM d')}
                 </p>
-                <div className="grid grid-cols-[2fr_5fr] gap-3">
+                <div className="overflow-x-auto">
+                <div className="grid grid-cols-[minmax(160px,2fr)_minmax(560px,5fr)] gap-3 w-max min-w-full">
                   {/* Left card — Weekly Objectives */}
                   <Card>
                     <CardContent className="p-0">
@@ -3338,7 +3339,7 @@ function DciHistory({ logs, onUpdate }: {
                                       placeholder="Add objective..."
                                     />
                                   ) : (
-                                    <span className={cn('text-xs leading-snug font-medium', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
+                                    <span className={cn('text-xs leading-snug font-medium break-words', obj.status === 'done' && 'line-through text-muted-foreground')}>{obj.text}</span>
                                   )}
                                   <DciEditableActivities
                                     activities={obj.activities}
@@ -3366,7 +3367,7 @@ function DciHistory({ logs, onUpdate }: {
                   {/* Right card — Mon–Fri daily columns */}
                   <Card>
                     <CardContent className="p-0">
-                      <div className="grid grid-cols-5 divide-x divide-border">
+                      <div className="grid grid-cols-[repeat(5,minmax(112px,1fr))] divide-x divide-border">
                         {weekDates.map((dateStr, dayIdx) => {
                           const log = weekLogs.get(dateStr);
                           const priorityKeys = ['priority_1', 'priority_2', 'priority_3'] as const;
@@ -3409,7 +3410,7 @@ function DciHistory({ logs, onUpdate }: {
                                                 placeholder="Add priority..."
                                               />
                                             ) : (
-                                              <span className={cn('text-xs leading-snug font-medium', p.status === 'done' && 'line-through text-muted-foreground')}>{p.text}</span>
+                                              <span className={cn('text-xs leading-snug font-medium break-words', p.status === 'done' && 'line-through text-muted-foreground')}>{p.text}</span>
                                             )}
                                             {p.text && (
                                             <div className="mt-1">
@@ -3434,6 +3435,7 @@ function DciHistory({ logs, onUpdate }: {
                       </div>
                     </CardContent>
                   </Card>
+                </div>
                 </div>
               </div>
             );
