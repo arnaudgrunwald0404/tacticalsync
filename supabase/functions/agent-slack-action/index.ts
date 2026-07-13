@@ -70,6 +70,7 @@ serve(async (req) => {
       user: { id: string }
       actions?: Array<{ action_id: string; value?: string; selected_option?: { value?: string } }>
       trigger_id?: string
+      response_url?: string
     }
 
     if (payload.type !== 'block_actions' || !payload.actions?.length) {
@@ -87,7 +88,7 @@ serve(async (req) => {
       .maybeSingle()
 
     if (!creds?.user_id) {
-      return jsonResponse({ text: 'Could not identify your account.' })
+      return respond(payload.response_url, { text: 'Could not identify your account.' })
     }
 
     const userId = creds.user_id
@@ -114,7 +115,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: ':white_check_mark: Marked as done.',
@@ -147,7 +148,7 @@ serve(async (req) => {
           .eq('id', meetingActionId)
           .eq('user_id', userId)
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: `:clock3: Snoozed to ${newDateStr}.`,
@@ -164,7 +165,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: ':white_check_mark: Marked as done.',
@@ -199,7 +200,7 @@ serve(async (req) => {
           .eq('id', itemId)
           .eq('user_id', userId)
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: `:clock3: Snoozed to ${newDate.toISOString().slice(0, 10)}.`,
@@ -224,7 +225,7 @@ serve(async (req) => {
           payload: logEntry?.payload ?? { log_id: logId },
         })
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: ':mute: Escalation dismissed for 30 days.',
@@ -251,7 +252,7 @@ serve(async (req) => {
           wrong_format: ':bar_chart: Noted — will recalibrate.',
         }
 
-        return jsonResponse({
+        return respond(payload.response_url, {
           response_type: 'ephemeral',
           replace_original: false,
           text: labels[feedbackType] ?? ':thumbsup: Feedback recorded.',
@@ -268,9 +269,17 @@ serve(async (req) => {
   }
 })
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  })
+// Slack does not render a message from the initial block_actions response
+// body the way it does for slash commands — a confirmation message must be
+// posted to the payload's response_url instead. This acknowledges the
+// interaction with an empty 200 either way so Slack doesn't show an error.
+async function respond(responseUrl: string | undefined, body: unknown): Promise<Response> {
+  if (responseUrl) {
+    await fetch(responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+  return new Response('', { status: 200 })
 }
