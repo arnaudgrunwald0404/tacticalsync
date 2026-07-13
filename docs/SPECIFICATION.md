@@ -2,7 +2,7 @@
 
 **Status:** Living document. This is the canonical as-built + roadmap reference for the product. Update it as part of any change that adds a table, a route, a subsystem, or retires one — treat stale sections as bugs.
 
-**Last compiled:** 2026-07-13, from a full-codebase audit (223 migrations, ~30 hooks, ~30 pages, 5 edge-function families, `slack-bot/`). Where this document conflicts with `CLAUDE.md` or older root-level docs (`PRD.md`, `RC-DO-SI-PRD.md`, etc.), **this document reflects the current code** and the older docs should be treated as historical/superseded (see [§8 Superseded Documents](#8-superseded-documents)).
+**Last compiled:** 2026-07-13, from a full-codebase audit (223 migrations, ~30 hooks, ~30 pages, 5 edge-function families, `slack-bot/`). Where this document conflicts with `CLAUDE.md` or older root-level docs (`PRD.md`, `RC-DO-SI-PRD.md`, etc.), **this document reflects the current code** and the older docs should be treated as historical/superseded (see [§9 Superseded Documents](#9-superseded-documents)).
 
 ---
 
@@ -15,13 +15,14 @@
 5. [Module: RCDO (Strategy Planning)](#5-module-rcdo-strategy-planning)
 6. [Module: Team Meetings (retired)](#6-module-team-meetings-retired)
 7. [Module: Chief of Staff, Inbox, Delegation & Agent Automation](#7-module-chief-of-staff-inbox-delegation--agent-automation)
-8. [Superseded Documents](#8-superseded-documents)
-9. [Design System](#9-design-system)
-10. [Testing Strategy](#10-testing-strategy)
-11. [Build, Deploy & Dev Tooling](#11-build-deploy--dev-tooling)
-12. [Known Issues & Drift (found during this audit)](#12-known-issues--drift-found-during-this-audit)
-13. [Roadmap](#13-roadmap)
-14. [Appendix: Table Index](#14-appendix-table-index)
+8. [Integrations & User Experiences](#8-integrations--user-experiences)
+9. [Superseded Documents](#9-superseded-documents)
+10. [Design System](#10-design-system)
+11. [Testing Strategy](#11-testing-strategy)
+12. [Build, Deploy & Dev Tooling](#12-build-deploy--dev-tooling)
+13. [Known Issues & Drift (found during this audit)](#13-known-issues--drift-found-during-this-audit)
+14. [Roadmap](#14-roadmap)
+15. [Appendix: Table Index](#15-appendix-table-index)
 
 ---
 
@@ -224,6 +225,8 @@ Two Slack surfaces exist:
 - **The real pipeline is OAuth-based edge functions**, not the bot: `exchange-slack-token` (per-user OAuth) → `slack-messages-sync` (pulls DMs + allowlisted channels) → `extract-inbox-action-items` (runs 4×/day via cron, delta-scans new Slack + Gmail messages, calls Claude Haiku 4.5 for structured extraction, writes `inbox_items(type='agent_question')` — **never auto-created as a real task**, requires explicit user approval).
 - **`agent-tick`** (every 30 min): Slack-DM nudges on overdue action items, 1:1-prep pre-staging, opt-in-gated inbox nudging (cooldown-based re-prompt), escalation detection, meeting-format recommendations, daily digest, post-meeting transcript check. Quiet-hours aware; every action logged to `cos_agent_log`.
 
+See [§8](#8-integrations--user-experiences) for a full touchpoint-by-touchpoint breakdown of what a user actually sees and can do at each step of the Slack (and other integration) experience.
+
 ### 7.8 Manager Signals
 `/insights` surfaces two per-direct-report signals to any manager with tagged direct reports (not admin-gated): **close-rate** (30d/90d done vs. total on the manager's own tagged inbox items, `MIN_ITEMS_FOR_RATE=5` floor) and **aging items** (items stuck `Waiting on someone`/`Blocked`, bucketed by staleness). **Important framing constraint, enforced in both schema comments and the hook**: these reflect *the manager's own follow-through on items they tagged with a name* — not verified activity by the report, who has no linked visibility into these numbers. Any UI copy here must avoid implying employee surveillance.
 
@@ -248,21 +251,89 @@ Treat the PLAN_idea*.md files' status headers as stale; verify against migration
 
 ---
 
-## 8. Superseded Documents
+## 8. Integrations & User Experiences
+
+Five external systems are integrated, all per-user (none are team- or org-wide connections): **Slack**, **Zoom**, **Google Calendar**, **Gmail**, **StackOne**, plus a first-party **ClearGo** API. All are managed from **Settings → Integrations/Agent/Notifications** (`src/components/cos/*Panel.tsx`), and all follow the same shape — a per-integration credentials table, a connect/disconnect button pair, a "Last synced" status line, and (for Slack/Zoom/Calendar) a manual "Sync now" action alongside the scheduled background job. Slack gets by far the most user-facing surface area because it's also the agent's outbound notification channel, not just a data source — the subsections below enumerate every distinct way a user experiences it.
+
+### 8.1 Slack — connect, disconnect, and configuration
+
+**Connecting**: Settings → Slack sync (`CosSlackSyncPanel.tsx`). Not-connected state shows: *"Connect Slack to include recent DMs and channel messages in your 1:1 prep, and share prep notes via Slack DM."* → **Connect Slack** button → Slack OAuth (`chat:write, commands, users:read, users:read.email, channels:read, channels:history, groups:read, groups:history, im:read, im:history, im:write`) → on return, the panel shows *"Connecting Slack…"*, calls `exchange-slack-token` then an immediate `slack-messages-sync`, and resolves to either *"Slack connected — N messages synced"* or *"Slack connection failed"*.
+
+**Disconnecting**: same panel, **Disconnect** button next to the connected team/email badge and last-synced timestamp. `disconnect-slack` edge function best-effort revokes the token (swallows failure) and deletes the `user_slack_credentials` row. Toast: *"Slack disconnected"*.
+
+**Channel allowlist — a real gap found in this audit**: the visible "Slack channels to include" picker lives in **Settings → Briefs & Schedule → Tools** (`CosPrepSchedulePanel.tsx`), but it writes to `cos_prep_schedule.slack_channels` — a **different column** from the one the background cron jobs actually read (`user_slack_credentials.sync_channels`, added by `20260707000000_slack_sync_channels.sql`). The manual "Sync now" button bridges the two at call time (merges both columns server-side), but **nothing in the codebase ever writes to `sync_channels` directly** — so a user's channel selection only reliably takes effect through manual syncs, not the automatic background scan. This should be fixed (either the cron path should read `cos_prep_schedule.slack_channels`, or the UI should write to `sync_channels`) before relying on "select channels in Settings" as a trustworthy promise to users. See [§13.11](#13-known-issues--drift-found-during-this-audit).
+
+**No-Slack-connected experience**: there is no external nudge (no email) — the signal is entirely in-app: an amber banner in Settings → Agent (*"Slack delivery — Required — The Agent reaches you over Slack. Connect it so nudges and alerts can be delivered."*) and an identical banner in Settings → Notifications, with every notification toggle disabled until connected. Server-side, `agent-tick`'s `sendSlackDM()` just silently returns `false` if no credentials exist — no error surfaces from the backend.
+
+### 8.2 Slack — the user experiences, one by one
+
+| # | Scenario | Trigger | What the user sees / can do |
+|---|---|---|---|
+| 1 | **Connect** | User visits Settings → Slack sync | See §8.1 |
+| 2 | **Disconnect** | User clicks Disconnect | See §8.1 |
+| 3 | **Configure channel scan** | User adds a channel in Settings → Briefs & Schedule → Tools | Chip-list add/remove UI; see the gap noted in §8.1 |
+| 4 | **Daily digest DM** (bundles overdue-action nudges) | `agent-tick`, at most once/calendar day, outside quiet hours | Header *"📋 Your to-do list — N items need attention"*; per-item **⋯ overflow menu** with ✅ Mark done, 🕒 Snooze 2 days, 🕓 Snooze 7 days; plus inbox sections ("Do Now" / "Due now" / "Needs your input" / "You're blocking these") each with their own overflow actions; footer buttons 👍 Helpful / 🕐 Too early / 👎 Not helpful |
+| 5 | **Escalation-flagged DM** | `agent-tick` detects chronic-overdue / missing-meetings / commitment-drift / stalled-topics pattern, `notifPrefs.escalation_alerts` on | Plain-text section, e.g. *"🚨 Chronic Overdue — {member}\n\n{details}"* — **no interactive button today** (a `dismiss_escalation:` action ID exists in the handler code but no current message attaches that button — dead code, not a live user affordance) |
+| 6 | **Meeting-format recommendation DM** | `agent-tick`, only when the computed score is at a notable extreme (0 or >8) | Plain text, e.g. *"⏱️ Suggested format for {member}: Quick sync (15 min)\n\n• reason\n• reason"* — no button, gated by `notifPrefs.format_suggestions` |
+| 7 | **First-ever inbox-nudge DM** | The very first nudge after opting in | Prefixed one-time explainer: *"✨ This is a new kind of message from your agent — a heads-up about inbox items tied to people or dates, sent automatically before they become a problem. (You can turn this off anytime: Settings → Agent → Inbox item nudges. This explainer only shows once.)"* |
+| 8 | **Web-Inbox opt-in prompt** (not a Slack message — appears in the app) | Once there's something worth nudging about and the user hasn't opted in | An `agent_question` inbox item: *"Want me to flag open items before your 1:1s and as due dates approach?"* with a rationale paragraph and a **"Turn on nudges"** CTA. Clicking sets `agent_config.nudge_inbox_items = true`; archiving/dismissing without clicking is treated as a decline and starts a **14-day cooldown** before the prompt can reappear |
+| 9 | **Giving feedback on a nudge** | Clicking 👍/🕐/👎 on a digest | Writes to `cos_agent_feedback`; `agent-tick` looks back 30 days and adapts `nudge_timing_hours` per user (≥3 "too early" → push timing later, max 48h; ≥3 "too late" → pull earlier, min 6h) — this is genuinely adaptive, not cosmetic. Note: the handler code also supports `too_late`/`wrong_format` feedback values, but **no shipped message currently renders those two buttons** |
+| 10 | **`/checkin` slash command** (legacy bot only) | User types `/checkin` in Slack | Opens a modal mirroring the web check-in form (target picker grouped by DO/SI/Task, date, comment, required mood select, optional "share to channel" checkbox) → inserts into `rc_checkins` → *"✅ Check-in saved. It will appear in Tactical Sync."* If the Slack email doesn't match any profile: *"I could not map your Slack user to a Tactical Sync profile. Make sure your Slack email matches your Tactical Sync email, then try again."* |
+| 11 | **`/ask` slash command** (legacy bot only) | User types `/ask <text>` | Ephemeral stub reply: *`Got it: "{text}". I'll ask the agent and reply here.`* — **not implemented**, no follow-up ever comes |
+| 12 | **`/add-to-my-lists`, `/add-to-1on1` slash commands** (OAuth pipeline, via `slack-add-suggestion`) | User types either command | Both are handled **identically** today (split text on `;`, insert into `dci_suggested_tasks`) — Settings → Agent copy advertises that `/add-to-1on1 @name topic` routes the topic into that specific person's 1:1 prep brief, but no code parses an `@name` mention or distinguishes the two commands; this promised behavior does not appear to be implemented |
+| 13 | **Quiet hours** | User sets start/end hour in Settings → Agent (default 6 PM–9 AM, configurable timezone) | Suppresses every notification-heavy path for that tick (nudges, escalations, format recs, inbox nudges, digest) — logged as `skipped_reason: 'quiet_hours'`. The post-meeting transcript check (Zoom sync + extraction) still runs silently during quiet hours; it just won't message about it |
+| 14 | **Nudge ceiling** | An item has been nudged `nudge_max_count` times (default 5) with no resolution | Item is silently "parked" (logged `nudge_capped`) — stops appearing in future digests but remains resolvable via its normal overflow actions |
+
+### 8.3 Slack — architecture notes and open questions
+
+Two Slack surfaces share an action-ID naming convention (`action_overflow:`, `mark_done:`, `snooze:`, `feedback:`, `dismiss_escalation:`) but are **not the same code path**: the legacy Socket Mode bot (`slack-bot/index.js`) only recognizes `mark_done:`/`snooze:` value prefixes and does not handle `inbox_mark_done:`/`inbox_due_snooze:` (which `agent-tick` actually sends for inbox-item nudges and the digest's inbox sections); `agent-slack-action/index.ts` — documented in its own comment as *"the Slack Interactivity Request URL"* for the OAuth pipeline — handles the full current set. Since outbound DMs are sent via the OAuth-connected user's own token, the strong inference is that button clicks on agent-tick messages are routed to `agent-slack-action`, not the legacy bot. **Not verifiable from static code alone**: whether the legacy bot's Slack app and the OAuth pipeline's Slack app are the same Slack app configured with two interactivity delivery mechanisms, or genuinely separate apps, and whether the legacy bot is still deployed in production at all versus being dev-only tooling (its README frames it as *"Slack bot (optional)"*). Confirm with whoever owns the Slack app configuration before assuming either surface is dead.
+
+### 8.4 Zoom
+
+- **Connect**: Settings → Zoom sync (`CosZoomSyncPanel.tsx`) — *"Connect Zoom to include recent meeting recordings and transcripts in your 1:1 prep."* → OAuth.
+- **Reconnect state**: a failed token refresh (401) sets `last_sync_status = 'error: reauth_required'`; the button swaps to **"Reconnect Zoom"**.
+- **Disconnect**: same panel; local row always deleted regardless of remote revoke success.
+- **What syncs**: hosted recordings, VTT transcripts, AI Companion summaries, feeding 1:1 prep, featured-quote extraction (§7.5), and meeting-format suggestions (§8.2 #6).
+- **Status/errors**: "Last synced {time}" + inline error suffix when sync status isn't `ok`. No dedicated Slack notification beyond the prep-ready/format-suggestion messages already covered above.
+
+### 8.5 Google Calendar & Gmail
+
+- **Connect**: Settings → Calendar sync (`CosCalendarSyncPanel.tsx`), via Supabase's Google OAuth, requesting `calendar.events.readonly` **and** `gmail.readonly` in the same consent screen. (This corrects `INTEGRATIONS.md`, which states Gmail scope is never requested — the live flow does request it; users who connected before this scope was added see a *"Reconnect needed"* toast prompting disconnect/reconnect.)
+- **Disconnect**: `disconnect-google-calendar` edge function.
+- **What syncs**: upcoming events → 1:1/group-meeting detection ("Sync now" reports *"{created} added · {updated} updated · {cancelled} removed"*); a separate **"Sync meeting emails"** action calls `gmail-meeting-assets-sync` (also undocumented in `INTEGRATIONS.md`) — parses Zoom's "meeting assets ready" emails as a fallback for recordings the Zoom API sync misses, reporting *"Gmail sync complete — N meeting email(s) found · N new summary/ies added"*.
+- **Status/errors**: last-synced timestamp + inline status; optional twice-daily scheduled auto-sync at two configurable UTC hours.
+
+### 8.6 StackOne
+
+- **Connect**: Settings → StackOne (`StackOnePanel.tsx`) — paste an API key (validated against `GET /accounts`), then link individual connectors (HRIS/Ticketing/CRM) via StackOne's embedded Connect Hub widget.
+- **Disconnect**: clears the stored key client-side; nothing is revoked on StackOne's side.
+- **What syncs**: nothing persisted — live, per-prep-call enrichment (HRIS role/manager/time-off, open tickets, CRM deal activity), scoped by the prepped person's email.
+- **Status/errors**: a "Connected" badge + "Active Connections" list; per `INTEGRATIONS.md`, failures of any kind (bad key, outage, rate limit, not-found) are indistinguishable from the outside — the prep brief simply omits that section, with no surfaced error.
+
+### 8.7 ClearGo
+
+- **Connect**: Settings → Integrations → ClearGo (`McpIntegrationPanel.tsx`) — Base URL + `X-ClearGo-Key`, **"Connect & test"** pings `{base_url}/api/v1/team-members`.
+- **Disconnect**: **Disconnect** button; the only other action is **"Test again"** — there is no way to rotate the key without disconnecting first.
+- **What syncs**: live per-prep-call blockers/epics for direct reports, plus a team-wide rollup in the Daily Check-In brief; nothing persisted to a table.
+- **Status/errors**: same silent-failure pattern as StackOne, except DCI-brief failures are collected into a reported `errors[]` array specific to that brief.
+
+---
+
+## 9. Superseded Documents
 
 The repo root carries ~40 historical markdown docs from earlier stages. Treat the following as **historical snapshots, not current truth** — this specification supersedes them for architecture/status questions:
 
 - `PRD.md`, `RC-DO-SI-PRD.md`, `tactical_sync_prd_rcdo_module_added.md` — original product/module PRDs; vision and personas are still broadly accurate (§1–2 above draw from them), but their feature-status claims are outdated.
 - `RCDO_IMPLEMENTATION_SUMMARY.md`, `RCDO_DEPLOYMENT_LOG.md`, `HASHTAG_SELECTOR_INTEGRATION_COMPLETE.md` — Nov 2025 snapshots of RCDO's initial build.
-- `PHASE2_COMPLETE.md`, `PHASE3_COMPLETE.md`, `TEST_*.md`, `TESTING_*.md` — describe the Oct/Nov 2025 testing-infrastructure buildout; actual suite size has grown well past what they describe (see §10).
+- `PHASE2_COMPLETE.md`, `PHASE3_COMPLETE.md`, `TEST_*.md`, `TESTING_*.md` — describe the Oct/Nov 2025 testing-infrastructure buildout; actual suite size has grown well past what they describe (see §11).
 - `h1-2026-rcdo.md` — not a spec; this is the real company RC/DO/SI content used as Strategy Canvas seed data.
 - `PLAN_idea1..9_*.md` — feature design docs; see §7.10 for corrected ship status.
 - `DESIGN_SYSTEM_2.md` — describes an unrelated project ("AIPulse", Material UI); appears to be a stray file, **do not reference**.
-- `INTEGRATIONS.md`, `TODO.md` — still largely live/accurate as of this audit; see §13 for the items pulled from them.
+- `INTEGRATIONS.md`, `TODO.md` — largely live/accurate as of this audit, and the primary sources for §8's integration write-up; see §14 for remaining roadmap items pulled from them.
 
 ---
 
-## 9. Design System
+## 10. Design System
 
 Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has drifted — some hex values no longer match the token file; prefer the code).
 
@@ -274,7 +345,7 @@ Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has dri
 
 ---
 
-## 10. Testing Strategy
+## 11. Testing Strategy
 
 - **Unit/integration (Vitest)**: 58 test files under `src/test/` (`components/`, `hooks/`, `lib/`, `migrations/` — DB migration behavior is unit-tested, `pages/`, `regression/`, `utils/`, `calendar/`, `types/`). Coverage thresholds in `vitest.config.ts` are deliberately low (`lines:3, functions:20, branches:50, statements:3`) — a regression ratchet, not a real target.
 - **E2E (Playwright)**: 41 spec files under `e2e/`, organized by domain (`auth/`, `teams/`, `invitations/`, legacy `series/meeting/instances/agenda/`, `critical/` broad flows, `security/`, `rcdo/`, `inbox/` — dormant20, meeting-insights-triage, person-delegation, personMemoryPrivacy, unified-funnel-sync — `api/`). 3-browser matrix (chromium/firefox/webkit), `fullyParallel: true`, `baseURL: http://localhost:8080`. Dev server must be started manually (webServer auto-start is commented out in config).
@@ -283,7 +354,7 @@ Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has dri
 
 ---
 
-## 11. Build, Deploy & Dev Tooling
+## 12. Build, Deploy & Dev Tooling
 
 - **Commands**: `npm run dev` (Vite, port 8080, `predev` runs a DB health check), `npm run build`, `npm run lint`, `npm run test` / `test:coverage` (Vitest), `npm run test:e2e` (Playwright), `npm run db:validate` / `db:health` / `db:reset` (destructive).
 - **Deploy**: Netlify (`netlify.toml`) — `/assets/*` explicitly 404s on miss (avoids silently masking missing hashed assets behind the SPA fallback), catch-all SPA redirect, security headers (`X-Frame-Options: DENY`, `nosniff`, restrictive `Permissions-Policy`) on all routes, 1-year immutable cache on `/assets/*`.
@@ -291,7 +362,7 @@ Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has dri
 
 ---
 
-## 12. Known Issues & Drift (found during this audit)
+## 13. Known Issues & Drift (found during this audit)
 
 Flagging these here so they're tracked centrally rather than rediscovered. None were introduced by this audit — all predate it.
 
@@ -304,11 +375,16 @@ Flagging these here so they're tracked centrally rather than rediscovered. None 
 7. **Retired Team Meetings module left as dead code** — routes commented out but pages, `useMeetingTimer.ts`, and `meeting_series_action_items` writes (via Unified Funnel sync) all still exist. Needs an explicit decision: fully remove, or document as intentionally dormant.
 8. **No retry/backoff on any external integration** (Zoom/Slack/Gmail/Calendar) — flagged directly in `INTEGRATIONS.md` as a cross-cutting gap worth fixing centrally.
 9. **Relationship-memory consent is one-sided** — only the manager consents; the direct report whose communications feed the system has no visibility or opt-out today (§7.9).
-10. **`CLAUDE.md` accuracy**: the "30-minute idle timeout" and "80+ migrations" and "all rows scoped to team_id" claims are all stale relative to current code (see §4, §11, and RCDO's company-wide scoping in §5). Recommend updating `CLAUDE.md` alongside this document.
+10. **`CLAUDE.md` accuracy**: the "30-minute idle timeout" and "80+ migrations" and "all rows scoped to team_id" claims are all stale relative to current code (see §4 for auth, §3 for the current migration count, and RCDO's company-wide scoping in §5). Recommend updating `CLAUDE.md` alongside this document.
+11. **Slack channel-allowlist UI writes to the wrong column.** Settings → Briefs & Schedule → Tools writes selected channels to `cos_prep_schedule.slack_channels`, but the background cron sync (`slack-messages-sync` invoked on schedule, and `extract-inbox-action-items`) reads `user_slack_credentials.sync_channels`, which nothing in the codebase ever populates. A user's channel selection only takes effect via the manual "Sync now" button, which bridges the two columns at call time — the automatic background scan silently ignores it. See §8.1.
+12. **Slack escalation-dismiss button is dead code**: `dismiss_escalation:` is handled in both Slack interactivity endpoints, but no currently-shipped message attaches that button — escalation DMs render as plain text with no way to dismiss from Slack itself (§8.2 #5).
+13. **Two Slack feedback types are unreachable**: `too_late` and `wrong_format` feedback values are fully handled server-side but no shipped message renders buttons for them — only Helpful/Too early/Not helpful are ever shown (§8.2 #9).
+14. **`/add-to-1on1` doesn't do what its own Settings copy promises**: `AgentSettingsPanel.tsx` advertises person-specific routing (`/add-to-1on1 @name topic` → that person's 1:1 prep brief), but `slack-add-suggestion` treats `/add-to-my-lists` and `/add-to-1on1` identically, with no `@name` parsing (§8.2 #12). Either fix the routing or fix the copy.
+15. **Unclear whether the legacy Socket Mode Slack bot (`slack-bot/`) is still deployed in production**, or is dev-only tooling that happens to share an action-ID naming convention with the live `agent-slack-action` endpoint. Confirm with whoever owns the Slack app configuration (§8.3) — this affects whether `slack-bot/` can be safely archived.
 
 ---
 
-## 13. Roadmap
+## 14. Roadmap
 
 ### Near-term, explicitly planned (pulled from current docs)
 - **RCDO**: mid-cycle review UI, end-cycle retrospective UI, cycle/metric exports (PDF/CSV/JSON), automated stale-metric alerts and weekly check-in reminders, full hashtag-selector integration into meeting priorities, metric-source integrations (ClearInsights/Jira/Sheets webhooks) beyond manual entry.
@@ -320,20 +396,21 @@ Flagging these here so they're tracked centrally rather than rediscovered. None 
 ### Structural cleanup candidates
 - Consolidate the four coexisting role/permission systems (§4) into one model.
 - Resolve the three-way "task" split (RCDO `rc_tasks`, Commitments `quarterly_priorities`/`monthly_commitments`, CoS/inbox action items) — currently only two of three sync into the Unified Funnel.
-- Decide the fate of the retired Team Meetings module (§6, §12.7).
-- Fix the RCDO status-enum drift and the `'final'` lock bug (§12.1–3) before building more lock/status-dependent features on top.
+- Decide the fate of the retired Team Meetings module (§6, §13.7).
+- Fix the RCDO status-enum drift and the `'final'` lock bug (§13.1–3) before building more lock/status-dependent features on top.
 - Extend the account-linking pattern (built for Manager Signals/People Delegation) to any future "track a colleague" feature rather than reinventing free-text CRM rows.
+- Fix the Slack channel-allowlist column mismatch (§13.11) and decide whether the legacy Socket Mode bot (§13.15) should be archived or kept as a second interactivity surface.
 
 ### How to extend this document
 When you ship a new subsystem or materially change an existing one:
-1. Add or update the relevant module section (§5–7 pattern: hierarchy/schema → lifecycle → key pages → permissions/realtime → open items).
-2. Move anything you just shipped out of §13 and, if it changes ship status for a previously-tracked idea, update §7.10-style tables.
-3. Log any new inconsistency you find in §12 rather than silently fixing it in the doc only — link the migration/issue that will resolve it.
-4. If a root-level doc becomes stale because of your change, add it to §8.
+1. Add or update the relevant module section (§5–7 pattern: hierarchy/schema → lifecycle → key pages → permissions/realtime → open items), or the relevant integration subsection in §8 if it's a new external system or a new Slack-touchpoint.
+2. Move anything you just shipped out of §14 and, if it changes ship status for a previously-tracked idea, update §7.10-style tables.
+3. Log any new inconsistency you find in §13 rather than silently fixing it in the doc only — link the migration/issue that will resolve it.
+4. If a root-level doc becomes stale because of your change, add it to §9.
 
 ---
 
-## 14. Appendix: Table Index
+## 15. Appendix: Table Index
 
 | Area | Tables |
 |---|---|
