@@ -258,7 +258,13 @@ export function isDueNowTier(priorityDueAt: string | null, now: Date = new Date(
 }
 
 /** Open inbox_items with workflow_status = 'Do Now' for this user, oldest
- *  first (the longest-standing "Do Now" items surface at the top). */
+ *  first (the longest-standing "Do Now" items surface at the top).
+ *
+ *  Excludes type = 'agent_question' — those are AI-extracted *suggestions*
+ *  (see extract-inbox-action-items/index.ts, extract-zoom-quotes/index.ts)
+ *  that haven't been approved via the "Add to inbox" CTA yet (Inbox.tsx's
+ *  handleApproveSuggestion, which flips type to 'task'). The digest must
+ *  never surface a suggestion the user hasn't confirmed. */
 export async function fetchDoNowItems(
   supabase: SupabaseClient,
   userId: string,
@@ -270,6 +276,7 @@ export async function fetchDoNowItems(
     .eq('user_id', userId)
     .eq('status', 'open')
     .eq('workflow_status', 'Do Now')
+    .neq('type', 'agent_question')
     .order('created_at', { ascending: true })
     .limit(cap);
 
@@ -288,6 +295,10 @@ export async function fetchDoNowItems(
  * future-looking window). An item due today can appear in both if a user
  * has opted into that older feature too — accepted overlap, not
  * cross-deduped, since most users only get this digest.
+ *
+ * Excludes type = 'agent_question' — an unapproved AI-extracted suggestion
+ * (e.g. a due date pulled from a Slack DM) must not reach the digest until
+ * the user approves it via "Add to inbox" (see fetchDoNowItems above).
  */
 export async function fetchDueNowTierItems(
   supabase: SupabaseClient,
@@ -297,16 +308,18 @@ export async function fetchDueNowTierItems(
 ): Promise<InboxNudgeCandidateItem[]> {
   const { data } = await supabase
     .from('inbox_items')
-    .select('id, text, workflow_status, priority_due_at')
+    .select('id, text, workflow_status, priority_due_at, type')
     .eq('user_id', userId)
     .eq('status', 'open')
+    .neq('type', 'agent_question')
     .not('priority_due_at', 'is', null);
 
-  const candidates = (data ?? []) as InboxNudgeCandidateItem[];
+  const candidates = (data ?? []) as Array<InboxNudgeCandidateItem & { type: string }>;
   return candidates
     .filter((item) => isDueNowTier(item.priority_due_at, now))
     .sort((a, b) => new Date(a.priority_due_at!).getTime() - new Date(b.priority_due_at!).getTime())
-    .slice(0, cap);
+    .slice(0, cap)
+    .map(({ id, text, workflow_status, priority_due_at }) => ({ id, text, workflow_status, priority_due_at }));
 }
 
 /**
@@ -326,6 +339,9 @@ export async function fetchDueNowTierItems(
  * the existing convention in this file of independent candidate fetchers
  * that don't cross-dedupe against each other (see selectDueItemsToNudge vs.
  * selectMeetingsForInboxNudge, which never check each other's output either).
+ *
+ * Excludes type = 'agent_question' — an unapproved AI-extracted suggestion
+ * must not reach the digest until approved (see fetchDoNowItems above).
  */
 export async function fetchNeedsInputItems(
   supabase: SupabaseClient,
@@ -337,6 +353,7 @@ export async function fetchNeedsInputItems(
     .select('id, text, workflow_status, priority_due_at, updated_at')
     .eq('user_id', userId)
     .eq('status', 'open')
+    .neq('type', 'agent_question')
     .order('updated_at', { ascending: true })
     .limit(SCAN_LIMIT);
 
@@ -371,6 +388,12 @@ export interface BlockingOthersItem {
  * owed_by='me' row that's also a synced meeting_action_item) is reported
  * once, with 'owed_by' taking precedence as the most directly-classified
  * signal.
+ *
+ * All three queries exclude type = 'agent_question': owed_by is populated
+ * directly on freshly-extracted Slack/Zoom suggestion rows (see
+ * extract-inbox-action-items/index.ts, extract-zoom-quotes/index.ts), which
+ * must not reach the digest until approved via "Add to inbox" (see
+ * fetchDoNowItems above).
  */
 export async function fetchBlockingOthersItems(
   supabase: SupabaseClient,
@@ -378,18 +401,20 @@ export async function fetchBlockingOthersItems(
   cap: number = DEFAULT_SECTION_CAP,
 ): Promise<BlockingOthersItem[]> {
   const [{ data: owedByMe }, { data: meetingActionItems }, { data: cosMeetingActions }] = await Promise.all([
-    supabase.from('inbox_items').select('id, text').eq('user_id', userId).eq('status', 'open').eq('owed_by', 'me'),
+    supabase.from('inbox_items').select('id, text').eq('user_id', userId).eq('status', 'open').eq('owed_by', 'me').neq('type', 'agent_question'),
     supabase
       .from('inbox_items')
       .select('id, text')
       .eq('user_id', userId)
       .eq('status', 'open')
+      .neq('type', 'agent_question')
       .contains('source_ref', { type: 'meeting_action_item' }),
     supabase
       .from('inbox_items')
       .select('id, text')
       .eq('user_id', userId)
       .eq('status', 'open')
+      .neq('type', 'agent_question')
       .contains('source_ref', { type: 'cos_meeting_action' }),
   ]);
 

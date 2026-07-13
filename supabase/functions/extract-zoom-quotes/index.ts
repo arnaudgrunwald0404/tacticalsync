@@ -530,6 +530,7 @@ serve(async (req) => {
                 : 'They committed to this in the meeting',
               action_required: true,
               cta_label: 'Add to inbox',
+              cta_action: 'approve_suggestion',
             },
             source_ref: commitmentSourceRef,
           })

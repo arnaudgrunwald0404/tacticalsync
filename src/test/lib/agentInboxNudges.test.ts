@@ -311,6 +311,10 @@ function makeSupabaseStub(tableRows: Record<string, Record<string, unknown>[]>) 
           rows = rows.filter((r) => r[col] === val);
           return builder;
         },
+        neq(col: string, val: unknown) {
+          rows = rows.filter((r) => r[col] !== val);
+          return builder;
+        },
         not(col: string, op: string, val: unknown) {
           if (op === 'is' && val === null) {
             rows = rows.filter((r) => r[col] !== null && r[col] !== undefined);
@@ -346,6 +350,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'item-1',
     user_id: 'user-1',
+    type: 'task',
     text: 'Some item',
     status: 'open',
     workflow_status: null,
@@ -402,6 +407,14 @@ describe('fetchDoNowItems', () => {
     const result = await fetchDoNowItems(supabase, 'user-1', 5);
     expect(result).toHaveLength(5);
   });
+
+  it('excludes unapproved agent_question suggestions', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', workflow_status: 'Do Now' })],
+    });
+    const result = await fetchDoNowItems(supabase, 'user-1');
+    expect(result).toEqual([]);
+  });
 });
 
 describe('fetchDueNowTierItems', () => {
@@ -454,6 +467,16 @@ describe('fetchDueNowTierItems', () => {
     const result = await fetchDueNowTierItems(supabase, 'user-1', 2, NOW2);
     expect(result.map((i) => i.id)).toEqual(['earliest', 'mid']);
   });
+
+  it('excludes an unapproved agent_question suggestion even with a due date in the past', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', type: 'agent_question', priority_due_at: '2026-07-01T00:00:00.000Z', priority_fixed: true }),
+      ],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result).toEqual([]);
+  });
 });
 
 describe('fetchNeedsInputItems', () => {
@@ -487,6 +510,14 @@ describe('fetchNeedsInputItems', () => {
     });
     const result = await fetchNeedsInputItems(supabase, 'user-1', 5);
     expect(result).toHaveLength(5);
+  });
+
+  it('excludes unapproved agent_question suggestions', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', workflow_status: null })],
+    });
+    const result = await fetchNeedsInputItems(supabase, 'user-1');
+    expect(result).toEqual([]);
   });
 });
 
@@ -537,5 +568,13 @@ describe('fetchBlockingOthersItems', () => {
     });
     const result = await fetchBlockingOthersItems(supabase, 'user-1', 5);
     expect(result).toHaveLength(5);
+  });
+
+  it('excludes an unapproved agent_question suggestion even with owed_by = "me"', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', owed_by: 'me' })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([]);
   });
 });

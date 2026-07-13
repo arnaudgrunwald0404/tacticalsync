@@ -357,6 +357,7 @@ serve(async (req) => {
                 rationale: finding.rationale,
                 action_required: true,
                 cta_label: 'Add to inbox',
+                cta_action: 'approve_suggestion',
               },
               source_ref: { type: sourceRefType, id: source.sourceId },
               owed_by: finding.owed_by,
