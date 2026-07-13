@@ -47,6 +47,7 @@ interface Finding {
   kind: 'action_item' | 'question' | 'commitment'
   summary: string
   rationale: string
+  owed_by: 'me' | 'them' | null
 }
 
 const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
@@ -64,7 +65,21 @@ notes, acknowledgments ("thanks!", "sounds good"), and anything already fully
 resolved within the same text. Respond ONLY with valid JSON: an array of
 {"item_id": "<id from the list>", "kind": "action_item"|"question"|"commitment",
 "summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
-"rationale": "<one short clause on why this needs attention>"}.
+"rationale": "<one short clause on why this needs attention>",
+"owed_by": "me"|"them"|null}.
+
+For "owed_by", decide who owes the next response or action in the exchange,
+from the reader's point of view:
+- "me": the reader is the one being asked for something, and hasn't clearly
+  delivered it yet — the reader is the blocker. Example: "Can you review this
+  by Friday?" or "Waiting on your sign-off before we ship" directed at the
+  reader → owed_by: "me".
+- "them": someone else owes the reader a response or deliverable — the reader
+  is waiting on them. Example: "I'll get you the numbers tomorrow" or "Let me
+  check and get back to you" said TO the reader → owed_by: "them".
+- null: there's no clear directionality — a pure FYI/announcement, a question
+  with no obvious owner, or something already resolved. Example: "Heads up,
+  the office is closed Monday" → owed_by: null.
 Return [] if nothing qualifies.`,
     messages: [{ role: 'user', content: numbered }],
   })
@@ -72,7 +87,14 @@ Return [] if nothing qualifies.`,
   const text = (msg.content[0] as { text: string }).text
   try {
     const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed as Finding[] : []
+    if (!Array.isArray(parsed)) return []
+    // Guard against the model returning something other than 'me'/'them'/null
+    // for owed_by — the column has a check constraint, so an unexpected value
+    // (or a missing field on an older/odd response) would fail the insert.
+    return (parsed as Finding[]).map(f => ({
+      ...f,
+      owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
+    }))
   } catch {
     console.warn('extract-inbox-action-items: failed to parse Claude response:', text.slice(0, 200))
     return []
@@ -307,6 +329,7 @@ serve(async (req) => {
                 cta_label: 'Add to inbox',
               },
               source_ref: { type: sourceRefType, id: source.sourceId },
+              owed_by: finding.owed_by,
             })
             if (!insertErr) itemsCreated++
           }
