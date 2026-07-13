@@ -417,14 +417,14 @@ describe('fetchDueNowTierItems', () => {
     expect(result.map((i) => i.id)).toEqual(['a']);
   });
 
-  it('excludes priority_fixed items — already covered by the fixed-due-date nudge', async () => {
+  it('also includes a priority_fixed item due today or earlier (e.g. a real deadline extracted from a Slack DM/email)', async () => {
     const supabase = makeSupabaseStub({
       inbox_items: [
         row({ id: 'a', priority_due_at: '2026-07-07T01:00:00.000Z', priority_fixed: true }),
       ],
     });
     const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
-    expect(result).toEqual([]);
+    expect(result.map((i) => i.id)).toEqual(['a']);
   });
 
   it('excludes items with no due date', async () => {

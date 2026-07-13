@@ -277,13 +277,17 @@ export async function fetchDoNowItems(
 }
 
 /**
- * Open inbox_items whose informal "gut feel" priority tier (see
- * PRIORITY_TIERS / currentPriorityTier in inboxValidation.ts) currently reads
- * as 'now'. Only considers priority_fixed = false rows — priority_fixed =
- * true rows are *real* due dates already covered by agent-tick's
- * fetchDueNudgeCandidates()/selectDueItemsToNudge() due-date nudge, and
- * including them again here would double-count the same item across two
- * digest sections.
+ * Open inbox_items due now or overdue — the informal "gut feel" priority
+ * tier (see PRIORITY_TIERS / currentPriorityTier in inboxValidation.ts)
+ * reading as 'now', OR a *real* fixed due date (priority_fixed = true, e.g.
+ * one extracted from a Slack DM/channel message or Gmail email — see
+ * extract-inbox-action-items/index.ts) that has arrived or passed.
+ *
+ * Fixed due dates also feed agent-tick's separate fetchDueNudgeCandidates()/
+ * selectDueItemsToNudge() due-date-approaching nudge (its own opt-in,
+ * future-looking window). An item due today can appear in both if a user
+ * has opted into that older feature too — accepted overlap, not
+ * cross-deduped, since most users only get this digest.
  */
 export async function fetchDueNowTierItems(
   supabase: SupabaseClient,
@@ -296,7 +300,6 @@ export async function fetchDueNowTierItems(
     .select('id, text, workflow_status, priority_due_at')
     .eq('user_id', userId)
     .eq('status', 'open')
-    .eq('priority_fixed', false)
     .not('priority_due_at', 'is', null);
 
   const candidates = (data ?? []) as InboxNudgeCandidateItem[];
