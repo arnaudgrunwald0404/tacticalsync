@@ -68,7 +68,7 @@ serve(async (req) => {
     const payload = JSON.parse(rawPayload) as {
       type: string
       user: { id: string }
-      actions?: Array<{ action_id: string; value?: string }>
+      actions?: Array<{ action_id: string; value?: string; selected_option?: { value?: string } }>
       trigger_id?: string
     }
 
@@ -94,7 +94,10 @@ serve(async (req) => {
 
     for (const action of payload.actions) {
       const actionId = action.action_id
-      const value = action.value ?? ''
+      // Overflow menus deliver the chosen option under `selected_option.value`
+      // rather than a top-level `value` (that field only exists on plain
+      // buttons), so both must be checked here.
+      const value = action.value ?? action.selected_option?.value ?? ''
 
       // Overflow menus send the selected option's value, not the action_id
       const effectiveId = actionId.startsWith('action_overflow:')
