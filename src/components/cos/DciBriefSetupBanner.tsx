@@ -325,12 +325,12 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
     return (
       <div className="space-y-0">
-        <div className="flex items-center justify-between rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800 px-4 py-2.5">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800 px-4 py-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
               <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
                 Daily brief is on
               </p>
@@ -343,7 +343,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:shrink-0">
             <Button
               size="sm"
               variant="ghost"
@@ -488,7 +488,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
             )}
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 flex-wrap pt-1">
               <Button
                 size="sm"
                 onClick={runNow}
