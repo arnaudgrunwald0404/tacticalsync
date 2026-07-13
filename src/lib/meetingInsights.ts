@@ -135,6 +135,96 @@ export function capMeetingInsights<T>(
   return quotes.slice(0, Math.max(0, cap));
 }
 
+// ── Commitment extraction (directional "who owes whom") ─────────────────────
+//
+// Second extraction target added alongside quotes in the same Gemini call
+// (extract-zoom-quotes/index.ts) — explicit commitments/action items with
+// directionality relative to the meeting host (the user). Feeds the
+// `owed_by` column added in 20260728000001_inbox_items_owed_by.sql, which
+// powers the daily digest's "you're blocking these people" section.
+
+/** Max commitment rows created per transcript, independent of the quote/
+ *  meeting_insight cap above — kept modest since commitments are a coarser,
+ *  higher-signal-per-row surface than quotes. */
+export const COMMITMENT_CAP_PER_TRANSCRIPT = 5;
+
+/** A single explicit commitment as extracted by the Gemini prompt in
+ *  extract-zoom-quotes. */
+export interface ExtractedCommitment {
+  /** Name of whoever owes the commitment, as it appears in the transcript.
+   *  For a 'me' commitment (the host/user is the one who committed), this
+   *  is often a generic label like "Host" or "You" rather than a real name —
+   *  the transcript rarely names the user explicitly. */
+  owner_name: string;
+  /** 'me' = the host/user committed to do something for someone else
+   *  (the user is blocking someone else on this).
+   *  'them' = a participant committed to do something for the host/user
+   *  (the user is waiting on someone else). */
+  owed_by: 'me' | 'them';
+  /** One-sentence description of what was promised. */
+  commitment: string;
+}
+
+/**
+ * Build the dedup key for a candidate commitment insert: one row per
+ * (transcript, owner, commitment) tuple — same shape/spirit as
+ * {@link meetingInsightDedupKey}, so a manual re-extract stays idempotent.
+ */
+export function commitmentDedupKey(
+  transcriptId: string,
+  ownerName: string,
+  commitment: string,
+): { transcript_id: string; speaker_name: string; commitment: string } {
+  return {
+    transcript_id: transcriptId,
+    speaker_name: ownerName.trim(),
+    commitment: commitment.trim(),
+  };
+}
+
+/**
+ * Build the source_ref for a commitment inbox row. Reuses the
+ * 'zoom_recording' shape (transcript_id/recording_id/speaker_name/
+ * meeting_topic/said_on) established for meeting_insight rows so both kinds
+ * of Zoom-derived inbox rows click through the same way; `speaker_name`
+ * carries the commitment's owner_name here rather than a quote's speaker.
+ */
+export function buildCommitmentSourceRef(
+  ctx: MeetingInsightContext,
+  c: Pick<ExtractedCommitment, 'owner_name'>,
+): SourceRef {
+  return {
+    type: 'zoom_recording',
+    id: ctx.recordingId,
+    recording_id: ctx.recordingId,
+    transcript_id: ctx.transcriptId,
+    speaker_name: c.owner_name.trim(),
+    meeting_topic: ctx.meetingTopic ?? undefined,
+    said_on: ctx.saidOn,
+  };
+}
+
+/**
+ * Shape the commitment inbox row's own headline text, mirroring
+ * {@link buildMeetingInsightText}'s "per-card origin clarity" goal: a user
+ * scanning the list should know who owes what without opening the row.
+ */
+export function buildCommitmentText(
+  c: Pick<ExtractedCommitment, 'owner_name' | 'owed_by' | 'commitment'>,
+  meetingTopic: string | null | undefined,
+  saidOn: string | null | undefined,
+): string {
+  const commitment = c.commitment.trim();
+  const base = c.owed_by === 'me'
+    ? `You committed: ${commitment}`
+    : `${c.owner_name.trim()} committed: ${commitment}`;
+  const meetingLabel = meetingTopic?.trim();
+  if (!meetingLabel) return base;
+
+  const dateLabel = formatShortDate(saidOn);
+  return dateLabel ? `${base} — from ${meetingLabel}, ${dateLabel}` : `${base} — from ${meetingLabel}`;
+}
+
 // ── Triage actions (plan §4) ────────────────────────────────────────────────
 
 export type TriageAction = 'confirm' | 'save' | 'dismiss';
