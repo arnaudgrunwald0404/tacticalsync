@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,9 +103,12 @@ serve(async (req) => {
         return jsonResponse({ reply: 'Slack is not connected. Please connect it in Settings first.' }, 200)
       }
 
-      const lookupRes = await fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(target_email)}`, {
-        headers: { 'Authorization': `Bearer ${slackToken}` },
-      })
+      const lookupRes = await retryWithBackoff(
+        () => fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(target_email)}`, {
+          headers: { 'Authorization': `Bearer ${slackToken}` },
+        }),
+        { integration: 'slack', label: 'users.lookupByEmail' },
+      )
       const lookupData = await lookupRes.json() as { ok: boolean; user?: { id: string } }
 
       if (!lookupData.ok || !lookupData.user?.id) {
@@ -113,22 +117,28 @@ serve(async (req) => {
         }, 200)
       }
 
-      const openRes = await fetch('https://slack.com/api/conversations.open', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: lookupData.user.id }),
-      })
+      const openRes = await retryWithBackoff(
+        () => fetch('https://slack.com/api/conversations.open', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users: lookupData.user.id }),
+        }),
+        { integration: 'slack', label: 'conversations.open' },
+      )
       const openData = await openRes.json() as { ok: boolean; error?: string; channel?: { id: string } }
 
       if (!openData.ok || !openData.channel?.id) {
         return jsonResponse({ reply: `Couldn't open a DM with ${target_name} on Slack. (Slack error: ${openData.error ?? 'unknown'})` }, 200)
       }
 
-      const sendRes = await fetch('https://slack.com/api/chat.postMessage', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: openData.channel.id, text: message }),
-      })
+      const sendRes = await retryWithBackoff(
+        () => fetch('https://slack.com/api/chat.postMessage', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: openData.channel.id, text: message }),
+        }),
+        { integration: 'slack', label: 'chat.postMessage' },
+      )
       const sendData = await sendRes.json() as { ok: boolean; error?: string }
 
       if (sendData.ok) {

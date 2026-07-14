@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
 import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -324,7 +325,10 @@ serve(async (req) => {
           const slackGet = async (method: string, params: Record<string, string>): Promise<Record<string, unknown>> => {
             const url = new URL(`https://slack.com/api/${method}`)
             for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-            const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${slackToken}` } })
+            const r = await retryWithBackoff(
+              () => fetch(url.toString(), { headers: { Authorization: `Bearer ${slackToken}` } }),
+              { integration: 'slack', label: method },
+            )
             return r.json() as Promise<Record<string, unknown>>
           }
 
@@ -413,9 +417,12 @@ serve(async (req) => {
           const after = Math.floor((Date.now() - 30 * 86_400_000) / 1000)
 
           const gmailFetch = async (path: string): Promise<Record<string, unknown>> => {
-            const r = await fetch(`https://gmail.googleapis.com/gmail/v1/${path}`, {
-              headers: { Authorization: `Bearer ${gmailToken}` },
-            })
+            const r = await retryWithBackoff(
+              () => fetch(`https://gmail.googleapis.com/gmail/v1/${path}`, {
+                headers: { Authorization: `Bearer ${gmailToken}` },
+              }),
+              { integration: 'gmail', label: path.split('?')[0] },
+            )
             return r.json() as Promise<Record<string, unknown>>
           }
 

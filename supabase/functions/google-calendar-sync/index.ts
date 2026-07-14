@@ -13,6 +13,7 @@ import {
   type UnmatchedEvent,
   type EventCategory,
 } from "../_shared/matchEventToMember.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -187,11 +188,14 @@ serve(async (req) => {
       form.set('refresh_token', refreshToken)
       form.set('grant_type', 'refresh_token')
 
-      const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form.toString(),
-      })
+      const refreshRes = await retryWithBackoff(
+        () => fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: form.toString(),
+        }),
+        { integration: 'google-calendar', label: 'refresh access token' },
+      )
 
       if (!refreshRes.ok) {
         await supabase
@@ -258,9 +262,12 @@ serve(async (req) => {
       url.searchParams.set('maxResults', '250')
       if (pageToken) url.searchParams.set('pageToken', pageToken)
 
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
+      const res = await retryWithBackoff(
+        () => fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        { integration: 'google-calendar', label: 'list events' },
+      )
 
       if (res.status === 401) {
         await supabase
@@ -533,9 +540,12 @@ serve(async (req) => {
     for (const rid of recurringIds) {
       try {
         const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(rid)}`
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
+        const res = await retryWithBackoff(
+          () => fetch(url, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+          { integration: 'google-calendar', label: 'get recurring master event' },
+        )
         if (!res.ok) continue
         const master = await res.json() as { recurrence?: string[] }
         if (master.recurrence) {

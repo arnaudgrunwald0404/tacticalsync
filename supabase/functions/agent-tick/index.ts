@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { detectEscalations } from "../agent-escalation/index.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 import {
   selectDueItemsToNudge,
   selectMeetingsForInboxNudge,
@@ -196,14 +197,17 @@ async function sendSlackDM(
   }
 
   // Open DM conversation
-  const openRes = await fetch('https://slack.com/api/conversations.open', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ users: slackCreds.slack_user_id }),
-  })
+  const openRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/conversations.open', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ users: slackCreds.slack_user_id }),
+    }),
+    { integration: 'slack', label: 'conversations.open' },
+  )
 
   const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
   if (!openData.ok || !openData.channel?.id) {
@@ -219,14 +223,17 @@ async function sendSlackDM(
     msgBody.blocks = blocks
   }
 
-  const msgRes = await fetch('https://slack.com/api/chat.postMessage', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(msgBody),
-  })
+  const msgRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(msgBody),
+    }),
+    { integration: 'slack', label: 'chat.postMessage' },
+  )
 
   const msgData = await msgRes.json() as { ok: boolean }
   return msgData.ok

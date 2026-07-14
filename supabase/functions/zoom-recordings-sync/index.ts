@@ -8,6 +8,7 @@ import {
   type MinimalMember,
   type MinimalEvent,
 } from "../_shared/matchEventToMember.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -151,17 +152,20 @@ serve(async (req) => {
       }
 
       const basicAuth = btoa(`${zoomClientId}:${zoomClientSecret}`)
-      const refreshRes = await fetch('https://zoom.us/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${basicAuth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
+      const refreshRes = await retryWithBackoff(
+        () => fetch('https://zoom.us/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${basicAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+          }),
         }),
-      })
+        { integration: 'zoom', label: 'refresh access token' },
+      )
 
       if (!refreshRes.ok) {
         const status = refreshRes.status
@@ -253,9 +257,12 @@ serve(async (req) => {
       url.searchParams.set('page_size', '100')
       if (nextPageToken) url.searchParams.set('next_page_token', nextPageToken)
 
-      const res = await fetch(url.toString(), {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      })
+      const res = await retryWithBackoff(
+        () => fetch(url.toString(), {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        }),
+        { integration: 'zoom', label: 'list recordings' },
+      )
 
       if (res.status === 401) {
         await supabase
@@ -292,9 +299,12 @@ serve(async (req) => {
 
       try {
         const partUrl = `https://api.zoom.us/v2/past_meetings/${encodeURIComponent(meeting.uuid)}/participants?page_size=50`
-        const partRes = await fetch(partUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-        })
+        const partRes = await retryWithBackoff(
+          () => fetch(partUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+          }),
+          { integration: 'zoom', label: 'list participants' },
+        )
         if (partRes.ok) {
           const partData = await partRes.json() as ZoomParticipantsResponse
           for (const p of partData.participants ?? []) {
@@ -402,9 +412,12 @@ serve(async (req) => {
 
             if (transcriptFile?.download_url) {
               try {
-                const tRes = await fetch(transcriptFile.download_url, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` },
-                })
+                const tRes = await retryWithBackoff(
+                  () => fetch(transcriptFile.download_url, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                  }),
+                  { integration: 'zoom', label: 'download transcript' },
+                )
                 if (tRes.ok) {
                   const content = await tRes.text()
                   const wordCount = content.split(/\s+/).length
@@ -501,9 +514,12 @@ serve(async (req) => {
 
         try {
           const recUrl = `https://api.zoom.us/v2/meetings/${zoomId}/recordings`
-          const recRes = await fetch(recUrl, {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
-          })
+          const recRes = await retryWithBackoff(
+            () => fetch(recUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+            }),
+            { integration: 'zoom', label: 'per-meeting recordings' },
+          )
 
           if (!recRes.ok) {
             const errBody = await recRes.text().catch(() => '')
@@ -514,9 +530,12 @@ serve(async (req) => {
             // recurring meeting number. We get UUIDs via the past_meetings/instances API.
             try {
               const instancesUrl = `https://api.zoom.us/v2/past_meetings/${zoomId}/instances`
-              const instancesRes = await fetch(instancesUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-              })
+              const instancesRes = await retryWithBackoff(
+                () => fetch(instancesUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` },
+                }),
+                { integration: 'zoom', label: 'past meeting instances' },
+              )
 
               if (!instancesRes.ok) {
                 console.warn(`Calendar discovery: past_meetings/instances returned ${instancesRes.status} for ${zoomId}`)
@@ -544,9 +563,12 @@ serve(async (req) => {
                   // Try AI Companion transcript first (requires cloud_recording:read:meeting_transcript scope).
                   let transcriptContent: string | null = null
                   try {
-                    const transcriptRes = await fetch(
-                      `https://api.zoom.us/v2/meetings/${encodedUuid}/transcript`,
-                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    const transcriptRes = await retryWithBackoff(
+                      () => fetch(
+                        `https://api.zoom.us/v2/meetings/${encodedUuid}/transcript`,
+                        { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                      ),
+                      { integration: 'zoom', label: 'AI Companion transcript' },
                     )
                     if (transcriptRes.ok) {
                       transcriptContent = await transcriptRes.text()
@@ -562,9 +584,12 @@ serve(async (req) => {
                   let meetingTopic: string | null = null
                   let meetingStartTime: string | null = null
                   try {
-                    const summaryRes = await fetch(
-                      `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`,
-                      { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                    const summaryRes = await retryWithBackoff(
+                      () => fetch(
+                        `https://api.zoom.us/v2/meetings/${encodedUuid}/meeting_summary`,
+                        { headers: { 'Authorization': `Bearer ${accessToken}` } },
+                      ),
+                      { integration: 'zoom', label: 'meeting summary' },
                     )
                     if (summaryRes.ok) {
                       const summaryData = await summaryRes.json() as {
@@ -660,9 +685,12 @@ serve(async (req) => {
           let participantNames: string[] = []
           try {
             const partUrl = `https://api.zoom.us/v2/past_meetings/${encodeURIComponent(recData.uuid)}/participants?page_size=50`
-            const partRes = await fetch(partUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` },
-            })
+            const partRes = await retryWithBackoff(
+              () => fetch(partUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+              }),
+              { integration: 'zoom', label: 'list participants (calendar discovery)' },
+            )
             if (partRes.ok) {
               const partData = await partRes.json() as ZoomParticipantsResponse
               for (const p of partData.participants ?? []) {
@@ -740,9 +768,12 @@ serve(async (req) => {
               )
               if (transcriptFile?.download_url) {
                 try {
-                  const tRes = await fetch(transcriptFile.download_url, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                  })
+                  const tRes = await retryWithBackoff(
+                    () => fetch(transcriptFile.download_url, {
+                      headers: { 'Authorization': `Bearer ${accessToken}` },
+                    }),
+                    { integration: 'zoom', label: 'download transcript (calendar discovery)' },
+                  )
                   if (tRes.ok) {
                     const content = await tRes.text()
                     const wordCount = content.split(/\s+/).length
@@ -786,9 +817,12 @@ serve(async (req) => {
       docsUrl.searchParams.set('type', 'notes')
       docsUrl.searchParams.set('page_size', '100')
 
-      const docsRes = await fetch(docsUrl.toString(), {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      })
+      const docsRes = await retryWithBackoff(
+        () => fetch(docsUrl.toString(), {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        }),
+        { integration: 'zoom', label: 'list docs' },
+      )
 
       const candidateDocs = new Map<string, { file_id: string; title: string; create_time?: string }>()
 
@@ -802,9 +836,12 @@ serve(async (req) => {
 
         if (!notesFolderId && docsData.docs && docsData.docs.length > 0) {
           try {
-            const metaRes = await fetch(
-              `https://api.zoom.us/v2/docs/files/${encodeURIComponent(docsData.docs[0].file_id)}`,
-              { headers: { 'Authorization': `Bearer ${accessToken}` } },
+            const metaRes = await retryWithBackoff(
+              () => fetch(
+                `https://api.zoom.us/v2/docs/files/${encodeURIComponent(docsData.docs[0].file_id)}`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } },
+              ),
+              { integration: 'zoom', label: 'doc file metadata' },
             )
             if (metaRes.ok) {
               const meta = await metaRes.json() as Record<string, unknown>
@@ -829,9 +866,12 @@ serve(async (req) => {
 
       if (notesFolderId) {
         try {
-          const childrenRes = await fetch(
-            `https://api.zoom.us/v2/docs/files/${encodeURIComponent(notesFolderId)}/children`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } },
+          const childrenRes = await retryWithBackoff(
+            () => fetch(
+              `https://api.zoom.us/v2/docs/files/${encodeURIComponent(notesFolderId)}/children`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } },
+            ),
+            { integration: 'zoom', label: 'doc folder children' },
           )
           if (childrenRes.ok) {
             const childrenData = await childrenRes.json() as {
