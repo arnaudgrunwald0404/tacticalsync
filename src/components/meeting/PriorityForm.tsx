@@ -12,14 +12,7 @@ import { useRCLinks } from "@/hooks/useRCDO";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { DOHashtagOption } from "@/types/rcdo";
-
-interface ActiveInitiative {
-  id: string;
-  title: string;
-  doId: string;
-  doTitle: string;
-  status: string;
-}
+import type { ActiveInitiative } from "@/hooks/useActiveInitiatives";
 
 interface PriorityFormProps {
   priority: PriorityRow;

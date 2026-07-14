@@ -15,7 +15,7 @@ const NAVIGATE: ShortcutRow[] = [
 
 const ACT: ShortcutRow[] = [
   { keys: 'd', label: 'Mark done' },
-  { keys: 'e', label: 'Edit text' },
+  { keys: 'e', label: 'Edit (opens detail panel)' },
   { keys: 's', label: 'Snooze' },
   { keys: 'x', label: 'Select (for bulk actions)' },
 ];

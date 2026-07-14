@@ -630,6 +630,86 @@ export function useStrategicInitiatives(doId: string | undefined) {
 // ============================================================================
 // useRCLinks - Manage links between DOs/Initiatives and meeting artifacts
 // ============================================================================
+
+/**
+ * Populate `linked_item` (title + originating meeting name) on each link so
+ * DO/SI detail pages can render a "Linked from meetings" section without a
+ * separate fetch per link. Only `meeting_priority` and `action_item` kinds
+ * are currently ever created by the app, so those are the only kinds we
+ * resolve; other kinds pass through unchanged.
+ */
+async function attachLinkedItemDetails(
+  links: RCLinkWithDetails[]
+): Promise<RCLinkWithDetails[]> {
+  if (links.length === 0) return links;
+
+  const detailsByRefId = new Map<string, { title?: string; meeting_name?: string }>();
+
+  const priorityIds = links.filter((l) => l.kind === 'meeting_priority').map((l) => l.ref_id);
+  const actionItemIds = links.filter((l) => l.kind === 'action_item').map((l) => l.ref_id);
+
+  if (priorityIds.length > 0) {
+    const { data: priorities } = await supabase
+      .from('meeting_instance_priorities')
+      .select('id, title, instance_id')
+      .in('id', priorityIds);
+
+    const instanceIds = Array.from(new Set((priorities || []).map((p) => p.instance_id)));
+    let instanceToSeries = new Map<string, string>();
+    if (instanceIds.length > 0) {
+      const { data: instances } = await supabase
+        .from('meeting_instances')
+        .select('id, series_id')
+        .in('id', instanceIds);
+      instanceToSeries = new Map((instances || []).map((i) => [i.id, i.series_id]));
+    }
+
+    const seriesIds = Array.from(new Set(Array.from(instanceToSeries.values())));
+    let seriesNames = new Map<string, string>();
+    if (seriesIds.length > 0) {
+      const { data: seriesRows } = await supabase
+        .from('meeting_series')
+        .select('id, name')
+        .in('id', seriesIds);
+      seriesNames = new Map((seriesRows || []).map((s) => [s.id, s.name]));
+    }
+
+    for (const p of priorities || []) {
+      const seriesId = instanceToSeries.get(p.instance_id);
+      detailsByRefId.set(p.id, {
+        title: p.title,
+        meeting_name: seriesId ? seriesNames.get(seriesId) : undefined,
+      });
+    }
+  }
+
+  if (actionItemIds.length > 0) {
+    const { data: actionItems } = await supabase
+      .from('meeting_series_action_items')
+      .select('id, title, series_id')
+      .in('id', actionItemIds);
+
+    const seriesIds = Array.from(new Set((actionItems || []).map((a) => a.series_id)));
+    let seriesNames = new Map<string, string>();
+    if (seriesIds.length > 0) {
+      const { data: seriesRows } = await supabase
+        .from('meeting_series')
+        .select('id, name')
+        .in('id', seriesIds);
+      seriesNames = new Map((seriesRows || []).map((s) => [s.id, s.name]));
+    }
+
+    for (const a of actionItems || []) {
+      detailsByRefId.set(a.id, { title: a.title, meeting_name: seriesNames.get(a.series_id) });
+    }
+  }
+
+  return links.map((link) => {
+    const details = detailsByRefId.get(link.ref_id);
+    return details ? { ...link, linked_item: details } : link;
+  });
+}
+
 export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | undefined) {
   const [links, setLinks] = useState<RCLinkWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
@@ -655,7 +735,9 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
 
       if (fetchError) throw fetchError;
 
-      setLinks(data as RCLinkWithDetails[] || []);
+      const rawLinks = (data as RCLinkWithDetails[]) || [];
+      const enrichedLinks = await attachLinkedItemDetails(rawLinks);
+      setLinks(enrichedLinks);
     } catch (err) {
       toast({
         title: 'Error',
