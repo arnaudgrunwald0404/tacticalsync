@@ -372,7 +372,6 @@ export default function SIDetail() {
       const updates: Record<string, unknown> = {
         locked_at: null,
         locked_by: null,
-        status: 'draft'
       };
       const { error } = await supabase
         .from('rc_strategic_initiatives')
@@ -410,7 +409,6 @@ export default function SIDetail() {
       const updates: Record<string, unknown> = {
         locked_at: new Date().toISOString(),
         locked_by: user?.id || null,
-        status: 'final',
       };
       const { error } = await supabase
         .from('rc_strategic_initiatives')
