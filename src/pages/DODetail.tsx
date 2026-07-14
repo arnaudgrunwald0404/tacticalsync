@@ -14,6 +14,7 @@ import { MetricDialog } from '@/components/rcdo/MetricDialog';
 import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
 import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
 import { CheckinCard } from '@/components/rcdo/CheckinCard';
+import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -422,6 +423,9 @@ export default function DODetail() {
               <TabsTrigger value="checkins">
                 Check-ins ({checkins.length})
               </TabsTrigger>
+              <TabsTrigger value="linked">
+                Linked from meetings ({links.filter(l => l.kind === 'meeting_priority' || l.kind === 'action_item').length})
+              </TabsTrigger>
             </TabsList>
 
             {/* Tracking Tab */}
@@ -543,6 +547,17 @@ export default function DODetail() {
                     </div>
                   </div>
                 )}
+              </Card>
+            </TabsContent>
+
+            {/* Linked from meetings Tab */}
+            <TabsContent value="linked">
+              <Card className="p-6">
+                <LinkedMeetingItems
+                  links={links}
+                  loading={linksLoading}
+                  emptyMessage="No meeting priorities or action items have been linked to this Defining Objective yet."
+                />
               </Card>
             </TabsContent>
           </Tabs>
