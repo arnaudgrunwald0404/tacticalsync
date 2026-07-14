@@ -33,6 +33,8 @@ export interface DetailPageHeaderProps {
   isLocked: boolean;
   isOwner: boolean;
   currentUserId: string | null;
+  /** No check-in recorded within STALE_CHECKIN_DAYS (src/lib/rcdoStaleness.ts) — renders a small warning badge next to the title, mirroring the Lock icon's placement. */
+  isStale?: boolean;
 
   // DO-specific
   type: 'do' | 'si';
@@ -86,6 +88,7 @@ export function DetailPageHeader({
   isLocked,
   isOwner,
   currentUserId,
+  isStale = false,
   type,
   doId,
   metrics = [],
@@ -197,6 +200,15 @@ export function DetailPageHeader({
             </h1>
             {isLocked && (
               <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+            )}
+            {isStale && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-orange-100 dark:bg-orange-900/40 px-2 py-0.5 text-xs font-medium text-orange-700 dark:text-orange-300 shrink-0"
+                title="No check-in or metric update recently — a reminder may be sent to the owner"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Stale
+              </span>
             )}
             {!isLocked && canEdit && onTitleChange && (
               <button

@@ -72,3 +72,9 @@ verify_jwt = true
 
 [functions.delegate-inbox-item-to-person]
 verify_jwt = true
+
+# Scheduled RCDO staleness sweep (see rcdo-stale-check/index.ts and
+# 20260729000009_rcdo_stale_check_cron.sql). Called by pg_cron with no
+# Authorization header, same as agent-tick/daily-prep-batch/inbox-unsnooze-sweep.
+[functions.rcdo-stale-check]
+verify_jwt = false

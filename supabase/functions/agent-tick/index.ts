@@ -97,6 +97,11 @@ interface NotificationPreferences {
   meeting_followups: boolean
   daily_brief: boolean
   inbox_item_nudges: boolean
+  // Not read by agent-tick itself — sent by the standalone rcdo-stale-check
+  // function (see its own copy of this interface) — kept here too so this
+  // duplicated shape doesn't silently drift from the one in
+  // src/hooks/useNotificationPreferences.ts and rcdo-stale-check/index.ts.
+  rcdo_stale_alerts: boolean
 }
 
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -107,6 +112,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   meeting_followups: true,
   daily_brief: true,
   inbox_item_nudges: true,
+  rcdo_stale_alerts: true,
 }
 
 /**
