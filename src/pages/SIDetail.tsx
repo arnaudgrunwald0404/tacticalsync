@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MessageSquare, Plus } from 'lucide-react';
-import { useCheckins } from '@/hooks/useRCDO';
+import { useCheckins, useRCLinks } from '@/hooks/useRCDO';
 import { useTasks, useTasksBySI, useTaskDetails } from '@/hooks/useTasks';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
@@ -36,6 +36,7 @@ import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
+import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
 
 
@@ -175,6 +176,9 @@ export default function SIDetail() {
   // Fetch check-ins
   const { checkins, loading: checkinsLoading, refetch: refetchCheckins } = useCheckins('initiative', siId);
 
+  // Fetch links to meeting priorities / action items
+  const { links, loading: linksLoading, refetch: refetchLinks } = useRCLinks('initiative', siId);
+
   // Permissions - must be called before any early returns
   const { canEditInitiative, canCreateTask, canEditTask, canDeleteTask, canLockDO } = useRCDOPermissions();
 
@@ -224,6 +228,7 @@ export default function SIDetail() {
     onTasksUpdate: refetchTasks,
     onCheckinsUpdate: refetchCheckins,
     onSubSIsUpdate: refetchSubSIs,
+    onLinksUpdate: refetchLinks,
   });
 
   // Refetch SI details when needed
@@ -248,7 +253,7 @@ export default function SIDetail() {
     }
   }, [siId]);
 
-  const loading = siLoading || tasksLoading || checkinsLoading;
+  const loading = siLoading || tasksLoading || checkinsLoading || linksLoading;
 
   const handleTaskSuccess = () => {
     refetchTasks();
@@ -566,6 +571,7 @@ export default function SIDetail() {
         onTabChange={setActiveTab}
         tasksCount={tasks.length}
         checkinsCount={checkins.length}
+        linksCount={links.filter(l => l.kind === 'meeting_priority' || l.kind === 'action_item').length}
         acceptsSubSis={acceptsSubSis}
         subSiCount={subSIs.length}
         additionalContent={additionalContent}
@@ -659,6 +665,16 @@ export default function SIDetail() {
               </Card>
             </TabsContent>
 
+            {/* Linked from meetings Tab */}
+            <TabsContent value="linked">
+              <Card className="p-6">
+                <LinkedMeetingItems
+                  links={links}
+                  loading={linksLoading}
+                  emptyMessage="No meeting priorities or action items have been linked to this Strategic Initiative yet."
+                />
+              </Card>
+            </TabsContent>
           </Tabs>
 
       {/* Dialogs */}

@@ -56,6 +56,7 @@ export interface DetailPageHeaderProps {
   checkinsCount?: number;
   acceptsSubSis?: boolean;
   subSiCount?: number;
+  linksCount?: number;
 
   // Additional content (for selected items in header)
   additionalContent?: React.ReactNode;
@@ -102,6 +103,7 @@ export function DetailPageHeader({
   checkinsCount = 0,
   acceptsSubSis = false,
   subSiCount = 0,
+  linksCount,
   additionalContent,
   editableTitle,
   onTitleChange,
@@ -459,6 +461,11 @@ export function DetailPageHeader({
               <TabsTrigger value="checkins" className="flex-1 sm:flex-initial">
                 Check-ins ({checkinsCount})
               </TabsTrigger>
+              {linksCount !== undefined && (
+                <TabsTrigger value="linked" className="flex-1 sm:flex-initial">
+                  Linked from meetings ({linksCount})
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
           {viewMode && onViewModeChange && activeTab === 'tasks' && (
