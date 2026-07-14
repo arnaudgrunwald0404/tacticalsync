@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 // ── Inbox action-item scanner ─────────────────────────────────────────────────
 //
@@ -47,24 +48,54 @@ interface Finding {
   kind: 'action_item' | 'question' | 'commitment'
   summary: string
   rationale: string
+  owed_by: 'me' | 'them' | null
+  // Absolute YYYY-MM-DD, resolved from an explicit or clearly-implied deadline
+  // in the message (e.g. "by Friday", "EOD tomorrow") — null when no deadline
+  // is stated. Feeds inbox_items.priority_due_at as a *fixed* (real) due date,
+  // distinct from the informal decaying priority tiers set manually in-app.
+  due_date: string | null
 }
 
 const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
 
 async function extractFindings(items: ScanItem[]): Promise<Finding[]> {
   const numbered = items.map(i => `${i.id}) [${i.label}] ${i.text}`).join('\n')
+  const todayIso = new Date().toISOString().slice(0, 10)
 
   const msg = await ai.messages.create({
     model: 'claude-haiku-4-5',
     max_tokens: 2048,
-    system: `You review a batch of Slack messages and emails for things the reader
-should not miss: explicit action items, direct questions aimed at them, and
-commitments someone (them or someone else) made. Ignore small talk, FYI-only
-notes, acknowledgments ("thanks!", "sounds good"), and anything already fully
-resolved within the same text. Respond ONLY with valid JSON: an array of
+    system: `Today's date is ${todayIso}. You review a batch of Slack messages and
+emails for things the reader should not miss: explicit action items, direct
+questions aimed at them, and commitments someone (them or someone else) made.
+Ignore small talk, FYI-only notes, acknowledgments ("thanks!", "sounds good"),
+and anything already fully resolved within the same text. Respond ONLY with
+valid JSON: an array of
 {"item_id": "<id from the list>", "kind": "action_item"|"question"|"commitment",
 "summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
-"rationale": "<one short clause on why this needs attention>"}.
+"rationale": "<one short clause on why this needs attention>",
+"owed_by": "me"|"them"|null,
+"due_date": "<YYYY-MM-DD>"|null}.
+
+For "owed_by", decide who owes the next response or action in the exchange,
+from the reader's point of view:
+- "me": the reader is the one being asked for something, and hasn't clearly
+  delivered it yet — the reader is the blocker. Example: "Can you review this
+  by Friday?" or "Waiting on your sign-off before we ship" directed at the
+  reader → owed_by: "me".
+- "them": someone else owes the reader a response or deliverable — the reader
+  is waiting on them. Example: "I'll get you the numbers tomorrow" or "Let me
+  check and get back to you" said TO the reader → owed_by: "them".
+- null: there's no clear directionality — a pure FYI/announcement, a question
+  with no obvious owner, or something already resolved. Example: "Heads up,
+  the office is closed Monday" → owed_by: null.
+
+For "due_date", resolve any explicit or clearly-implied deadline to an
+absolute YYYY-MM-DD date using today's date above — e.g. "by Friday" →
+next Friday's date, "EOD tomorrow" → tomorrow's date, "by end of month" →
+the last day of this month. Use null when no deadline is stated or implied —
+do NOT invent one from vague urgency words like "soon" or "when you get a
+chance".
 Return [] if nothing qualifies.`,
     messages: [{ role: 'user', content: numbered }],
   })
@@ -72,7 +103,17 @@ Return [] if nothing qualifies.`,
   const text = (msg.content[0] as { text: string }).text
   try {
     const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed as Finding[] : []
+    if (!Array.isArray(parsed)) return []
+    const isoDateRe = /^\d{4}-\d{2}-\d{2}$/
+    // Guard against the model returning something other than 'me'/'them'/null
+    // for owed_by, or a malformed due_date — owed_by has a DB check
+    // constraint, and a garbage due_date would still parse as a Date but
+    // produce nonsense priority_due_at values downstream.
+    return (parsed as Finding[]).map(f => ({
+      ...f,
+      owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
+      due_date: typeof f.due_date === 'string' && isoDateRe.test(f.due_date) ? f.due_date : null,
+    }))
   } catch {
     console.warn('extract-inbox-action-items: failed to parse Claude response:', text.slice(0, 200))
     return []
@@ -142,9 +183,29 @@ serve(async (req) => {
           .eq('user_id', userId)
           .maybeSingle()
 
-        const syncChannels: string[] = Array.isArray(slackCreds?.sync_channels) ? slackCreds.sync_channels : []
+        // The channel allowlist a user configures in Settings → Briefs &
+        // Schedule → Tools is stored on cos_prep_schedule.slack_channels —
+        // that's the source of truth, not user_slack_credentials.sync_channels
+        // (which nothing in the codebase ever writes to). Merge both so a
+        // user's selection there takes effect on this scheduled scan, not
+        // just via the manual "Sync now" button.
+        const { data: scheduleRow } = await supabase
+          .from('cos_prep_schedule')
+          .select('slack_channels')
+          .eq('user_id', userId)
+          .maybeSingle()
+        const scheduleChannels: string[] = Array.isArray(scheduleRow?.slack_channels) ? scheduleRow.slack_channels : []
+        const credsChannels: string[] = Array.isArray(slackCreds?.sync_channels) ? slackCreds.sync_channels : []
+        const syncChannels: string[] = Array.from(new Set([...scheduleChannels, ...credsChannels]))
 
-        if (slackCreds?.access_token && syncChannels.length > 0) {
+        // DMs are always scanned once Slack is connected — they aren't part
+        // of the channel allowlist (syncChannels), which only opts specific
+        // *channels* in. slack-messages-sync itself already syncs DMs
+        // unconditionally (its own step 1, independent of the channels
+        // param), so gating this whole block on syncChannels.length > 0 was
+        // silently skipping DMs (and re-syncing) for anyone who hadn't opted
+        // any channels in.
+        if (slackCreds?.access_token) {
           scannedSlack = true
           try {
             await fetch(`${supabaseUrl}/functions/v1/slack-messages-sync`, {
@@ -171,23 +232,24 @@ serve(async (req) => {
           const normalizedChannels = syncChannels.map(c => c.toLowerCase().replace(/^#/, ''))
           const { data: slackMsgs } = await supabase
             .from('cos_slack_messages')
-            .select('channel_id, channel_name, sender_name, content, message_date, message_ts')
+            .select('channel_id, channel_name, sender_name, content, message_date, message_ts, is_dm')
             .eq('user_id', userId)
-            .eq('is_dm', false)
             .gt('message_date', since)
             .order('message_date', { ascending: true })
             .limit(MAX_ITEMS_PER_RUN)
 
           for (const m of (slackMsgs ?? []) as Array<{
             channel_id: string; channel_name: string | null; sender_name: string | null
-            content: string; message_date: string; message_ts: string
+            content: string; message_date: string; message_ts: string; is_dm: boolean
           }>) {
-            if (!m.channel_name || !normalizedChannels.includes(m.channel_name.toLowerCase())) continue
+            // DMs are always in scope; channel messages only if the channel
+            // is in the user's sync allowlist.
+            if (!m.is_dm && (!m.channel_name || !normalizedChannels.includes(m.channel_name.toLowerCase()))) continue
             items.push({
               id: `s${items.length}`,
               source: 'slack',
               sourceId: `${m.channel_id}:${m.message_ts}`,
-              label: `#${m.channel_name} — ${m.sender_name ?? 'unknown'}`,
+              label: m.is_dm ? `DM from ${m.sender_name ?? 'unknown'}` : `#${m.channel_name} — ${m.sender_name ?? 'unknown'}`,
               text: m.content.slice(0, MAX_TEXT_LEN),
             })
           }
@@ -214,11 +276,14 @@ serve(async (req) => {
             form.set('client_secret', googleClientSecret)
             form.set('refresh_token', calCreds.refresh_token as string)
             form.set('grant_type', 'refresh_token')
-            const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: form.toString(),
-            })
+            const refreshRes = await retryWithBackoff(
+              () => fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: form.toString(),
+              }),
+              { integration: 'gmail', label: 'refresh access token' },
+            )
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
               if (refreshData.access_token && typeof refreshData.expires_in === 'number') {
@@ -245,13 +310,19 @@ serve(async (req) => {
             const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
             listUrl.searchParams.set('q', `in:inbox after:${sinceEpochSec} -category:promotions -category:social`)
             listUrl.searchParams.set('maxResults', String(MAX_ITEMS_PER_RUN))
-            const listRes = await fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+            const listRes = await retryWithBackoff(
+              () => fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } }),
+              { integration: 'gmail', label: 'list messages' },
+            )
             if (listRes.ok) {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
               for (const { id } of listData.messages ?? []) {
-                const msgRes = await fetch(
-                  `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-                  { headers: { Authorization: `Bearer ${accessToken}` } },
+                const msgRes = await retryWithBackoff(
+                  () => fetch(
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } },
+                  ),
+                  { integration: 'gmail', label: 'get message' },
                 )
                 if (!msgRes.ok) continue
                 const detail = await msgRes.json() as {
@@ -296,6 +367,10 @@ serve(async (req) => {
 
             if (existing) continue
 
+            // A resolved due_date is a *real* deadline (someone stated or
+            // implied one), so it's marked priority_fixed — same meaning as
+            // a due date set explicitly in-app — rather than the informal,
+            // decaying priority tiers (see inbox_items.priority_fixed).
             const { error: insertErr } = await supabase.from('inbox_items').insert({
               user_id: userId,
               type: 'agent_question',
@@ -305,8 +380,13 @@ serve(async (req) => {
                 rationale: finding.rationale,
                 action_required: true,
                 cta_label: 'Add to inbox',
+                cta_action: 'approve_suggestion',
               },
               source_ref: { type: sourceRefType, id: source.sourceId },
+              owed_by: finding.owed_by,
+              ...(finding.due_date
+                ? { priority_due_at: `${finding.due_date}T00:00:00Z`, priority_fixed: true }
+                : {}),
             })
             if (!insertErr) itemsCreated++
           }

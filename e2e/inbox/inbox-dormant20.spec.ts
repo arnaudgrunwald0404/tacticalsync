@@ -189,6 +189,7 @@ test.describe('Inbox: search', () => {
     await expect(page.getByText('Renew the annual insurance policy')).toBeVisible();
     await expect(page.getByText('Book flights for the offsite')).toBeVisible();
 
+    await page.getByRole('button', { name: 'Search' }).click();
     await page.getByPlaceholder(/Search tasks, notes, briefs/).fill('insurance');
     await page.waitForTimeout(400); // debounce
 
@@ -199,6 +200,7 @@ test.describe('Inbox: search', () => {
   test('clearing the search restores the full list', async ({ page }) => {
     await page.goto('/inbox');
     await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Search' }).click();
     const search = page.getByPlaceholder(/Search tasks, notes, briefs/);
     await search.fill('insurance');
     await page.waitForTimeout(400);
@@ -212,6 +214,7 @@ test.describe('Inbox: search', () => {
   test('a search with no matches shows the "no matches" empty state', async ({ page }) => {
     await page.goto('/inbox');
     await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Search' }).click();
     await page.getByPlaceholder(/Search tasks, notes, briefs/).fill('zzz-nonexistent-zzz');
     await page.waitForTimeout(400);
     await expect(page.getByText(/No matches for/)).toBeVisible();
@@ -327,6 +330,7 @@ test.describe('Inbox: keyboard shortcuts', () => {
   test('typing in the search box does not trigger navigation shortcuts', async ({ page }) => {
     await page.goto('/inbox');
     await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Search' }).click();
     const search = page.getByPlaceholder(/Search tasks, notes, briefs/);
     await search.click();
     await search.type('jjjkkkddd');

@@ -1,16 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { detectEscalations } from "../agent-escalation/index.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 import {
   selectDueItemsToNudge,
   selectMeetingsForInboxNudge,
   decideOptInAction,
   buildMeetingNudgeRationale,
   buildDueDateNudgeRationale,
+  fetchDoNowItems,
+  fetchDueNowTierItems,
+  fetchNeedsInputItems,
+  fetchBlockingOthersItems,
   type DueInboxItem,
   type NudgeHistoryEntry,
   type UpcomingMeeting,
   type OptInState,
+  type InboxNudgeCandidateItem,
+  type BlockingOthersItem,
 } from "../_shared/agentInboxNudges.ts"
 
 const corsHeaders = {
@@ -24,6 +31,11 @@ function jsonResponse(body: unknown, status: number): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+// Same fallback convention as send-cos-team-member-invite's invite links.
+function appOrigin(): string {
+  return Deno.env.get('APP_ORIGIN') || 'https://app.tacticalsync.com'
 }
 
 interface AgentConfig {
@@ -190,14 +202,17 @@ async function sendSlackDM(
   }
 
   // Open DM conversation
-  const openRes = await fetch('https://slack.com/api/conversations.open', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ users: slackCreds.slack_user_id }),
-  })
+  const openRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/conversations.open', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ users: slackCreds.slack_user_id }),
+    }),
+    { integration: 'slack', label: 'conversations.open' },
+  )
 
   const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
   if (!openData.ok || !openData.channel?.id) {
@@ -213,14 +228,17 @@ async function sendSlackDM(
     msgBody.blocks = blocks
   }
 
-  const msgRes = await fetch('https://slack.com/api/chat.postMessage', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(msgBody),
-  })
+  const msgRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(msgBody),
+    }),
+    { integration: 'slack', label: 'chat.postMessage' },
+  )
 
   const msgData = await msgRes.json() as { ok: boolean }
   return msgData.ok
@@ -330,6 +348,7 @@ serve(async (req) => {
       let prepsStaged = 0
       let escalations = 0
       let inboxItemsNudged = 0
+      let dailyDigestExtrasNudged = 0
 
       // ── Adaptive behavior: adjust config based on feedback ────────────
       try {
@@ -360,16 +379,20 @@ serve(async (req) => {
         // Non-fatal
       }
 
-      // ── Nudge overdue action items ────────────────────────────────────
-      if (config.nudge_actions) {
-        try {
-          actionsNudged = await nudgeActionItems(supabase, userId, config, notifPrefs)
-        } catch (err) {
-          await logAgentEvent(supabase, userId, 'error', {
-            handler: 'nudge_actions',
-            error: (err as Error).message,
-          })
-        }
+      // ── Consolidated daily to-do digest ───────────────────────────────
+      // Union of overdue/aged meeting action items (config.nudge_actions)
+      // with Do Now / due-now / needs-your-input / blocking-others inbox
+      // segments, sent as one message at most once per day — see
+      // sendDailyDigest() for the once-daily gate and section assembly.
+      try {
+        const digestResult = await sendDailyDigest(supabase, userId, config, notifPrefs)
+        actionsNudged = digestResult.actionsNudged
+        dailyDigestExtrasNudged = digestResult.extrasNudged
+      } catch (err) {
+        await logAgentEvent(supabase, userId, 'error', {
+          handler: 'daily_digest',
+          error: (err as Error).message,
+        })
       }
 
       // ── Pre-stage meeting prep ────────────────────────────────────────
@@ -424,20 +447,12 @@ serve(async (req) => {
               stalled_topics: 'Stalled Topics',
             }
 
-            if (notifPrefs.escalation_alerts) {
-              await sendSlackDM(supabase, userId,
-                `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
-                [{
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: `${severityEmoji} *${typeLabels[pattern.type]}*${pattern.member_name ? ` — ${pattern.member_name}` : ''}\n\n${pattern.details}`,
-                  },
-                }],
-              )
-            }
-
-            await supabase.from('cos_agent_log').insert({
+            // Insert the log row first so its id is available to attach as the
+            // Dismiss button's action_id (dismiss_escalation:<log_id>) — the
+            // handler for this action already exists in both
+            // agent-slack-action/index.ts and slack-bot/index.js, it just
+            // never had a button pointing at it before.
+            const { data: insertedEscalationLog } = await supabase.from('cos_agent_log').insert({
               user_id: userId,
               event_type: 'escalation_flagged',
               member_id: pattern.member_id ?? null,
@@ -447,7 +462,37 @@ serve(async (req) => {
                 severity: pattern.severity,
                 details: pattern.details,
               },
-            })
+            }).select('id').single()
+
+            if (notifPrefs.escalation_alerts) {
+              const escalationBlocks: unknown[] = [{
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `${severityEmoji} *${typeLabels[pattern.type]}*${pattern.member_name ? ` — ${pattern.member_name}` : ''}\n\n${pattern.details}`,
+                },
+              }]
+
+              const escalationLogId = (insertedEscalationLog as { id: string } | null)?.id
+              if (escalationLogId) {
+                escalationBlocks.push({ type: 'divider' })
+                escalationBlocks.push({
+                  type: 'actions',
+                  elements: [
+                    {
+                      type: 'button',
+                      text: { type: 'plain_text', text: ':mute: Dismiss' },
+                      action_id: `dismiss_escalation:${escalationLogId}`,
+                    },
+                  ],
+                })
+              }
+
+              await sendSlackDM(supabase, userId,
+                `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
+                escalationBlocks,
+              )
+            }
 
             escalations++
           }
@@ -478,6 +523,7 @@ serve(async (req) => {
         inbox_briefs_staged: inboxBriefsStaged,
         escalations,
         inbox_items_nudged: inboxItemsNudged,
+        daily_digest_extras_nudged: dailyDigestExtrasNudged,
       })
 
       results.push({
@@ -487,6 +533,7 @@ serve(async (req) => {
         inbox_briefs_staged: inboxBriefsStaged,
         escalations,
         inbox_items_nudged: inboxItemsNudged,
+        daily_digest_extras_nudged: dailyDigestExtrasNudged,
       })
     }
 
@@ -502,12 +549,24 @@ serve(async (req) => {
 
 // ── Action item nudging ─────────────────────────────────────────────────────
 
-async function nudgeActionItems(
+type ActionItemCandidate = { id: string; text: string; due_date: string | null; member_id: string; created_at: string }
+
+/**
+ * Fetches overdue/aged cos_meeting_actions, applies the same-day dedupe and
+ * all-time nudge-count ceiling (logging any newly-capped items along the
+ * way — bookkeeping that happens regardless of whether a message ends up
+ * being sent), and groups the result by member name.
+ *
+ * This is a pure candidate fetch — building/sending the Slack message is the
+ * caller's job (see sendDailyDigest()), so this same candidate list can be
+ * folded into one consolidated daily digest alongside Do Now / due-now /
+ * needs-input / blocking-others, instead of firing its own separate message.
+ */
+async function fetchActionItemNudgeCandidates(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
-  notifPrefs: NotificationPreferences,
-): Promise<number> {
+): Promise<{ byMember: Record<string, ActionItemCandidate[]>; toNudge: ActionItemCandidate[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const nudgeWindowMs = config.nudge_timing_hours * 3600 * 1000
   const nudgeDate = new Date(Date.now() + nudgeWindowMs).toISOString().slice(0, 10)
@@ -532,7 +591,7 @@ async function nudgeActionItems(
     .lte('created_at', fourteenDaysAgo)
 
   const allActions = [...(dueActions ?? []), ...(agedActions ?? [])]
-  if (allActions.length === 0) return 0
+  if (allActions.length === 0) return { byMember: {}, toNudge: [] }
 
   // Pull the full nudge history (and any prior "capped" markers) for the
   // candidate actions. This drives both the same-day de-dupe AND the all-time
@@ -588,7 +647,7 @@ async function nudgeActionItems(
       (nudgeCountByAction.get(a.id) ?? 0) < config.nudge_max_count,
   )
 
-  if (toNudgeRaw.length === 0) return 0
+  if (toNudgeRaw.length === 0) return { byMember: {}, toNudge: [] }
 
   // Get member info including agent overrides
   const memberIds = [...new Set(
@@ -609,112 +668,72 @@ async function nudgeActionItems(
 
   const toNudge = toNudgeRaw.filter(
     (a: { member_id: string }) => !suppressedMembers.has(a.member_id)
-  )
+  ) as ActionItemCandidate[]
 
-  if (toNudge.length === 0) return 0
+  if (toNudge.length === 0) return { byMember: {}, toNudge: [] }
 
   const memberMap = new Map(
     (members ?? []).map((m: { id: string; name: string }) => [m.id, m.name])
   )
 
   // Group by member for a consolidated message
-  const byMember: Record<string, Array<{ id: string; text: string; due_date: string | null; created_at: string }>> = {}
-  for (const action of toNudge as Array<{ id: string; text: string; due_date: string | null; member_id: string; created_at: string }>) {
+  const byMember: Record<string, ActionItemCandidate[]> = {}
+  for (const action of toNudge) {
     const memberName = memberMap.get(action.member_id) ?? 'Team member'
     if (!byMember[memberName]) byMember[memberName] = []
     byMember[memberName].push(action)
   }
 
-  // Build Slack message with interactive buttons
-  if (notifPrefs.overdue_action_nudges) {
-    const blocks: unknown[] = [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `:bell: *Action Items Need Attention*\n\nYou have ${toNudge.length} item(s) approaching or past their due date:`,
-        },
-      },
-    ]
+  return { byMember, toNudge }
+}
 
-    for (const [memberName, actions] of Object.entries(byMember)) {
-      // Section header per member
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${memberName}:*`,
-        },
-      })
+/** Pure Slack block builder for the action-item section of the daily digest
+ *  — one sub-section per member, each action with its own Mark done/Snooze
+ *  overflow menu. No header/feedback blocks; the caller wraps this into the
+ *  consolidated digest alongside the other sections. */
+function buildActionItemBlocks(byMember: Record<string, ActionItemCandidate[]>): unknown[] {
+  const blocks: unknown[] = []
 
-      // Each action with its own buttons
-      for (const a of actions) {
-        const dueLabel = a.due_date
-          ? `due ${a.due_date}`
-          : `pending ${Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86_400_000)} days`
-
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `• ${a.text} _(${dueLabel})_`,
-          },
-          accessory: {
-            type: 'overflow',
-            action_id: `action_overflow:${a.id}`,
-            options: [
-              {
-                text: { type: 'plain_text', text: ':white_check_mark: Mark done' },
-                value: `mark_done:${a.id}`,
-              },
-              {
-                text: { type: 'plain_text', text: ':clock3: Snooze 2 days' },
-                value: `snooze:${a.id}:2`,
-              },
-              {
-                text: { type: 'plain_text', text: ':clock4: Snooze 7 days' },
-                value: `snooze:${a.id}:7`,
-              },
-            ],
-          },
-        })
-      }
-    }
-
-    // Feedback buttons at the bottom
-    blocks.push({ type: 'divider' })
+  for (const [memberName, actions] of Object.entries(byMember)) {
     blocks.push({
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: ':thumbsup: Helpful' },
-          action_id: 'feedback:nudge:helpful',
-          style: 'primary',
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: ':clock1: Too early' },
-          action_id: 'feedback:nudge:too_early',
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: ':thumbsdown: Not helpful' },
-          action_id: 'feedback:nudge:not_helpful',
-        },
-      ],
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${memberName}:*` },
     })
 
-    await sendSlackDM(
-      supabase,
-      userId,
-      `You have ${toNudge.length} action item(s) approaching or past their due date`,
-      blocks,
-    )
+    for (const a of actions) {
+      const dueLabel = a.due_date
+        ? `due ${a.due_date}`
+        : `pending ${Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86_400_000)} days`
+
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `• ${a.text} _(${dueLabel})_` },
+        accessory: {
+          type: 'overflow',
+          action_id: `action_overflow:${a.id}`,
+          options: [
+            { text: { type: 'plain_text', text: ':white_check_mark: Mark done' }, value: `mark_done:${a.id}` },
+            { text: { type: 'plain_text', text: ':clock3: Snooze 2 days' }, value: `snooze:${a.id}:2` },
+            { text: { type: 'plain_text', text: ':clock4: Snooze 7 days' }, value: `snooze:${a.id}:7` },
+          ],
+        },
+      })
+    }
   }
 
-  // Log each nudge and collect log IDs for feedback linkage
-  for (const action of toNudge as Array<{ id: string; text: string; due_date: string | null; member_id: string }>) {
+  return blocks
+}
+
+/** Logs 'nudge_sent' for each action-item candidate once the consolidated
+ *  digest has actually been sent — kept separate from the candidate fetch so
+ *  a computed-but-unsent candidate (e.g. digest suppressed by notifPrefs)
+ *  never gets marked as nudged. */
+async function logActionItemNudgesSent(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  toNudge: ActionItemCandidate[],
+): Promise<void> {
+  for (const action of toNudge) {
     await supabase.from('cos_agent_log').insert({
       user_id: userId,
       event_type: 'nudge_sent',
@@ -723,8 +742,6 @@ async function nudgeActionItems(
       payload: { due_date: action.due_date, text: action.text },
     })
   }
-
-  return toNudge.length
 }
 
 // ── Pre-stage meeting prep ──────────────────────────────────────────────────
@@ -862,6 +879,12 @@ async function prestagePreps(
                 text: `:sparkles: *1:1 Prep Ready*\n\nYour meeting with *${memberName}* is ${dayLabel} at *${meetingTime}*. I've prepared your briefing.`,
               },
             },
+            {
+              type: 'actions',
+              elements: [
+                { type: 'button', text: { type: 'plain_text', text: 'View prep' }, url: `${appOrigin()}/check-ins`, style: 'primary' },
+              ],
+            },
           ])
         }
 
@@ -989,6 +1012,12 @@ async function prestageInboxBriefs(
                   type: 'mrkdwn',
                   text: `:brain: *1:1 Brief Ready*\n\nYour meeting with *${memberName}* is ${dayLabel}. Open items, what's changed, and talking points are waiting in your inbox.`,
                 },
+              },
+              {
+                type: 'actions',
+                elements: [
+                  { type: 'button', text: { type: 'plain_text', text: 'View brief' }, url: `${appOrigin()}/inbox/person/${event.team_member_id}`, style: 'primary' },
+                ],
               },
             ])
           }
@@ -1489,6 +1518,164 @@ async function maybeNudgeInboxItems(
   return nudgedCount
 }
 
+// ── Consolidated daily to-do digest ─────────────────────────────────────────
+//
+// One Slack DM per day, at most, unioning: overdue/aged meeting action items
+// (previously their own separate "Action Items Need Attention" message),
+// Do Now items, the informal due-now priority tier, items still needing the
+// user's own input, and items where the user is the one blocking someone
+// else. This is deliberately a *different* feature from
+// maybeNudgeInboxItems() above (pre-1:1 tagged items + fixed-due-date items,
+// its own opt-in) — that one is untouched; this digest only absorbs the
+// action-item nudge that used to fire on its own.
+
+/** Adds an overflow-menu section for a simple candidate list, reusing the
+ *  existing inbox_mark_done / inbox_due_snooze Slack actions. `withSnooze`
+ *  only makes sense for items that carry a real-ish due date (the due-now
+ *  tier); Do Now / needs-input / blocking-others just offer Mark done. */
+function buildInboxSectionBlocks(
+  items: Array<{ id: string; text: string }>,
+  withSnooze: boolean,
+): unknown[] {
+  return items.map((item) => ({
+    type: 'section',
+    text: { type: 'mrkdwn', text: `• ${item.text}` },
+    accessory: {
+      type: 'overflow',
+      action_id: `action_overflow:${item.id}`,
+      options: [
+        { text: { type: 'plain_text', text: ':white_check_mark: Mark done' }, value: `inbox_mark_done:${item.id}` },
+        ...(withSnooze
+          ? [{ text: { type: 'plain_text', text: ':clock3: Snooze 2 days' }, value: `inbox_due_snooze:${item.id}:2` }]
+          : []),
+      ],
+    },
+  }))
+}
+
+async function sendDailyDigest(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  config: AgentConfig,
+  notifPrefs: NotificationPreferences,
+): Promise<{ actionsNudged: number; extrasNudged: number }> {
+  const todayDate = new Date().toISOString().slice(0, 10)
+
+  // Once-daily gate: if today's digest already went out, do nothing — even
+  // re-running the candidate queries is pointless until tomorrow.
+  const { count: alreadySentToday } = await supabase
+    .from('cos_agent_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('event_type', 'daily_digest_sent')
+    .gte('created_at', todayDate + 'T00:00:00Z')
+
+  if ((alreadySentToday ?? 0) > 0) return { actionsNudged: 0, extrasNudged: 0 }
+
+  const [actionResult, doNowItems, dueNowItems, needsInputItems, blockingOthersItems] = await Promise.all([
+    config.nudge_actions
+      ? fetchActionItemNudgeCandidates(supabase, userId, config)
+      : Promise.resolve({ byMember: {}, toNudge: [] as ActionItemCandidate[] }),
+    fetchDoNowItems(supabase, userId),
+    fetchDueNowTierItems(supabase, userId),
+    fetchNeedsInputItems(supabase, userId),
+    fetchBlockingOthersItems(supabase, userId),
+  ])
+
+  const blocks: unknown[] = []
+  let extrasNudged = 0
+  const actionSectionIncluded = notifPrefs.overdue_action_nudges && actionResult.toNudge.length > 0
+
+  if (actionSectionIncluded) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:bell: *Action items* — ${actionResult.toNudge.length} approaching or past their due date`,
+      },
+    })
+    blocks.push(...buildActionItemBlocks(actionResult.byMember))
+  }
+
+  if (notifPrefs.inbox_item_nudges && doNowItems.length > 0) {
+    blocks.push({ type: 'divider' })
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: ':red_circle: *Do Now*' } })
+    blocks.push(...buildInboxSectionBlocks(doNowItems, false))
+    extrasNudged += doNowItems.length
+  }
+
+  if (notifPrefs.inbox_item_nudges && dueNowItems.length > 0) {
+    blocks.push({ type: 'divider' })
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: ':calendar: *Due now*' } })
+    blocks.push(...buildInboxSectionBlocks(dueNowItems, true))
+    extrasNudged += dueNowItems.length
+  }
+
+  if (notifPrefs.inbox_item_nudges && needsInputItems.length > 0) {
+    blocks.push({ type: 'divider' })
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: ':inbox_tray: *Needs your input*' } })
+    blocks.push(...buildInboxSectionBlocks(needsInputItems, false))
+    extrasNudged += needsInputItems.length
+  }
+
+  if (notifPrefs.inbox_item_nudges && blockingOthersItems.length > 0) {
+    blocks.push({ type: 'divider' })
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: ":hourglass_flowing_sand: *You're blocking these*" } })
+    blocks.push(...buildInboxSectionBlocks(blockingOthersItems, false))
+    extrasNudged += blockingOthersItems.length
+  }
+
+  // Nothing to say today — leave the once-daily gate unmarked so a later
+  // tick (once something becomes due/Do Now/etc) can still send today.
+  if (blocks.length === 0) return { actionsNudged: 0, extrasNudged: 0 }
+
+  const actionsNudgedCount = actionSectionIncluded ? actionResult.toNudge.length : 0
+  const totalCount = actionsNudgedCount + extrasNudged
+  const headerBlocks: unknown[] = [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `:clipboard: *Your to-do list* — ${totalCount} item${totalCount === 1 ? '' : 's'} need attention` },
+    },
+    { type: 'divider' },
+  ]
+
+  const footerBlocks: unknown[] = [
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', text: { type: 'plain_text', text: ':thumbsup: Helpful' }, action_id: 'feedback:nudge:helpful', style: 'primary' },
+        { type: 'button', text: { type: 'plain_text', text: ':clock1: Too early' }, action_id: 'feedback:nudge:too_early' },
+        { type: 'button', text: { type: 'plain_text', text: ':alarm_clock: Too late' }, action_id: 'feedback:nudge:too_late' },
+        { type: 'button', text: { type: 'plain_text', text: ':thumbsdown: Not helpful' }, action_id: 'feedback:nudge:not_helpful' },
+      ],
+    },
+  ]
+
+  await sendSlackDM(supabase, userId, `You have ${totalCount} item(s) that need attention`, [
+    ...headerBlocks,
+    ...blocks,
+    ...footerBlocks,
+  ])
+
+  if (actionSectionIncluded) {
+    await logActionItemNudgesSent(supabase, userId, actionResult.toNudge)
+  }
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'daily_digest_sent',
+    payload: {
+      actions_nudged: actionsNudgedCount,
+      do_now: doNowItems.length,
+      due_now: dueNowItems.length,
+      needs_input: needsInputItems.length,
+      blocking_others: blockingOthersItems.length,
+    },
+  })
+
+  return { actionsNudged: actionsNudgedCount, extrasNudged }
+}
+
 // ── Format recommendations ──────────────────────────────────────────────────
 
 const CADENCE_DAYS: Record<string, number> = {
@@ -1634,15 +1821,32 @@ async function computeFormatRecommendations(
     // Send notification (only if score suggests something non-standard)
     if (score === 0 || score > 8) {
       if (notifPrefs.format_suggestions) {
+        // Feedback row modeled on the daily digest's footer buttons — but
+        // "too early"/"too late" (nudge-timing feedback) don't apply to a
+        // one-off format recommendation, so "Wrong format" replaces them.
+        // "Wrong format" only makes sense here, not on the generic
+        // action-item digest, since it's feedback on this specific
+        // recommendation rather than on nudge timing.
         await sendSlackDM(supabase, userId,
           `Meeting format suggestion for ${memberName}: ${format}`,
-          [{
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `${emoji} *Suggested format for ${memberName}:* ${format}\n\n${reasons.map(r => `• ${r}`).join('\n')}`,
+          [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `${emoji} *Suggested format for ${memberName}:* ${format}\n\n${reasons.map(r => `• ${r}`).join('\n')}`,
+              },
             },
-          }],
+            { type: 'divider' },
+            {
+              type: 'actions',
+              elements: [
+                { type: 'button', text: { type: 'plain_text', text: ':thumbsup: Helpful' }, action_id: 'feedback:format:helpful', style: 'primary' },
+                { type: 'button', text: { type: 'plain_text', text: ':bar_chart: Wrong format' }, action_id: 'feedback:format:wrong_format' },
+                { type: 'button', text: { type: 'plain_text', text: ':thumbsdown: Not helpful' }, action_id: 'feedback:format:not_helpful' },
+              ],
+            },
+          ],
         )
       }
     }

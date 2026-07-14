@@ -477,6 +477,30 @@ export function InboxAssistantPanel({
 }: InboxAssistantPanelProps) {
   const isMobile = useIsMobile();
 
+  // ── Item title rename — click-to-edit (not double-click, so it works on
+  //    touch), shared between the mobile Sheet header and the desktop header
+  //    below since both render the same item.text.
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+
+  useEffect(() => {
+    setEditingTitle(false);
+  }, [item?.id]);
+
+  const startEditTitle = () => {
+    if (!item) return;
+    setTitleDraft(item.text);
+    setEditingTitle(true);
+  };
+
+  const commitEditTitle = async () => {
+    setEditingTitle(false);
+    const trimmed = titleDraft.trim();
+    if (item && trimmed && trimmed !== item.text) {
+      await onUpdateItem?.(item.id, { text: trimmed } as Partial<InboxItem>);
+    }
+  };
+
   // ── Assistant chat (the "no item selected" home view) ─────────────────────
   const [chatMessages, setChatMessages] = useState<AssistantChatMsg[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -565,7 +589,26 @@ export function InboxAssistantPanel({
         <Sheet open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
           <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
             <div className="flex items-center gap-2 px-4 py-3 pr-12 border-b border-gray-100 flex-shrink-0">
-              <SheetTitle className="text-sm font-medium text-gray-900 truncate">{item?.text}</SheetTitle>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={e => setTitleDraft(e.target.value)}
+                  onBlur={commitEditTitle}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitEditTitle(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setEditingTitle(false); }
+                  }}
+                  className="flex-1 text-sm font-medium text-gray-900 outline-none bg-white ring-1 ring-blue-300 rounded px-1 -mx-1"
+                />
+              ) : (
+                <SheetTitle
+                  onClick={startEditTitle}
+                  className="text-sm font-medium text-gray-900 truncate cursor-text"
+                >
+                  {item?.text}
+                </SheetTitle>
+              )}
             </div>
             {item && (
               <ItemDetail
@@ -625,7 +668,26 @@ export function InboxAssistantPanel({
           >
             {item ? (
               <>
-                <p className="flex-1 text-sm font-medium text-gray-900 truncate">{item.text}</p>
+                {editingTitle ? (
+                  <input
+                    autoFocus
+                    value={titleDraft}
+                    onChange={e => setTitleDraft(e.target.value)}
+                    onBlur={commitEditTitle}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitEditTitle(); }
+                      if (e.key === 'Escape') { e.preventDefault(); setEditingTitle(false); }
+                    }}
+                    className="flex-1 text-sm font-medium text-gray-900 outline-none bg-white ring-1 ring-blue-300 rounded px-1 -mx-1"
+                  />
+                ) : (
+                  <p
+                    onClick={startEditTitle}
+                    className="flex-1 text-sm font-medium text-gray-900 truncate cursor-text"
+                  >
+                    {item.text}
+                  </p>
+                )}
                 <button
                   onClick={onClose}
                   aria-label="Close item detail"

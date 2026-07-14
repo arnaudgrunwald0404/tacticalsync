@@ -5,6 +5,11 @@ import {
   decideOptInAction,
   buildMeetingNudgeRationale,
   buildDueDateNudgeRationale,
+  isDueNowTier,
+  fetchDoNowItems,
+  fetchDueNowTierItems,
+  fetchNeedsInputItems,
+  fetchBlockingOthersItems,
   type DueInboxItem,
   type NudgeHistoryEntry,
   type UpcomingMeeting,
@@ -284,5 +289,292 @@ describe('buildMeetingNudgeRationale', () => {
 describe('buildDueDateNudgeRationale', () => {
   it('returns the fixed due-date rationale string', () => {
     expect(buildDueDateNudgeRationale()).toBe('Suggested by your agent · due date approaching');
+  });
+});
+
+// ── Consolidated daily digest — additional nudge-candidate fetchers ─────────────
+
+// A minimal in-memory PostgREST-like stub: `.from(table)` returns a fluent
+// builder whose eq/not/contains/order/limit calls filter/slice an in-memory
+// row array, and which resolves (via `.then`) to `{ data, error: null }` when
+// awaited — enough surface for the fetch*() functions under test without
+// needing to mock the real `@supabase/supabase-js` client.
+function makeSupabaseStub(tableRows: Record<string, Record<string, unknown>[]>) {
+  return {
+    from(table: string) {
+      let rows = [...(tableRows[table] ?? [])];
+      const builder = {
+        select() {
+          return builder;
+        },
+        eq(col: string, val: unknown) {
+          rows = rows.filter((r) => r[col] === val);
+          return builder;
+        },
+        neq(col: string, val: unknown) {
+          rows = rows.filter((r) => r[col] !== val);
+          return builder;
+        },
+        not(col: string, op: string, val: unknown) {
+          if (op === 'is' && val === null) {
+            rows = rows.filter((r) => r[col] !== null && r[col] !== undefined);
+          }
+          return builder;
+        },
+        contains(col: string, val: Record<string, unknown>) {
+          rows = rows.filter((r) => {
+            const cell = r[col];
+            if (!cell || typeof cell !== 'object') return false;
+            return Object.entries(val).every(([k, v]) => (cell as Record<string, unknown>)[k] === v);
+          });
+          return builder;
+        },
+        order() {
+          return builder;
+        },
+        limit(n: number) {
+          rows = rows.slice(0, n);
+          return builder;
+        },
+        then(resolve: (value: { data: Record<string, unknown>[]; error: null }) => unknown) {
+          return Promise.resolve({ data: rows, error: null }).then(resolve);
+        },
+      };
+      return builder;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
+
+function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'item-1',
+    user_id: 'user-1',
+    type: 'task',
+    text: 'Some item',
+    status: 'open',
+    workflow_status: null,
+    priority_due_at: null,
+    priority_fixed: false,
+    owed_by: null,
+    source_ref: null,
+    updated_at: '2026-07-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('isDueNowTier', () => {
+  const NOW2 = new Date('2026-07-07T12:00:00.000Z');
+
+  it('is false for a null due date', () => {
+    expect(isDueNowTier(null, NOW2)).toBe(false);
+  });
+
+  it('is true for a due date earlier today', () => {
+    expect(isDueNowTier('2026-07-07T01:00:00.000Z', NOW2)).toBe(true);
+  });
+
+  it('is true for a due date in the past', () => {
+    expect(isDueNowTier('2026-07-01T00:00:00.000Z', NOW2)).toBe(true);
+  });
+
+  it('is false for a due date tomorrow or later', () => {
+    expect(isDueNowTier('2026-07-08T00:00:01.000Z', NOW2)).toBe(false);
+  });
+
+  it('is false for an unparseable date string', () => {
+    expect(isDueNowTier('not-a-date', NOW2)).toBe(false);
+  });
+});
+
+describe('fetchDoNowItems', () => {
+  it('returns only open items with workflow_status "Do Now"', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', workflow_status: 'Do Now' }),
+        row({ id: 'b', workflow_status: 'Not started' }),
+        row({ id: 'c', workflow_status: 'Do Now', status: 'done' }),
+      ],
+    });
+    const result = await fetchDoNowItems(supabase, 'user-1');
+    expect(result.map((i) => i.id)).toEqual(['a']);
+  });
+
+  it('respects the cap', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: Array.from({ length: 15 }, (_, i) => row({ id: `item-${i}`, workflow_status: 'Do Now' })),
+    });
+    const result = await fetchDoNowItems(supabase, 'user-1', 5);
+    expect(result).toHaveLength(5);
+  });
+
+  it('excludes unapproved agent_question suggestions', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', workflow_status: 'Do Now' })],
+    });
+    const result = await fetchDoNowItems(supabase, 'user-1');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('fetchDueNowTierItems', () => {
+  const NOW2 = new Date('2026-07-07T12:00:00.000Z');
+
+  it('includes an item due today or earlier that is not priority_fixed', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', priority_due_at: '2026-07-07T01:00:00.000Z', priority_fixed: false }),
+      ],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result.map((i) => i.id)).toEqual(['a']);
+  });
+
+  it('also includes a priority_fixed item due today or earlier (e.g. a real deadline extracted from a Slack DM/email)', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', priority_due_at: '2026-07-07T01:00:00.000Z', priority_fixed: true }),
+      ],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result.map((i) => i.id)).toEqual(['a']);
+  });
+
+  it('excludes items with no due date', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', priority_due_at: null, priority_fixed: false })],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result).toEqual([]);
+  });
+
+  it('excludes items due in the future', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', priority_due_at: '2026-07-09T00:00:00.000Z', priority_fixed: false })],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result).toEqual([]);
+  });
+
+  it('sorts the most overdue item first and respects the cap', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'later', priority_due_at: '2026-07-07T10:00:00.000Z', priority_fixed: false }),
+        row({ id: 'earliest', priority_due_at: '2026-07-01T00:00:00.000Z', priority_fixed: false }),
+        row({ id: 'mid', priority_due_at: '2026-07-05T00:00:00.000Z', priority_fixed: false }),
+      ],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 2, NOW2);
+    expect(result.map((i) => i.id)).toEqual(['earliest', 'mid']);
+  });
+
+  it('excludes an unapproved agent_question suggestion even with a due date in the past', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', type: 'agent_question', priority_due_at: '2026-07-01T00:00:00.000Z', priority_fixed: true }),
+      ],
+    });
+    const result = await fetchDueNowTierItems(supabase, 'user-1', 10, NOW2);
+    expect(result).toEqual([]);
+  });
+});
+
+describe('fetchNeedsInputItems', () => {
+  it('includes null, "Not started", and "Work in progress" statuses', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', workflow_status: null }),
+        row({ id: 'b', workflow_status: 'Not started' }),
+        row({ id: 'c', workflow_status: 'Work in progress' }),
+      ],
+    });
+    const result = await fetchNeedsInputItems(supabase, 'user-1');
+    expect(result.map((i) => i.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('excludes "Do Now", "Waiting on someone", and "Blocked"', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [
+        row({ id: 'a', workflow_status: 'Do Now' }),
+        row({ id: 'b', workflow_status: 'Waiting on someone' }),
+        row({ id: 'c', workflow_status: 'Blocked' }),
+      ],
+    });
+    const result = await fetchNeedsInputItems(supabase, 'user-1');
+    expect(result).toEqual([]);
+  });
+
+  it('respects the cap', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: Array.from({ length: 15 }, (_, i) => row({ id: `item-${i}`, workflow_status: 'Not started' })),
+    });
+    const result = await fetchNeedsInputItems(supabase, 'user-1', 5);
+    expect(result).toHaveLength(5);
+  });
+
+  it('excludes unapproved agent_question suggestions', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', workflow_status: null })],
+    });
+    const result = await fetchNeedsInputItems(supabase, 'user-1');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('fetchBlockingOthersItems', () => {
+  it('includes items with owed_by = "me"', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', owed_by: 'me' })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([{ id: 'a', text: 'Some item', via: 'owed_by' }]);
+  });
+
+  it('includes source_ref.type = "meeting_action_item" rows', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', source_ref: { type: 'meeting_action_item', id: '123' } })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([{ id: 'a', text: 'Some item', via: 'meeting_action_item' }]);
+  });
+
+  it('includes source_ref.type = "cos_meeting_action" rows', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', source_ref: { type: 'cos_meeting_action', id: '456' } })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([{ id: 'a', text: 'Some item', via: 'cos_meeting_action' }]);
+  });
+
+  it('dedupes an item matching more than one condition, preferring owed_by', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', owed_by: 'me', source_ref: { type: 'meeting_action_item', id: '1' } })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([{ id: 'a', text: 'Some item', via: 'owed_by' }]);
+  });
+
+  it('does not include unrelated open items', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', owed_by: null, source_ref: null })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([]);
+  });
+
+  it('respects the cap across the merged union', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: Array.from({ length: 15 }, (_, i) => row({ id: `item-${i}`, owed_by: 'me' })),
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1', 5);
+    expect(result).toHaveLength(5);
+  });
+
+  it('excludes an unapproved agent_question suggestion even with owed_by = "me"', async () => {
+    const supabase = makeSupabaseStub({
+      inbox_items: [row({ id: 'a', type: 'agent_question', owed_by: 'me' })],
+    });
+    const result = await fetchBlockingOthersItems(supabase, 'user-1');
+    expect(result).toEqual([]);
   });
 });

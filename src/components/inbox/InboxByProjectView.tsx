@@ -86,15 +86,22 @@ export function InboxByProjectView({
       groups.push({ tag: null as unknown as InboxTag, items: noProject });
     }
 
-    // Within each section, most-urgent-first: Do Now, then the informal due
-    // date tiers (now/1d/3d/1w/2w/1m), least urgent (or no due date) last.
-    const now = new Date();
-    const byUrgency = (a: InboxItem, b: InboxItem) => priorityRank(a, now) - priorityRank(b, now);
-    pinnedItems.sort(byUrgency);
-    for (const group of groups) group.items.sort(byUrgency);
+    // Prioritize mode only: re-rank each section most-urgent-first — Do Now,
+    // then the informal due-date tiers (now/1d/3d/1w/2w/1m), least urgent (or
+    // no due date) last. Gated on prioritizeMode so toggling it actually
+    // changes ordering here, the same as it does in the Now/Next/Later view —
+    // previously this sorted unconditionally, so the Prioritize toggle had no
+    // visible effect in By Project mode (items were already urgency-sorted
+    // whether or not the toggle was on).
+    if (prioritizeMode) {
+      const now = new Date();
+      const byUrgency = (a: InboxItem, b: InboxItem) => priorityRank(a, now) - priorityRank(b, now);
+      pinnedItems.sort(byUrgency);
+      for (const group of groups) group.items.sort(byUrgency);
+    }
 
     return { pinnedItems, projectGroups: groups };
-  }, [items, allTags]);
+  }, [items, allTags, prioritizeMode]);
 
   const sharedRowProps = {
     allTags, onArchive, onDelete, onRemoveTag, onAddTag,

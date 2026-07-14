@@ -280,7 +280,7 @@ export default function DODetail() {
       const updates: Record<string, unknown> = {
         locked_at: new Date().toISOString(),
         locked_by: user?.id || null,
-        status: 'final'
+        status: 'locked'
       };
       const { error } = await supabase
         .from('rc_defining_objectives')
@@ -604,19 +604,14 @@ export default function DODetail() {
                     Status
                   </label>
                   <Badge className={
-                    selectedInitiative.status === 'draft' ? 'bg-[#5B6E7A]' :
-                    selectedInitiative.status === 'initialized' ? 'bg-cyan-500' :
-                    selectedInitiative.status === 'on_track' ? 'bg-green-500' :
-                    selectedInitiative.status === 'delayed' ? 'bg-yellow-500' :
-                    selectedInitiative.status === 'cancelled' ? 'bg-red-500' :
-                    // Legacy status mappings
                     selectedInitiative.status === 'not_started' ? 'bg-[#5B6E7A]' :
+                    selectedInitiative.status === 'on_track' ? 'bg-green-500' :
                     selectedInitiative.status === 'at_risk' ? 'bg-yellow-500' :
                     selectedInitiative.status === 'off_track' ? 'bg-yellow-500' :
                     selectedInitiative.status === 'completed' ? 'bg-green-500' :
                     'bg-gray-500'
                   }>
-                    {selectedInitiative.status?.replace('_', ' ').toUpperCase() || 'Draft'}
+                    {selectedInitiative.status?.replace('_', ' ').toUpperCase() || 'Not Started'}
                   </Badge>
                 </div>
 

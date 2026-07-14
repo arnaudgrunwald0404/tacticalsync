@@ -2,7 +2,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import GridBackground from "@/components/ui/grid-background";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useEffect, useState, Suspense } from "react";
-import DashboardMain from "./DashboardMain";
+// Deprecated: RCDO meetings feature — no longer used (see the "main" tab below).
+// import DashboardMain from "./DashboardMain";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 const StrategyHome = lazyWithRetry(() => import("./StrategyHome"));
 const LazyCommitmentsPage = lazyWithRetry(() => import("./Commitments"));
@@ -44,8 +45,7 @@ const DashboardWithTabs = () => {
     ? 'rcdo'
     : location.pathname.includes('/commitments')
     ? 'commitments'
-    : location.pathname.includes('/my-meetings')
-    ? 'main'
+    // Deprecated: RCDO meetings feature — /my-meetings no longer routes here.
     : 'main';
 
   // Fetch active cycle to auto-route to canvas when RCDO tab is selected
@@ -75,9 +75,11 @@ const DashboardWithTabs = () => {
           ) : null}
         </TabsContent>
 
+        {/* Deprecated: RCDO meetings feature — no longer used.
         <TabsContent value="main" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           <DashboardMain />
         </TabsContent>
+        */}
 
         <TabsContent value="rcdo" className={isMobile ? "mt-0 pb-20" : "mt-0"}>
           {activeTab === 'rcdo' ? (

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -103,17 +104,35 @@ serve(async (req) => {
     const token = creds.access_token as string
     const mySlackId = creds.slack_user_id as string | null
 
-    // Merge stored channels with any passed in the body, deduplicating.
+    // The channel allowlist a user configures in Settings → Briefs & Schedule
+    // → Tools is stored on cos_prep_schedule.slack_channels — that's the
+    // real source of truth. Look it up here directly (rather than trusting
+    // every caller to pass the right channels through) so any invocation for
+    // this user — including the cron/service-role path, which never used to
+    // see this selection — picks up their current choice automatically.
+    // user_slack_credentials.sync_channels is kept as a legacy fallback and
+    // merged in too: nothing in the codebase currently writes to it, but
+    // merging costs nothing and avoids silently dropping channels if that
+    // ever changes.
+    const { data: scheduleRow } = await supabase
+      .from('cos_prep_schedule')
+      .select('slack_channels')
+      .eq('user_id', userId)
+      .maybeSingle()
+    const scheduleChannels: string[] = Array.isArray(scheduleRow?.slack_channels) ? scheduleRow.slack_channels : []
     const storedChannels: string[] = Array.isArray(creds.sync_channels) ? creds.sync_channels : []
-    const extraChannels = Array.from(new Set([...storedChannels, ...bodyChannels]))
+    const extraChannels = Array.from(new Set([...scheduleChannels, ...storedChannels, ...bodyChannels]))
 
     // Helper: call a Slack API method.
     async function slackApi(method: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {
       const url = new URL(`https://slack.com/api/${method}`)
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-      const res = await fetch(url.toString(), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
+      const res = await retryWithBackoff(
+        () => fetch(url.toString(), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        { integration: 'slack', label: method },
+      )
       return res.json() as Promise<Record<string, unknown>>
     }
 

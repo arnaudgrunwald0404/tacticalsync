@@ -44,7 +44,7 @@ import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsent
 import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMemoryBanner';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag, InboxView, InboxViewSort } from '@/types/inbox';
-import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId } from '@/lib/inboxValidation';
+import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId, priorityRank } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
@@ -273,6 +273,7 @@ export default function InboxPage() {
   // stale copy until it's closed and reopened.
   const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [hasChangedViewThisSession, setHasChangedViewThisSession] = useState(false);
@@ -701,6 +702,21 @@ export default function InboxPage() {
     await archive(id);
   }, [allItems, archive]);
 
+  // "Add to inbox" on an AI-extracted suggestion (Slack DM/channel, Gmail,
+  // Zoom commitment — see extract-inbox-action-items/index.ts and
+  // extract-zoom-quotes/index.ts) is the user's explicit approval: flip it
+  // from 'agent_question' to a real 'task' so it becomes eligible for the
+  // daily digest (fetchDoNowItems/fetchDueNowTierItems/fetchNeedsInputItems/
+  // fetchBlockingOthersItems in agentInboxNudges.ts all exclude
+  // type = 'agent_question'). Everything else on the row (text, source_ref,
+  // owed_by, priority_due_at) carries over untouched.
+  const handleApproveSuggestion = useCallback(async (item: InboxItem) => {
+    await updateItem(item.id, {
+      type: 'task',
+      agent_payload: item.agent_payload ? { ...item.agent_payload, action_required: false } : null,
+    } as Partial<InboxItem>);
+  }, [updateItem]);
+
   // Dispatch table for agent_question CTA clicks, keyed by cta_action —
   // mirrors the existing cta_action convention used for
   // 'delete_onboarding_project' above (handled via handleItemDone instead,
@@ -709,8 +725,10 @@ export default function InboxPage() {
     const ctaAction = item.agent_payload?.cta_action;
     if (ctaAction === 'enable_inbox_nudges') {
       await handleEnableInboxNudges(item);
+    } else if (ctaAction === 'approve_suggestion') {
+      await handleApproveSuggestion(item);
     }
-  }, [handleEnableInboxNudges]);
+  }, [handleEnableInboxNudges, handleApproveSuggestion]);
 
   const pinnedProjectIds = useMemo(() =>
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
@@ -731,18 +749,17 @@ export default function InboxPage() {
       const bFloat = b.tags?.some(t => pinnedProjectIds.has(t.id)) ? 1 : 0;
       return bFloat - aFloat;
     });
-    // Prioritize mode ranks by the informal due date (soonest first), regardless
-    // of the sort mode underneath — items without one yet sort to the end.
-    // Weekly priorities, daily check-ins, and manually-pinned items stay
-    // pinned to the top even here.
+    // Prioritize mode ranks by urgency (Do Now status first, then the informal
+    // due-date tiers soonest-first — see priorityRank), regardless of the sort
+    // mode underneath. Weekly priorities, daily check-ins, and manually-pinned
+    // items stay pinned to the top even here. Shared with InboxByProjectView's
+    // own prioritizeMode-gated sort so both sort modes rank items identically.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
       const aPinned = isAutoPinnedItem(a) || a.pinned ? 1 : 0;
       const bPinned = isAutoPinnedItem(b) || b.pinned ? 1 : 0;
       if (bPinned !== aPinned) return bPinned - aPinned;
-      const aDue = a.priority_due_at ? new Date(a.priority_due_at).getTime() : Infinity;
-      const bDue = b.priority_due_at ? new Date(b.priority_due_at).getTime() : Infinity;
-      return aDue - bDue;
+      return priorityRank(a) - priorityRank(b);
     });
   }, [items, pinnedProjectIds, sortMode, prioritizeMode]);
 
@@ -1129,7 +1146,7 @@ export default function InboxPage() {
       )}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200/80">
         {/* Top bar */}
-        <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
+        <div className="relative flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
           {/* Hamburger — opens sidebar sheet below lg */}
           {!isDesktop && (
             <button
@@ -1151,24 +1168,57 @@ export default function InboxPage() {
             <span className="text-xs text-gray-400 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''}</span>
           )}
 
+          {activePanel === 'inbox' && !searchExpanded && !searchDraft && (
+            <button
+              onClick={() => setSearchExpanded(true)}
+              aria-label="Search"
+              title="Search ( / )"
+              className="hidden sm:flex flex-shrink-0 items-center justify-center h-8 w-8 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          )}
+
           {activePanel === 'inbox' && (
-            <div className="relative flex-shrink-0 w-full max-w-[220px] hidden sm:block">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+            <div
+              className={cn(
+                'items-center bg-white gap-2',
+                searchExpanded || searchDraft
+                  ? 'flex absolute inset-y-0 left-0 right-0 z-20 px-3 sm:px-4'
+                  : 'hidden',
+              )}
+            >
+              <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
               <input
                 ref={searchInputRef}
                 value={searchDraft}
                 onChange={e => setSearchDraft(e.target.value)}
-                placeholder="Search tasks, notes, briefs… ( / )"
-                className="w-full h-8 pl-8 pr-7 text-sm rounded-md border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-300 placeholder:text-gray-400"
+                onFocus={() => setSearchExpanded(true)}
+                onBlur={() => { if (!searchDraft) setSearchExpanded(false); }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setSearchDraft('');
+                    setSearchExpanded(false);
+                    searchInputRef.current?.blur();
+                  }
+                }}
+                placeholder="Search tasks, notes, briefs…"
+                className="flex-1 h-8 min-w-0 text-sm bg-transparent focus:outline-none placeholder:text-gray-400"
               />
-              {searchDraft && (
-                <button
-                  onClick={() => setSearchDraft('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (searchDraft) {
+                    setSearchDraft('');
+                    searchInputRef.current?.focus();
+                  } else {
+                    setSearchExpanded(false);
+                  }
+                }}
+                aria-label={searchDraft ? 'Clear search' : 'Close search'}
+                className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
 

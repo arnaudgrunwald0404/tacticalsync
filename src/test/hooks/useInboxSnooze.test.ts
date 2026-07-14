@@ -136,6 +136,31 @@ describe('useInboxItems.snoozeUntilNext1on1', () => {
   });
 });
 
+describe('useInboxItems.snoozeItem — failed persist', () => {
+  it('does not remove the item from the list when the DB write fails', async () => {
+    // Regression test: snoozeItem used to unconditionally filter the item out
+    // of `items` after firing the update, even if the write itself failed
+    // (error was never checked). That made the item vanish from the UI right
+    // away, only for a page refresh's fresh fetch to bring it straight back —
+    // looking like "snooze doesn't work" when the real bug was a silently
+    // swallowed write error.
+    mockedFrom.mockImplementation((table: string) => {
+      if (table === 'cos_one_on_one_events') return makeOneOnOneEventsBuilder();
+      const builder = makeInboxItemsBuilder();
+      builder.update = vi.fn(() => ({
+        eq: vi.fn(() => Promise.resolve({ data: null, error: { message: 'permission denied' } })),
+      }));
+      return builder;
+    });
+
+    const { result } = await mountHook();
+    const before = result.current.items;
+    await act(async () => { await result.current.snoozeItem('item-1', new Date()); });
+
+    expect(result.current.items).toBe(before);
+  });
+});
+
 describe('useInboxItems.unsnoozeItem', () => {
   it('sets status back to open and clears both snooze columns', async () => {
     const { result } = await mountHook();

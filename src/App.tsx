@@ -7,7 +7,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RoleOverrideProvider } from "@/contexts/RoleOverrideContext";
 import { RoleOverrideBanner } from "@/components/ui/role-override-banner";
-import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
+// Deprecated: only used by the old RCDO meetings feature's route (see below).
+// import { MeetingSkeleton } from "@/components/ui/meeting-skeleton";
 import { AppLayout } from "@/components/AppLayout";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { RCDODetailProvider } from "@/contexts/RCDODetailContext";
@@ -18,12 +19,14 @@ const Index = lazyWithRetry(() => import("./pages/Index"));
 const Auth = lazyWithRetry(() => import("./pages/Auth"));
 const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 const DashboardWithTabs = lazyWithRetry(() => import("./pages/DashboardWithTabs"));
-const DashboardMain = lazyWithRetry(() => import("./pages/DashboardMain"));
+// Deprecated: RCDO meetings feature (meeting_series/meeting_instances), no
+// longer used — routes below are commented out, so these are unreachable.
+// const DashboardMain = lazyWithRetry(() => import("./pages/DashboardMain"));
 const CreateTeam = lazyWithRetry(() => import("./pages/CreateTeam"));
-const TeamMeeting = lazyWithRetry(() => import("./pages/TeamMeeting"));
+// const TeamMeeting = lazyWithRetry(() => import("./pages/TeamMeeting"));
 const TeamInvite = lazyWithRetry(() => import("./pages/TeamInvite"));
-const TeamMeetingSetup = lazyWithRetry(() => import("./pages/TeamMeetingSetup"));
-const MeetingSettings = lazyWithRetry(() => import("./pages/MeetingSettings"));
+// const TeamMeetingSetup = lazyWithRetry(() => import("./pages/TeamMeetingSetup"));
+// const MeetingSettings = lazyWithRetry(() => import("./pages/MeetingSettings"));
 const JoinTeam = lazyWithRetry(() => import("./pages/JoinTeam"));
 const ClaimTeamMemberInvite = lazyWithRetry(() => import("./pages/ClaimTeamMemberInvite"));
 const Profile = lazyWithRetry(() => import("./pages/Profile"));
@@ -88,17 +91,21 @@ const App = () => (
               <ClaimTeamMemberInvite />
             </Suspense>
           } />
-          {/* Meeting page — has its own specialized header */}
+          {/* Deprecated: RCDO meetings feature — meeting page had its own
+              specialized header. No longer used; route disabled.
           <Route path="/team/:teamId/meeting/:meetingId" element={
             <Suspense fallback={<MeetingSkeleton />}>
               <TeamMeeting />
             </Suspense>
           } />
+          */}
 
           {/* Authenticated routes — AppLayout renders the persistent navbar */}
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            {/* Deprecated: RCDO meetings feature — no longer used.
             <Route path="/my-meetings" element={<DashboardWithTabs />} />
+            */}
             <Route path="/dashboard/rcdo" element={<DashboardWithTabs />} />
             <Route path="/commitments" element={<DashboardWithTabs />} />
             <Route path="/insights" element={<DashboardWithTabs />} />
@@ -134,14 +141,18 @@ const App = () => (
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/team/:teamId/invite" element={<TeamInvite />} />
+            {/* Deprecated: RCDO meetings feature — no longer used.
             <Route path="/team/:teamId/setup-meeting" element={<TeamMeetingSetup />} />
             <Route path="/team/:teamId/meeting/:meetingId/settings" element={<MeetingSettings />} />
+            */}
             <Route path="/branding" element={<BrandingShowcase />} />
             <Route path="/color-palette" element={<ColorPaletteShowcase />} />
           </Route>
 
           {/* Legacy redirects */}
+          {/* Deprecated: RCDO meetings feature — /my-meetings no longer exists.
           <Route path="/dashboard/main" element={<Navigate to="/my-meetings" replace />} />
+          */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={
             <Suspense fallback={<PageSkeleton />}>

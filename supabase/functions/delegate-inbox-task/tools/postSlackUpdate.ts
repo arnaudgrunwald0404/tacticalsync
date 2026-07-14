@@ -5,6 +5,7 @@
 // work (that's inbound webhooks); outbound posting already works today.
 
 import type { Tool, ToolContext, ToolExecutionResult } from './types.ts'
+import { retryWithBackoff } from '../../_shared/retryWithBackoff.ts'
 
 interface PostSlackUpdateParams {
   message: string
@@ -53,19 +54,25 @@ export const postSlackUpdateTool: Tool = {
     if (params.channel) {
       channelId = params.channel.replace(/^#/, '')
     } else {
-      const lookupRes = await fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(params.dm_user_email!)}`, {
-        headers: { Authorization: `Bearer ${slackToken}` },
-      })
+      const lookupRes = await retryWithBackoff(
+        () => fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(params.dm_user_email!)}`, {
+          headers: { Authorization: `Bearer ${slackToken}` },
+        }),
+        { integration: 'slack', label: 'users.lookupByEmail' },
+      )
       const lookupData = await lookupRes.json() as { ok: boolean; user?: { id: string }; error?: string }
       if (!lookupData.ok || !lookupData.user?.id) {
         throw new Error(`Couldn't find ${params.dm_user_email} on Slack (${lookupData.error ?? 'unknown error'}).`)
       }
 
-      const openRes = await fetch('https://slack.com/api/conversations.open', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: lookupData.user.id }),
-      })
+      const openRes = await retryWithBackoff(
+        () => fetch('https://slack.com/api/conversations.open', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users: lookupData.user.id }),
+        }),
+        { integration: 'slack', label: 'conversations.open' },
+      )
       const openData = await openRes.json() as { ok: boolean; channel?: { id: string }; error?: string }
       if (!openData.ok || !openData.channel?.id) {
         throw new Error(`Couldn't open a DM with ${params.dm_user_email} (${openData.error ?? 'unknown error'}).`)
@@ -73,11 +80,14 @@ export const postSlackUpdateTool: Tool = {
       channelId = openData.channel.id
     }
 
-    const sendRes = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: channelId, text: params.message }),
-    })
+    const sendRes = await retryWithBackoff(
+      () => fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channelId, text: params.message }),
+      }),
+      { integration: 'slack', label: 'chat.postMessage' },
+    )
     const sendData = await sendRes.json() as { ok: boolean; ts?: string; error?: string }
     if (!sendData.ok) {
       throw new Error(`Slack rejected the message: ${sendData.error ?? 'unknown error'}.`)
