@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { matchMemberByTitle, type MinimalMember } from "../_shared/matchEventToMember.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 // ── Gmail "Meeting assets ready" sync ────────────────────────────────────────
 //
@@ -193,11 +194,14 @@ serve(async (req) => {
       form.set('refresh_token', refreshToken)
       form.set('grant_type', 'refresh_token')
 
-      const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form.toString(),
-      })
+      const refreshRes = await retryWithBackoff(
+        () => fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: form.toString(),
+        }),
+        { integration: 'gmail', label: 'refresh access token' },
+      )
       if (!refreshRes.ok) return jsonResponse({ error: 'refresh_failed' }, 401)
 
       const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
@@ -231,9 +235,12 @@ serve(async (req) => {
       listUrl.searchParams.set('maxResults', '50')
       if (pageToken) listUrl.searchParams.set('pageToken', pageToken)
 
-      const listRes = await fetch(listUrl.toString(), {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      })
+      const listRes = await retryWithBackoff(
+        () => fetch(listUrl.toString(), {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        }),
+        { integration: 'gmail', label: 'list messages' },
+      )
       if (!listRes.ok) {
         console.warn(`gmail-meeting-assets-sync: list returned ${listRes.status}`)
         break
@@ -244,9 +251,12 @@ serve(async (req) => {
 
       for (const { id } of listData.messages ?? []) {
         try {
-          const msgRes = await fetch(
-            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } },
+          const msgRes = await retryWithBackoff(
+            () => fetch(
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } },
+            ),
+            { integration: 'gmail', label: 'get message' },
           )
           if (!msgRes.ok) {
             console.warn(`gmail-meeting-assets-sync: message ${id} returned ${msgRes.status}`)

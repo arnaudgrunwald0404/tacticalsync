@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 // ── Inbox action-item scanner ─────────────────────────────────────────────────
 //
@@ -275,11 +276,14 @@ serve(async (req) => {
             form.set('client_secret', googleClientSecret)
             form.set('refresh_token', calCreds.refresh_token as string)
             form.set('grant_type', 'refresh_token')
-            const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: form.toString(),
-            })
+            const refreshRes = await retryWithBackoff(
+              () => fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: form.toString(),
+              }),
+              { integration: 'gmail', label: 'refresh access token' },
+            )
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
               if (refreshData.access_token && typeof refreshData.expires_in === 'number') {
@@ -306,13 +310,19 @@ serve(async (req) => {
             const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
             listUrl.searchParams.set('q', `in:inbox after:${sinceEpochSec} -category:promotions -category:social`)
             listUrl.searchParams.set('maxResults', String(MAX_ITEMS_PER_RUN))
-            const listRes = await fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+            const listRes = await retryWithBackoff(
+              () => fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } }),
+              { integration: 'gmail', label: 'list messages' },
+            )
             if (listRes.ok) {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
               for (const { id } of listData.messages ?? []) {
-                const msgRes = await fetch(
-                  `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-                  { headers: { Authorization: `Bearer ${accessToken}` } },
+                const msgRes = await retryWithBackoff(
+                  () => fetch(
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } },
+                  ),
+                  { integration: 'gmail', label: 'get message' },
                 )
                 if (!msgRes.ok) continue
                 const detail = await msgRes.json() as {

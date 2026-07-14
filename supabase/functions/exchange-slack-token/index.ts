@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,16 +59,19 @@ serve(async (req) => {
 
     // Exchange authorization code for token.
     // Slack uses POST form-encoded (not Basic auth like Zoom).
-    const tokenRes = await fetch('https://slack.com/api/oauth.v2.access', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: slackClientId,
-        client_secret: slackClientSecret,
-        code,
-        redirect_uri: slackRedirectUri,
+    const tokenRes = await retryWithBackoff(
+      () => fetch('https://slack.com/api/oauth.v2.access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: slackClientId,
+          client_secret: slackClientSecret,
+          code,
+          redirect_uri: slackRedirectUri,
+        }),
       }),
-    })
+      { integration: 'slack', label: 'oauth.v2.access' },
+    )
 
     const tokenData = await tokenRes.json() as {
       ok: boolean
@@ -86,9 +90,12 @@ serve(async (req) => {
     }
 
     // Fetch user info from Slack.
-    const authTestRes = await fetch('https://slack.com/api/auth.test', {
-      headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-    })
+    const authTestRes = await retryWithBackoff(
+      () => fetch('https://slack.com/api/auth.test', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+      }),
+      { integration: 'slack', label: 'auth.test' },
+    )
     const authTest = await authTestRes.json() as {
       ok: boolean
       user_id?: string
@@ -104,9 +111,12 @@ serve(async (req) => {
     // Also fetch email via users.info for the authorizing user.
     let slackEmail: string | null = null
     if (slackUserId) {
-      const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${slackUserId}`, {
-        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-      })
+      const userInfoRes = await retryWithBackoff(
+        () => fetch(`https://slack.com/api/users.info?user=${slackUserId}`, {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+        }),
+        { integration: 'slack', label: 'users.info' },
+      )
       const userInfo = await userInfoRes.json() as {
         ok: boolean
         user?: { profile?: { email?: string } }

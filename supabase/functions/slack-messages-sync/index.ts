@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,9 +127,12 @@ serve(async (req) => {
     async function slackApi(method: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {
       const url = new URL(`https://slack.com/api/${method}`)
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-      const res = await fetch(url.toString(), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
+      const res = await retryWithBackoff(
+        () => fetch(url.toString(), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        { integration: 'slack', label: method },
+      )
       return res.json() as Promise<Record<string, unknown>>
     }
 

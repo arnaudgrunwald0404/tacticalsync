@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,9 +52,12 @@ serve(async (req) => {
       .maybeSingle()
 
     if (creds?.access_token) {
-      await fetch('https://slack.com/api/auth.revoke', {
-        headers: { 'Authorization': `Bearer ${creds.access_token}` },
-      }).catch(() => { /* best-effort */ })
+      await retryWithBackoff(
+        () => fetch('https://slack.com/api/auth.revoke', {
+          headers: { 'Authorization': `Bearer ${creds.access_token}` },
+        }),
+        { integration: 'slack', label: 'auth.revoke', maxAttempts: 2 },
+      ).catch(() => { /* best-effort */ })
     }
 
     const { error: delErr } = await supabase

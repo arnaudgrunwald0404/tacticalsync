@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,10 +56,13 @@ serve(async (req) => {
 
       if (creds?.access_token) {
         const basicAuth = btoa(`${zoomClientId}:${zoomClientSecret}`)
-        await fetch(`https://zoom.us/oauth/revoke?token=${encodeURIComponent(creds.access_token)}`, {
-          method: 'POST',
-          headers: { 'Authorization': `Basic ${basicAuth}` },
-        }).catch(() => { /* best-effort */ })
+        await retryWithBackoff(
+          () => fetch(`https://zoom.us/oauth/revoke?token=${encodeURIComponent(creds.access_token)}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Basic ${basicAuth}` },
+          }),
+          { integration: 'zoom', label: 'revoke token', maxAttempts: 2 },
+        ).catch(() => { /* best-effort */ })
       }
     }
 

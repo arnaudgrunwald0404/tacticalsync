@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,18 +59,21 @@ serve(async (req) => {
 
     // Exchange authorization code for tokens
     const basicAuth = btoa(`${zoomClientId}:${zoomClientSecret}`)
-    const tokenRes = await fetch('https://zoom.us/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: zoomRedirectUri,
+    const tokenRes = await retryWithBackoff(
+      () => fetch('https://zoom.us/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: zoomRedirectUri,
+        }),
       }),
-    })
+      { integration: 'zoom', label: 'exchange authorization code' },
+    )
 
     if (!tokenRes.ok) {
       const errBody = await tokenRes.text()
@@ -84,9 +88,12 @@ serve(async (req) => {
     }
 
     // Fetch Zoom user info
-    const meRes = await fetch('https://api.zoom.us/v2/users/me', {
-      headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-    })
+    const meRes = await retryWithBackoff(
+      () => fetch('https://api.zoom.us/v2/users/me', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+      }),
+      { integration: 'zoom', label: 'fetch user info' },
+    )
 
     let zoomUserId: string | null = null
     let zoomEmail: string | null = null
