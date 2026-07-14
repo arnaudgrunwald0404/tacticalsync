@@ -112,19 +112,13 @@ export default function StrategyHome() {
   const handleActivateCycle = async (cycleId: string) => {
     setActivatingCycleId(cycleId);
     try {
-      // First, deactivate all other cycles
-      const { error: deactivateError } = await supabase
-        .from('rc_cycles')
-        .update({ status: 'archived' })
-        .eq('status', 'active');
-
-      if (deactivateError) throw deactivateError;
-
-      // Then activate the selected cycle
-      const { error: activateError } = await supabase
-        .from('rc_cycles')
-        .update({ status: 'active' })
-        .eq('id', cycleId);
+      // Atomically archive whatever cycle is currently active and activate
+      // this one via the rcdo_activate_cycle() DB function, so a race
+      // between two concurrent activations can no longer leave zero or two
+      // active cycles (see rc_cycles_single_active_idx).
+      const { error: activateError } = await supabase.rpc('rcdo_activate_cycle', {
+        p_cycle_id: cycleId,
+      });
 
       if (activateError) throw activateError;
 
