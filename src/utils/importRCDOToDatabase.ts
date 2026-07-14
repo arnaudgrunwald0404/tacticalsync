@@ -57,18 +57,28 @@ async function findUserByName(name: string): Promise<string | null> {
 }
 
 const SI_STATUS_MAP: Record<string, InitiativeStatus> = {
-  'draft': 'draft',
-  'initialized': 'initialized',
+  'draft': 'not_started',
+  'not started': 'not_started',
+  'not_started': 'not_started',
+  'initialized': 'not_started',
   'on track': 'on_track',
   'on_track': 'on_track',
-  'delayed': 'delayed',
-  'cancelled': 'cancelled',
-  'canceled': 'cancelled',
+  'active': 'on_track',
+  'at risk': 'at_risk',
+  'at_risk': 'at_risk',
+  'delayed': 'at_risk',
+  'blocked': 'at_risk',
+  'off track': 'off_track',
+  'off_track': 'off_track',
+  'cancelled': 'off_track',
+  'canceled': 'off_track',
+  'completed': 'completed',
+  'done': 'completed',
 };
 
 function normalizeInitiativeStatus(raw?: string): InitiativeStatus {
-  if (!raw) return 'draft';
-  return SI_STATUS_MAP[raw.toLowerCase().trim()] || 'draft';
+  if (!raw) return 'not_started';
+  return SI_STATUS_MAP[raw.toLowerCase().trim()] || 'not_started';
 }
 
 const DO_STATUS_MAP: Record<string, DOStatus> = {

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getClearGoConfig, fetchClearGoDciContext } from "../_shared/cleargo.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -382,11 +383,14 @@ serve(async (req) => {
           form.set('refresh_token', creds.refresh_token)
           form.set('grant_type', 'refresh_token')
 
-          const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: form.toString(),
-          })
+          const refreshRes = await retryWithBackoff(
+            () => fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: form.toString(),
+            }),
+            { integration: 'google-calendar', label: 'refresh access token' },
+          )
 
           if (refreshRes.ok) {
             const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
@@ -413,9 +417,12 @@ serve(async (req) => {
         url.searchParams.set('orderBy', 'startTime')
         url.searchParams.set('maxResults', '50')
 
-        const calRes = await fetch(url.toString(), {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
+        const calRes = await retryWithBackoff(
+          () => fetch(url.toString(), {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+          { integration: 'google-calendar', label: 'list events' },
+        )
 
         if (calRes.ok) {
           const calData = await calRes.json() as { items?: GoogleCalEvent[] }
@@ -850,21 +857,24 @@ Activities:
             }
           }
 
-          const slackRes = await fetch('https://slack.com/api/chat.postMessage', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${slackCreds.access_token}`,
-              'Content-Type': 'application/json; charset=utf-8',
-            },
-            body: JSON.stringify({
-              channel: slackCreds.slack_user_id,
-              text: `☀️ DCI Brief — ${pt.dayLabel}`,
-              blocks: [
-                { type: 'section', text: { type: 'mrkdwn', text: slackMsg } },
-                { type: 'context', elements: [{ type: 'mrkdwn', text: `_Generated at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })} PT by DCI Brief_` }] },
-              ],
+          const slackRes = await retryWithBackoff(
+            () => fetch('https://slack.com/api/chat.postMessage', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${slackCreds.access_token}`,
+                'Content-Type': 'application/json; charset=utf-8',
+              },
+              body: JSON.stringify({
+                channel: slackCreds.slack_user_id,
+                text: `☀️ DCI Brief — ${pt.dayLabel}`,
+                blocks: [
+                  { type: 'section', text: { type: 'mrkdwn', text: slackMsg } },
+                  { type: 'context', elements: [{ type: 'mrkdwn', text: `_Generated at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })} PT by DCI Brief_` }] },
+                ],
+              }),
             }),
-          })
+            { integration: 'slack', label: 'chat.postMessage' },
+          )
 
           if (slackRes.ok) {
             const slackData = await slackRes.json()

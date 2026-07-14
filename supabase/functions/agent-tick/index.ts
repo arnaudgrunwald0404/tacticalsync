@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { detectEscalations } from "../agent-escalation/index.ts"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 import {
   selectDueItemsToNudge,
   selectMeetingsForInboxNudge,
@@ -201,14 +202,17 @@ async function sendSlackDM(
   }
 
   // Open DM conversation
-  const openRes = await fetch('https://slack.com/api/conversations.open', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ users: slackCreds.slack_user_id }),
-  })
+  const openRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/conversations.open', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ users: slackCreds.slack_user_id }),
+    }),
+    { integration: 'slack', label: 'conversations.open' },
+  )
 
   const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
   if (!openData.ok || !openData.channel?.id) {
@@ -224,14 +228,17 @@ async function sendSlackDM(
     msgBody.blocks = blocks
   }
 
-  const msgRes = await fetch('https://slack.com/api/chat.postMessage', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${slackCreds.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(msgBody),
-  })
+  const msgRes = await retryWithBackoff(
+    () => fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${slackCreds.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(msgBody),
+    }),
+    { integration: 'slack', label: 'chat.postMessage' },
+  )
 
   const msgData = await msgRes.json() as { ok: boolean }
   return msgData.ok
@@ -440,20 +447,12 @@ serve(async (req) => {
               stalled_topics: 'Stalled Topics',
             }
 
-            if (notifPrefs.escalation_alerts) {
-              await sendSlackDM(supabase, userId,
-                `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
-                [{
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: `${severityEmoji} *${typeLabels[pattern.type]}*${pattern.member_name ? ` — ${pattern.member_name}` : ''}\n\n${pattern.details}`,
-                  },
-                }],
-              )
-            }
-
-            await supabase.from('cos_agent_log').insert({
+            // Insert the log row first so its id is available to attach as the
+            // Dismiss button's action_id (dismiss_escalation:<log_id>) — the
+            // handler for this action already exists in both
+            // agent-slack-action/index.ts and slack-bot/index.js, it just
+            // never had a button pointing at it before.
+            const { data: insertedEscalationLog } = await supabase.from('cos_agent_log').insert({
               user_id: userId,
               event_type: 'escalation_flagged',
               member_id: pattern.member_id ?? null,
@@ -463,7 +462,37 @@ serve(async (req) => {
                 severity: pattern.severity,
                 details: pattern.details,
               },
-            })
+            }).select('id').single()
+
+            if (notifPrefs.escalation_alerts) {
+              const escalationBlocks: unknown[] = [{
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `${severityEmoji} *${typeLabels[pattern.type]}*${pattern.member_name ? ` — ${pattern.member_name}` : ''}\n\n${pattern.details}`,
+                },
+              }]
+
+              const escalationLogId = (insertedEscalationLog as { id: string } | null)?.id
+              if (escalationLogId) {
+                escalationBlocks.push({ type: 'divider' })
+                escalationBlocks.push({
+                  type: 'actions',
+                  elements: [
+                    {
+                      type: 'button',
+                      text: { type: 'plain_text', text: ':mute: Dismiss' },
+                      action_id: `dismiss_escalation:${escalationLogId}`,
+                    },
+                  ],
+                })
+              }
+
+              await sendSlackDM(supabase, userId,
+                `${typeLabels[pattern.type] ?? pattern.type}: ${pattern.details}`,
+                escalationBlocks,
+              )
+            }
 
             escalations++
           }
@@ -1617,6 +1646,7 @@ async function sendDailyDigest(
       elements: [
         { type: 'button', text: { type: 'plain_text', text: ':thumbsup: Helpful' }, action_id: 'feedback:nudge:helpful', style: 'primary' },
         { type: 'button', text: { type: 'plain_text', text: ':clock1: Too early' }, action_id: 'feedback:nudge:too_early' },
+        { type: 'button', text: { type: 'plain_text', text: ':alarm_clock: Too late' }, action_id: 'feedback:nudge:too_late' },
         { type: 'button', text: { type: 'plain_text', text: ':thumbsdown: Not helpful' }, action_id: 'feedback:nudge:not_helpful' },
       ],
     },
@@ -1791,15 +1821,32 @@ async function computeFormatRecommendations(
     // Send notification (only if score suggests something non-standard)
     if (score === 0 || score > 8) {
       if (notifPrefs.format_suggestions) {
+        // Feedback row modeled on the daily digest's footer buttons — but
+        // "too early"/"too late" (nudge-timing feedback) don't apply to a
+        // one-off format recommendation, so "Wrong format" replaces them.
+        // "Wrong format" only makes sense here, not on the generic
+        // action-item digest, since it's feedback on this specific
+        // recommendation rather than on nudge timing.
         await sendSlackDM(supabase, userId,
           `Meeting format suggestion for ${memberName}: ${format}`,
-          [{
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `${emoji} *Suggested format for ${memberName}:* ${format}\n\n${reasons.map(r => `• ${r}`).join('\n')}`,
+          [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `${emoji} *Suggested format for ${memberName}:* ${format}\n\n${reasons.map(r => `• ${r}`).join('\n')}`,
+              },
             },
-          }],
+            { type: 'divider' },
+            {
+              type: 'actions',
+              elements: [
+                { type: 'button', text: { type: 'plain_text', text: ':thumbsup: Helpful' }, action_id: 'feedback:format:helpful', style: 'primary' },
+                { type: 'button', text: { type: 'plain_text', text: ':bar_chart: Wrong format' }, action_id: 'feedback:format:wrong_format' },
+                { type: 'button', text: { type: 'plain_text', text: ':thumbsdown: Not helpful' }, action_id: 'feedback:format:not_helpful' },
+              ],
+            },
+          ],
         )
       }
     }

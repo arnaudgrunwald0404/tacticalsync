@@ -46,29 +46,29 @@ interface SubSIPanelContentProps {
 }
 
 const STATUS_OPTIONS: { value: InitiativeStatus; label: string }[] = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'initialized', label: 'Initialized' },
+  { value: 'not_started', label: 'Not Started' },
   { value: 'on_track', label: 'On Track' },
-  { value: 'delayed', label: 'Delayed' },
-  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'at_risk', label: 'At Risk' },
+  { value: 'off_track', label: 'Off Track' },
+  { value: 'completed', label: 'Completed' },
 ];
 
-// Same normalization the SIPanel uses — keeps legacy values from breaking the
-// Select trigger when older rows still carry them.
+// Same normalization the SIPanel uses — keeps legacy pre-migration values from
+// breaking the Select trigger when older rows still carry them.
 function normalizeStatus(status: string | null | undefined): InitiativeStatus {
-  if (!status) return 'draft';
-  const valid: InitiativeStatus[] = ['draft', 'initialized', 'on_track', 'delayed', 'cancelled'];
+  if (!status) return 'not_started';
+  const valid: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
   if (valid.includes(status as InitiativeStatus)) return status as InitiativeStatus;
   const map: Record<string, InitiativeStatus> = {
-    not_started: 'draft',
-    at_risk: 'delayed',
-    off_track: 'delayed',
-    completed: 'on_track',
+    draft: 'not_started',
+    initialized: 'not_started',
+    delayed: 'at_risk',
+    cancelled: 'off_track',
     active: 'on_track',
-    blocked: 'delayed',
-    done: 'on_track',
+    blocked: 'at_risk',
+    done: 'completed',
   };
-  return map[status] || 'draft';
+  return map[status] || 'not_started';
 }
 
 export function SubSIPanelContent({

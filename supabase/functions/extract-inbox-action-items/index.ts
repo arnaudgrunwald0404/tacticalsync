@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 // ── Inbox action-item scanner ─────────────────────────────────────────────────
 //
@@ -182,10 +183,23 @@ serve(async (req) => {
           .eq('user_id', userId)
           .maybeSingle()
 
-        const syncChannels: string[] = Array.isArray(slackCreds?.sync_channels) ? slackCreds.sync_channels : []
+        // The channel allowlist a user configures in Settings → Briefs &
+        // Schedule → Tools is stored on cos_prep_schedule.slack_channels —
+        // that's the source of truth, not user_slack_credentials.sync_channels
+        // (which nothing in the codebase ever writes to). Merge both so a
+        // user's selection there takes effect on this scheduled scan, not
+        // just via the manual "Sync now" button.
+        const { data: scheduleRow } = await supabase
+          .from('cos_prep_schedule')
+          .select('slack_channels')
+          .eq('user_id', userId)
+          .maybeSingle()
+        const scheduleChannels: string[] = Array.isArray(scheduleRow?.slack_channels) ? scheduleRow.slack_channels : []
+        const credsChannels: string[] = Array.isArray(slackCreds?.sync_channels) ? slackCreds.sync_channels : []
+        const syncChannels: string[] = Array.from(new Set([...scheduleChannels, ...credsChannels]))
 
         // DMs are always scanned once Slack is connected — they aren't part
-        // of the channel allowlist (sync_channels), which only opts specific
+        // of the channel allowlist (syncChannels), which only opts specific
         // *channels* in. slack-messages-sync itself already syncs DMs
         // unconditionally (its own step 1, independent of the channels
         // param), so gating this whole block on syncChannels.length > 0 was
@@ -262,11 +276,14 @@ serve(async (req) => {
             form.set('client_secret', googleClientSecret)
             form.set('refresh_token', calCreds.refresh_token as string)
             form.set('grant_type', 'refresh_token')
-            const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: form.toString(),
-            })
+            const refreshRes = await retryWithBackoff(
+              () => fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: form.toString(),
+              }),
+              { integration: 'gmail', label: 'refresh access token' },
+            )
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
               if (refreshData.access_token && typeof refreshData.expires_in === 'number') {
@@ -293,13 +310,19 @@ serve(async (req) => {
             const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
             listUrl.searchParams.set('q', `in:inbox after:${sinceEpochSec} -category:promotions -category:social`)
             listUrl.searchParams.set('maxResults', String(MAX_ITEMS_PER_RUN))
-            const listRes = await fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+            const listRes = await retryWithBackoff(
+              () => fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } }),
+              { integration: 'gmail', label: 'list messages' },
+            )
             if (listRes.ok) {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
               for (const { id } of listData.messages ?? []) {
-                const msgRes = await fetch(
-                  `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-                  { headers: { Authorization: `Bearer ${accessToken}` } },
+                const msgRes = await retryWithBackoff(
+                  () => fetch(
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } },
+                  ),
+                  { integration: 'gmail', label: 'get message' },
                 )
                 if (!msgRes.ok) continue
                 const detail = await msgRes.json() as {
