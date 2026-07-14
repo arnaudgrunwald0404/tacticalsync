@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
-  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot, Users,
+  Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot, Users, CheckSquare,
 } from 'lucide-react';
 import { useDciBrief, type AiPrioritySuggestion, type DciBriefData } from '@/hooks/useDciAiSuggestions';
 import {
@@ -42,6 +42,7 @@ import { CoverageMap } from '@/components/cos/CoverageMap';
 import { GroupMeetingCoverage } from '@/components/cos/GroupMeetingCoverage';
 import { DEFAULT_SYNC_RULES, type CalendarSyncRules } from '@/lib/calendar/matchEventToMember';
 import { OneOnOnePrepDrawer } from '@/components/cos/OneOnOnePrepDrawer';
+import { MyOneOnOneTodosPanel } from '@/components/cos/MyOneOnOneTodosPanel';
 import { GroupMeetingPrepDrawer } from '@/components/cos/GroupMeetingPrepDrawer';
 import type { GroupMeeting, GroupParticipant, GroupMeetingSource } from '@/hooks/useGroupMeetings';
 import { WelcomeCarouselModal } from '@/components/cos/WelcomeCarouselModal';
@@ -3624,18 +3625,21 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
   const [loadingInitial, setLoadingInitial] = useState(true);
   const cosNavigate = useNavigate();
   const cosLocation = useLocation();
-  const teamView: 'calendar' | 'map' | 'group' | 'activity' =
+  const teamView: 'calendar' | 'map' | 'group' | 'activity' | 'todos' =
     cosLocation.pathname.includes('/meetings/group-coverage')
       ? 'group'
       : cosLocation.pathname.includes('/meetings/coverage')
       ? 'map'
       : cosLocation.pathname.includes('/meetings/activity')
       ? 'activity'
+      : cosLocation.pathname.includes('/meetings/todos')
+      ? 'todos'
       : 'calendar';
-  const setTeamView = (view: 'calendar' | 'map' | 'group' | 'activity') => {
+  const setTeamView = (view: 'calendar' | 'map' | 'group' | 'activity' | 'todos') => {
     if (view === 'map') cosNavigate(`${basePath}/coverage`);
     else if (view === 'group') cosNavigate(`${basePath}/group-coverage`);
     else if (view === 'activity') cosNavigate(`${basePath}/activity`);
+    else if (view === 'todos') cosNavigate(`${basePath}/todos`);
     else cosNavigate(`${basePath}/one-on-ones`);
   };
   const [prepScheduleConfigured, setPrepScheduleConfigured] = useState<boolean | null>(null); // null = loading
@@ -4256,6 +4260,18 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
         <Bot className="h-3.5 w-3.5" />
         Agent
       </button>
+      <button
+        onClick={() => setTeamView('todos')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md px-3 h-full text-sm font-medium transition-colors',
+          teamView === 'todos'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <CheckSquare className="h-3.5 w-3.5" />
+        My To-Dos
+      </button>
     </div>
   );
 
@@ -4322,6 +4338,20 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
             </div>
           ))}
           <GroupMeetingCoverage />
+        </>
+      ) : teamView === 'todos' ? (
+        <>
+          {!hideViewToggle && (portalTarget ? createPortal(
+            <div className="flex items-center gap-3 w-full">
+              {viewToggle}
+            </div>,
+            portalTarget,
+          ) : (
+            <div className="flex items-center gap-3 w-full mb-6">
+              {viewToggle}
+            </div>
+          ))}
+          <MyOneOnOneTodosPanel members={members} onOpenPrep={openPrep} />
         </>
       ) : (
         <>

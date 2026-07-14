@@ -265,17 +265,62 @@ function ItemDetail({
   onUpdateItem?: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onItemDone?: (id: string, done: boolean) => void;
 }) {
+  const [textDraft, setTextDraft] = useState(item.text);
+  const [editingText, setEditingText] = useState(false);
   const [bodyDraft, setBodyDraft] = useState('');
   const [editingBody, setEditingBody] = useState(false);
   const isDone = item.status === 'done';
 
   useEffect(() => {
+    setTextDraft(item.text);
+    setEditingText(false);
     setBodyDraft(item.body ?? '');
     setEditingBody(false);
   }, [item.id]);
 
+  const commitEditText = async () => {
+    const trimmed = textDraft.trim();
+    setEditingText(false);
+    if (trimmed && trimmed !== item.text) {
+      await onUpdateItem?.(item.id, { text: trimmed });
+    } else {
+      setTextDraft(item.text);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
+      {/* Item text — editing lives only here (and in the mobile drawer), not
+          inline in the main list, so it's a full multi-row field rather than
+          the single-line input the list used to swap in. Brief items are
+          auto-generated summaries, not user-editable, same as the Done
+          toggle below. */}
+      {item.type !== 'brief_item' && (
+        editingText ? (
+          <textarea
+            autoFocus
+            value={textDraft}
+            onChange={e => setTextDraft(e.target.value)}
+            onBlur={commitEditText}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { e.preventDefault(); setEditingText(false); setTextDraft(item.text); }
+            }}
+            rows={2}
+            className="w-full text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-1 focus:ring-gray-300 resize-none leading-snug"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingText(true)}
+            className={cn(
+              'w-full text-left text-sm font-medium rounded-lg px-3 py-2 -mx-3 hover:bg-gray-50 transition-colors leading-snug',
+              isDone ? 'line-through text-gray-400' : 'text-gray-900',
+            )}
+          >
+            {item.text}
+          </button>
+        )
+      )}
+
       {/* Done toggle — the only way to complete an item from this view; brief
           items are auto-generated summaries, not user-completable. */}
       {item.type !== 'brief_item' && onItemDone && (

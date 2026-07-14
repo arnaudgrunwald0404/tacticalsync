@@ -13,6 +13,8 @@ import MeetingPriorities from "@/components/meeting/MeetingPriorities";
 import type { MeetingPrioritiesRef } from "@/components/meeting/MeetingPriorities";
 import TeamTopics from "@/components/meeting/TeamTopics";
 import ActionItems from "@/components/meeting/ActionItems";
+import { useActiveDOs } from "@/hooks/useActiveDOs";
+import { useActiveInitiatives } from "@/hooks/useActiveInitiatives";
 interface ActionItemsRef {
   startCreating: () => void;
 }
@@ -1008,6 +1010,11 @@ const TeamMeetingContent = ({
   const navigate = useNavigate();
   const { teamMembers } = useMeetingContext();
 
+  // DOs/SIs available for linking meeting priorities and action items to
+  // strategy via the "Link to Strategy" selector.
+  const { dos: activeDOs } = useActiveDOs();
+  const { initiatives: activeSIs } = useActiveInitiatives(teamId);
+
   return (
     <GridBackground inverted className="min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
               <header className="sticky top-0 z-50 border-b bg-white">
@@ -1346,6 +1353,8 @@ const TeamMeetingContent = ({
                 meetingId={currentSeriesId || ""}
                 teamId={teamId}
                 onUpdate={handleActionItemChange}
+                activeDOs={activeDOs}
+                activeSIs={activeSIs}
               />
               )}
             </Card>
