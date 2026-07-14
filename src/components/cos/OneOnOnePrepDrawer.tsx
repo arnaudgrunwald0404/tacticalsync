@@ -165,8 +165,8 @@ function fmtShort(iso: string): string {
   return d ? `${MONTHS[d.getMonth()]} ${d.getDate()}` : iso;
 }
 
-type DueBadge = { label: string; cls: string; icon: React.ElementType };
-function dueBadge(iso: string | null, done: boolean): DueBadge {
+export type DueBadge = { label: string; cls: string; icon: React.ElementType };
+export function dueBadge(iso: string | null, done: boolean): DueBadge {
   if (!iso) return { label: 'No date', cls: 'bg-muted text-muted-foreground', icon: Calendar };
   const d = parseLocalDate(iso);
   if (!d) return { label: 'No date', cls: 'bg-muted text-muted-foreground', icon: Calendar };
@@ -208,6 +208,34 @@ function SecHdr({ icon: Icon, label, right }: { icon: React.ElementType; label: 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('rounded-lg border border-border bg-card', className)}>{children}</div>
+  );
+}
+
+// A single row within an "actions for them" / "to-dos for me" lane — shared by
+// both lanes so the due/overdue styling stays identical either way.
+function CommitmentRow({ action, onToggle }: { action: PendingAction; onToggle: (id: string) => void }) {
+  const db = dueBadge(action.due_date, action.done);
+  const DueIcon = db.icon;
+  const isOverdue = !action.done && action.due_date && (parseLocalDate(action.due_date)?.getTime() ?? Infinity) < startOfToday().getTime();
+  return (
+    <button onClick={() => onToggle(action.id)} className="w-full flex gap-3 items-start py-[11px] text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+      {action.done ? (
+        <span className="w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-[13px] w-[13px] text-primary-foreground" /></span>
+      ) : (
+        <span className={cn('w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] border-[1.5px] bg-background', isOverdue ? 'border-red-500' : 'border-input')} />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className={cn('text-sm leading-snug', action.done ? 'text-muted-foreground line-through' : 'font-medium text-foreground')}>{action.text}</div>
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-md', db.cls)}>
+            <DueIcon className="h-3 w-3" />{db.label}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-[9px] py-0.5 rounded-md bg-muted text-muted-foreground">
+            <CornerUpLeft className="h-3 w-3" />From {format(new Date(action.created_at), 'MMM d')}
+          </span>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -256,6 +284,10 @@ export function OneOnOnePrepDrawer({
   const [quarter, setQuarter] = useState<CommitmentQuarter | null>(null);
   const [priorities, setPriorities] = useState<QuarterlyPriority[]>([]);
   const [commitments, setCommitments] = useState<MonthlyCommitment[]>([]);
+  // Whether the reference lookup could actually resolve to a live account/quarter —
+  // when false, "not set up" isn't actionable (there's no linked profile or no
+  // active quarter at all), so we show a neutral note instead of the red hint.
+  const [commitmentsLookupResolved, setCommitmentsLookupResolved] = useState(false);
   const [zoomRecordings, setZoomRecordings] = useState<Array<{
     id: string; topic: string | null; start_time: string;
     duration_minutes: number | null; has_transcript: boolean; ai_summary: string | null;
@@ -294,6 +326,7 @@ export function OneOnOnePrepDrawer({
     setShowDismissed(false);
     setPickedQuestions(new Set());
     setNextMeetingUrl(null);
+    setCommitmentsLookupResolved(false);
     setContextDraft(member.context_notes ?? '');
     setContextBaseline(member.context_notes ?? '');
     setChat([{
@@ -369,7 +402,7 @@ export function OneOnOnePrepDrawer({
           .maybeSingle();
         memberUserId = profile?.id ?? null;
       }
-      if (!memberUserId || cancelled) { setPriorities([]); setCommitments([]); return; }
+      if (!memberUserId || cancelled) { setPriorities([]); setCommitments([]); setCommitmentsLookupResolved(false); return; }
 
       const today = format(new Date(), 'yyyy-MM-dd');
       const { data: quarters } = await db
@@ -381,7 +414,7 @@ export function OneOnOnePrepDrawer({
       const q = (quarters?.[0] ?? null) as CommitmentQuarter | null;
       if (cancelled) return;
       setQuarter(q);
-      if (!q) { setPriorities([]); setCommitments([]); return; }
+      if (!q) { setPriorities([]); setCommitments([]); setCommitmentsLookupResolved(false); return; }
       const qStart = parseLocalDate(q.start_date);
       const nowMonth = new Date().getMonth();
       const monthNum = qStart ? Math.min(3, Math.max(1, nowMonth - qStart.getMonth() + 1)) : 1;
@@ -394,6 +427,7 @@ export function OneOnOnePrepDrawer({
       if (cancelled) return;
       setPriorities(priRes.data ?? []);
       setCommitments(comRes.data ?? []);
+      setCommitmentsLookupResolved(true);
     }
     load();
     return () => { cancelled = true; };
@@ -512,6 +546,12 @@ export function OneOnOnePrepDrawer({
     return pastActions.filter(a => !a.done && a.due_date && (parseLocalDate(a.due_date)?.getTime() ?? Infinity) < today).length;
   }, [pastActions]);
 
+  // Split into "actions for them" vs "to-dos for me" (TODO.md item 6) — kept in
+  // the same overdue-first/due-date order as sortedCommitments within each lane.
+  const theirCommitments = useMemo(() => sortedCommitments.filter(a => a.owner !== 'me'), [sortedCommitments]);
+  const mineCommitments = useMemo(() => sortedCommitments.filter(a => a.owner === 'me'), [sortedCommitments]);
+  const mineOpenCount = useMemo(() => mineCommitments.filter(a => !a.done).length, [mineCommitments]);
+
   const toggleAction = async (id: string) => {
     const target = pastActions.find(a => a.id === id);
     if (!target) return;
@@ -556,10 +596,24 @@ export function OneOnOnePrepDrawer({
         .single();
       if (error) throw error;
       setPastActions(prev => [{ ...data, done: false }, ...prev]);
-      toast({ title: 'Added as your commitment' });
+      toast({ title: 'Added to your personal to-do list', description: 'It now shows up in "My 1:1 To-Dos" and your Inbox.' });
     } catch (err) {
       toast({ title: 'Failed to add commitment', description: String(err), variant: 'destructive' });
     }
+  };
+
+  // ── Close: to-dos for me are already synced to the personal to-do list in
+  // real time (sync_cos_meeting_action_to_inbox trigger — see 1:1 To-Dos panel
+  // and the Inbox), so there's nothing left to move here. This just gives the
+  // user a visible confirmation of where their open items went.
+  const handleClose = () => {
+    if (mineOpenCount > 0) {
+      toast({
+        title: `${mineOpenCount} to-do${mineOpenCount === 1 ? '' : 's'} for you`,
+        description: 'Synced to your personal to-do list — see them all under "My 1:1 To-Dos".',
+      });
+    }
+    onClose();
   };
 
   // ── Talking points ──────────────────────────────────────────────────────────
@@ -730,8 +784,8 @@ export function OneOnOnePrepDrawer({
     if (overdueCount > 0) bits.push(`${overdueCount} commitment${overdueCount === 1 ? '' : 's'} from past 1:1s ${overdueCount === 1 ? 'is' : 'are'} overdue — clear ${overdueCount === 1 ? 'it' : 'those'} first.`);
     if (offTrackPriorities.length > 0) bits.push(`${offTrackPriorities.length} of ${firstName}'s quarterly ${offTrackPriorities.length === 1 ? 'priority is' : 'priorities are'} off track${offTrackPriorities.length === 1 ? ` — "${offTrackPriorities[0].title}"` : ''}.`);
     if (forgottenItems.length > 0) bits.push(`${forgottenItems.length} item${forgottenItems.length === 1 ? ' has' : 's have'} been sitting unresolved for a while.`);
-    if (filteredTopics.length > 0) bits.push(`${filteredTopics.length} talking point${filteredTopics.length === 1 ? '' : 's'} are suggested below, ordered by priority.`);
-    if (bits.length === 0) return `Your prep is ready. Review the talking points and check off anything you've already handled.`;
+    if (filteredTopics.length > 0) bits.push(`${filteredTopics.length} topic${filteredTopics.length === 1 ? '' : 's'} of the day ${filteredTopics.length === 1 ? 'is' : 'are'} suggested below, ordered by priority.`);
+    if (bits.length === 0) return `Your prep is ready. Review the topics of the day and check off anything you've already handled.`;
     return bits.join(' ');
   }, [overdueCount, offTrackPriorities, forgottenItems.length, filteredTopics.length, firstName]);
 
@@ -756,7 +810,7 @@ export function OneOnOnePrepDrawer({
   ];
 
   return (
-    <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
+    <Sheet open={open} onOpenChange={o => { if (!o) handleClose(); }}>
       <SheetContent
         side="right"
         // Hide the built-in Radix close button via [&>button]:hidden — we have our own
@@ -803,7 +857,7 @@ export function OneOnOnePrepDrawer({
                 {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Share
               </Button>
               <div className="w-px h-6 bg-border mx-0.5" />
-              <button onClick={onClose} aria-label="Close" className="h-[34px] w-[34px] grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <button onClick={handleClose} aria-label="Close" className="h-[34px] w-[34px] grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -913,7 +967,7 @@ export function OneOnOnePrepDrawer({
                   </div>
                 )}
 
-                {/* OPEN COMMITMENTS */}
+                {/* OPEN COMMITMENTS — split into "actions for them" vs "to-dos for me" (TODO.md item 6) */}
                 <Card className="px-[22px] pt-[18px] pb-4">
                   <SecHdr icon={Flag} label="Open assignments" right={
                     <span className={cn('ml-auto inline-flex items-center gap-1.5 text-xs font-semibold px-[11px] py-[3px] rounded-full',
@@ -922,52 +976,43 @@ export function OneOnOnePrepDrawer({
                       {overdueCount > 0 ? `${overdueCount} overdue` : 'All on track'}
                     </span>
                   } />
-                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-2">What you both committed to in past 1:1s. Overdue first — check off what&apos;s done.</p>
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-2">What you both committed to in past 1:1s — carried forward until done. Overdue first.</p>
 
-                  {sortedCommitments.length === 0 ? (
-                    <p className="text-[13px] text-muted-foreground italic py-5 border-t border-border/60">No open commitments carried over.</p>
-                  ) : sortedCommitments.map(a => {
-                    const db = dueBadge(a.due_date, a.done);
-                    const DueIcon = db.icon;
-                    const mine = a.owner === 'me';
-                    return (
-                      <button key={a.id} onClick={() => toggleAction(a.id)} className="w-full flex gap-3 items-start py-[13px] text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
-                        {a.done ? (
-                          <span className="w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-[13px] w-[13px] text-primary-foreground" /></span>
-                        ) : (
-                          <span className={cn('w-[19px] h-[19px] flex-shrink-0 mt-px rounded-[5px] border-[1.5px] bg-background', overdueCount && a.due_date && !a.done && (parseLocalDate(a.due_date)?.getTime() ?? Infinity) < startOfToday().getTime() ? 'border-red-500' : 'border-input')} />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className={cn('text-sm leading-snug', a.done ? 'text-muted-foreground line-through' : 'font-medium text-foreground')}>{a.text}</div>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            {mine ? (
-                              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full bg-blue-50 text-blue-700">
-                                <span className="w-[5px] h-[5px] rounded-full bg-blue-700" />You
-                              </span>
-                            ) : (
-                              <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full', tone.bg, tone.fg)}>
-                                <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />{firstName}
-                              </span>
-                            )}
-                            <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-md', db.cls)}>
-                              <DueIcon className="h-3 w-3" />{db.label}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-[9px] py-0.5 rounded-md bg-muted text-muted-foreground">
-                              <CornerUpLeft className="h-3 w-3" />From {format(new Date(a.created_at), 'MMM d')}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3 pt-[13px] border-t border-border/60">
-                    <div className="flex items-center gap-2 px-[11px] py-[9px] border border-dashed border-input rounded-md">
+                  {/* Actions for {firstName} */}
+                  <div className="mt-2 pt-3 border-t border-border/60">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full', tone.bg, tone.fg)}>
+                        <span className={cn('w-[5px] h-[5px] rounded-full', tone.dotColor)} />Actions for {firstName}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{theirCommitments.filter(a => !a.done).length} open</span>
+                    </div>
+                    {theirCommitments.length === 0 ? (
+                      <p className="text-[13px] text-muted-foreground italic py-3">Nothing queued for {firstName} yet.</p>
+                    ) : theirCommitments.map(a => (
+                      <CommitmentRow key={a.id} action={a} onToggle={toggleAction} />
+                    ))}
+                    <div className="flex items-center gap-2 px-[11px] py-[9px] mt-1.5 border border-dashed border-input rounded-md">
                       <UserPlus className="h-[15px] w-[15px] text-muted-foreground flex-shrink-0" />
                       <input value={assignInput} onChange={e => setAssignInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addAssignAction(); }}
                         placeholder={`Assign to ${firstName} — Enter`} className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px]" />
                     </div>
-                    <div className="flex items-center gap-2 px-[11px] py-[9px] border border-dashed border-input rounded-md">
+                  </div>
+
+                  {/* To-dos for me */}
+                  <div className="mt-4 pt-3 border-t border-border/60">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-[9px] py-0.5 rounded-full bg-blue-50 text-blue-700">
+                        <span className="w-[5px] h-[5px] rounded-full bg-blue-700" />To-dos for me
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{mineOpenCount} open</span>
+                    </div>
+                    <p className="text-[11.5px] text-muted-foreground mb-1">Synced to your personal to-do list automatically.</p>
+                    {mineCommitments.length === 0 ? (
+                      <p className="text-[13px] text-muted-foreground italic py-3">You have no open to-dos from this 1:1.</p>
+                    ) : mineCommitments.map(a => (
+                      <CommitmentRow key={a.id} action={a} onToggle={toggleAction} />
+                    ))}
+                    <div className="flex items-center gap-2 px-[11px] py-[9px] mt-1.5 border border-dashed border-input rounded-md">
                       <Plus className="h-[15px] w-[15px] text-muted-foreground flex-shrink-0" />
                       <input value={mineInput} onChange={e => setMineInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addMyCommitment(); }}
                         placeholder="Add for me — Enter" className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px]" />
@@ -975,21 +1020,21 @@ export function OneOnOnePrepDrawer({
                   </div>
                 </Card>
 
-                {/* TALKING POINTS */}
+                {/* TOPICS OF THE DAY (prep markdown, structured — TODO.md items 2 & 4) */}
                 <Card className="px-[22px] pt-[18px] pb-2">
-                  <SecHdr icon={ListChecks} label="Talking points" right={
+                  <SecHdr icon={ListChecks} label="Topics of the day" right={
                     <>
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-accent text-primary"><Sparkles className="h-3 w-3" />Suggested</span>
                       <span className="ml-auto text-[12.5px] text-muted-foreground">{includedCount} on the agenda</span>
                     </>
                   } />
-                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-0.5">Ordered by priority. Check the ones to cover — checked points become your agenda.</p>
+                  <p className="text-[12.5px] text-muted-foreground mt-1 mb-0.5">Pulled from your prep notes, ordered by priority. Check the ones to cover — checked topics become your agenda.</p>
 
                   {rankedPoints.length === 0 && customPoints.length === 0 ? (
                     (aiGenerating || refreshing) ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 border-t border-border/60"><Loader2 className="h-4 w-4 animate-spin" />Generating your prep brief…</div>
                     ) : (
-                      <p className="text-[13px] text-muted-foreground italic py-6 border-t border-border/60">No talking points yet — hit AI generate to draft a brief.</p>
+                      <p className="text-[13px] text-muted-foreground italic py-6 border-t border-border/60">No topics yet — hit AI generate to draft a brief.</p>
                     )
                   ) : (() => {
                       const visibleRanked = rankedPoints.filter(p => !excludedPoints.has(p.key));
@@ -1083,7 +1128,7 @@ export function OneOnOnePrepDrawer({
                   <div className="flex items-center gap-2.5 my-2 mb-3.5 px-3 py-2.5 border border-dashed border-input rounded-md">
                     <Plus className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <input value={newPoint} onChange={e => setNewPoint(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addPoint(); }}
-                      placeholder="Add your own talking point — press Enter" className="flex-1 bg-transparent border-0 outline-none text-[13.5px]" />
+                      placeholder="Add your own topic — press Enter" className="flex-1 bg-transparent border-0 outline-none text-[13.5px]" />
                   </div>
                 </Card>
               </div>
@@ -1113,11 +1158,15 @@ export function OneOnOnePrepDrawer({
                   })}
                 </Card>
 
-                {/* priority check-in */}
-                {priorities.length > 0 && (
-                  <Card className="px-[18px] py-4">
-                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-1"><Rocket className="h-3.5 w-3.5" />Priority check-in</div>
-                    <p className="text-[11.5px] text-muted-foreground mb-2.5">{firstName}&apos;s priorities this quarter{quarter ? ` · ${quarter.label}` : ''}.</p>
+                {/* Quarterly Priorities / Monthly Commitments reference panel — TODO.md item 3.
+                    Labels match the Commitments section of the tool exactly
+                    (src/pages/Commitments.tsx carousel: "Quarterly" + "Priorities",
+                    "Monthly" + "Commitments"). Always rendered (even when empty) so the
+                    red "Set up now" hint has somewhere to live. */}
+                <Card className="px-[18px] py-4">
+                  <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-1"><Rocket className="h-3.5 w-3.5" />Quarterly Priorities</div>
+                  <p className="text-[11.5px] text-muted-foreground mb-2.5">{firstName}&apos;s priorities this quarter{quarter ? ` · ${quarter.label}` : ''}.</p>
+                  {priorities.length > 0 ? (
                     <ul className="space-y-1.5">
                       {priorities.map(p => {
                         const sm = STATUS_META[p.status] ?? STATUS_META.draft;
@@ -1129,13 +1178,18 @@ export function OneOnOnePrepDrawer({
                         );
                       })}
                     </ul>
-                  </Card>
-                )}
+                  ) : commitmentsLookupResolved ? (
+                    <p className="text-[12.5px] font-semibold text-red-600">
+                      {firstName} hasn&apos;t set up quarterly priorities yet. Set up now
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground italic">Not available — {firstName} isn&apos;t linked to an account yet.</p>
+                  )}
+                </Card>
 
-                {/* monthly commitments */}
-                {commitments.length > 0 && (
-                  <Card className="px-[18px] py-4">
-                    <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5"><ListChecks className="h-3.5 w-3.5" />{firstName}&apos;s commitments</div>
+                <Card className="px-[18px] py-4">
+                  <div className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted-foreground flex items-center gap-1.5 mb-2.5"><ListChecks className="h-3.5 w-3.5" />Monthly Commitments</div>
+                  {commitments.length > 0 ? (
                     <ul className="space-y-1.5">
                       {commitments.map(c => {
                         const sm = STATUS_META[c.status] ?? STATUS_META.draft;
@@ -1150,8 +1204,14 @@ export function OneOnOnePrepDrawer({
                         );
                       })}
                     </ul>
-                  </Card>
-                )}
+                  ) : commitmentsLookupResolved ? (
+                    <p className="text-[12.5px] font-semibold text-red-600">
+                      {firstName} hasn&apos;t set up monthly commitments yet. Set up now
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground italic">Not available — {firstName} isn&apos;t linked to an account yet.</p>
+                  )}
+                </Card>
               </div>
             </div>
           )}
