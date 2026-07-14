@@ -33,7 +33,6 @@ interface InboxByProjectViewProps {
   onSnoozeUntilNext1on1?: (id: string, teamMemberId: string) => Promise<{ ok: true } | { ok: false }>;
   onUnsnooze?: (id: string) => void;
   focusedItemId?: string | null;
-  forceEditToken?: number;
 }
 
 export function InboxByProjectView({
@@ -41,7 +40,7 @@ export function InboxByProjectView({
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId,
-  onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId, forceEditToken,
+  onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: InboxByProjectViewProps) {
   const { pinnedItems, projectGroups } = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
@@ -135,7 +134,6 @@ export function InboxByProjectView({
                 onSelect={onSelect}
                 isNew={item.id === newItemId}
                 isFocused={item.id === focusedItemId}
-                forceEditToken={item.id === focusedItemId ? forceEditToken : undefined}
               />
             </div>
           ))}
@@ -185,7 +183,6 @@ export function InboxByProjectView({
                 onSelect={onSelect}
                 isNew={item.id === newItemId}
                 isFocused={item.id === focusedItemId}
-                forceEditToken={item.id === focusedItemId ? forceEditToken : undefined}
               />
             </div>
           ))}
