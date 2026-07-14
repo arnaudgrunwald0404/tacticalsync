@@ -275,7 +275,6 @@ export default function InboxPage() {
   const [searchDraft, setSearchDraft] = useState('');
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
-  const [forceEditToken, setForceEditToken] = useState(0);
   const [hasChangedViewThisSession, setHasChangedViewThisSession] = useState(false);
   const [shortcutsToastSeen, setShortcutsToastSeen] = useState(hasSeenShortcutsToast());
   const listContainerRef = useRef<HTMLDivElement>(null);
@@ -1029,8 +1028,11 @@ export default function InboxPage() {
           void handleItemDone(item.id, item.status !== 'done');
           break;
         case 'e':
+          // Editing now lives only in the detail panel, not inline in the
+          // list — 'e' opens it, same as Enter, rather than triggering
+          // inline text-edit here.
           e.preventDefault();
-          setForceEditToken(t => t + 1);
+          openDrawer(item);
           break;
         case 's':
           e.preventDefault();
@@ -1464,7 +1466,6 @@ export default function InboxPage() {
               onSnoozeUntilNext1on1={handleSnoozeUntilNext1on1}
               onUnsnooze={filter.builtIn === 'snoozed' ? handleUnsnooze : undefined}
               focusedItemId={focusedItemId}
-              forceEditToken={forceEditToken}
             />
           ) : (
             <InboxByProjectView
@@ -1491,7 +1492,6 @@ export default function InboxPage() {
               onSnoozeUntilNext1on1={handleSnoozeUntilNext1on1}
               onUnsnooze={filter.builtIn === 'snoozed' ? handleUnsnooze : undefined}
               focusedItemId={focusedItemId}
-              forceEditToken={forceEditToken}
               prioritizeMode={prioritizeMode}
               newItemId={lastAddedId}
             />

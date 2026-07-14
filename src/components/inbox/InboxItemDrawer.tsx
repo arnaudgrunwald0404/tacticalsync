@@ -33,10 +33,14 @@ export function InboxItemDrawer({
   item, allTags, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem,
 }: InboxItemDrawerProps) {
+  const [textDraft, setTextDraft] = useState('');
+  const [editingText, setEditingText] = useState(false);
   const [bodyDraft, setBodyDraft] = useState('');
   const [editingBody, setEditingBody] = useState(false);
 
   useEffect(() => {
+    setTextDraft(item?.text ?? '');
+    setEditingText(false);
     setBodyDraft(item?.body ?? '');
     setEditingBody(false);
   }, [item?.id]);
@@ -50,6 +54,17 @@ export function InboxItemDrawer({
 
   const open = !!item;
 
+  const commitEditText = async () => {
+    if (!item) return;
+    const trimmed = textDraft.trim();
+    setEditingText(false);
+    if (trimmed && trimmed !== item.text) {
+      await onUpdateItem?.(item.id, { text: trimmed });
+    } else {
+      setTextDraft(item.text);
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -59,9 +74,34 @@ export function InboxItemDrawer({
     >
       {item && (
         <>
-          {/* Header */}
+          {/* Header — editing lives only here (and in the desktop detail
+              panel), not inline in the main list, so it's a full multi-row
+              field. Brief items are auto-generated summaries, not editable. */}
           <div className="flex items-start gap-2 px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
-            <p className="flex-1 text-sm font-medium text-gray-900 leading-snug">{item.text}</p>
+            {item.type !== 'brief_item' ? (
+              editingText ? (
+                <textarea
+                  autoFocus
+                  value={textDraft}
+                  onChange={e => setTextDraft(e.target.value)}
+                  onBlur={commitEditText}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') { e.preventDefault(); setEditingText(false); setTextDraft(item.text); }
+                  }}
+                  rows={2}
+                  className="flex-1 text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-300 px-2 py-1 -mx-2 -my-1 outline-none focus:ring-1 focus:ring-gray-300 resize-none leading-snug"
+                />
+              ) : (
+                <button
+                  onClick={() => setEditingText(true)}
+                  className="flex-1 text-left text-sm font-medium text-gray-900 leading-snug hover:bg-gray-50 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors"
+                >
+                  {item.text}
+                </button>
+              )
+            ) : (
+              <p className="flex-1 text-sm font-medium text-gray-900 leading-snug">{item.text}</p>
+            )}
             <button
               onClick={onClose}
               className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors mt-0.5"

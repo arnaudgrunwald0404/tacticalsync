@@ -40,10 +40,17 @@ export function useFeatureAnnouncement(userId: string | null, flagKey: string) {
     setSeen(true);
     const merged = { ...flags, [flagKey]: true };
     setFlags(merged);
-    await supabase
+    // Upsert rather than update: if this user has no `profiles` row yet (or
+    // it was created before this flag existed), a plain `update` matches zero
+    // rows and silently no-ops, so the dismissal never persists and the
+    // banner reappears next visit even though it looked dismissed this
+    // session. Also log failures instead of swallowing them.
+    const { error } = await supabase
       .from('profiles')
-      .update({ feature_announcements: merged as unknown as Json })
-      .eq('id', userId);
+      .upsert({ id: userId, feature_announcements: merged as unknown as Json }, { onConflict: 'id' });
+    if (error) {
+      console.error(`Failed to persist feature announcement "${flagKey}"`, error);
+    }
   }, [userId, flagKey, flags]);
 
   return { seen, markSeen };

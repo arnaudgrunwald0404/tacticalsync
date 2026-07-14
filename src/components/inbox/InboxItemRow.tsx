@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
@@ -60,10 +60,6 @@ interface InboxItemRowProps {
    *  row" concept, distinct from :hover/:focus and from `isSelected`'s
    *  checkbox multi-select. */
   isFocused?: boolean;
-  /** Bumped to trigger entering inline text-edit from outside (the `e`
-   *  keyboard shortcut) without lifting `editingText` itself out of this
-   *  component — mirrors how `datePickerOpen` stays local. */
-  forceEditToken?: number;
 }
 
 // No entry for 'task' — task rows render no type icon (see below).
@@ -112,13 +108,10 @@ export function InboxItemRow({
   onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
   onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onTriageInsight,
   isSelected, onSelect, isNew, prioritizeMode,
-  onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused, forceEditToken,
+  onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused,
 }: InboxItemRowProps) {
   const [hovered, setHovered] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [editingText, setEditingText] = useState(false);
-  const [textDraft, setTextDraft] = useState(item.text);
-  const textInputRef = useRef<HTMLInputElement>(null);
   const isTouch = useIsTouch();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
@@ -135,17 +128,6 @@ export function InboxItemRow({
   const incomingDelegation = useIncomingDelegationForItem(item.id);
   const personTags = allTags.filter(t => t.type === 'person');
   const snoozeLabel = isSnoozed ? formatSnoozeLabel(item, personTags.find(t => t.member_id === item.snooze_until_member_id)?.name ?? null) : null;
-
-  // The `e` keyboard shortcut bumps forceEditToken to request inline edit
-  // from the page level without lifting editingText state out of this row.
-  const prevForceEditToken = useRef(forceEditToken);
-  useEffect(() => {
-    if (forceEditToken !== undefined && forceEditToken !== prevForceEditToken.current) {
-      prevForceEditToken.current = forceEditToken;
-      setTextDraft(item.text);
-      setEditingText(true);
-    }
-  }, [forceEditToken, item.text]);
 
   const isAgentItem = ['agent_nudge', 'agent_question', 'meeting_insight', 'brief_item'].includes(item.type);
   // A fixed due date shows as a tag (see the Tags column below) so it survives
@@ -168,19 +150,6 @@ export function InboxItemRow({
     if (!date) return;
     onUpdateItem?.(item.id, { priority_due_at: date.toISOString(), priority_fixed: true });
     setDatePickerOpen(false);
-  };
-
-  const startEditText = () => {
-    setTextDraft(item.text);
-    setEditingText(true);
-  };
-
-  const commitEditText = () => {
-    const trimmed = textDraft.trim();
-    if (trimmed && trimmed !== item.text) {
-      onUpdateItem?.(item.id, { text: trimmed });
-    }
-    setEditingText(false);
   };
 
   return (
@@ -259,42 +228,26 @@ export function InboxItemRow({
             </span>
           )}
 
-          {/* Main text */}
-          {editingText ? (
-            <input
-              ref={textInputRef}
-              autoFocus
-              value={textDraft}
-              onChange={e => setTextDraft(e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => {
-                if (e.key === 'Enter') { e.preventDefault(); commitEditText(); }
-                if (e.key === 'Escape') { e.preventDefault(); setEditingText(false); }
-              }}
-              onBlur={commitEditText}
-              className="flex-1 text-sm min-w-0 outline-none bg-white ring-1 ring-blue-300 rounded px-1 -mx-1"
-            />
-          ) : (
-            <button
-              className="flex-1 flex flex-col items-start text-left text-sm min-w-0 break-words"
-              onClick={() => onOpenDrawer?.(item)}
-              onDoubleClick={e => { e.stopPropagation(); startEditText(); }}
-            >
-              <span className={cn(isDone && 'line-through text-gray-400')}>
-                {item.text}
+          {/* Main text — editing happens only in the detail panel now, not
+              inline here; clicking always opens the drawer. */}
+          <button
+            className="flex-1 flex flex-col items-start text-left text-sm min-w-0 break-words"
+            onClick={() => onOpenDrawer?.(item)}
+          >
+            <span className={cn(isDone && 'line-through text-gray-400')}>
+              {item.text}
+            </span>
+            {/* Persistent (not hover-only) provenance caption for agent
+                nudges — answers "who generated this, why now" inline, per
+                PLAN_idea4_agentic_followthrough.md Section 5.2. The fuller
+                rationale is also available via the type icon's tooltip
+                above (Section 5.3). */}
+            {item.type === 'agent_nudge' && item.agent_payload?.rationale && (
+              <span className="text-[11px] text-amber-700/70 mt-0.5">
+                {item.agent_payload.rationale}
               </span>
-              {/* Persistent (not hover-only) provenance caption for agent
-                  nudges — answers "who generated this, why now" inline, per
-                  PLAN_idea4_agentic_followthrough.md Section 5.2. The fuller
-                  rationale is also available via the type icon's tooltip
-                  above (Section 5.3). */}
-              {item.type === 'agent_nudge' && item.agent_payload?.rationale && (
-                <span className="text-[11px] text-amber-700/70 mt-0.5">
-                  {item.agent_payload.rationale}
-                </span>
-              )}
-            </button>
-          )}
+            )}
+          </button>
 
           {/* Pin indicator — right after text. Weekly priorities and daily
               check-ins are always pinned; other items can be pinned manually. */}
@@ -313,52 +266,6 @@ export function InboxItemRow({
             />
           )}
 
-          {/* Snooze button — hover-revealed, next to the pin indicator.
-              Hidden once an item is already snoozed (see the Snoozed-view
-              chip + unsnooze button below instead). */}
-          {!isSnoozed && onSnooze && revealControls && (
-            <SnoozePopover
-              personTags={personTags}
-              teamMembers={teamMembers}
-              onSnooze={until => onSnooze(item.id, until)}
-              onSnoozeUntilNext1on1={async memberId => {
-                if (!onSnoozeUntilNext1on1) return false;
-                const result = await onSnoozeUntilNext1on1(item.id, memberId);
-                return result.ok;
-              }}
-              trigger={
-                <button
-                  onClick={e => e.stopPropagation()}
-                  title="Snooze"
-                  className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                </button>
-              }
-            />
-          )}
-
-          {/* Snoozed-until chip + unsnooze — only ever shown in the Snoozed view. */}
-          {isSnoozed && snoozeLabel && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0',
-                snoozeLabel.stale ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-100 text-gray-500',
-              )}
-            >
-              <Clock className="h-3 w-3" />
-              {snoozeLabel.text}
-              {onUnsnooze && (
-                <button
-                  onClick={e => { e.stopPropagation(); onUnsnooze(item.id); }}
-                  title="Bring back to inbox now"
-                  className="ml-0.5 hover:text-gray-800"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
-              )}
-            </span>
-          )}
         </div>
 
         {/* Tags — its own grid column (45%-75%, or 45%-70% in Prioritize mode).
@@ -506,7 +413,7 @@ export function InboxItemRow({
             track — and since every row is its own independent grid, that
             growth differs per row, pushing the Pills column to a different
             x-position on every row instead of a shared, strict start point. */}
-        <div className="flex items-center justify-self-start min-w-0 overflow-hidden">
+        <div className="flex items-center gap-1.5 justify-self-start min-w-0 overflow-hidden">
           {item.type !== 'brief_item' && (
             item.active_delegation_id && outgoingDelegation ? (
               // Person delegation (Idea #8, PLAN §8.3): a live delegation
@@ -534,6 +441,55 @@ export function InboxItemRow({
                 {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
               </button>
             )
+          )}
+
+          {/* Snooze — moved after Status (last column) so the row reads
+              left-to-right as content → status → snooze, rather than
+              splitting snooze off next to the text. Hover-revealed; hidden
+              once an item is already snoozed (see the chip + unsnooze
+              button below instead). */}
+          {!isSnoozed && onSnooze && revealControls && (
+            <SnoozePopover
+              personTags={personTags}
+              teamMembers={teamMembers}
+              onSnooze={until => onSnooze(item.id, until)}
+              onSnoozeUntilNext1on1={async memberId => {
+                if (!onSnoozeUntilNext1on1) return false;
+                const result = await onSnoozeUntilNext1on1(item.id, memberId);
+                return result.ok;
+              }}
+              trigger={
+                <button
+                  onClick={e => e.stopPropagation()}
+                  title="Snooze"
+                  className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                </button>
+              }
+            />
+          )}
+
+          {/* Snoozed-until chip + unsnooze — only ever shown in the Snoozed view. */}
+          {isSnoozed && snoozeLabel && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0',
+                snoozeLabel.stale ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-100 text-gray-500',
+              )}
+            >
+              <Clock className="h-3 w-3" />
+              {snoozeLabel.text}
+              {onUnsnooze && (
+                <button
+                  onClick={e => { e.stopPropagation(); onUnsnooze(item.id); }}
+                  title="Bring back to inbox now"
+                  className="ml-0.5 hover:text-gray-800"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+              )}
+            </span>
           )}
         </div>
 
