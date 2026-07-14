@@ -11,6 +11,8 @@ export interface NotificationPreferences {
   meeting_followups: boolean;
   daily_brief: boolean;
   inbox_item_nudges: boolean;
+  /** RCDO stale check-in / metric alerts — see supabase/functions/rcdo-stale-check/index.ts. */
+  rcdo_stale_alerts: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -21,6 +23,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   meeting_followups: true,
   daily_brief: true,
   inbox_item_nudges: true,
+  rcdo_stale_alerts: true,
 };
 
 export function useNotificationPreferences() {

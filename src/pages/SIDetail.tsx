@@ -33,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
+import { isCheckinStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
@@ -332,7 +333,15 @@ export default function SIDetail() {
   const isLocked = !!siDetails.locked_at;
   const acceptsSubSis = !!siDetails.accepts_sub_sis;
   const isSubSI = !!siDetails.parent_si_id;
-  
+
+  // Lightweight in-app staleness cue — see the matching comment in
+  // DODetail.tsx for why this isn't cycle-active-gated like the scheduled
+  // Slack nudge (supabase/functions/rcdo-stale-check/index.ts).
+  const isStale =
+    siDetails.status !== 'not_started' &&
+    siDetails.status !== 'completed' &&
+    isCheckinStale({ latestCheckinDate: checkins[0]?.date ?? null, createdAt: siDetails.created_at as string });
+
   const canEdit = canEditInitiative(
     siDetails.owner_user_id,
     siDetails.locked_at,
@@ -552,6 +561,7 @@ export default function SIDetail() {
         owner={siDetails.owner as DetailPageHeaderProps['owner']}
         isLocked={isLocked}
         isOwner={isOwner}
+        isStale={isStale}
         currentUserId={currentUserId}
         type="si"
         status={siDetails.status as string}
