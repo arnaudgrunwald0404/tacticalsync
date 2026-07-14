@@ -4004,6 +4004,10 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
+      rcdo_activate_cycle: {
+        Args: { p_cycle_id: string }
+        Returns: undefined
+      }
       rcdo_convert_si_to_sub_si_mode: {
         Args: { p_si_id: string }
         Returns: string
