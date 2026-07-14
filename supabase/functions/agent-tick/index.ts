@@ -33,6 +33,11 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
+// Same fallback convention as send-cos-team-member-invite's invite links.
+function appOrigin(): string {
+  return Deno.env.get('APP_ORIGIN') || 'https://app.tacticalsync.com'
+}
+
 interface AgentConfig {
   enabled: boolean
   nudge_actions: boolean
@@ -874,6 +879,12 @@ async function prestagePreps(
                 text: `:sparkles: *1:1 Prep Ready*\n\nYour meeting with *${memberName}* is ${dayLabel} at *${meetingTime}*. I've prepared your briefing.`,
               },
             },
+            {
+              type: 'actions',
+              elements: [
+                { type: 'button', text: { type: 'plain_text', text: 'View prep' }, url: `${appOrigin()}/check-ins`, style: 'primary' },
+              ],
+            },
           ])
         }
 
@@ -1001,6 +1012,12 @@ async function prestageInboxBriefs(
                   type: 'mrkdwn',
                   text: `:brain: *1:1 Brief Ready*\n\nYour meeting with *${memberName}* is ${dayLabel}. Open items, what's changed, and talking points are waiting in your inbox.`,
                 },
+              },
+              {
+                type: 'actions',
+                elements: [
+                  { type: 'button', text: { type: 'plain_text', text: 'View brief' }, url: `${appOrigin()}/inbox/person/${event.team_member_id}`, style: 'primary' },
+                ],
               },
             ])
           }
