@@ -234,6 +234,27 @@ export function useRCDORealtime({
         channels.push(checkinsChannel);
       }
 
+      // Links updates for SI (meeting priorities / action items linked to this SI)
+      if (onLinksUpdate) {
+        const linksChannel = supabase
+          .channel(`rc_links:initiative:${siId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'rc_links',
+              filter: `parent_id=eq.${siId}`,
+            },
+            () => {
+              onLinksUpdate();
+            }
+          )
+          .subscribe();
+
+        channels.push(linksChannel);
+      }
+
       // Sub-SI updates (children of this SI). Fires on insert/update/delete of any
       // sub-SI under this parent. Tasks under sub-SIs are not covered here — each
       // SubSIRow refetches its own tasks via useTasksBySI on its own lifecycle.

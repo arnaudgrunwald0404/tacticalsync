@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Bell, FileText, AlertTriangle, BarChart3, ListChecks, Sun, Slack, ArrowRight, Inbox } from 'lucide-react';
+import { Loader2, Bell, FileText, AlertTriangle, BarChart3, ListChecks, Sun, Slack, ArrowRight, Inbox, Target } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -148,6 +148,15 @@ export function NotificationSettingsPanel({ className, onNavigateToSection }: No
           checked={prefs.daily_brief}
           disabled={!slackConnected}
           onChange={daily_brief => update({ daily_brief })}
+        />
+
+        <NotificationToggle
+          icon={Target}
+          label="RCDO staleness alerts"
+          description="A Slack DM when a Defining Objective, Strategic Initiative, or metric you own hasn't had a check-in or update in a while"
+          checked={prefs.rcdo_stale_alerts}
+          disabled={!slackConnected}
+          onChange={rcdo_stale_alerts => update({ rcdo_stale_alerts })}
         />
       </SettingsGroup>
     </div>

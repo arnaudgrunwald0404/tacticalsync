@@ -14,10 +14,12 @@ import { MetricDialog } from '@/components/rcdo/MetricDialog';
 import { InitiativeDialog } from '@/components/rcdo/InitiativeDialog';
 import { CheckInDialog } from '@/components/rcdo/CheckInDialog';
 import { CheckinCard } from '@/components/rcdo/CheckinCard';
+import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
 import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
+import { isCheckinStale, isMetricStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
 import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
@@ -247,6 +249,19 @@ export default function DODetail() {
   const isLocked = !!doDetails.locked_at;
   const canEdit = canEditDO(doDetails.owner_user_id, doDetails.locked_at);
   const isOwner = currentUserId === doDetails.owner_user_id;
+
+  // Lightweight in-app staleness cue for the page you're already viewing —
+  // reuses data already fetched here (checkins, metrics), so no extra query.
+  // This is *not* cycle-active-gated like the scheduled Slack nudge (see
+  // supabase/functions/rcdo-stale-check/index.ts) since it's just a passive
+  // indicator on a page the owner/viewer navigated to directly, not an
+  // unsolicited notification — draft/done DOs are still excluded so a
+  // not-yet-started or finished DO never shows a false "stale" cue.
+  const isStale =
+    doDetails.status !== 'draft' &&
+    doDetails.status !== 'done' &&
+    (isCheckinStale({ latestCheckinDate: checkins[0]?.date ?? null, createdAt: doDetails.created_at }) ||
+      metrics.some((m) => isMetricStale({ lastUpdatedAt: m.last_updated_at, createdAt: m.created_at })));
   const ownerName = getFullNameForAvatar(
     doDetails.owner?.first_name,
     doDetails.owner?.last_name,
@@ -365,6 +380,7 @@ export default function DODetail() {
         isLocked={isLocked}
         isOwner={isOwner}
         currentUserId={currentUserId}
+        isStale={isStale}
         type="do"
         doId={doDetails.id}
         metrics={metrics}
@@ -421,6 +437,9 @@ export default function DODetail() {
               </TabsTrigger>
               <TabsTrigger value="checkins">
                 Check-ins ({checkins.length})
+              </TabsTrigger>
+              <TabsTrigger value="linked">
+                Linked from meetings ({links.filter(l => l.kind === 'meeting_priority' || l.kind === 'action_item').length})
               </TabsTrigger>
             </TabsList>
 
@@ -543,6 +562,17 @@ export default function DODetail() {
                     </div>
                   </div>
                 )}
+              </Card>
+            </TabsContent>
+
+            {/* Linked from meetings Tab */}
+            <TabsContent value="linked">
+              <Card className="p-6">
+                <LinkedMeetingItems
+                  links={links}
+                  loading={linksLoading}
+                  emptyMessage="No meeting priorities or action items have been linked to this Defining Objective yet."
+                />
               </Card>
             </TabsContent>
           </Tabs>

@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, X, Plus, CalendarIcon, GripVertical, Pencil, Check, Trash } from "lucide-react";
+import { MessageSquare, X, Plus, CalendarIcon, GripVertical, Pencil, Check, Trash, Target, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DndContext,
@@ -35,6 +35,13 @@ import { ActionItem, ActionItemInsert } from "@/types/action-items";
 // import { TeamMember } from "@/types/common";
 import { CompletionStatus } from "@/types/priorities";
 import { useMeetingContext } from "@/contexts/MeetingContext";
+import type { DOHashtagOption } from "@/types/rcdo";
+import type { ActiveInitiative } from "@/hooks/useActiveInitiatives";
+
+interface LinkedItemRef {
+  type: 'do' | 'initiative';
+  id: string;
+}
 
 interface DropdownMember {
   id: string;
@@ -55,6 +62,8 @@ interface MeetingActionItemsProps {
   teamId: string;
   onUpdate: () => void;
   hasAgendaItems?: boolean;
+  activeDOs?: DOHashtagOption[];
+  activeSIs?: ActiveInitiative[];
 }
 
 export interface MeetingActionItemsRef {
@@ -70,9 +79,10 @@ interface SortableActionItemRowProps {
   onRefresh: () => void;
   canModify: boolean;
   isLast: boolean;
+  linkedItemLabel?: { type: 'do' | 'initiative'; title: string } | null;
 }
 
-const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetCompletion, onRefresh, canModify, isLast }: SortableActionItemRowProps) => {
+const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetCompletion, onRefresh, canModify, isLast, linkedItemLabel }: SortableActionItemRowProps) => {
   const assignedMember = members.find(m => m.user_id === item.assigned_to);
   const {
     attributes,
@@ -242,7 +252,19 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
           </>
         ) : (
           <>
-            <div className={cn("col-span-9 text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
+            <div className="col-span-9 min-w-0">
+              <div className={cn("text-base truncate", item.completion_status === 'completed' && "line-through text-muted-foreground")}>{item.title}</div>
+              {linkedItemLabel && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  {linkedItemLabel.type === 'do' ? (
+                    <Target className="h-3 w-3 text-blue-600 shrink-0" />
+                  ) : (
+                    <Zap className="h-3 w-3 text-purple-600 shrink-0" />
+                  )}
+                  <span className="text-xs text-muted-foreground truncate">{linkedItemLabel.title}</span>
+                </div>
+              )}
+            </div>
             <div className="col-span-3 flex items-center gap-2 min-w-0">
               {item.assigned_to && assignedMember?.profiles ? (
                 <>
@@ -281,10 +303,10 @@ const SortableActionItemRow = ({ item, members, memberNames, onDelete, onSetComp
   );
 };
 
-const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsProps>(({ items, meetingId, teamId, onUpdate, hasAgendaItems = true }, ref) => {
+const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsProps>(({ items, meetingId, teamId, onUpdate, hasAgendaItems = true, activeDOs = [], activeSIs = [] }, ref) => {
   const { toast } = useToast();
   const { currentUserId, isSuperAdmin, isTeamAdmin, teamMembers: members, memberNames } = useMeetingContext();
-  
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -296,7 +318,8 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
     title: "",
     assigned_to: currentUserId || null as string | null,
     notes: "",
-    due_date: null as Date | null
+    due_date: null as Date | null,
+    linkedItem: null as LinkedItemRef | null,
   });
 
   // Update newItem.assigned_to when currentUserId changes
@@ -305,6 +328,50 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
       setNewItem(prev => ({ ...prev, assigned_to: currentUserId }));
     }
   }, [currentUserId]);
+
+  // Existing links from this meeting's action items to DOs/SIs (rc_links, kind = 'action_item').
+  // Fetched so each row can show which strategic item it's linked to.
+  const [linksByItemId, setLinksByItemId] = useState<Map<string, LinkedItemRef>>(new Map());
+
+  useEffect(() => {
+    const fetchActionItemLinks = async () => {
+      const itemIds = items.map(i => i.id).filter(Boolean);
+      if (itemIds.length === 0) {
+        setLinksByItemId(new Map());
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('rc_links')
+        .select('parent_type, parent_id, ref_id')
+        .eq('kind', 'action_item')
+        .in('ref_id', itemIds);
+
+      if (error) {
+        console.error('Error fetching action item links:', error);
+        return;
+      }
+
+      const map = new Map<string, LinkedItemRef>();
+      (data || []).forEach(link => {
+        map.set(link.ref_id, { type: link.parent_type as 'do' | 'initiative', id: link.parent_id });
+      });
+      setLinksByItemId(map);
+    };
+
+    fetchActionItemLinks();
+  }, [items]);
+
+  const getLinkedItemLabel = useCallback((itemId: string) => {
+    const link = linksByItemId.get(itemId);
+    if (!link) return null;
+    if (link.type === 'do') {
+      const doItem = activeDOs.find(d => d.id === link.id);
+      return doItem ? { type: 'do' as const, title: doItem.title } : null;
+    }
+    const si = activeSIs.find(s => s.id === link.id);
+    return si ? { type: 'initiative' as const, title: si.title } : null;
+  }, [linksByItemId, activeDOs, activeSIs]);
 
   useImperativeHandle(ref, () => ({
     startCreating: () => {
@@ -364,6 +431,28 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         throw error;
       }
 
+      // Create the DO/SI link, if one was selected, now that we have a real ID
+      if (newItem.linkedItem && data) {
+        const { error: linkError } = await supabase
+          .from('rc_links')
+          .insert({
+            parent_type: newItem.linkedItem.type,
+            parent_id: newItem.linkedItem.id,
+            kind: 'action_item',
+            ref_id: data.id,
+            created_by: user.id,
+          });
+
+        if (linkError && linkError.code !== '23505' && !linkError.message?.includes('duplicate key')) {
+          console.error('Error linking action item to strategy:', linkError);
+          toast({
+            title: 'Action item added, but linking failed',
+            description: linkError.message || 'Failed to link to Defining Objective / Strategic Initiative',
+            variant: 'destructive',
+          });
+        }
+      }
+
       toast({
         title: "Action item added",
         description: "The action item has been added successfully.",
@@ -374,7 +463,8 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
         title: "",
         assigned_to: currentUserId,
         notes: "",
-        due_date: null
+        due_date: null,
+        linkedItem: null,
       });
 
       // Optimistically update local state instead of refetching everything
@@ -517,6 +607,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   onSetCompletion={(status) => handleSetCompletion(item.id, status)}
                   onRefresh={onUpdate}
                   isLast={index === items.length - 1}
+                  linkedItemLabel={getLinkedItemLabel(item.id)}
                 />
               ))}
             </SortableContext>
@@ -536,7 +627,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
             {/* Desktop Layout */}
             <div className="hidden sm:grid sm:grid-cols-24 gap-3 items-start px-4 sm:px-6 pb-4 sm:pb-6">
               {/* Title Input */}
-              <div className="col-span-8">
+              <div className="col-span-7">
                 <Input
                   id="new-action-item-title"
                   value={newItem.title}
@@ -547,9 +638,9 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Who Selector */}
-              <div className="col-span-4">
-                <Select 
-                  value={newItem.assigned_to || ""} 
+              <div className="col-span-3">
+                <Select
+                  value={newItem.assigned_to || ""}
                   onValueChange={(value) => setNewItem(prev => ({ ...prev, assigned_to: value }))}
                 >
                   <SelectTrigger className="h-10">
@@ -601,7 +692,7 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
               </div>
 
               {/* Due Date Picker */}
-              <div className="col-span-4 relative">
+              <div className="col-span-3 relative">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -625,6 +716,75 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                     />
                   </PopoverContent>
                 </Popover>
+              </div>
+
+              {/* Link to Strategy (DO/SI) Selector */}
+              <div className="col-span-3">
+                <Select
+                  value={newItem.linkedItem ? `${newItem.linkedItem.type}:${newItem.linkedItem.id}` : ""}
+                  onValueChange={(value) => {
+                    if (!value || value === '__clear__') {
+                      setNewItem(prev => ({ ...prev, linkedItem: null }));
+                      return;
+                    }
+                    const [type, id] = value.split(':') as ['do' | 'initiative', string];
+                    setNewItem(prev => ({ ...prev, linkedItem: { type, id } }));
+                  }}
+                >
+                  <SelectTrigger className="h-10" aria-label="Link to Defining Objective or Strategic Initiative">
+                    <SelectValue placeholder="DOs / SIs">
+                      {newItem.linkedItem ? (
+                        <div className="flex items-center gap-1.5">
+                          {newItem.linkedItem.type === 'do' ? (
+                            <Target className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                          ) : (
+                            <Zap className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                          )}
+                          <span className="text-sm truncate">
+                            {newItem.linkedItem.type === 'do'
+                              ? activeDOs.find(d => d.id === newItem.linkedItem?.id)?.title
+                              : activeSIs.find(s => s.id === newItem.linkedItem?.id)?.title}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">DOs / SIs</span>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[400px] overflow-y-auto" position="item-aligned">
+                    {newItem.linkedItem && (
+                      <>
+                        <SelectItem value="__clear__">
+                          <div className="flex items-center gap-2">
+                            <X className="h-3 w-3" />
+                            <span>Clear Selection</span>
+                          </div>
+                        </SelectItem>
+                      </>
+                    )}
+                    {activeDOs.map((doItem) => (
+                      <SelectItem key={doItem.id} value={`do:${doItem.id}`}>
+                        <div className="flex items-center gap-2">
+                          <Target className="h-3 w-3 text-blue-600" />
+                          <span className="text-sm">{doItem.title}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {activeSIs.map((si) => (
+                      <SelectItem key={si.id} value={`initiative:${si.id}`}>
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-3 w-3 text-purple-600" />
+                          <span className="text-sm">{si.title}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {activeDOs.length === 0 && activeSIs.length === 0 && (
+                      <div className="px-2 py-3 text-sm text-muted-foreground">
+                        No strategic items available
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Notes Input */}
@@ -734,6 +894,69 @@ const MeetingActionItems = forwardRef<MeetingActionItemsRef, MeetingActionItemsP
                   </PopoverContent>
                 </Popover>
               </div>
+              <Select
+                value={newItem.linkedItem ? `${newItem.linkedItem.type}:${newItem.linkedItem.id}` : ""}
+                onValueChange={(value) => {
+                  if (!value || value === '__clear__') {
+                    setNewItem(prev => ({ ...prev, linkedItem: null }));
+                    return;
+                  }
+                  const [type, id] = value.split(':') as ['do' | 'initiative', string];
+                  setNewItem(prev => ({ ...prev, linkedItem: { type, id } }));
+                }}
+              >
+                <SelectTrigger className="h-10" aria-label="Link to Defining Objective or Strategic Initiative">
+                  <SelectValue placeholder="DOs / SIs">
+                    {newItem.linkedItem ? (
+                      <div className="flex items-center gap-1.5">
+                        {newItem.linkedItem.type === 'do' ? (
+                          <Target className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                        )}
+                        <span className="text-sm truncate">
+                          {newItem.linkedItem.type === 'do'
+                            ? activeDOs.find(d => d.id === newItem.linkedItem?.id)?.title
+                            : activeSIs.find(s => s.id === newItem.linkedItem?.id)?.title}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">DOs / SIs</span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-[400px] overflow-y-auto" position="item-aligned">
+                  {newItem.linkedItem && (
+                    <SelectItem value="__clear__">
+                      <div className="flex items-center gap-2">
+                        <X className="h-3 w-3" />
+                        <span>Clear Selection</span>
+                      </div>
+                    </SelectItem>
+                  )}
+                  {activeDOs.map((doItem) => (
+                    <SelectItem key={doItem.id} value={`do:${doItem.id}`}>
+                      <div className="flex items-center gap-2">
+                        <Target className="h-3 w-3 text-blue-600" />
+                        <span className="text-sm">{doItem.title}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {activeSIs.map((si) => (
+                    <SelectItem key={si.id} value={`initiative:${si.id}`}>
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-3 w-3 text-purple-600" />
+                        <span className="text-sm">{si.title}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {activeDOs.length === 0 && activeSIs.length === 0 && (
+                    <div className="px-2 py-3 text-sm text-muted-foreground">
+                      No strategic items available
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
               <RichTextEditor
                 content={newItem.notes}
                 onChange={(content) => setNewItem(prev => ({ ...prev, notes: content }))}
