@@ -338,6 +338,61 @@ serve(async (req) => {
         }
       }
 
+      // Gmail inbox mining — runs independently of Zoom, once per tick.
+      // Dedup is handled inside gmail-inbox-sync via suggestion_source_processed.
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/gmail-inbox-sync`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': userId,
+          },
+          body: JSON.stringify({ days: 7 }),
+        })
+      } catch (err) {
+        await logAgentEvent(supabase, userId, 'error', {
+          handler: 'gmail_inbox_sync',
+          error: (err as Error).message,
+        })
+      }
+
+      // Slack inbox mining — runs after slack-messages-sync has populated
+      // cos_slack_messages. Dedup via suggestion_source_processed.
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/slack-messages-sync`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': userId,
+          },
+          body: JSON.stringify({ days: 7 }),
+        })
+      } catch (err) {
+        await logAgentEvent(supabase, userId, 'error', {
+          handler: 'slack_messages_sync',
+          error: (err as Error).message,
+        })
+      }
+
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/slack-inbox-sync`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': userId,
+          },
+          body: JSON.stringify({ days: 7 }),
+        })
+      } catch (err) {
+        await logAgentEvent(supabase, userId, 'error', {
+          handler: 'slack_inbox_sync',
+          error: (err as Error).message,
+        })
+      }
+
       // Check quiet hours — skip the notification-heavy handlers below.
       if (inQuiet) {
         results.push({ user_id: userId, skipped_reason: 'quiet_hours' })
@@ -1661,7 +1716,12 @@ async function sendDailyDigest(
   if (actionSectionIncluded) {
     await logActionItemNudgesSent(supabase, userId, actionResult.toNudge)
   }
-  await supabase.from('cos_agent_log').insert({
+  // Error-checked (unlike most cos_agent_log inserts in this file): a failed
+  // insert here means the once-daily gate above never sees this send, so the
+  // digest would otherwise resend on every single tick (every 30 minutes)
+  // instead of once a day — this exact silent-failure shape already happened
+  // once for 'inbox_brief_staged' (see 20260729000001_fix_cos_agent_log_event_type_check_union.sql).
+  const { error: digestLogError } = await supabase.from('cos_agent_log').insert({
     user_id: userId,
     event_type: 'daily_digest_sent',
     payload: {
@@ -1672,6 +1732,12 @@ async function sendDailyDigest(
       blocking_others: blockingOthersItems.length,
     },
   })
+  if (digestLogError) {
+    await logAgentEvent(supabase, userId, 'error', {
+      handler: 'daily_digest_gate_log',
+      error: digestLogError.message,
+    })
+  }
 
   return { actionsNudged: actionsNudgedCount, extrasNudged }
 }
@@ -1959,7 +2025,7 @@ async function postMeetingCheck(
         'Content-Type': 'application/json',
         'x-supabase-user-id': userId,
       },
-      body: JSON.stringify({ days: 1 }),
+      body: JSON.stringify({ days: 3 }),
     })
     zoomSyncOk = res.ok
     if (!res.ok) console.warn(`post_meeting_check: zoom-recordings-sync returned ${res.status}`)
