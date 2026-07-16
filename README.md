@@ -175,8 +175,6 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
 - Optional (tests/helpers only):
   - `SUPABASE_SERVICE_ROLE_KEY`
 - E2E default: `PLAYWRIGHT_BASE_URL=http://localhost:5173`
-- Slack bot (optional):
-  - `cd slack-bot && cp .env.example .env` then fill tokens; to test a schedule set `SLACK_SCHEDULE_CRON="*/5 * * * *"`
 
 2) Install deps
 ```bash

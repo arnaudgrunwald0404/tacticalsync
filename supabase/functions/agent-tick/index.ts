@@ -455,9 +455,9 @@ serve(async (req) => {
 
             // Insert the log row first so its id is available to attach as the
             // Dismiss button's action_id (dismiss_escalation:<log_id>) — the
-            // handler for this action already exists in both
-            // agent-slack-action/index.ts and slack-bot/index.js, it just
-            // never had a button pointing at it before.
+            // handler for this action already exists in
+            // agent-slack-action/index.ts, it just never had a button
+            // pointing at it before.
             const { data: insertedEscalationLog } = await supabase.from('cos_agent_log').insert({
               user_id: userId,
               event_type: 'escalation_flagged',
