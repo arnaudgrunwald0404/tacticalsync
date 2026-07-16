@@ -37,6 +37,57 @@ function isSimilarText(a: string, b: string, threshold = 0.5): boolean {
   return union > 0 && intersection / union >= threshold
 }
 
+// Parse a VTT timestamp string ("HH:MM:SS.mmm" or "MM:SS.mmm") to milliseconds.
+function vttTimeToMs(ts: string): number {
+  const parts = ts.trim().split(':').map(Number)
+  if (parts.length === 3) return ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000
+  if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000
+  return 0
+}
+
+// Search VTT content for the cue whose text best overlaps with rawContext.
+// Returns the cue start time in milliseconds offset from recording start, or null.
+function findVttOffsetMs(vttContent: string, rawContext: string): number | null {
+  if (!rawContext?.trim()) return null
+  const needle = rawContext.toLowerCase().replace(/[^\w\s]/g, ' ')
+  const needleWords = new Set(needle.split(/\s+/).filter(w => w.length > 3))
+  if (needleWords.size === 0) return null
+
+  // Parse cues: each cue has a timestamp line and one or more text lines.
+  const cues: Array<{ startMs: number; text: string }> = []
+  const lines = vttContent.split(/\r?\n/)
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i].trim()
+    if (line.includes('-->')) {
+      const startStr = line.split('-->')[0].trim()
+      const startMs = vttTimeToMs(startStr)
+      const textLines: string[] = []
+      i++
+      while (i < lines.length && lines[i].trim() !== '' && !lines[i].includes('-->')) {
+        textLines.push(lines[i].trim())
+        i++
+      }
+      cues.push({ startMs, text: textLines.join(' ').toLowerCase().replace(/[^\w\s]/g, ' ') })
+    } else {
+      i++
+    }
+  }
+
+  // Score each cue by word overlap with needleWords.
+  let bestMs: number | null = null
+  let bestScore = 0
+  for (const cue of cues) {
+    const cueWords = cue.text.split(/\s+/).filter(w => w.length > 3)
+    let hits = 0
+    for (const w of cueWords) if (needleWords.has(w)) hits++
+    const score = cueWords.length > 0 ? hits / Math.max(needleWords.size, cueWords.length) : 0
+    if (score > bestScore) { bestScore = score; bestMs = cue.startMs }
+  }
+
+  return bestScore > 0.15 ? bestMs : null
+}
+
 // Strip VTT timestamps/metadata, keeping spoken text with speaker labels.
 function stripVtt(vtt: string): string {
   return vtt
@@ -314,7 +365,7 @@ serve(async (req) => {
     const recordingIds = transcripts.map(t => t.recording_id)
     const { data: recordings } = await supabase
       .from('cos_zoom_recordings')
-      .select('id, team_member_id, group_meeting_id, zoom_meeting_id, topic, start_time, participant_names')
+      .select('id, team_member_id, group_meeting_id, zoom_meeting_id, topic, start_time, participant_names, share_url')
       .in('id', recordingIds)
     const recordingById = new Map((recordings ?? []).map(r => [r.id, r]))
 
@@ -472,6 +523,21 @@ serve(async (req) => {
           ? await suggestTagsForSuggestion(anthropic, inboxTags, { title, rawContext: item.raw_context ?? null })
           : []
 
+        // Build a deep link into the Zoom recording at the moment of the quote.
+        let sourceUrl: string | null = null
+        const shareUrl = (recording as unknown as Record<string, string | null>)?.share_url ?? null
+        if (shareUrl && item.raw_context && transcript.content_type === 'vtt') {
+          const offsetMs = findVttOffsetMs(transcript.content, item.raw_context)
+          if (offsetMs !== null && recording?.start_time) {
+            const startTime = new Date(recording.start_time).getTime() + offsetMs
+            sourceUrl = `${shareUrl}?startTime=${startTime}`
+          } else if (shareUrl) {
+            sourceUrl = shareUrl
+          }
+        } else if (shareUrl) {
+          sourceUrl = shareUrl
+        }
+
         const { error: insertErr } = await supabase
           .from('dci_suggested_tasks')
           .insert({
@@ -487,6 +553,7 @@ serve(async (req) => {
             member_id: recording?.team_member_id ?? null,
             group_meeting_id: recording?.group_meeting_id ?? null,
             recording_id: transcript.recording_id,
+            source_url: sourceUrl,
             tag_suggestions: tagSuggestions,
           })
         if (!insertErr) totalAdded++
@@ -558,6 +625,19 @@ serve(async (req) => {
               .maybeSingle()
             if (existingC) continue
 
+            let cSourceUrl: string | null = null
+            const cShareUrl = (recording as unknown as Record<string, string | null>)?.share_url ?? null
+            if (cShareUrl && item.raw_context && transcript.content_type === 'vtt') {
+              const offsetMs = findVttOffsetMs(transcript.content, item.raw_context)
+              if (offsetMs !== null && recording?.start_time) {
+                cSourceUrl = `${cShareUrl}?startTime=${new Date(recording.start_time).getTime() + offsetMs}`
+              } else {
+                cSourceUrl = cShareUrl
+              }
+            } else if (cShareUrl) {
+              cSourceUrl = cShareUrl
+            }
+
             const { error: cInsertErr } = await supabase
               .from('dci_suggested_tasks')
               .insert({
@@ -573,6 +653,7 @@ serve(async (req) => {
                 group_meeting_id: recording?.group_meeting_id ?? null,
                 recording_id: transcript.recording_id,
                 assignee_member_id: matched.id,
+                source_url: cSourceUrl,
               })
             if (!cInsertErr) totalAdded++
           }

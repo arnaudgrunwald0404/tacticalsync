@@ -27,9 +27,8 @@ import { AccountabilityIllustration } from '@/components/inbox/AccountabilityIll
 import { InboxSuggestionsPanel } from '@/components/inbox/InboxSuggestionsPanel';
 import { ShortcutsHelpDialog } from '@/components/inbox/ShortcutsHelpDialog';
 import { InboxWhatsNewBanner } from '@/components/inbox/InboxWhatsNewBanner';
-import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { UnifiedFunnelAnnouncementBanner } from '@/components/inbox/UnifiedFunnelAnnouncementBanner';
-import { useInboxItems, isSyncedSourceRef } from '@/hooks/useInboxItems';
+import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
 import { useInboxViews } from '@/hooks/useInboxViews';
 import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
@@ -461,11 +460,6 @@ export default function InboxPage() {
   // re-shows once dismissed.
   const { seen: introSeen, markSeen: markIntroSeen } = useFeatureAnnouncement(userId, 'unified_funnel_intro_seen');
   const { seen: announcementSeen, markSeen: markAnnouncementSeen } = useFeatureAnnouncement(userId, 'unified_funnel_announcement_seen');
-  const firstSyncedItemId = useMemo(
-    () => allItems.find(i => isSyncedSourceRef(i.source_ref))?.id ?? null,
-    [allItems],
-  );
-
   // Person delegation (Idea #8): items delegated TO this user by a colleague.
   // InboxItemRow fetches its own per-row badge data (useIncomingDelegationForItem),
   // so this batched map is used only to decide whether to show the one-time
@@ -1431,12 +1425,6 @@ export default function InboxPage() {
               />
             </div>
           )}
-          {/* One-time "this showed up automatically" explainer, shown once
-              above the first auto-synced item a user ever sees — see
-              PLAN_idea1_unified_funnel.md §6.1. */}
-          {introSeen === false && firstSyncedItemId && (
-            <AutoSyncIntroCallout onDismiss={markIntroSeen} />
-          )}
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}
@@ -1447,6 +1435,8 @@ export default function InboxPage() {
               teamMembers={teamMembers}
               onCreateTag={handleQuickCreateTag}
               onCreatePersonTag={handleCreatePersonTag}
+              showIntroCallout={introSeen === false}
+              onDismissIntroCallout={markIntroSeen}
             />
           )}
           {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
