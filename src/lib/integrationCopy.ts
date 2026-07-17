@@ -21,18 +21,18 @@ export interface IntegrationCopy {
 export const INTEGRATION_COPY: Record<string, IntegrationCopy> = {
   calendar: {
     id: 'calendar',
-    name: 'Google Calendar',
+    name: 'Google Calendar & Gmail',
     whatWeDo: [
-      "Reads your calendar to find recurring 1:1s and other meetings automatically, so you don't add them by hand.",
-      "Infers how often you meet with each person from the recurrence pattern (weekly, biweekly, etc.), so we can tell when a 1:1 is skipped or drifting off-cadence.",
-      'Matches attendees on each invite to the people you track, so meetings get attributed to the right person without you tagging them.',
+      "Reads your Google Calendar to detect your 1:1s and their cadence — no manual entry needed.",
+      "Reads Gmail to surface email threads with your team members as pre-meeting context, and to catch Zoom AI summaries that the Zoom API missed.",
     ],
     whyItMatters: [
-      'Your 1:1 list builds itself from your real calendar instead of manual entry.',
-      'Cadence detection lets the app notice "you usually meet weekly, but it\'s been three weeks" — a signal no single meeting record can give you on its own.',
+      'Your meeting list and cadence tracking update automatically from your real calendar.',
+      'Email threads between meetings capture commitments and decisions that never show up in a transcript.',
     ],
     boundaries: [
-      "Read-only — we never create, edit, or delete anything on your calendar.",
+      "Read-only — we never send, create, edit, or delete anything in your calendar or email.",
+      "Gmail reads only threads with people you've added as team members, plus Zoom notification emails — not your whole inbox.",
     ],
   },
 
@@ -59,16 +59,15 @@ export const INTEGRATION_COPY: Record<string, IntegrationCopy> = {
     id: 'gmail',
     name: 'Gmail',
     whatWeDo: [
-      'Searches for and reads Zoom\'s "Meeting assets ready" emails, using their summary as a backup source when the Zoom API pipeline misses a meeting.',
-      'Caches the email thread history between you and each person you track, for use as context before a 1:1.',
+      'Reads email threads with your team members to surface recent context before a 1:1.',
+      "Reads Zoom's \"Meeting assets ready\" emails as a fallback when the Zoom API misses a recording summary.",
     ],
     whyItMatters: [
-      "Catches meeting content the primary Zoom pipeline would otherwise miss — for example, when cloud recording is off but Zoom still emailed an AI summary.",
-      'A lot of the real substance of a working relationship — commitments, decisions, tone — lives in email between meetings, not just in the meetings themselves; this is what lets prep briefs reflect that.',
+      'Commitments and decisions made over email — not in meetings — show up in your prep.',
     ],
     boundaries: [
-      "Read-only — never sends, deletes, or modifies email on your behalf.",
-      "Only reads messages matching specific patterns (Zoom notifications) or threads with people you've explicitly added as team members — not your whole inbox.",
+      "Read-only — never sends, deletes, or modifies email.",
+      "Only reads threads with people you've added as team members, plus Zoom notification emails.",
     ],
   },
 
