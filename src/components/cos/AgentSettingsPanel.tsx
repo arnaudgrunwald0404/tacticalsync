@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Inbox, Video } from 'lucide-react';
+import { Loader2, Bot, Bell, FileText, AlertTriangle, BarChart3, Clock, Slack, Users, ArrowRight, Activity, Wrench, Hash, Inbox, Video, Mail } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -93,6 +93,10 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
   const [saving, setSaving] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
   const [slackEmail, setSlackEmail] = useState<string | null>(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [gmailScopeGranted, setGmailScopeGranted] = useState(false);
+  const [zoomConnected, setZoomConnected] = useState(false);
+  const [zoomReauthRequired, setZoomReauthRequired] = useState(false);
   const [exceptionCount, setExceptionCount] = useState(0);
 
   // Load current config
@@ -112,14 +116,33 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
           setConfig({ ...DEFAULT_AGENT_CONFIG, ...settings.agent_config });
         }
 
-        // Check Slack connection
-        const { data: slackCreds } = await (supabase as unknown as SupabaseClient)
-          .from('user_slack_credentials_public')
-          .select('connected, slack_email')
-          .maybeSingle();
+        const [slackRes, googleRes, zoomRes] = await Promise.all([
+          (supabase as unknown as SupabaseClient)
+            .from('user_slack_credentials_public')
+            .select('connected, slack_email')
+            .maybeSingle(),
+          (supabase as unknown as SupabaseClient)
+            .from('user_calendar_credentials_public')
+            .select('connected, scope')
+            .maybeSingle(),
+          (supabase as unknown as SupabaseClient)
+            .from('user_zoom_credentials_public')
+            .select('connected, last_sync_status')
+            .maybeSingle(),
+        ]);
 
-        setSlackConnected(slackCreds?.connected === true);
-        setSlackEmail(slackCreds?.slack_email ?? null);
+        setSlackConnected(slackRes.data?.connected === true);
+        setSlackEmail(slackRes.data?.slack_email ?? null);
+
+        setGoogleConnected(googleRes.data?.connected === true);
+        const scope: string = googleRes.data?.scope ?? '';
+        setGmailScopeGranted(
+          scope.includes('gmail.readonly') ||
+          scope.includes('https://www.googleapis.com/auth/gmail.readonly'),
+        );
+
+        setZoomConnected(zoomRes.data?.connected === true);
+        setZoomReauthRequired(zoomRes.data?.last_sync_status === 'error: reauth_required');
 
         // Count per-person exceptions (members with any agent override turned off)
         const { data: members } = await (supabase as unknown as SupabaseClient)
@@ -263,6 +286,86 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
             </Button>
           )}
         </div>
+
+        {/* Google / Gmail prerequisite */}
+        {(() => {
+          const needsReconnect = googleConnected && !gmailScopeGranted;
+          const notConnected = !googleConnected;
+          const isOk = googleConnected && gmailScopeGranted;
+          if (isOk) return null;
+          const label = needsReconnect
+            ? 'Gmail permission needed'
+            : 'Google not connected';
+          const description = needsReconnect
+            ? 'Your Google account is connected but Gmail access was not granted. Reconnect to let the Agent mine your inbox for suggested tasks.'
+            : 'Connect your Google account so the Agent can scan your Gmail inbox and surface suggested tasks.';
+          return (
+            <div className={cn(
+              'flex items-center justify-between px-4 py-3 rounded-lg border',
+              'border-amber-200 bg-amber-50/50',
+            )}>
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-md flex items-center justify-center bg-amber-100 text-amber-600">
+                  <Mail className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{label}</span>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-300 text-amber-700">
+                      {needsReconnect ? 'Reconnect required' : 'Not connected'}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-shrink-0 gap-1.5"
+                onClick={() => onNavigateToSection?.('calendar-sync')}
+              >
+                {needsReconnect ? 'Reconnect Google' : 'Connect Google'}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          );
+        })()}
+
+        {/* Zoom prerequisite */}
+        {(() => {
+          if (zoomConnected && !zoomReauthRequired) return null;
+          const label = zoomReauthRequired ? 'Zoom needs reauthorization' : 'Zoom not connected';
+          const description = zoomReauthRequired
+            ? 'Zoom revoked access — reconnect so the Agent can pull meeting transcripts and recordings.'
+            : 'Connect Zoom so the Agent can pull meeting transcripts and surface suggested tasks and insights from your recordings.';
+          return (
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-amber-200 bg-amber-50/50">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-md flex items-center justify-center bg-amber-100 text-amber-600">
+                  <Video className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{label}</span>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-300 text-amber-700">
+                      {zoomReauthRequired ? 'Reconnect required' : 'Not connected'}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-shrink-0 gap-1.5"
+                onClick={() => onNavigateToSection?.('zoom-sync')}
+              >
+                {zoomReauthRequired ? 'Reconnect Zoom' : 'Connect Zoom'}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          );
+        })()}
       </SettingsGroup>
 
       {config.enabled && (

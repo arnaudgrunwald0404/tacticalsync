@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff } from 'lucide-react';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
 import { TagPickerDropdown } from '@/components/inbox/TagPickerDropdown';
 import { cn } from '@/lib/utils';
 import { useMeetingSuggestions, type MeetingSuggestion } from '@/hooks/useMeetingSuggestions';
+import { useIntegrationHealth } from '@/hooks/useIntegrationHealth';
 import type { InboxItemType, InboxTag } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -67,6 +68,8 @@ export function InboxSuggestionsPanel({
     },
   });
 
+  const health = useIntegrationHealth();
+
   const withBusyGuard = (id: string, run: () => Promise<void>) => {
     if (busyIds.has(id)) return;
     setBusyIds(prev => new Set(prev).add(id));
@@ -82,7 +85,46 @@ export function InboxSuggestionsPanel({
     ? suggestions.filter(s => s.tag_suggestions?.some(ts => scopeTagIds.includes(ts.tag_id)))
     : suggestions;
 
-  if (loading || scopedSuggestions.length === 0) return null;
+  if (loading || health.loading) return null;
+
+  // Agent is on but integrations aren't connected — show a nudge instead of silence.
+  if (scopedSuggestions.length === 0 && health.agentEnabled) {
+    const missingGoogle = !health.googleConnected || !health.gmailScopeGranted;
+    const missingSlack = !health.slackConnected;
+    const missingZoom = !health.zoomConnected || health.zoomReauthRequired;
+    if (missingGoogle || missingSlack || missingZoom) {
+      const missing: string[] = [];
+      if (missingGoogle) missing.push('Gmail');
+      if (missingSlack) missing.push('Slack');
+      if (missingZoom) missing.push(health.zoomReauthRequired ? 'Zoom (reconnect needed)' : 'Zoom');
+      return (
+        <div className="m-3 mb-0 rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <WifiOff className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-amber-900">
+                {missing.join(' and ')} not connected
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                The Agent is on but can't mine your{' '}
+                {missing.join(' or ')} inbox yet.{' '}
+                Connect {missing.length === 1 ? 'it' : 'them'} in{' '}
+                <a
+                  href="/settings?section=calendar-sync"
+                  className="underline font-medium hover:text-amber-900"
+                >
+                  Settings
+                </a>{' '}
+                to start getting suggested tasks here.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  if (scopedSuggestions.length === 0) return null;
 
   const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
   const hasEmail = scopedSuggestions.some(s => s.source_type === 'email');
