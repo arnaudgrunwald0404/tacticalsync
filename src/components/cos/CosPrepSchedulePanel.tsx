@@ -688,8 +688,8 @@ function MeetingsToolsCard({
 
   const availableTools = [...STATIC_TOOLS, ...dynamicTools];
 
-  const coreTools: PrepToolDef[] = [];
-  const perPersonToolDefs = availableTools;
+  const coreTools = availableTools.filter(t => t.isCore);
+  const perPersonToolDefs = availableTools.filter(t => !t.isCore);
 
   useEffect(() => {
     if (!userId) { setLoadingMembers(false); return; }
@@ -824,6 +824,22 @@ function MeetingsToolsCard({
                 <thead>
                   <tr>
                     <th className="text-left pb-1 pr-6 text-xs text-muted-foreground min-w-[160px]" />
+                    {coreTools.length > 0 && (
+                      <th
+                        colSpan={coreTools.length}
+                        className="pb-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
+                      >
+                        Default — all meetings
+                      </th>
+                    )}
+                    {perPersonToolDefs.length > 0 && (
+                      <th
+                        colSpan={perPersonToolDefs.length}
+                        className="pb-1 pl-6 text-center text-[10px] uppercase tracking-wide text-muted-foreground/60 border-b border-dashed border-border/50"
+                      >
+                        Additional per person
+                      </th>
+                    )}
                   </tr>
                   <tr>
                     <th className="pb-3 text-left text-xs font-medium text-muted-foreground pr-6">Meeting / Person</th>
@@ -891,8 +907,21 @@ function MeetingsToolsCard({
                             <td className="py-2.5 pr-6">
                               <span className="font-medium text-sm">{m.name || m.email || 'Unknown'}</span>
                             </td>
+                            {coreTools.map(t => {
+                              const on = draft.prep_tools.includes(t.id);
+                              return (
+                                <td key={t.id} className="py-2.5 px-3 text-center">
+                                  <div className="flex items-center justify-center" title={on ? 'Included via global toggle' : 'Excluded via global toggle'}>
+                                    <div className={cn('h-4 w-4 rounded border flex items-center justify-center',
+                                      on ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/30')}>
+                                      <Lock className={cn('h-2.5 w-2.5', on ? 'text-primary/60' : 'text-muted-foreground/40')} />
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            })}
                             {perPersonToolDefs.map(t => (
-                              <td key={t.id} className="py-2.5 px-3 text-center">
+                              <td key={t.id} className="py-2.5 px-3 pl-6 text-center">
                                 <Checkbox
                                   checked={isMemberToolOn(m, t.id)}
                                   onCheckedChange={(v) => toggleMemberTool(m, t.id, v as boolean)}
