@@ -98,7 +98,7 @@ export function InboxSuggestionsPanel({
       if (missingSlack) missing.push('Slack');
       if (missingZoom) missing.push(health.zoomReauthRequired ? 'Zoom (reconnect needed)' : 'Zoom');
       return (
-        <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 pt-2 pb-0">
+        <div className="mx-3 sm:mx-4 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
           <div className="flex items-center gap-2">
             <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
             <p className="text-xs font-medium text-red-800">
