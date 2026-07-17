@@ -1399,33 +1399,37 @@ export default function InboxPage() {
           </div>
         )}
 
-        {/* Item list — extra bottom room on mobile for the fixed composer bar */}
-        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
-          {showFirstDelegationBanner && (
-            <div className="mx-3 sm:mx-4 mt-3 px-3.5 py-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-start gap-2.5">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-indigo-900">New: items delegated to you show up here</p>
-                <p className="text-[11px] text-indigo-700 leading-snug mt-0.5">
-                  A colleague sent you something — it showed up in your inbox because they delegated it to you.
-                  Mark it done and they'll see it update automatically.
-                </p>
+        {/* Notices — above the scrollable list so they don't scroll away */}
+        {activePanel === 'inbox' && (showFirstDelegationBanner || whatsNewEligible) && (
+          <div className="flex-shrink-0 px-3 sm:px-4 pt-3 space-y-2">
+            {showFirstDelegationBanner && (
+              <div className="px-3.5 py-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-start gap-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-indigo-900">New: items delegated to you show up here</p>
+                  <p className="text-[11px] text-indigo-700 leading-snug mt-0.5">
+                    A colleague sent you something — it showed up in your inbox because they delegated it to you.
+                    Mark it done and they'll see it update automatically.
+                  </p>
+                </div>
+                <button
+                  onClick={dismissFirstDelegationBanner}
+                  className="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 underline"
+                >
+                  Dismiss
+                </button>
               </div>
-              <button
-                onClick={dismissFirstDelegationBanner}
-                className="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 underline"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-          {whatsNewEligible && (
-            <div className="px-3 sm:px-4 pt-3">
+            )}
+            {whatsNewEligible && (
               <InboxWhatsNewBanner
                 eligible={whatsNewEligible}
                 onShowShortcuts={() => setShortcutsHelpOpen(true)}
               />
-            </div>
-          )}
+            )}
+          </div>
+        )}
+
+        {/* Item list — extra bottom room on mobile for the fixed composer bar */}
+        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}

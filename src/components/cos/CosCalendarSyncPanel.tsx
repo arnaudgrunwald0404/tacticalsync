@@ -68,11 +68,48 @@ export default function CosCalendarSyncPanel() {
       options: {
         scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly',
         queryParams: { access_type: 'offline', prompt: 'consent' },
-        redirectTo: `${origin}/chief-of-staff?calendar=connected`,
+        redirectTo: `${origin}/settings?section=calendar-sync&calendar=connected`,
       },
     });
     if (error) toast({ title: 'OAuth failed', description: error.message, variant: 'destructive' });
   };
+
+  // Handle the post-OAuth redirect: save the provider tokens then kick off
+  // an initial 7-day calendar sync, so connecting from Settings works the
+  // same as connecting from the prep wizard.
+  const didHandleCallbackRef = React.useRef(false);
+  useEffect(() => {
+    if (didHandleCallbackRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar') !== 'connected') return;
+    didHandleCallbackRef.current = true;
+    // Strip the query param so a refresh doesn't re-run the sync.
+    window.history.replaceState({}, '', '/settings?section=calendar-sync');
+    void (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const s = session as unknown as { provider_token?: string; provider_refresh_token?: string };
+        if (s?.provider_refresh_token) {
+          const CALENDAR_SCOPES = 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/gmail.readonly';
+          await supabase.functions.invoke('save-google-calendar-tokens', {
+            body: {
+              access_token: s.provider_token ?? '',
+              refresh_token: s.provider_refresh_token,
+              expires_in: 3600,
+              scope: CALENDAR_SCOPES,
+            },
+          });
+        }
+        const { error } = await supabase.functions.invoke('google-calendar-sync', { body: { days: 7 } });
+        if (error) throw error;
+        toast({ title: 'Google Calendar connected', description: 'Your meetings are syncing.' });
+        setConnection(prev => prev ? { ...prev, connected: true } : prev);
+      } catch (err) {
+        toast({ title: 'Calendar sync failed', description: String(err), variant: 'destructive' });
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const disconnect = async () => {
     setDisconnecting(true);
