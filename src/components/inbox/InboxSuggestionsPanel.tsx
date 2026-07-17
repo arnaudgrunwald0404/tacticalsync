@@ -98,26 +98,21 @@ export function InboxSuggestionsPanel({
       if (missingSlack) missing.push('Slack');
       if (missingZoom) missing.push(health.zoomReauthRequired ? 'Zoom (reconnect needed)' : 'Zoom');
       return (
-        <div className="m-3 mb-0 rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3">
-          <div className="flex items-start gap-2.5">
-            <WifiOff className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-amber-900">
-                {missing.join(' and ')} not connected
-              </p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                The Agent is on but can't mine your{' '}
-                {missing.join(' or ')} inbox yet.{' '}
-                Connect {missing.length === 1 ? 'it' : 'them'} in{' '}
-                <a
-                  href="/settings?section=calendar-sync"
-                  className="underline font-medium hover:text-amber-900"
-                >
-                  Settings
-                </a>{' '}
-                to start getting suggested tasks here.
-              </p>
-            </div>
+        <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 pt-2 pb-0">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+            <p className="text-xs font-medium text-red-800">
+              {missing.join(' and ')} not connected —{' '}
+              <span className="font-normal text-red-700">
+                the Agent can't mine your inbox yet.{' '}
+              </span>
+              <a
+                href="/settings?section=calendar-sync"
+                className="font-semibold underline text-red-800 hover:text-red-900"
+              >
+                Connect in Settings
+              </a>
+            </p>
           </div>
         </div>
       );
