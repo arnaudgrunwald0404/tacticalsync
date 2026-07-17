@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Save, Calendar, Unlink, RefreshCw, Clock, Mail } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ export default function CosCalendarSyncPanel() {
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
     autoSyncEnabled: boolean;
+    autoSyncEmailEnabled: boolean;
     autoSyncMorningHourUtc: number;
     autoSyncMiddayHourUtc: number;
   } | null>(null);
@@ -47,13 +48,15 @@ export default function CosCalendarSyncPanel() {
           lastSyncAt: credsRes.data.last_sync_at ?? null,
           lastSyncStatus: credsRes.data.last_sync_status ?? null,
           autoSyncEnabled: credsRes.data.auto_sync_enabled ?? true,
+          autoSyncEmailEnabled: credsRes.data.auto_sync_email_enabled ?? true,
           autoSyncMorningHourUtc: credsRes.data.auto_sync_morning_hour_utc ?? 11,
           autoSyncMiddayHourUtc: credsRes.data.auto_sync_midday_hour_utc ?? 18,
         });
       } else {
         setConnection({
           connected: false, scope: null, lastSyncAt: null, lastSyncStatus: null,
-          autoSyncEnabled: true, autoSyncMorningHourUtc: 11, autoSyncMiddayHourUtc: 18,
+          autoSyncEnabled: true, autoSyncEmailEnabled: true,
+          autoSyncMorningHourUtc: 11, autoSyncMiddayHourUtc: 18,
         });
       }
       setLoading(false);
@@ -74,16 +77,12 @@ export default function CosCalendarSyncPanel() {
     if (error) toast({ title: 'OAuth failed', description: error.message, variant: 'destructive' });
   };
 
-  // Handle the post-OAuth redirect: save the provider tokens then kick off
-  // an initial 7-day calendar sync, so connecting from Settings works the
-  // same as connecting from the prep wizard.
   const didHandleCallbackRef = React.useRef(false);
   useEffect(() => {
     if (didHandleCallbackRef.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') !== 'connected') return;
     didHandleCallbackRef.current = true;
-    // Strip the query param so a refresh doesn't re-run the sync.
     window.history.replaceState({}, '', '/settings?section=calendar-sync');
     void (async () => {
       try {
@@ -117,7 +116,7 @@ export default function CosCalendarSyncPanel() {
       const { error } = await supabase.functions.invoke('disconnect-google-calendar', { body: {} });
       if (error) throw error;
       toast({ title: 'Calendar disconnected' });
-      setConnection({ connected: false, scope: null, lastSyncAt: null, lastSyncStatus: null });
+      setConnection(prev => prev ? { ...prev, connected: false, scope: null, lastSyncAt: null, lastSyncStatus: null } : prev);
     } catch (err) {
       toast({ title: 'Disconnect failed', description: String(err), variant: 'destructive' });
     } finally {
@@ -135,7 +134,7 @@ export default function CosCalendarSyncPanel() {
         updated?: number;
         cancelled?: number;
       };
-      toast({ title: 'Sync complete', description: `${created} added · ${updated} updated · ${cancelled} removed` });
+      toast({ title: 'Calendar synced', description: `${created} added · ${updated} updated · ${cancelled} removed` });
     } catch (err) {
       toast({ title: 'Sync failed', description: String(err), variant: 'destructive' });
     } finally {
@@ -148,8 +147,6 @@ export default function CosCalendarSyncPanel() {
     try {
       const { data, error } = await supabase.functions.invoke('gmail-meeting-assets-sync', { body: {} });
       if (error) {
-        // Non-2xx responses land here, not in `data` — the JSON body (with our
-        // `error: 'missing_scope'` code) is on the underlying Response.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const errBody = await (error as any)?.context?.json?.().catch(() => null);
         if (errBody?.error === 'missing_scope') {
@@ -167,7 +164,7 @@ export default function CosCalendarSyncPanel() {
         transcripts_fetched?: number;
       };
       toast({
-        title: 'Gmail sync complete',
+        title: 'Emails synced',
         description: `${processed} meeting email${processed === 1 ? '' : 's'} found · ${transcripts_fetched} new summar${transcripts_fetched === 1 ? 'y' : 'ies'} added`,
       });
     } catch (err) {
@@ -191,7 +188,7 @@ export default function CosCalendarSyncPanel() {
         })
         .eq('user_id', userId);
       if (error) throw error;
-      toast({ title: 'Auto-sync schedule saved' });
+      toast({ title: 'Sync schedule saved' });
     } catch (err) {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
     } finally {
@@ -201,132 +198,157 @@ export default function CosCalendarSyncPanel() {
 
   if (loading) return null;
 
+  const showSchedule = connection?.connected && (connection.autoSyncEnabled || connection.autoSyncEmailEnabled);
+
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Calendar className="h-4 w-4" /> Connection
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {connection?.connected ? (
-            <>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-emerald-50 text-emerald-700 border-0">Connected</Badge>
-                <span className="text-sm text-muted-foreground">Google Calendar</span>
-              </div>
-              {connection.lastSyncAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last synced {new Date(connection.lastSyncAt).toLocaleString()}
-                  {connection.lastSyncStatus && connection.lastSyncStatus !== 'ok' && ` · ${connection.lastSyncStatus}`}
+        <CardContent className="pt-5 space-y-5">
+
+          {/* ── Connection status ── */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              {connection?.connected ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-50 text-emerald-700 border-0">Connected</Badge>
+                    <span className="text-sm text-muted-foreground">Google Calendar &amp; Gmail</span>
+                  </div>
+                  {connection.lastSyncAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Last synced {new Date(connection.lastSyncAt).toLocaleString()}
+                      {connection.lastSyncStatus && connection.lastSyncStatus !== 'ok' && ` · ${connection.lastSyncStatus}`}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Sign in with Google to connect Calendar and Gmail — one authorization, both integrations.
                 </p>
               )}
-              <div className="flex gap-2 pt-2">
-                <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
-                  {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  Sync now
-                </Button>
-                <Button size="sm" variant="outline" onClick={syncGmailNow} disabled={syncingGmail} className="gap-1.5">
-                  {syncingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                  Sync meeting emails
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={disconnect}
-                  disabled={disconnecting}
-                  className="gap-1.5 text-destructive hover:text-destructive"
-                >
-                  {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                  Disconnect
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Sign in with Google to connect Calendar and Gmail at once — one authorization, both integrations.
-              </p>
-              <Button size="sm" onClick={connect} className="gap-1.5">
+            </div>
+            {connection?.connected ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={disconnect}
+                disabled={disconnecting}
+                className="gap-1.5 text-destructive hover:text-destructive shrink-0"
+              >
+                {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                Disconnect
+              </Button>
+            ) : (
+              <Button size="sm" onClick={connect} className="gap-1.5 shrink-0">
                 <Calendar className="h-3.5 w-3.5" />
                 Sign in with Google
               </Button>
+            )}
+          </div>
+
+          {connection?.connected && (
+            <>
+              <div className="border-t border-border" />
+
+              {/* ── Automatic sync toggles ── */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  Automatic sync
+                </div>
+
+                <label className="flex items-center justify-between gap-3 py-1">
+                  <div>
+                    <span className="text-sm">Sync calendar twice a day</span>
+                    <p className="text-[11px] text-muted-foreground">New meetings appear as cards automatically.</p>
+                  </div>
+                  <Switch
+                    checked={connection.autoSyncEnabled}
+                    onCheckedChange={v => setConnection(c => c ? { ...c, autoSyncEnabled: v } : c)}
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-3 py-1">
+                  <div>
+                    <span className="text-sm">Sync meeting emails twice a day</span>
+                    <p className="text-[11px] text-muted-foreground">Email threads with teammates surface as context before each meeting.</p>
+                  </div>
+                  <Switch
+                    checked={connection.autoSyncEmailEnabled}
+                    onCheckedChange={v => setConnection(c => c ? { ...c, autoSyncEmailEnabled: v } : c)}
+                  />
+                </label>
+              </div>
+
+              {/* ── Schedule pickers (visible when either auto-sync is on) ── */}
+              {showSchedule && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Morning sync</label>
+                      <Select
+                        value={String(connection.autoSyncMorningHourUtc)}
+                        onValueChange={v => setConnection(c => c ? { ...c, autoSyncMorningHourUtc: parseInt(v) } : c)}
+                      >
+                        <SelectTrigger className="w-full h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {utcHourToLocalLabel(i)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Evening sync</label>
+                      <Select
+                        value={String(connection.autoSyncMiddayHourUtc)}
+                        onValueChange={v => setConnection(c => c ? { ...c, autoSyncMiddayHourUtc: parseInt(v) } : c)}
+                      >
+                        <SelectTrigger className="w-full h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {utcHourToLocalLabel(i)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={saveAutoSync} disabled={savingAutoSync} className="gap-1.5">
+                    {savingAutoSync ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    Save schedule
+                  </Button>
+                </div>
+              )}
+
+              <div className="border-t border-border" />
+
+              {/* ── Manual sync ── */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Sync now</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
+                    {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Sync calendar
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={syncGmailNow} disabled={syncingGmail} className="gap-1.5">
+                    {syncingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                    Sync emails
+                  </Button>
+                </div>
+              </div>
             </>
           )}
+
         </CardContent>
       </Card>
-
-      {connection?.connected && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4" /> Auto-sync schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label className="flex items-center gap-3">
-              <Switch
-                checked={connection.autoSyncEnabled}
-                onCheckedChange={v => setConnection(c => c ? { ...c, autoSyncEnabled: v } : c)}
-              />
-              <div>
-                <span className="text-sm font-medium">Sync automatically twice a day</span>
-                <p className="text-[11px] text-muted-foreground">
-                  New meetings will appear as cards without needing to sync manually.
-                </p>
-              </div>
-            </label>
-
-            {connection.autoSyncEnabled && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Morning sync</label>
-                  <Select
-                    value={String(connection.autoSyncMorningHourUtc)}
-                    onValueChange={v => setConnection(c => c ? { ...c, autoSyncMorningHourUtc: parseInt(v) } : c)}
-                  >
-                    <SelectTrigger className="w-full h-9 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <SelectItem key={i} value={String(i)}>
-                          {utcHourToLocalLabel(i)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Midday sync</label>
-                  <Select
-                    value={String(connection.autoSyncMiddayHourUtc)}
-                    onValueChange={v => setConnection(c => c ? { ...c, autoSyncMiddayHourUtc: parseInt(v) } : c)}
-                  >
-                    <SelectTrigger className="w-full h-9 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <SelectItem key={i} value={String(i)}>
-                          {utcHourToLocalLabel(i)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
-            <Button size="sm" onClick={saveAutoSync} disabled={savingAutoSync} className="gap-1.5">
-              {savingAutoSync ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save schedule
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
     </div>
   );
 }
