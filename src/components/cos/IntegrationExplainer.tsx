@@ -39,8 +39,8 @@ export default function IntegrationExplainer({ copy }: { copy: IntegrationCopy }
       </div>
 
       {copy.boundaries && copy.boundaries.length > 0 && (
-        <div className="pt-1 border-t border-border/60">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5 pt-3">
+        <div className="border-t border-border/60 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
             <ShieldCheck className="h-3 w-3" /> What this doesn't do
           </p>
           <ul className="space-y-1.5">

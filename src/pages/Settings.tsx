@@ -2672,7 +2672,6 @@ const Settings = () => {
             </div>
             <div className="mb-6 space-y-4">
               <IntegrationExplainer copy={INTEGRATION_COPY.calendar} />
-              <IntegrationExplainer copy={INTEGRATION_COPY.gmail} />
             </div>
             <CosCalendarSyncPanel />
           </div>
