@@ -2665,9 +2665,9 @@ const Settings = () => {
         ) : activeSection === "calendar-sync" ? (
           <div className="mb-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Calendar sync</h2>
+              <h2 className="text-2xl font-bold mb-1">Calendar & Email Sync</h2>
               <p className="text-muted-foreground text-sm">
-                Connect Google Calendar to drive your 1:1 list from real meetings, and configure which events count.
+                One Google sign-in connects your calendar and inbox — your 1:1 list stays current automatically, and email context from your team surfaces before every meeting.
               </p>
             </div>
             <div className="mb-6 space-y-4">

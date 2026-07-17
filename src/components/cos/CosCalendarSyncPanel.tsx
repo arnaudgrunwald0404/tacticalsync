@@ -246,11 +246,11 @@ export default function CosCalendarSyncPanel() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                Connect Google Calendar to sync upcoming 1:1s as placeholders in the Check-Ins tab.
+                Sign in with Google to connect Calendar and Gmail at once — one authorization, both integrations.
               </p>
               <Button size="sm" onClick={connect} className="gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
-                Connect Google Calendar
+                Sign in with Google
               </Button>
             </>
           )}

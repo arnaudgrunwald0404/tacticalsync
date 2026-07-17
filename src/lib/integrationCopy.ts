@@ -9,6 +9,8 @@
 export interface IntegrationCopy {
   id: string;
   name: string;
+  /** Override the "What we do with this" section label, e.g. "What we read". */
+  whatWeDoLabel?: string;
   /** Concrete, factual actions taken with this connection — not marketing copy. */
   whatWeDo: string[];
   /** Benefits, ordered obvious-first, non-obvious-second. */
@@ -22,17 +24,18 @@ export const INTEGRATION_COPY: Record<string, IntegrationCopy> = {
   calendar: {
     id: 'calendar',
     name: 'Google Calendar & Gmail',
+    whatWeDoLabel: 'What we read',
     whatWeDo: [
-      "Reads your Google Calendar to detect your 1:1s and their cadence — no manual entry needed.",
-      "Reads Gmail to surface email threads with your team members as pre-meeting context, and to catch Zoom notification emails when the Zoom API misses a recording summary.",
+      "Google Calendar — to detect 1:1s, track meeting cadence, and flag when a regular is overdue.",
+      "Gmail threads with your team — to surface recent context before each 1:1, and to catch Zoom AI summaries the API missed.",
     ],
     whyItMatters: [
-      'Your meeting list and cadence tracking update automatically from your real calendar.',
-      'Email threads between meetings capture commitments and decisions that never show up in a transcript.',
+      'Your 1:1 list and cadence tracking stay accurate without any manual entry.',
+      'Email between meetings holds commitments and decisions that never make it into a transcript — now they show up in your prep.',
     ],
     boundaries: [
-      "Read-only — we never send, create, edit, or delete anything in your calendar or email.",
-      "Gmail reads only threads with people you've added as team members, plus Zoom notification emails — not your whole inbox.",
+      "We never write to your calendar or send email on your behalf.",
+      "Gmail only reads threads with people you've added as team members, plus Zoom notification emails — not your whole inbox.",
     ],
   },
 
