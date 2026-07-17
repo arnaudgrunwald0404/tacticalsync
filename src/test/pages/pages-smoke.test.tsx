@@ -35,11 +35,14 @@ describe('Page Smoke Tests - Import Verification', () => {
     expect(typeof module.default).toBe('function');
   });
 
+  // Longer timeout: DODetail's import graph (RCDO hooks/realtime/permissions,
+  // multiple dialog components) is heavy enough that a cold transform can miss
+  // the default 5000ms under load, causing intermittent pre-push failures.
   it('should import DODetail page', async () => {
     const module = await import('@/pages/DODetail');
     expect(module.default).toBeDefined();
     expect(typeof module.default).toBe('function');
-  });
+  }, 15000);
 
   it('should import TasksFeed page', async () => {
     const module = await import('@/pages/TasksFeed');
