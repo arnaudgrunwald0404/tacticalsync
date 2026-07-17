@@ -94,14 +94,18 @@ serve(async (req) => {
     // Load Slack credentials (including stored extra channels).
     const { data: creds, error: credsErr } = await supabase
       .from('user_slack_credentials')
-      .select('access_token, slack_user_id, sync_channels')
+      .select('access_token, user_access_token, slack_user_id, sync_channels')
       .eq('user_id', userId)
       .maybeSingle()
 
     if (credsErr) return jsonResponse({ error: credsErr.message }, 500)
     if (!creds?.access_token) return jsonResponse({ error: 'not_connected' }, 400)
 
-    const token = creds.access_token as string
+    const botToken = creds.access_token as string
+    // User token (xoxp-) is needed for reading personal DMs and channels.
+    // Falls back to bot token if not yet stored (user must reconnect Slack after
+    // user scopes are added to the Slack app to populate this field).
+    const userToken = (creds.user_access_token as string | null) ?? botToken
     const mySlackId = creds.slack_user_id as string | null
 
     // The channel allowlist a user configures in Settings → Briefs & Schedule
@@ -123,8 +127,8 @@ serve(async (req) => {
     const storedChannels: string[] = Array.isArray(creds.sync_channels) ? creds.sync_channels : []
     const extraChannels = Array.from(new Set([...scheduleChannels, ...storedChannels, ...bodyChannels]))
 
-    // Helper: call a Slack API method.
-    async function slackApi(method: string, params: Record<string, string> = {}): Promise<Record<string, unknown>> {
+    // Helper: call a Slack API method with the given token.
+    async function slackApi(method: string, params: Record<string, string> = {}, token = botToken): Promise<Record<string, unknown>> {
       const url = new URL(`https://slack.com/api/${method}`)
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
       const res = await retryWithBackoff(
@@ -146,9 +150,14 @@ serve(async (req) => {
     // Build a Slack user cache: slack_user_id → { name, email }
     const slackUsers = new Map<string, { name: string; email: string | null }>()
 
-    // Fetch Slack user list (paginated, but cap at 200 for perf).
-    const usersRes = await slackApi('users.list', { limit: '200' })
-    if (usersRes.ok && Array.isArray(usersRes.members)) {
+    // Fetch all Slack users with cursor pagination (limit 200 per page).
+    // Use userToken so emails are visible (requires users:read.email user scope).
+    let userCursor: string | undefined
+    do {
+      const params: Record<string, string> = { limit: '200' }
+      if (userCursor) params.cursor = userCursor
+      const usersRes = await slackApi('users.list', params, userToken)
+      if (!usersRes.ok || !Array.isArray(usersRes.members)) break
       for (const u of usersRes.members as SlackUser[]) {
         if (u.id === 'USLACKBOT') continue
         slackUsers.set(u.id, {
@@ -156,7 +165,9 @@ serve(async (req) => {
           email: u.profile?.email ?? null,
         })
       }
-    }
+      const meta = usersRes.response_metadata as { next_cursor?: string } | undefined
+      userCursor = meta?.next_cursor || undefined
+    } while (userCursor)
 
     // Match Slack user → team member by email or name.
     function matchMember(slackUserId: string): string | null {
@@ -179,10 +190,11 @@ serve(async (req) => {
     let synced = 0
 
     // ── 1. Sync DMs ──────────────────────────────────────────────────────────
+    // Must use userToken — bot token only sees DMs the bot is in.
     const convRes = await slackApi('conversations.list', {
       types: 'im',
       limit: '100',
-    })
+    }, userToken)
 
     if (convRes.ok && Array.isArray(convRes.channels)) {
       for (const ch of convRes.channels as SlackChannel[]) {
@@ -198,7 +210,7 @@ serve(async (req) => {
           channel: ch.id,
           oldest,
           limit: '20',
-        })
+        }, userToken)
 
         if (!histRes.ok || !Array.isArray(histRes.messages)) continue
 
@@ -232,12 +244,13 @@ serve(async (req) => {
     }
 
     // ── 2. Sync specified channels ───────────────────────────────────────────
+    // Use userToken so the bot doesn't need to be invited to every channel.
     if (extraChannels.length > 0) {
       // Find channel IDs by name.
       const allChRes = await slackApi('conversations.list', {
         types: 'public_channel,private_channel',
         limit: '500',
-      })
+      }, userToken)
 
       if (allChRes.ok && Array.isArray(allChRes.channels)) {
         const channelMap = new Map<string, { id: string; name: string }>()
@@ -253,7 +266,7 @@ serve(async (req) => {
             channel: ch.id,
             oldest,
             limit: '50',
-          })
+          }, userToken)
 
           if (!histRes.ok || !Array.isArray(histRes.messages)) continue
 

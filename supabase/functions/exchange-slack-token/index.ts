@@ -79,7 +79,7 @@ serve(async (req) => {
       access_token?: string
       scope?: string
       team?: { id: string; name: string }
-      authed_user?: { id: string; access_token?: string; scope?: string }
+      authed_user?: { id: string; access_token?: string; scope?: string; token_type?: string }
     }
 
     if (!tokenData.ok || !tokenData.access_token) {
@@ -133,6 +133,8 @@ serve(async (req) => {
         provider: 'slack',
         access_token: tokenData.access_token,
         scope: tokenData.scope ?? '',
+        user_access_token: tokenData.authed_user?.access_token ?? null,
+        user_scope: tokenData.authed_user?.scope ?? null,
         slack_team_id: tokenData.team?.id ?? null,
         slack_team_name: tokenData.team?.name ?? null,
         slack_user_id: slackUserId,
