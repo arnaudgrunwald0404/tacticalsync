@@ -1299,15 +1299,6 @@ export default function InboxPage() {
           )}
         </div>
 
-        {/* Idea #7 (Relationship memory) what's-new callout — see WhatsNewPersonMemoryBanner
-            for why this is a dismissible banner rather than a changelog entry. */}
-        {activePanel === 'inbox' && (
-          <WhatsNewPersonMemoryBanner
-            examplePersonMemberId={tags.find(t => t.type === 'person' && t.member_id)?.member_id}
-            examplePersonName={tags.find(t => t.type === 'person' && t.member_id)?.name}
-            onViewPersonPage={(memberId) => navigate(`/inbox/person/${memberId}`)}
-          />
-        )}
 
         {activePanel === 'meetings' && (
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1399,9 +1390,14 @@ export default function InboxPage() {
           </div>
         )}
 
-        {/* Notices — above the scrollable list so they don't scroll away */}
-        {activePanel === 'inbox' && (showFirstDelegationBanner || whatsNewEligible) && (
-          <div className="flex-shrink-0 px-3 sm:px-4 pt-3 space-y-2">
+        {/* Notices — above the scrollable list, all in one zone with uniform spacing */}
+        {activePanel === 'inbox' && (
+          <div className="flex-shrink-0 px-3 sm:px-4 pt-3 space-y-2 empty:hidden">
+            <WhatsNewPersonMemoryBanner
+              examplePersonMemberId={tags.find(t => t.type === 'person' && t.member_id)?.member_id}
+              examplePersonName={tags.find(t => t.type === 'person' && t.member_id)?.name}
+              onViewPersonPage={(memberId) => navigate(`/inbox/person/${memberId}`)}
+            />
             {showFirstDelegationBanner && (
               <div className="px-3.5 py-2.5 rounded-lg bg-indigo-50 border border-indigo-100 flex items-start gap-2.5">
                 <div className="flex-1 min-w-0">
@@ -1419,12 +1415,10 @@ export default function InboxPage() {
                 </button>
               </div>
             )}
-            {whatsNewEligible && (
-              <InboxWhatsNewBanner
-                eligible={whatsNewEligible}
-                onShowShortcuts={() => setShortcutsHelpOpen(true)}
-              />
-            )}
+            <InboxWhatsNewBanner
+              eligible={whatsNewEligible}
+              onShowShortcuts={() => setShortcutsHelpOpen(true)}
+            />
           </div>
         )}
 

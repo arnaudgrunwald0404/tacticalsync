@@ -48,7 +48,7 @@ export function WhatsNewPersonMemoryBanner({
   const exampleName = examplePersonName ?? 'a teammate';
 
   return (
-    <div className="flex items-start gap-3 mx-2 mt-2 mb-1 px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-50 to-white border border-indigo-100">
+    <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-50 to-white border border-indigo-100">
       <Brain className="h-4 w-4 text-indigo-500 flex-shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900">New: Every 1:1 now starts with a brief.</p>
