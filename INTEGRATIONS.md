@@ -17,6 +17,7 @@ All integrations share three architectural conventions worth calling out once:
 4. [Gmail](#gmail)
 5. [StackOne](#stackone)
 6. [ClearGo](#cleargo)
+7. [Best Practices: Surfacing Credential Problems to Users](#best-practices-surfacing-credential-problems-to-users)
 
 ---
 
@@ -617,3 +618,61 @@ Same non-fatal pattern used everywhere else in this codebase:
 - `src/pages/Settings.tsx` (generic `integration-*` route, resolves preset + renders the panel)
 - `supabase/functions/test-mcp-integration/index.ts` (connect/test/disconnect edge function; credential-preservation fix applied here)
 - `supabase/migrations/20260613000000_mcp_integrations.sql` (shared `cos_mcp_integrations` table)
+
+---
+
+## Best Practices: Surfacing Credential Problems to Users
+
+### The Problem
+
+Every OAuth integration (Zoom, Slack, Google) runs silently. When credentials are missing or expired, agent-tick and all sync functions return early with a `skipped: no_credentials` or similar response — they do not write any error to a user-visible surface. A user who has the agent enabled but hasn't connected an integration will simply never see the output that integration produces, with no explanation.
+
+Discovered in production: `user_calendar_credentials` was empty across all 321 users. `gmail-inbox-sync` was firing on every tick, completing in ~300ms, and returning `skipped: no_google_credentials` — silently. No user-facing signal of any kind.
+
+### The Rule
+
+**If an integration is expected to run for a user but credentials are missing or broken, the UI must say so explicitly.** Silence is not acceptable. Users will not navigate to Settings to investigate — they will conclude the feature is broken or doesn't work for them.
+
+### Implementation Pattern
+
+All credential health is consolidated into a single hook: `src/hooks/useIntegrationHealth.ts`. It fetches the three `_public` credential views in parallel:
+
+```ts
+const [googleRes, slackRes, zoomRes] = await Promise.all([
+  db.from('user_calendar_credentials_public').select('connected, scope').maybeSingle(),
+  db.from('user_slack_credentials_public').select('connected').maybeSingle(),
+  db.from('user_zoom_credentials_public').select('connected, last_sync_status').maybeSingle(),
+]);
+```
+
+It returns a typed `IntegrationHealth` object with per-integration booleans — including nuanced states like `gmailScopeGranted` (connected but missing the `gmail.readonly` scope) and `zoomReauthRequired` (`last_sync_status = 'error: reauth_required'`).
+
+**Do not duplicate credential fetches in individual components.** Use this hook everywhere.
+
+### Where to Surface Warnings
+
+Two surfaces:
+
+1. **Agent Settings panel** (`src/components/cos/AgentSettingsPanel.tsx`) — in the "Activation" group, one amber card per broken integration, styled identically to the existing Slack card. Each card shows a label, a badge (`Not connected` or `Reconnect required`), a one-line explanation of what is missing, and a CTA button that navigates to the relevant settings section via `onNavigateToSection`. Sections: `'calendar-sync'` for Google/Gmail, `'slack-sync'` for Slack, `'zoom-sync'` for Zoom.
+
+2. **Inbox Suggestions panel** (`src/components/inbox/InboxSuggestionsPanel.tsx`) — when the agent is enabled but all suggestion sources have missing credentials, the panel shows a single amber hint instead of returning `null`. This replaces the prior behavior where an enabled-but-misconfigured agent produced a completely empty panel with no explanation.
+
+### Credential States to Check Per Integration
+
+| Integration | Connected check | Broken/degraded state |
+|---|---|---|
+| Google Calendar | `user_calendar_credentials_public.connected` | No row / `connected = false` |
+| Gmail | Same row + `scope` contains `gmail.readonly` | Connected but scope missing (common if user connected before gmail scope was added to the OAuth request) |
+| Slack | `user_slack_credentials_public.connected` | No row / `connected = false` (no token expiry — Slack tokens don't expire, but workspace revoke goes undetected) |
+| Zoom | `user_zoom_credentials_public.connected` | No row / `connected = false`; separately, `last_sync_status = 'error: reauth_required'` means a token rotation failed and the user must reconnect |
+
+StackOne and ClearGo (`cos_mcp_integrations`) are opt-in enrichment connectors — users who haven't connected them have made an explicit choice, not a mistake. Don't surface warnings for them.
+
+### When to Extend This
+
+Any new OAuth-backed integration whose absence would silently degrade a feature the user has turned on must:
+1. Add its `_public` view field(s) to `useIntegrationHealth`.
+2. Add an amber warning card in `AgentSettingsPanel`'s Activation group.
+3. If it feeds the inbox suggestions pipeline, include it in `InboxSuggestionsPanel`'s missing-integration check.
+
+Integrations that only enrich prep (not the always-on agent pipeline) may skip step 3.
