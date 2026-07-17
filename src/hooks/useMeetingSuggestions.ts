@@ -28,6 +28,7 @@ export interface MeetingSuggestion {
   group_meeting_id: string | null;
   date: string;
   tag_suggestions: SuggestionTagRecommendation[];
+  source_url: string | null;
 }
 
 interface Member { id: string; name: string }

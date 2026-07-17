@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
 import { TagPickerDropdown } from '@/components/inbox/TagPickerDropdown';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,8 @@ interface Props {
   teamMembers?: TeamMember[];
   onCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
+  showIntroCallout?: boolean;
+  onDismissIntroCallout?: () => void;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -44,6 +47,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
+  showIntroCallout, onDismissIntroCallout,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   // Tracks rows mid-action so a second click before the optimistic removal
@@ -80,18 +84,19 @@ export function InboxSuggestionsPanel({
 
   if (loading || scopedSuggestions.length === 0) return null;
 
-  const allMeetings = scopedSuggestions.every(s =>
-    ['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting'].includes(s.source_type ?? '')
-  );
+  const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
+  const hasEmail = scopedSuggestions.some(s => s.source_type === 'email');
+  const hasSlack = scopedSuggestions.some(s => s.source_type === 'slack');
+  const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
   const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
-  const anyOneOnOne = scopedSuggestions.some(s => s.source_type === 'one_on_one');
-  const panelTitle = !allMeetings
-    ? 'Suggested for your inbox'
-    : allOneOnOne
-    ? 'Suggested from your 1:1s'
-    : anyOneOnOne
-    ? 'Suggested from your meetings & 1:1s'
-    : 'Suggested from your meetings';
+
+  const sources: string[] = [];
+  if (hasMeetings) sources.push(allOneOnOne ? '1:1s' : 'meetings');
+  if (hasEmail) sources.push('email');
+  if (hasSlack) sources.push('Slack');
+  const panelTitle = sources.length > 0
+    ? `Suggested from your ${sources.join(', ')}`
+    : 'Suggested for your inbox';
 
   return (
     <div
@@ -120,6 +125,11 @@ export function InboxSuggestionsPanel({
         </div>
       </div>
 
+      {/* One-time explainer — only shown when the panel itself is visible */}
+      {showIntroCallout && onDismissIntroCallout && (
+        <AutoSyncIntroCallout onDismiss={onDismissIntroCallout} />
+      )}
+
       {/* Rows */}
       <div className="space-y-2">
         {(expanded ? scopedSuggestions : scopedSuggestions.slice(0, COLLAPSED_COUNT)).map(s => {
@@ -138,7 +148,21 @@ export function InboxSuggestionsPanel({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">{s.title}</p>
-                <p className="truncate text-xs text-white/60">{provenance(s)}</p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="truncate text-xs text-white/60">{provenance(s)}</p>
+                  {s.source_url && (
+                    <a
+                      href={s.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
+                      title="Open source"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* Primary: add to the recommended tag, if the AI found a genuine match. */}

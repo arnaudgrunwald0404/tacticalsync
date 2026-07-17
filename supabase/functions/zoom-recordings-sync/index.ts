@@ -22,6 +22,7 @@ interface ZoomRecording {
   topic: string
   start_time: string
   duration: number
+  share_url?: string
   recording_files?: Array<{
     id: string
     file_type: string
@@ -368,6 +369,7 @@ serve(async (req) => {
         participant_names: participantNames,
         has_transcript: hasTranscript,
         recording_files: meeting.recording_files ?? [],
+        share_url: meeting.share_url ?? null,
         last_synced_at: new Date().toISOString(),
       }
 
@@ -742,6 +744,7 @@ serve(async (req) => {
             participant_names: participantNames,
             has_transcript: hasTranscript,
             recording_files: recData.recording_files ?? [],
+            share_url: recData.share_url ?? null,
             last_synced_at: new Date().toISOString(),
           }
 
