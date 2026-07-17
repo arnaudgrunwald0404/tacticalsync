@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as DueDateCalendar } from '@/components/ui/calendar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, tagStyle,
+  WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, WORKFLOW_CYCLE, tagStyle,
   PRIORITY_TIERS, computePriorityDueAt, currentPriorityTier, isAutoPinnedItem,
   formatSnoozeLabel,
 } from '@/lib/inboxValidation';
@@ -33,6 +33,7 @@ interface InboxItemRowProps {
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
@@ -115,13 +116,14 @@ const AGENT_BG: Record<InboxItem['type'], string> = {
 
 export function InboxItemRow({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
+  onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, onCreatePersonTag, teamMembers,
   onUpdateItem, onCtaClick, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onTriageInsight,
   isSelected, onSelect, isNew, prioritizeMode,
   onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused,
 }: InboxItemRowProps) {
   const [hovered, setHovered] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const isTouch = useIsTouch();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
@@ -231,7 +233,7 @@ export function InboxItemRow({
               checkbox above. */}
           {item.type !== 'task' && (
             <span
-              className={cn('flex-shrink-0', isAgentItem ? 'text-gray-400' : 'text-gray-300')}
+              className={cn('flex-shrink-0', isAgentItem ? 'text-gray-500' : 'text-gray-400')}
               // "Why am I seeing this" affordance for agent-generated nudges
               // (PLAN_idea4_agentic_followthrough.md, Section 5.3) — the
               // persistent caption below covers the short version; this
@@ -284,7 +286,7 @@ export function InboxItemRow({
               onClick={e => { e.stopPropagation(); startEditText(); }}
               title="Rename"
               className={cn(
-                'flex-shrink-0 rounded hover:bg-gray-200 text-gray-300 hover:text-gray-600 transition-colors flex items-center justify-center',
+                'flex-shrink-0 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center',
                 isTouch ? 'h-8 w-8' : 'p-0.5',
               )}
             >
@@ -319,7 +321,7 @@ export function InboxItemRow({
             >
               <button
                 onClick={e => { e.stopPropagation(); onAcceptSuggestion?.(item, s); }}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-dashed transition-all hover:opacity-90 hover:scale-105"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border border-dashed transition-all hover:opacity-90 hover:scale-105"
                 style={{ borderColor: s.color, color: s.color, backgroundColor: `${s.color}12` }}
               >
                 <span
@@ -330,7 +332,7 @@ export function InboxItemRow({
               </button>
               <button
                 onClick={e => { e.stopPropagation(); onDismissSuggestion?.(item.id, s.tag_id); }}
-                className="opacity-0 group-hover/sug:opacity-100 p-0.5 rounded text-gray-300 hover:text-gray-500 transition-all flex-shrink-0"
+                className="opacity-0 group-hover/sug:opacity-100 p-0.5 rounded text-gray-400 hover:text-gray-600 transition-all flex-shrink-0"
                 title="Dismiss suggestion"
               >
                 <X className="h-2.5 w-2.5" />
@@ -479,20 +481,57 @@ export function InboxItemRow({
                 note={outgoingDelegation.note}
               />
             ) : (
-              <button
-                title="Click to change status"
-                onClick={e => {
-                  e.stopPropagation();
-                  onCycleWorkflowStatus(item.id, item.workflow_status ?? null);
-                }}
-                className={cn(
-                  'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap transition-opacity hover:opacity-75 max-w-full truncate',
-                  !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
-                )}
-                style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
-              >
-                {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
-              </button>
+              <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={e => e.stopPropagation()}
+                    className={cn(
+                      'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap transition-opacity hover:opacity-75 max-w-full truncate',
+                      !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
+                    )}
+                    style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
+                  >
+                    {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-44 p-1"
+                  align="start"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {WORKFLOW_CYCLE.map(status => (
+                    <button
+                      key={status}
+                      onClick={() => { onSetWorkflowStatus(item.id, status); setStatusOpen(false); }}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-gray-100 transition-colors',
+                        item.workflow_status === status && 'font-semibold',
+                      )}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: WORKFLOW_STATUS_COLORS[status] }}
+                      />
+                      {status}
+                      {item.workflow_status === status && (
+                        <Check className="h-3 w-3 ml-auto text-gray-500" />
+                      )}
+                    </button>
+                  ))}
+                  {item.workflow_status && (
+                    <>
+                      <div className="my-1 border-t border-gray-100" />
+                      <button
+                        onClick={() => { onSetWorkflowStatus(item.id, null); setStatusOpen(false); }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-gray-400 hover:bg-gray-100 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                        Clear status
+                      </button>
+                    </>
+                  )}
+                </PopoverContent>
+              </Popover>
             )
           )}
 
@@ -515,7 +554,7 @@ export function InboxItemRow({
                 <button
                   onClick={e => e.stopPropagation()}
                   title="Snooze"
-                  className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
+                  className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <Clock className="h-3.5 w-3.5" />
                 </button>
@@ -527,7 +566,7 @@ export function InboxItemRow({
           {isSnoozed && snoozeLabel && (
             <span
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0',
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0',
                 snoozeLabel.stale ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-100 text-gray-500',
               )}
             >
@@ -596,7 +635,7 @@ export function InboxItemRow({
                     'flex-shrink-0 flex items-center justify-center h-5 w-5 rounded-full border transition-colors',
                     fixedDueDate
                       ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'border-gray-200 text-gray-300 hover:text-gray-700 hover:border-gray-300',
+                      : 'border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300',
                   )}
                 >
                   <Calendar className="h-3 w-3" />

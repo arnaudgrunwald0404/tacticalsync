@@ -446,7 +446,7 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Snoozed count for the sidebar badge — a separate lightweight fetch since
   // `allItems` (used for the `all`/`asap`/`waiting` counts) only ever fetches
@@ -1287,6 +1287,7 @@ export default function InboxPage() {
           {/* Settings */}
           <button
             aria-label="Settings"
+            onClick={() => navigate('/settings')}
             className={cn(
               'hidden sm:flex flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors',
               isTouch ? 'h-9 w-9' : 'p-1.5',
@@ -1350,7 +1351,7 @@ export default function InboxPage() {
                 onClick={handleBulkArchive}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-gray-200 hover:bg-white/10 transition-colors"
               >
-                <Trash2 className="h-3.5 w-3.5" />Archive
+                <ArchiveIcon className="h-3.5 w-3.5" />Archive
               </button>
             )}
 
@@ -1465,7 +1466,18 @@ export default function InboxPage() {
               </div>
             </div>
           ) : itemsLoading ? (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
+            <div className="flex flex-col divide-y divide-gray-100">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                  <div className="h-4 w-4 rounded bg-gray-200 flex-shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="h-3 bg-gray-200 rounded w-3/4" />
+                    <div className="h-2.5 bg-gray-100 rounded w-1/3" />
+                  </div>
+                  <div className="h-5 w-16 bg-gray-100 rounded-full flex-shrink-0" />
+                </div>
+              ))}
+            </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-56 gap-2 px-6 text-center">
               {emptyState.illustration ? (
@@ -1487,6 +1499,7 @@ export default function InboxPage() {
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
               onCycleWorkflowStatus={cycleWorkflowStatus}
+              onSetWorkflowStatus={setWorkflowStatus}
               onCreateWorkstream={createWorkstream}
               onQuickCreateTag={handleQuickCreateTag}
               teamMembers={teamMembers}
@@ -1516,6 +1529,7 @@ export default function InboxPage() {
               onRemoveTag={removeTagFromItem}
               onAddTag={addTagToItem}
               onCycleWorkflowStatus={cycleWorkflowStatus}
+              onSetWorkflowStatus={setWorkflowStatus}
               onCreateWorkstream={createWorkstream}
               onQuickCreateTag={handleQuickCreateTag}
               teamMembers={teamMembers}
@@ -1548,6 +1562,7 @@ export default function InboxPage() {
         userName={userName}
         onClose={() => setDrawerItemId(null)}
         onCycleWorkflowStatus={cycleWorkflowStatus}
+        onSetWorkflowStatus={setWorkflowStatus}
         onRemoveTag={removeTagFromItem}
         onAddTag={addTagToItem}
         onCreateWorkstream={createWorkstream}

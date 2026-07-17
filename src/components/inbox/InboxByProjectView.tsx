@@ -15,6 +15,7 @@ interface InboxByProjectViewProps {
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onQuickCreateTag?: (name: string) => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
@@ -37,7 +38,7 @@ interface InboxByProjectViewProps {
 
 export function InboxByProjectView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId,
   onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
@@ -105,7 +106,7 @@ export function InboxByProjectView({
 
   const sharedRowProps = {
     allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-    onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+    onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
     onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, prioritizeMode,
     onSnooze, onSnoozeUntilNext1on1, onUnsnooze,
   };

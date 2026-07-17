@@ -12,6 +12,7 @@ import {
   resolveTargetStatus,
   nextWorkflowStatus,
   sanitizeSearchTerm,
+  type WorkflowStatus,
 } from '@/lib/inboxValidation';
 import { resolveNextOneOnOne } from '@/lib/oneOnOneResolution';
 import { planTriageInsert, planTriagePatch, type TriageAction } from '@/lib/meetingInsights';
@@ -305,6 +306,10 @@ export function useInboxItems(
     await updateItem(id, { workflow_status: nextWorkflowStatus(current) });
   }, [updateItem]);
 
+  const setWorkflowStatus = useCallback(async (id: string, status: WorkflowStatus | null) => {
+    await updateItem(id, { workflow_status: status });
+  }, [updateItem]);
+
   // Upsert a brief_item for a daily or weekly brief run.
   // Idempotent: if an item already exists for this date + kind, update its payload.
   const syncBriefItem = useCallback(async (
@@ -515,6 +520,7 @@ export function useInboxItems(
     addTagToItem,
     removeTagFromItem,
     cycleWorkflowStatus,
+    setWorkflowStatus,
     syncBriefItem,
     pinItem,
     acceptSuggestion,

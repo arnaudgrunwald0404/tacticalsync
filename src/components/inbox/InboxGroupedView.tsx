@@ -43,7 +43,7 @@ const BUCKETS: { id: InboxBucket; label: string; description: string; accent: st
 
 function SortableItem({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, isSelected, onSelect,
   prioritizeMode, isNew, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused,
 }: {
@@ -54,6 +54,7 @@ function SortableItem({
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
@@ -110,6 +111,7 @@ function SortableItem({
           onRemoveTag={onRemoveTag}
           onAddTag={onAddTag}
           onCycleWorkflowStatus={onCycleWorkflowStatus}
+          onSetWorkflowStatus={onSetWorkflowStatus}
           onCreateWorkstream={onCreateWorkstream}
           onQuickCreateTag={onQuickCreateTag}
           teamMembers={teamMembers}
@@ -138,7 +140,7 @@ function SortableItem({
 
 function BucketSection({
   bucket, items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: {
@@ -150,6 +152,7 @@ function BucketSection({
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
@@ -198,6 +201,7 @@ function BucketSection({
               onRemoveTag={onRemoveTag}
               onAddTag={onAddTag}
               onCycleWorkflowStatus={onCycleWorkflowStatus}
+              onSetWorkflowStatus={onSetWorkflowStatus}
               onCreateWorkstream={onCreateWorkstream}
               onQuickCreateTag={onQuickCreateTag}
               teamMembers={teamMembers}
@@ -243,6 +247,7 @@ interface InboxGroupedViewProps {
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onQuickCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
@@ -266,7 +271,7 @@ interface InboxGroupedViewProps {
 
 export function InboxGroupedView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
-  onCycleWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
+  onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
   onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
   prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: InboxGroupedViewProps) {
@@ -332,6 +337,7 @@ export function InboxGroupedView({
             onRemoveTag={onRemoveTag}
             onAddTag={onAddTag}
             onCycleWorkflowStatus={onCycleWorkflowStatus}
+            onSetWorkflowStatus={onSetWorkflowStatus}
             onCreateWorkstream={onCreateWorkstream}
             onQuickCreateTag={onQuickCreateTag}
             teamMembers={teamMembers}
