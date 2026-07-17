@@ -2,7 +2,7 @@
 
 **Status:** Living document. This is the canonical as-built + roadmap reference for the product. Update it as part of any change that adds a table, a route, a subsystem, or retires one — treat stale sections as bugs.
 
-**Last compiled:** 2026-07-13, from a full-codebase audit (223 migrations, ~30 hooks, ~30 pages, 5 edge-function families, `slack-bot/`). Where this document conflicts with `CLAUDE.md` or older root-level docs (`PRD.md`, `RC-DO-SI-PRD.md`, etc.), **this document reflects the current code** and the older docs should be treated as historical/superseded (see [§9 Superseded Documents](#9-superseded-documents)).
+**Last compiled:** 2026-07-13, from a full-codebase audit (223 migrations at the time, ~30 hooks, ~30 pages, 5 edge-function families). Updated as the known-issues/roadmap items below have shipped — see §13/§14 for what's changed since, including the removal of the legacy `slack-bot/` Socket Mode app that was originally in scope. Migration count as of the last doc update: 237. Where this document conflicts with `CLAUDE.md` or older root-level docs (`PRD.md`, `RC-DO-SI-PRD.md`, etc.), **this document reflects the current code** and the older docs should be treated as historical/superseded (see [§9 Superseded Documents](#9-superseded-documents)).
 
 ---
 
@@ -63,7 +63,7 @@ Document metadata (not git history, which only goes back to 2026-06-23) indicate
 - **Frontend:** React 18.3 + Vite (`@vitejs/plugin-react-swc`), React Router v6.30 (lazy-loaded routes via a custom `lazyWithRetry()` that force-reloads once on stale-chunk errors)
 - **Styling:** Tailwind CSS 3.4 + shadcn/ui (Radix UI primitives), ~55 components in `src/components/ui/`
 - **Server state:** TanStack React Query 5.83 — no Redux/Zustand
-- **Backend:** Supabase (PostgreSQL + RLS + Realtime + Edge Functions), 223 migrations in `supabase/migrations/`
+- **Backend:** Supabase (PostgreSQL + RLS + Realtime + Edge Functions), 237 migrations in `supabase/migrations/`
 - **Forms:** React Hook Form 7.61 + Zod 3.25
 - **Rich text:** TipTap 3.6 (plain, no collaboration extension in the shared editor)
 - **Realtime collaboration:** Yjs + `y-websocket` — used **only** in the Strategy Canvas (`StrategyCanvas.tsx`); everywhere else, "real-time" means Supabase Postgres-changes broadcast + full refetch (last-write-wins, no CRDT)
@@ -345,7 +345,7 @@ Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has dri
 
 ## 11. Testing Strategy
 
-- **Unit/integration (Vitest)**: 58 test files under `src/test/` (`components/`, `hooks/`, `lib/`, `migrations/` — DB migration behavior is unit-tested, `pages/`, `regression/`, `utils/`, `calendar/`, `types/`). Coverage thresholds in `vitest.config.ts` are deliberately low (`lines:3, functions:20, branches:50, statements:3`) — a regression ratchet, not a real target.
+- **Unit/integration (Vitest)**: 64 test files under `src/test/` (`components/`, `hooks/`, `lib/`, `migrations/` — DB migration behavior is unit-tested, `pages/`, `regression/`, `utils/`, `calendar/`, `types/`). Coverage thresholds in `vitest.config.ts` are deliberately low (`lines:3, functions:20, branches:50, statements:3`) — a regression ratchet, not a real target.
 - **E2E (Playwright)**: 41 spec files under `e2e/`, organized by domain (`auth/`, `teams/`, `invitations/`, legacy `series/meeting/instances/agenda/`, `critical/` broad flows, `security/`, `rcdo/`, `inbox/` — dormant20, meeting-insights-triage, person-delegation, personMemoryPrivacy, unified-funnel-sync — `api/`). 3-browser matrix (chromium/firefox/webkit), `fullyParallel: true`, `baseURL: http://localhost:8080`. Dev server must be started manually (webServer auto-start is commented out in config).
 - **CI**: Husky pre-commit (lint) + pre-push (unit tests) hooks; GitHub Actions presumably runs the full matrix (`.github/workflows/tests.yml`, not independently verified in this audit).
 - Both suites have grown substantially past what the historical `PHASE2/3_COMPLETE.md` docs describe — trust file counts over those docs.
