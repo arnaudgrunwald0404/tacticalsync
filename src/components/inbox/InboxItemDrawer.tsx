@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { X, Hash, Tag, Info } from 'lucide-react';
+import { X, Hash, Tag, Info, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { WORKFLOW_STATUS_LABELS } from '@/lib/inboxValidation';
+import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, WORKFLOW_CYCLE, tagStyle } from '@/lib/inboxValidation';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { InboxTagPill } from './InboxTagPill';
 import { BriefItemDetail } from './BriefItemDetail';
 import { PersonBriefDetail } from './PersonBriefDetail';
@@ -15,6 +16,7 @@ interface InboxItemDrawerProps {
   allTags: InboxTag[];
   onClose: () => void;
   onCycleWorkflowStatus: (id: string, current: string | null) => void;
+  onSetWorkflowStatus: (id: string, status: string | null) => void;
   onRemoveTag: (itemId: string, tagId: string) => void;
   onAddTag: (itemId: string, tagId: string) => void;
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
@@ -30,13 +32,14 @@ const WORKFLOW_STYLES: Record<string, string> = {
 };
 
 export function InboxItemDrawer({
-  item, allTags, onClose, onCycleWorkflowStatus, onRemoveTag, onAddTag,
+  item, allTags, onClose, onCycleWorkflowStatus, onSetWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem,
 }: InboxItemDrawerProps) {
   const [textDraft, setTextDraft] = useState('');
   const [editingText, setEditingText] = useState(false);
   const [bodyDraft, setBodyDraft] = useState('');
   const [editingBody, setEditingBody] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
 
   useEffect(() => {
     setTextDraft(item?.text ?? '');
@@ -132,24 +135,59 @@ export function InboxItemDrawer({
             {/* Workflow status */}
             {item.type !== 'brief_item' && (
               <div className="space-y-1.5">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Status</p>
-                <button
-                  onClick={() => onCycleWorkflowStatus(item.id, item.workflow_status ?? null)}
-                  className={cn(
-                    'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors',
-                    item.workflow_status
-                      ? WORKFLOW_STYLES[item.workflow_status]
-                      : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
-                  )}
-                >
-                  {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
-                </button>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">Status</p>
+                <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={cn(
+                        'px-2.5 py-0.5 rounded-full border text-xs font-medium transition-opacity hover:opacity-75',
+                        !item.workflow_status && 'border-dashed border-gray-300 text-gray-400',
+                      )}
+                      style={item.workflow_status ? tagStyle(WORKFLOW_STATUS_COLORS[item.workflow_status]) : undefined}
+                    >
+                      {item.workflow_status ? WORKFLOW_STATUS_LABELS[item.workflow_status] : 'Set status'}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-1" align="start">
+                    {WORKFLOW_CYCLE.map(status => (
+                      <button
+                        key={status}
+                        onClick={() => { onSetWorkflowStatus(item.id, status); setStatusOpen(false); }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-gray-100 transition-colors',
+                          item.workflow_status === status && 'font-semibold',
+                        )}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: WORKFLOW_STATUS_COLORS[status] }}
+                        />
+                        {status}
+                        {item.workflow_status === status && (
+                          <Check className="h-3 w-3 ml-auto text-gray-500" />
+                        )}
+                      </button>
+                    ))}
+                    {item.workflow_status && (
+                      <>
+                        <div className="my-1 border-t border-gray-100" />
+                        <button
+                          onClick={() => { onSetWorkflowStatus(item.id, null); setStatusOpen(false); }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-gray-400 hover:bg-gray-100 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                          Clear status
+                        </button>
+                      </>
+                    )}
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
 
             {/* Tags */}
             <div className="space-y-1.5">
-              <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Tags</p>
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">Tags</p>
               <div className="flex flex-wrap gap-1">
                 {item.tags?.map(tag => {
                   const childWorkstreams = allTags.filter(t => t.type === 'workstream' && t.parent_id === tag.id);
@@ -169,7 +207,7 @@ export function InboxItemDrawer({
                   );
                 })}
                 {(!item.tags || item.tags.length === 0) && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-[10px] text-gray-400">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-xs text-gray-500">
                     <Tag className="h-2.5 w-2.5" />No tags
                   </span>
                 )}
@@ -179,7 +217,7 @@ export function InboxItemDrawer({
             {/* Notes */}
             {item.type !== 'brief_item' && (
               <div className="space-y-1.5">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Notes</p>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">Notes</p>
                 {editingBody ? (
                   <textarea
                     autoFocus
@@ -210,14 +248,14 @@ export function InboxItemDrawer({
             {/* Agent rationale */}
             {item.agent_payload?.rationale && (
               <div className="space-y-1.5">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">Context</p>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">Context</p>
                 <p className="text-xs text-gray-500 italic leading-relaxed">{item.agent_payload.rationale}</p>
               </div>
             )}
 
             {/* History */}
             <div className="space-y-1.5">
-              <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400">History</p>
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">History</p>
               <ul className="text-xs text-gray-400 space-y-1">
                 <li>Created {formatDistanceToNow(new Date(item.created_at))} ago</li>
                 {item.updated_at !== item.created_at && (
@@ -239,7 +277,7 @@ export function InboxItemDrawer({
                         <span
                           title="Synced from a meeting or 1:1 — completing it here keeps it in sync there, but editing the text here does not update the original."
                         >
-                          <Info className="h-3 w-3 flex-shrink-0 text-gray-300" />
+                          <Info className="h-3 w-3 flex-shrink-0 text-gray-400" />
                         </span>
                       )}
                     </li>
