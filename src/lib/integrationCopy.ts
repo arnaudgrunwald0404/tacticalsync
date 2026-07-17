@@ -24,7 +24,7 @@ export const INTEGRATION_COPY: Record<string, IntegrationCopy> = {
     name: 'Google Calendar & Gmail',
     whatWeDo: [
       "Reads your Google Calendar to detect your 1:1s and their cadence — no manual entry needed.",
-      "Reads Gmail to surface email threads with your team members as pre-meeting context, and to catch Zoom AI summaries that the Zoom API missed.",
+      "Reads Gmail to surface email threads with your team members as pre-meeting context, and to catch Zoom notification emails when the Zoom API misses a recording summary.",
     ],
     whyItMatters: [
       'Your meeting list and cadence tracking update automatically from your real calendar.',
