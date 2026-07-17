@@ -64,7 +64,7 @@ export function OneOnOneOnboarding({
         className="bg-copper hover:bg-copper-hover text-white font-body h-11 px-8 text-base"
       >
         <CalendarCheck className="h-4.5 w-4.5 mr-2" />
-        Connect Google Calendar
+        Sign in with Google
       </Button>
       <p className="mt-3 text-xs text-titanium">
         You can always set this up later in Settings

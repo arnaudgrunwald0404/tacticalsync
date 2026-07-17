@@ -12,7 +12,7 @@ export default function IntegrationExplainer({ copy }: { copy: IntegrationCopy }
       <p className="text-sm font-semibold">{copy.name}</p>
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          What we do with this
+          {copy.whatWeDoLabel ?? 'What we do with this'}
         </p>
         <ul className="space-y-1.5">
           {copy.whatWeDo.map((item, i) => (
@@ -41,7 +41,7 @@ export default function IntegrationExplainer({ copy }: { copy: IntegrationCopy }
       {copy.boundaries && copy.boundaries.length > 0 && (
         <div className="border-t border-border/60 pt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3" /> What this doesn't do
+            <ShieldCheck className="h-3 w-3" /> What we don't do
           </p>
           <ul className="space-y-1.5">
             {copy.boundaries.map((item, i) => (
