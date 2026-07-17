@@ -8,10 +8,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 const SLACK_CLIENT_ID = import.meta.env.VITE_SLACK_CLIENT_ID ?? '';
 
-// Scopes needed for reading DMs/channels, sending messages, and the
-// /add-to-my-lists slash command. `commands` must be included or a (re)install
-// via this flow drops the slash command registration for the workspace.
-const SLACK_SCOPES = [
+// Bot scopes — installed workspace-wide. `commands` keeps the slash command
+// registration alive on reinstall.
+const SLACK_BOT_SCOPES = [
   'chat:write',
   'commands',
   'users:read',
@@ -23,6 +22,17 @@ const SLACK_SCOPES = [
   'im:read',
   'im:history',
   'im:write',
+].join(',');
+
+// User scopes — grant the authorizing user's token (xoxp-) so we can read
+// their personal DMs and channels without the bot needing to be invited.
+const SLACK_USER_SCOPES = [
+  'channels:history',
+  'groups:history',
+  'im:history',
+  'im:read',
+  'users:read',
+  'users:read.email',
 ].join(',');
 
 export default function CosSlackSyncPanel() {
@@ -102,7 +112,7 @@ export default function CosSlackSyncPanel() {
       return;
     }
     const redirectUri = `${window.location.origin}/settings?section=slack-sync&slack=connected`;
-    const url = `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(SLACK_CLIENT_ID)}&scope=${encodeURIComponent(SLACK_SCOPES)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const url = `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(SLACK_CLIENT_ID)}&scope=${encodeURIComponent(SLACK_BOT_SCOPES)}&user_scope=${encodeURIComponent(SLACK_USER_SCOPES)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     window.location.href = url;
   };
 
