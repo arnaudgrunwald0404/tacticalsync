@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle, Pencil,
+  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle, Pencil, ExternalLink, Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -103,6 +106,14 @@ const PRIORITY_OVERDUE_COLOR = '#f43f5e';
 const SYNC_SOURCE_LABEL: Partial<Record<NonNullable<InboxItem['source_ref']>['type'], string>> = {
   meeting_action_item: 'From a meeting',
   cos_meeting_action: 'From a 1:1',
+  gmail_message: 'From email',
+};
+
+const INTENT_BADGE: Record<string, { label: string; className: string }> = {
+  question:        { label: 'Question',        className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  request:         { label: 'Request',         className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  introduction:    { label: 'Introduction',    className: 'bg-purple-50 text-purple-700 border-purple-200' },
+  decision_needed: { label: 'Decision needed', className: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
 const AGENT_BG: Record<InboxItem['type'], string> = {
@@ -125,6 +136,7 @@ export function InboxItemRow({
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const isTouch = useIsTouch();
+  const { toast } = useToast();
   const revealControls = hovered || isTouch;
   const isDone = item.status === 'done';
   const isSnoozed = item.status === 'snoozed';
@@ -157,6 +169,63 @@ export function InboxItemRow({
 
   // Tier pills are "loosey goosey" — the tier they read as decays over time.
   // Picking one always clears any fixed calendar date.
+  const handleMarkHandled = useCallback(async () => {
+    const payload = item.agent_payload as Record<string, unknown> | null;
+    const senderEmail = payload?.sender_email as string | undefined;
+
+    if (senderEmail || payload?.intent_type) {
+      const domain = senderEmail ? senderEmail.split('@')[1] : undefined;
+      const receivedAt = item.created_at ? new Date(item.created_at).getTime() : Date.now();
+      const threadAgeHours = Math.round((Date.now() - receivedAt) / 3_600_000);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      await db.from('email_dismissal_log').insert({
+        inbox_item_id: item.id,
+        sender_email: senderEmail ?? null,
+        sender_tier: payload?.sender_tier ?? null,
+        intent_type: payload?.intent_type ?? null,
+        sender_domain: domain ?? null,
+        thread_age_hours: threadAgeHours,
+      });
+
+      // After 3 dismissals of the same sender, offer to suppress them.
+      if (senderEmail) {
+        const { count } = await db
+          .from('email_dismissal_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('sender_email', senderEmail);
+        if ((count ?? 0) >= 3) {
+          const senderName = (payload?.sender_name as string | undefined) ?? senderEmail;
+          toast({
+            title: `Often dismissing emails from ${senderName}?`,
+            description: 'Hide them going forward so they never surface again.',
+            action: (
+              <ToastAction
+                altText="Hide sender"
+                onClick={async () => {
+                  const { data: pref } = await db
+                    .from('email_triage_preferences')
+                    .select('suppressed_senders')
+                    .maybeSingle();
+                  const current: string[] = pref?.suppressed_senders ?? [];
+                  if (!current.includes(senderEmail)) {
+                    await db.from('email_triage_preferences').upsert({
+                      suppressed_senders: [...current, senderEmail],
+                      updated_at: new Date().toISOString(),
+                    }, { onConflict: 'user_id' });
+                  }
+                }}
+              >
+                Hide
+              </ToastAction>
+            ),
+          });
+        }
+      }
+    }
+    onArchive(item.id);
+  }, [item, onArchive, toast]);
+
   const setTier = (tierKey: (typeof PRIORITY_TIERS)[number]['key']) => {
     onUpdateItem?.(item.id, { priority_due_at: computePriorityDueAt(tierKey), priority_fixed: false });
   };
@@ -418,17 +487,31 @@ export function InboxItemRow({
               View in recording
             </button>
           )}
-          {/* Source chip — for items auto-synced in from a meeting or 1:1 (see
-              src/types/inbox.ts SourceRef doc comment). Not a real InboxTag,
-              same "synthetic pill" treatment as the fixed-due-date chip above
-              (rounded-full, xs text) so it reads consistently with the rest
-              of this column. */}
+          {/* Source chip — for items auto-synced in from a meeting, 1:1, or email. */}
           {syncSourceLabel && (
             <span
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-gray-200 bg-gray-50 text-gray-500"
               title={syncSourceLabel}
             >
+              {item.source_ref?.type === 'gmail_message' && <Mail className="h-3 w-3" />}
               {syncSourceLabel}
+            </span>
+          )}
+          {/* Intent badge — email-sourced items only. */}
+          {item.source_ref?.type === 'gmail_message' && item.agent_payload?.intent_type && (
+            (() => {
+              const badge = INTENT_BADGE[item.agent_payload.intent_type as string];
+              return badge ? (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border ${badge.className}`}>
+                  {badge.label}
+                </span>
+              ) : null;
+            })()
+          )}
+          {/* Sender tier label — email-sourced items only. */}
+          {item.source_ref?.type === 'gmail_message' && item.agent_payload?.sender_tier === 'active' && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-emerald-200 bg-emerald-50 text-emerald-700">
+              Active contact
             </span>
           )}
           {/* Tag picker — show on hover when tags exist, or always when no tags.
@@ -657,17 +740,36 @@ export function InboxItemRow({
           </div>
         )}
 
-        {/* Agent CTA — always the last grid column, right-aligned within it,
-            so it sits at the row's true right edge regardless of how many
-            columns exist. */}
+        {/* Agent CTA — always the last grid column, right-aligned within it. */}
         {item.type === 'agent_question' && item.agent_payload?.action_required && (
-          <button
-            onClick={() => (onCtaClick ?? onOpenDrawer)?.(item)}
-            style={{ gridColumn: '-1' }}
-            className="justify-self-end px-2.5 py-1 text-xs rounded-md bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
-          >
-            {item.agent_payload.cta_label ?? 'Respond'}
-          </button>
+          item.source_ref?.type === 'gmail_message' ? (
+            <div style={{ gridColumn: '-1' }} className="justify-self-end flex items-center gap-1">
+              <a
+                href={item.agent_payload.gmail_url as string ?? 'https://mail.google.com'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Reply in Gmail
+              </a>
+              <button
+                onClick={e => { e.stopPropagation(); void handleMarkHandled(); }}
+                className="px-2.5 py-1 text-xs rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                Mark handled
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => (onCtaClick ?? onOpenDrawer)?.(item)}
+              style={{ gridColumn: '-1' }}
+              className="justify-self-end px-2.5 py-1 text-xs rounded-md bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+            >
+              {item.agent_payload.cta_label ?? 'Respond'}
+            </button>
+          )
         )}
 
         {/* Meeting-insight triage — Confirm/Save/Dismiss, same CTA slot as the

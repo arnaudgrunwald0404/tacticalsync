@@ -2,6 +2,16 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { matchMemberByTitle, type MinimalMember } from "../_shared/matchEventToMember.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import {
+  base64UrlDecode,
+  findHtmlBody,
+  htmlToText,
+  extractTopicFromSubject,
+  extractMeetingUuid,
+  extractSummaryText,
+  extractDurationMinutes,
+  type GmailPart,
+} from "../_shared/gmailMeetingUtils.ts"
 
 // ── Gmail "Meeting assets ready" sync ────────────────────────────────────────
 //
@@ -30,11 +40,6 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 interface GmailHeader { name: string; value: string }
-interface GmailPart {
-  mimeType?: string
-  body?: { data?: string; size?: number }
-  parts?: GmailPart[]
-}
 interface GmailMessage {
   id: string
   internalDate?: string
@@ -43,79 +48,6 @@ interface GmailMessage {
 interface GmailListResponse {
   messages?: Array<{ id: string }>
   nextPageToken?: string
-}
-
-function base64UrlDecode(data: string): string {
-  const b64 = data.replace(/-/g, '+').replace(/_/g, '/')
-  const bin = atob(b64)
-  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0))
-  return new TextDecoder('utf-8').decode(bytes)
-}
-
-/** Depth-first search for the text/html part of a (possibly multipart) message. */
-function findHtmlBody(part: GmailPart | undefined): string | null {
-  if (!part) return null
-  if (part.mimeType === 'text/html' && part.body?.data) return base64UrlDecode(part.body.data)
-  for (const child of part.parts ?? []) {
-    const found = findHtmlBody(child)
-    if (found) return found
-  }
-  return null
-}
-
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
-/** Subject looks like "Meeting assets for {topic} are ready!" */
-function extractTopicFromSubject(subject: string): string | null {
-  const m = subject.match(/^Meeting assets for (.+?)\s+(?:is|are) ready!?\s*$/i)
-  return m ? m[1].trim() : null
-}
-
-/** The "View in Zoom" / recording links embed the meeting UUID, double
- *  URL-encoded (e.g. meeting_id%3De6uMmswARDe%252FlkpDc8hRVA%253D%253D). */
-function extractMeetingUuid(html: string): string | null {
-  const m = html.match(/meeting_?[Ii]d%3D([^"&]+?)(?:%26|&|")/)
-  if (!m) return null
-  try {
-    return decodeURIComponent(decodeURIComponent(m[1]))
-  } catch {
-    return null
-  }
-}
-
-/** Slice out the "Meeting summary" card (id="branding-doc-summary") and
- *  convert it to plain text — content, not markup, is what downstream
- *  action-item extraction needs. */
-function extractSummaryText(html: string): string | null {
-  const start = html.indexOf('id="branding-doc-summary"')
-  if (start === -1) return null
-  const tipsIdx = html.indexOf('class="tips-text"', start)
-  const end = tipsIdx === -1 ? html.length : tipsIdx
-  const text = htmlToText(html.slice(start, end))
-  return text.length > 0 ? text : null
-}
-
-function extractDurationMinutes(html: string): number | null {
-  const m = html.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2})/)
-  if (!m) return null
-  const [, hh, mm, ss] = m
-  return parseInt(hh, 10) * 60 + parseInt(mm, 10) + Math.round(parseInt(ss, 10) / 60)
 }
 
 serve(async (req) => {

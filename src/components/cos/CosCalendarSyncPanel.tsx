@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, Calendar, Unlink, RefreshCw, Clock, Mail } from 'lucide-react';
+import { Loader2, Save, Calendar, Unlink, RefreshCw, Clock, Mail, MailSearch } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -31,6 +31,9 @@ export default function CosCalendarSyncPanel() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncingGmail, setSyncingGmail] = useState(false);
+  const [scanningInbox, setScanningInbox] = useState(false);
+  const [inboxTriageEnabled, setInboxTriageEnabled] = useState(false);
+  const [savingInboxTriage, setSavingInboxTriage] = useState(false);
   const [savingAutoSync, setSavingAutoSync] = useState(false);
 
   useEffect(() => {
@@ -59,6 +62,11 @@ export default function CosCalendarSyncPanel() {
           autoSyncMorningHourUtc: 11, autoSyncMiddayHourUtc: 18,
         });
       }
+      // Load inbox triage preference
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prefRes = await (supabase as any).from('email_triage_preferences').select('enabled').maybeSingle();
+      setInboxTriageEnabled(prefRes.data?.enabled ?? false);
+
       setLoading(false);
     }
     load();
@@ -174,6 +182,42 @@ export default function CosCalendarSyncPanel() {
     }
   };
 
+  const toggleInboxTriage = async (enabled: boolean) => {
+    setInboxTriageEnabled(enabled);
+    setSavingInboxTriage(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('email_triage_preferences')
+        .upsert({ user_id: userId, enabled, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      if (error) throw error;
+    } catch (err) {
+      setInboxTriageEnabled(!enabled);
+      toast({ title: 'Failed to save preference', description: String(err), variant: 'destructive' });
+    } finally {
+      setSavingInboxTriage(false);
+    }
+  };
+
+  const scanInboxNow = async () => {
+    setScanningInbox(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-inbox-action-items');
+      if (error) throw error;
+      const { total_items_created = 0 } = (data ?? {}) as { total_items_created?: number };
+      toast({
+        title: 'Inbox scan complete',
+        description: total_items_created > 0
+          ? `${total_items_created} new item${total_items_created === 1 ? '' : 's'} found`
+          : 'No new action items found',
+      });
+    } catch (err) {
+      toast({ title: 'Scan failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setScanningInbox(false);
+    }
+  };
+
   const saveAutoSync = async () => {
     if (!userId || !connection) return;
     setSavingAutoSync(true);
@@ -278,6 +322,18 @@ export default function CosCalendarSyncPanel() {
                     onCheckedChange={v => setConnection(c => c ? { ...c, autoSyncEmailEnabled: v } : c)}
                   />
                 </label>
+
+                <label className="flex items-center justify-between gap-3 py-1">
+                  <div>
+                    <span className="text-sm">Surface actionable emails in my inbox</span>
+                    <p className="text-[11px] text-muted-foreground">Questions and requests from contacts you know appear as cards — scanned every 6 hours.</p>
+                  </div>
+                  <Switch
+                    checked={inboxTriageEnabled}
+                    disabled={savingInboxTriage}
+                    onCheckedChange={toggleInboxTriage}
+                  />
+                </label>
               </div>
 
               {/* ── Schedule pickers (visible when either auto-sync is on) ── */}
@@ -333,7 +389,7 @@ export default function CosCalendarSyncPanel() {
               {/* ── Manual sync ── */}
               <div className="space-y-2">
                 <p className="text-sm font-medium">Sync now</p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing} className="gap-1.5">
                     {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                     Sync calendar
@@ -341,6 +397,10 @@ export default function CosCalendarSyncPanel() {
                   <Button size="sm" variant="outline" onClick={syncGmailNow} disabled={syncingGmail} className="gap-1.5">
                     {syncingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
                     Sync emails
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={scanInboxNow} disabled={scanningInbox} className="gap-1.5">
+                    {scanningInbox ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailSearch className="h-3.5 w-3.5" />}
+                    Scan inbox
                   </Button>
                 </div>
               </div>
