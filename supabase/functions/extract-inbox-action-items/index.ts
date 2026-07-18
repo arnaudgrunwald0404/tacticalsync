@@ -131,6 +131,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const googleClientId = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
     const googleClientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
 
@@ -146,12 +147,16 @@ serve(async (req) => {
 
     if (overrideUserId && jwt === serviceRoleKey) {
       targetUserIds = [overrideUserId]
-    } else if (jwt && jwt !== serviceRoleKey) {
+    } else if (jwt && jwt !== serviceRoleKey && jwt !== anonKey) {
+      // User JWT: manual invocation from the frontend ("Scan now").
       const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
       if (userErr || !userData?.user) return jsonResponse({ error: 'invalid_token' }, 401)
       targetUserIds = [userData.user.id]
     } else {
-      // Cron mode: every user with either integration connected.
+      // Cron mode: no JWT, service-role key, or anon key.
+      // pg_net on some Supabase project configs appends the anon key as the
+      // Authorization header even when the migration omits it — treating the
+      // anon key as equivalent to no token keeps the cron working correctly.
       const { data: slackUsers } = await supabase
         .from('user_slack_credentials')
         .select('user_id')

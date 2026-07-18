@@ -1,4 +1,9 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+
+function ExternalRedirect({ to }: { to: string }) {
+  useEffect(() => { window.location.replace(to); }, [to]);
+  return null;
+}
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -66,11 +71,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           {/* Public routes — no shared navbar */}
-          <Route path="/" element={
-            <Suspense fallback={<PageSkeleton />}>
-              <Index />
-            </Suspense>
-          } />
+          <Route path="/" element={<ExternalRedirect to="https://tacticalsync.com/inbox" />} />
           <Route path="/auth" element={
             <Suspense fallback={<PageSkeleton />}>
               <Auth />
