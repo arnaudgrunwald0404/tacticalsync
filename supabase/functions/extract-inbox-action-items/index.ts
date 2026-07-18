@@ -2,6 +2,19 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import {
+  classifySenderTier,
+  shouldSuppressMessage,
+  shouldSuppressIntent,
+  shouldIncludeSlackMessage,
+  normalizeChannelName,
+  parseSenderEmail,
+  inferSuppressionRules,
+  SUPPRESSED_BY_DEFAULT,
+  type SenderTier,
+  type IntentType,
+  type SuppressionRules,
+} from "../_shared/inboxTriageUtils.ts"
 
 // ── Inbox action-item scanner ─────────────────────────────────────────────────
 //
@@ -35,24 +48,27 @@ function jsonResponse(body: unknown, status: number): Response {
 const MAX_ITEMS_PER_RUN = 60
 const MAX_TEXT_LEN = 300
 
+// SenderTier, IntentType, SUPPRESSED_BY_DEFAULT, SuppressionRules imported from inboxTriageUtils
+
 interface ScanItem {
   id: string                    // synthetic id referenced by the model, e.g. "s3"
   source: 'slack' | 'gmail'
   sourceId: string              // stable id for source_ref, e.g. "C123:170000.001" or a gmail message id
   label: string                 // human-readable origin, e.g. "#launch-plan" or "Email from jane@co.com"
   text: string
+  senderEmail?: string          // gmail only
+  senderTier?: SenderTier       // gmail only
+  gmailUrl?: string             // gmail only — direct link to thread
 }
+
+// IntentType, SUPPRESSED_BY_DEFAULT imported from inboxTriageUtils
 
 interface Finding {
   item_id: string
-  kind: 'action_item' | 'question' | 'commitment'
+  intent_type: IntentType
   summary: string
   rationale: string
   owed_by: 'me' | 'them' | null
-  // Absolute YYYY-MM-DD, resolved from an explicit or clearly-implied deadline
-  // in the message (e.g. "by Friday", "EOD tomorrow") — null when no deadline
-  // is stated. Feeds inbox_items.priority_due_at as a *fixed* (real) due date,
-  // distinct from the informal decaying priority tiers set manually in-app.
   due_date: string | null
 }
 
@@ -66,36 +82,35 @@ async function extractFindings(items: ScanItem[]): Promise<Finding[]> {
     model: 'claude-haiku-4-5',
     max_tokens: 2048,
     system: `Today's date is ${todayIso}. You review a batch of Slack messages and
-emails for things the reader should not miss: explicit action items, direct
-questions aimed at them, and commitments someone (them or someone else) made.
-Ignore small talk, FYI-only notes, acknowledgments ("thanks!", "sounds good"),
-and anything already fully resolved within the same text. Respond ONLY with
-valid JSON: an array of
-{"item_id": "<id from the list>", "kind": "action_item"|"question"|"commitment",
-"summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
-"rationale": "<one short clause on why this needs attention>",
-"owed_by": "me"|"them"|null,
-"due_date": "<YYYY-MM-DD>"|null}.
+emails for things the reader should not miss: direct questions aimed at them,
+requests for action or decisions, introductions to new people, threads where
+a decision is stalled waiting on them, and commitments that need follow-up.
+Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
+and anything already fully resolved within the same text.
 
-For "owed_by", decide who owes the next response or action in the exchange,
-from the reader's point of view:
-- "me": the reader is the one being asked for something, and hasn't clearly
-  delivered it yet — the reader is the blocker. Example: "Can you review this
-  by Friday?" or "Waiting on your sign-off before we ship" directed at the
-  reader → owed_by: "me".
-- "them": someone else owes the reader a response or deliverable — the reader
-  is waiting on them. Example: "I'll get you the numbers tomorrow" or "Let me
-  check and get back to you" said TO the reader → owed_by: "them".
-- null: there's no clear directionality — a pure FYI/announcement, a question
-  with no obvious owner, or something already resolved. Example: "Heads up,
-  the office is closed Monday" → owed_by: null.
+Respond ONLY with valid JSON: an array of
+{"item_id": "<id from the list>",
+ "intent_type": "question"|"request"|"introduction"|"decision_needed"|"fyi",
+ "summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
+ "rationale": "<one short clause on why this needs attention>",
+ "owed_by": "me"|"them"|null,
+ "due_date": "<YYYY-MM-DD>"|null}.
+
+intent_type rules:
+- "question": sender is asking the reader something that needs an answer.
+- "request": sender is asking the reader to do something or decide something.
+- "introduction": sender is introducing the reader to a new person or opportunity.
+- "decision_needed": a thread has stalled and the reader needs to unblock it.
+- "fyi": informational only — no response or action implied.
+
+owed_by rules:
+- "me": the reader is being asked for something and hasn't clearly delivered it.
+- "them": someone else owes the reader a response or deliverable.
+- null: no clear directionality, or FYI.
 
 For "due_date", resolve any explicit or clearly-implied deadline to an
-absolute YYYY-MM-DD date using today's date above — e.g. "by Friday" →
-next Friday's date, "EOD tomorrow" → tomorrow's date, "by end of month" →
-the last day of this month. Use null when no deadline is stated or implied —
-do NOT invent one from vague urgency words like "soon" or "when you get a
-chance".
+absolute YYYY-MM-DD date — e.g. "by Friday" → next Friday, "EOD tomorrow" →
+tomorrow. Use null when no deadline is stated or implied.
 Return [] if nothing qualifies.`,
     messages: [{ role: 'user', content: numbered }],
   })
@@ -105,12 +120,10 @@ Return [] if nothing qualifies.`,
     const parsed = JSON.parse(text)
     if (!Array.isArray(parsed)) return []
     const isoDateRe = /^\d{4}-\d{2}-\d{2}$/
-    // Guard against the model returning something other than 'me'/'them'/null
-    // for owed_by, or a malformed due_date — owed_by has a DB check
-    // constraint, and a garbage due_date would still parse as a Date but
-    // produce nonsense priority_due_at values downstream.
+    const validIntents: IntentType[] = ['question', 'request', 'introduction', 'decision_needed', 'fyi']
     return (parsed as Finding[]).map(f => ({
       ...f,
+      intent_type: validIntents.includes(f.intent_type) ? f.intent_type : 'fyi',
       owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
       due_date: typeof f.due_date === 'string' && isoDateRe.test(f.due_date) ? f.due_date : null,
     }))
@@ -234,7 +247,7 @@ serve(async (req) => {
             .maybeSingle()
           const since = cursorRow?.last_scanned_at ?? new Date(Date.now() - 24 * 3600_000).toISOString()
 
-          const normalizedChannels = syncChannels.map(c => c.toLowerCase().replace(/^#/, ''))
+          const normalizedChannels = syncChannels.map(normalizeChannelName)
           const { data: slackMsgs } = await supabase
             .from('cos_slack_messages')
             .select('channel_id, channel_name, sender_name, content, message_date, message_ts, is_dm')
@@ -247,9 +260,7 @@ serve(async (req) => {
             channel_id: string; channel_name: string | null; sender_name: string | null
             content: string; message_date: string; message_ts: string; is_dm: boolean
           }>) {
-            // DMs are always in scope; channel messages only if the channel
-            // is in the user's sync allowlist.
-            if (!m.is_dm && (!m.channel_name || !normalizedChannels.includes(m.channel_name.toLowerCase()))) continue
+            if (!shouldIncludeSlackMessage(m.is_dm, m.channel_name, normalizedChannels)) continue
             items.push({
               id: `s${items.length}`,
               source: 'slack',
@@ -269,7 +280,20 @@ serve(async (req) => {
 
         const hasGmailScope = calCreds?.scope?.includes('gmail') || calCreds?.scope?.includes('mail.google.com')
 
-        if (calCreds?.access_token && hasGmailScope) {
+        // Inbox triage is opt-in — skip Gmail scan if user hasn't enabled it.
+        // Also load suppression rules for filtering before insert.
+        const { data: triagePref } = await supabase
+          .from('email_triage_preferences')
+          .select('enabled, suppressed_senders, suppressed_domains, suppressed_intents, max_thread_age_hours')
+          .eq('user_id', userId)
+          .maybeSingle()
+        const inboxTriageEnabled = triagePref?.enabled ?? false
+        const suppressedSenders = new Set<string>((triagePref?.suppressed_senders ?? []) as string[])
+        const suppressedDomains = new Set<string>((triagePref?.suppressed_domains ?? []) as string[])
+        const suppressedIntents = new Set<string>((triagePref?.suppressed_intents ?? []) as string[])
+        const maxThreadAgeHours: number | null = (triagePref?.max_thread_age_hours as number | null) ?? null
+
+        if (calCreds?.access_token && hasGmailScope && inboxTriageEnabled) {
           scannedGmail = true
           let accessToken = calCreds.access_token as string
 
@@ -321,6 +345,44 @@ serve(async (req) => {
             )
             if (listRes.ok) {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
+
+              // Build a sent-mail lookup for sender tier classification.
+              // Active = user has replied to this sender at least once.
+              // Known = sender has emailed user; no reply on record.
+              // Unknown = no prior email history → skip entirely.
+              // We query sent mail once per batch run, not per message.
+              const sentAddresses = new Set<string>()
+              try {
+                const sentRes = await retryWithBackoff(
+                  () => fetch(
+                    'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:sent&maxResults=500',
+                    { headers: { Authorization: `Bearer ${accessToken}` } },
+                  ),
+                  { integration: 'gmail', label: 'list sent messages' },
+                )
+                if (sentRes.ok) {
+                  const sentData = await sentRes.json() as { messages?: Array<{ id: string }> }
+                  // Fetch To headers in parallel (batched to avoid rate limits)
+                  const sentIds = (sentData.messages ?? []).map(m => m.id).slice(0, 100)
+                  await Promise.all(sentIds.map(async (sid) => {
+                    try {
+                      const sr = await fetch(
+                        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${sid}?format=metadata&metadataHeaders=To`,
+                        { headers: { Authorization: `Bearer ${accessToken}` } },
+                      )
+                      if (!sr.ok) return
+                      const sd = await sr.json() as { payload?: { headers?: Array<{ name: string; value: string }> } }
+                      const toHeader = sd.payload?.headers?.find(h => h.name.toLowerCase() === 'to')?.value ?? ''
+                      // Extract email addresses from the To header
+                      const emails = toHeader.match(/[\w.+-]+@[\w.-]+\.\w+/g) ?? []
+                      emails.forEach(e => sentAddresses.add(e.toLowerCase()))
+                    } catch { /* skip */ }
+                  }))
+                }
+              } catch (err) {
+                console.warn(`extract-inbox-action-items: sent-mail lookup failed for ${userId}:`, (err as Error).message)
+              }
+
               for (const { id } of listData.messages ?? []) {
                 const msgRes = await retryWithBackoff(
                   () => fetch(
@@ -332,17 +394,43 @@ serve(async (req) => {
                 if (!msgRes.ok) continue
                 const detail = await msgRes.json() as {
                   snippet?: string
+                  threadId?: string
+                  internalDate?: string
                   payload?: { headers?: Array<{ name: string; value: string }> }
                 }
                 const headers = detail.payload?.headers ?? []
                 const from = headers.find(h => h.name.toLowerCase() === 'from')?.value ?? 'unknown sender'
                 const subject = headers.find(h => h.name.toLowerCase() === 'subject')?.value ?? '(no subject)'
+
+                const senderEmail = parseSenderEmail(from)
+                const tier = classifySenderTier(senderEmail, sentAddresses)
+                if (tier === null) continue
+                const senderTier: SenderTier = tier
+
+                const internalDateMs = detail.internalDate
+                  ? parseInt(detail.internalDate as string, 10)
+                  : null
+                const suppressionRules: SuppressionRules = {
+                  suppressedSenders,
+                  suppressedDomains,
+                  suppressedIntents,
+                  maxThreadAgeHours,
+                }
+                if (shouldSuppressMessage(senderEmail, internalDateMs, suppressionRules)) continue
+
+                const gmailUrl = detail.threadId
+                  ? `https://mail.google.com/mail/u/0/#inbox/${detail.threadId}`
+                  : 'https://mail.google.com'
+
                 items.push({
                   id: `g${items.length}`,
                   source: 'gmail',
                   sourceId: id,
                   label: `Email from ${from}`,
                   text: `${subject} — ${(detail.snippet ?? '').slice(0, MAX_TEXT_LEN)}`,
+                  senderEmail: senderEmail ?? undefined,
+                  senderTier,
+                  gmailUrl,
                 })
               }
             }
@@ -361,6 +449,11 @@ serve(async (req) => {
             const source = byId.get(finding.item_id)
             if (!source) continue
 
+            const intentSuppressed = source.source === 'gmail'
+              ? shouldSuppressIntent(finding.intent_type, suppressedIntents)
+              : SUPPRESSED_BY_DEFAULT.includes(finding.intent_type)
+            if (intentSuppressed) continue
+
             const sourceRefType = source.source === 'slack' ? 'slack_message' : 'gmail_message'
             const { data: existing } = await supabase
               .from('inbox_items')
@@ -372,10 +465,6 @@ serve(async (req) => {
 
             if (existing) continue
 
-            // A resolved due_date is a *real* deadline (someone stated or
-            // implied one), so it's marked priority_fixed — same meaning as
-            // a due date set explicitly in-app — rather than the informal,
-            // decaying priority tiers (see inbox_items.priority_fixed).
             const { error: insertErr } = await supabase.from('inbox_items').insert({
               user_id: userId,
               type: 'agent_question',
@@ -383,8 +472,12 @@ serve(async (req) => {
               agent_payload: {
                 source: source.source,
                 rationale: finding.rationale,
+                intent_type: finding.intent_type,
+                ...(source.senderEmail ? { sender_email: source.senderEmail } : {}),
+                ...(source.senderTier ? { sender_tier: source.senderTier } : {}),
+                ...(source.gmailUrl ? { gmail_url: source.gmailUrl } : {}),
                 action_required: true,
-                cta_label: 'Add to inbox',
+                cta_label: source.source === 'gmail' ? 'Reply in Gmail' : 'Add to inbox',
                 cta_action: 'approve_suggestion',
               },
               source_ref: { type: sourceRefType, id: source.sourceId },
@@ -409,6 +502,46 @@ serve(async (req) => {
               last_scanned_at: nowIso,
               updated_at: nowIso,
             }, { onConflict: 'user_id,source' })
+          }
+        }
+
+        // ── Suppression inference ───────────────────────────────────────────
+        // After each scan, check dismissal patterns and update per-user
+        // suppression rules. Runs only when inbox triage is enabled and
+        // Gmail was scanned this run (no point inferring if there's no signal).
+        if (inboxTriageEnabled && scannedGmail) {
+          try {
+            const { data: dismissals } = await supabase
+              .from('email_dismissal_log')
+              .select('sender_email, sender_domain, intent_type')
+              .eq('user_id', userId)
+
+            if (dismissals && dismissals.length >= 3) {
+              const { newSenders, newDomains, newIntents } = inferSuppressionRules(
+                dismissals as Array<{ sender_email: string | null; sender_domain: string | null; intent_type: string | null }>,
+              )
+
+              const merged = (existing: string[], additions: string[]) =>
+                Array.from(new Set([...existing, ...additions]))
+
+              if (newSenders.length || newDomains.length || newIntents.length) {
+                const { data: cur } = await supabase
+                  .from('email_triage_preferences')
+                  .select('suppressed_senders, suppressed_domains, suppressed_intents')
+                  .eq('user_id', userId)
+                  .maybeSingle()
+
+                await supabase.from('email_triage_preferences').upsert({
+                  user_id: userId,
+                  suppressed_senders: merged(cur?.suppressed_senders ?? [], newSenders),
+                  suppressed_domains: merged(cur?.suppressed_domains ?? [], newDomains),
+                  suppressed_intents: merged(cur?.suppressed_intents ?? [], newIntents),
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id' })
+              }
+            }
+          } catch (err) {
+            console.warn(`extract-inbox-action-items: suppression inference failed for ${userId}:`, (err as Error).message)
           }
         }
 
