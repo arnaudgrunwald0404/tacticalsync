@@ -7,7 +7,7 @@ Source of truth for every external-system integration in this codebase, extracte
 All integrations share three architectural conventions worth calling out once:
 - **Credential storage**: every OAuth-based integration (Zoom, Slack, Google) has its own `user_*_credentials` table (`user_id` PK) with RLS locked down on the base table and a `_public` view (`security_barrier`) that strips tokens and exposes only a `connected` boolean to the client. StackOne and ClearGo instead share one generic table, `cos_mcp_integrations`, keyed by `(user_id, integration_key)`, plus a generic settings-UI + edge-function pair (`McpIntegrationPanel.tsx` + `test-mcp-integration`) that any future api-key-based integration can reuse by adding a preset — no bespoke panel/edge-function required.
 - **Dual invocation auth**: every sync edge function accepts either a normal user JWT (manual "Sync now" button) or `service-role key + x-supabase-user-id header` (cron/batch invocation on behalf of a specific user).
-- **No retry/backoff anywhere.** Not for Zoom, Slack, Google, StackOne, or ClearGo. A failed or rate-limited call is treated as "no data for this run," not retried. This is a consistent, repeated gap across all integrations — worth fixing centrally rather than per-integration if rebuilding.
+- **Retry/backoff**: `supabase/functions/_shared/retryWithBackoff.ts` wraps outbound calls for Zoom, Slack, Gmail, and Google Calendar (3 attempts, exponential backoff + jitter, honors `Retry-After` on 429, skips other 4xx). StackOne and ClearGo aren't covered yet — same gap, smaller blast radius (opt-in enrichment connectors, not the always-on agent pipeline).
 
 ## Contents
 
