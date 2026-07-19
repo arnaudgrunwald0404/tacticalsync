@@ -519,15 +519,17 @@ export function InboxItemRow({
               summaries, not taggable content, so the picker would just sit
               there as a suggestion that can never be acted on. */}
           {item.type !== 'brief_item' && (
-            item.tags && item.tags.length > 0 ? revealControls && (
-              <TagPickerDropdown
-                allTags={allTags}
-                itemTags={item.tags}
-                onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
-                onCreateTag={onQuickCreateTag}
-                teamMembers={teamMembers}
-                onCreatePersonTag={onCreatePersonTag}
-              />
+            item.tags && item.tags.length > 0 ? (
+              <span className={cn('transition-opacity', revealControls ? 'opacity-100' : 'opacity-0 pointer-events-none')}>
+                <TagPickerDropdown
+                  allTags={allTags}
+                  itemTags={item.tags}
+                  onSelectTags={tagIds => tagIds.forEach(tagId => onAddTag(item.id, tagId))}
+                  onCreateTag={onQuickCreateTag}
+                  teamMembers={teamMembers}
+                  onCreatePersonTag={onCreatePersonTag}
+                />
+              </span>
             ) : (
               <TagPickerDropdown
                 allTags={allTags}

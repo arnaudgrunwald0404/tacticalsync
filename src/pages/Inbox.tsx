@@ -481,7 +481,10 @@ export default function InboxPage() {
   const syncedBriefDate = useRef<string | null>(null);
   useEffect(() => {
     if (!brief || brief.source === 'none' || !userId) return;
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) return; // skip weekends
+    const today = format(now, 'yyyy-MM-dd');
     if (syncedBriefDate.current === today) return;
     syncedBriefDate.current = today;
 
@@ -493,9 +496,8 @@ export default function InboxPage() {
       action: p.action,
     }));
 
-    const count = brief.dailyPriorities.length;
-    const dayLabel = format(new Date(), 'EEEE, MMMM do');
-    const summaryText = `Daily brief · ${count} priorit${count === 1 ? 'y' : 'ies'} for ${dayLabel}`;
+    const dayLabel = format(now, 'EEEE, MMMM d');
+    const summaryText = `Daily brief · ${dayLabel}`;
     syncBriefItem(today, priorities, summaryText);
   }, [brief, userId, syncBriefItem]);
 
@@ -518,7 +520,7 @@ export default function InboxPage() {
 
     const monday = parseLocalDate(mondayDate);
     const friday = addDays(monday, 4);
-    const summaryText = `Weekly Priorities for the week of Monday, ${format(monday, 'MMMM d')} to Friday, ${format(friday, 'MMMM d')}`;
+    const summaryText = `Weekly Priorities · Week of ${format(monday, 'MMMM d')} to ${format(friday, 'MMMM d')}`;
     syncBriefItem(mondayDate, priorities, summaryText, 'weekly');
   }, [brief, userId, syncBriefItem]);
 
