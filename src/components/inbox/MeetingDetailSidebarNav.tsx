@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import { ArrowLeft, CalendarDays, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,7 +30,7 @@ export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack 
   const start = new Date(event.start_time);
   const end = new Date(event.end_time);
   const title = event.title ?? `1:1 with ${name}`;
-  const timeStr = `${format(start, 'EEE, MMM d')} · ${format(start, 'h:mm')}–${format(end, 'h:mm a')}`;
+  const timeStr = `${format(start, 'EEE, MMM d')} · ${format(start, 'h:mm')}–${format(end, 'h:mm a')} ${getTzAbbr(start)}`;
 
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [zoomRecsCount, setZoomRecsCount] = useState(0);

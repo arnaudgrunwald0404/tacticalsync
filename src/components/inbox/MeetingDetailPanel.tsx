@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import {
   ArrowLeft, CalendarDays, Sparkles, Send, Video, Loader2,
   FileText, History, X, EyeOff, ChevronDown, ChevronUp,
@@ -116,7 +117,7 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
   const start = new Date(event.start_time);
   const end = new Date(event.end_time);
   const title = event.title ?? `1:1 with ${name}`;
-  const timeStr = `${format(start, 'EEE, MMM d')} · ${format(start, 'h:mm')}–${format(end, 'h:mm a')}`;
+  const timeStr = `${format(start, 'EEE, MMM d')} · ${format(start, 'h:mm')}–${format(end, 'h:mm a')} ${getTzAbbr(start)}`;
 
   const [activeTabInternal, setActiveTabInternal] = useState<TabKey>('prep');
   const activeTab = activeTabOverride ?? activeTabInternal;

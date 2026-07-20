@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarWeekView } from './CalendarWeekView';
 import { createPortal } from 'react-dom';
 import { format, differenceInCalendarDays, formatDistanceToNow, isToday, isTomorrow, differenceInDays, startOfDay, addDays, startOfWeek } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import {
   Play, Clock, FileText, ChevronRight, ChevronDown, CheckSquare,
   ListChecks, Sparkles, CalendarPlus, RefreshCw, Loader2,
@@ -818,7 +819,7 @@ function UpNextHeroEvent({
           </div>
           <Badge className="gap-1 font-extrabold tracking-wide uppercase text-[11px] border-0 flex-shrink-0 whitespace-nowrap bg-amber-500 text-white">
             <Play className="h-3 w-3 fill-current" />
-            {format(start, 'h:mm a')}
+            {format(start, 'h:mm a')} {getTzAbbr(start)}
           </Badge>
         </div>
 
@@ -1043,7 +1044,7 @@ function GroupMeetingEventCard({ event }: { event: UpcomingOneOnOneEvent }) {
           </p>
         </div>
         <div className="flex-shrink-0 text-right">
-          <div className="text-xs font-bold">{format(start, 'h:mm a')}</div>
+          <div className="text-xs font-bold">{format(start, 'h:mm a')} {getTzAbbr(start)}</div>
           <div className="text-[11px] text-muted-foreground">{format(start, 'EEE')}</div>
         </div>
       </div>
@@ -1111,7 +1112,7 @@ function UpcomingEventCard({
           <p className="text-[11px] text-muted-foreground truncate mt-0.5">{displayRole}</p>
         </div>
         <div className="flex-shrink-0 text-right">
-          <div className="text-xs font-bold">{format(start, 'h:mm a')}</div>
+          <div className="text-xs font-bold">{format(start, 'h:mm a')} {getTzAbbr(start)}</div>
           <div className="text-[11px] text-muted-foreground">{format(start, 'EEE')}</div>
         </div>
       </div>
@@ -1210,7 +1211,7 @@ function PastEventCard({
         </div>
         <div className="flex-shrink-0 text-right">
           <div className="text-[11px] font-semibold text-muted-foreground">{format(start, 'MMM d')}</div>
-          <div className="text-[10px] text-muted-foreground/70">{format(start, 'h:mm a')}</div>
+          <div className="text-[10px] text-muted-foreground/70">{format(start, 'h:mm a')} {getTzAbbr(start)}</div>
         </div>
       </div>
     </button>

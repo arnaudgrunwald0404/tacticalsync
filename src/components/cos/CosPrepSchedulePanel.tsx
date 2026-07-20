@@ -452,7 +452,7 @@ function MeetingsManualRunCard({ draft, running, onRunNow, logs, userId, onRefre
                         <TableCell className="whitespace-nowrap text-sm">
                           {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           {' '}
-                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}
                         </TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge></TableCell>
                         <TableCell className="text-right text-sm">{log.meetings_found}</TableCell>
@@ -1153,7 +1153,7 @@ function BriefManualRunCard({ draft, running, onRunNow, userId }: {
                         <TableCell className="whitespace-nowrap text-sm">
                           {new Date(log.started_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           {' '}
-                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          {new Date(log.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}
                         </TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px] h-5">{log.trigger_type}</Badge></TableCell>
                         <TableCell className="text-right text-sm">{log.items_found}</TableCell>

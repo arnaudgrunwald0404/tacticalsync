@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, startOfWeek, addDays, isToday as isDateToday, formatDistanceToNow } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import {
   Plus, GripVertical, ChevronDown, ChevronLeft, ChevronRight, Trash2, Check, X, Send, Copy, Save, Loader2, FileText, RotateCcw, Settings,
   Sparkles, Pencil, AlertCircle, Info, Radar, CalendarPlus, Bot, Users, CheckSquare,
@@ -1341,7 +1342,7 @@ function DciTabContent({
           </div>
           {brief?.generatedAt && (
             <p className="text-xs text-muted-foreground">
-              Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} · Source: local file
+              Brief generated {format(new Date(brief.generatedAt), 'h:mm a')} {getTzAbbr(new Date(brief.generatedAt))} · Source: local file
             </p>
           )}
         </div>
@@ -3587,7 +3588,8 @@ function formatGeneratedAt(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return format(new Date(iso), 'MMM d, h:mm a');
+  const d = new Date(iso);
+  return `${format(d, 'MMM d, h:mm a')} ${getTzAbbr(d)}`;
 }
 
 // ── 1:1s Tab — wraps OneOnOnesView + OneOnOnePrepDrawer with the existing
