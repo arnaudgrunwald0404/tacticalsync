@@ -80,11 +80,15 @@ async function extractFindings(items: ScanItem[]): Promise<Finding[]> {
 
   const msg = await ai.messages.create({
     model: 'claude-haiku-4-5',
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: `Today's date is ${todayIso}. You review a batch of Slack messages and
 emails for things the reader should not miss: direct questions aimed at them,
 requests for action or decisions, introductions to new people, threads where
-a decision is stalled waiting on them, and commitments that need follow-up.
+a decision is stalled waiting on them, commitments that need follow-up, and
+deadline or training reminders that require the reader to complete something.
+Automated emails (from no-reply or system addresses) still qualify if they
+contain a concrete action the reader must take — e.g. complete a training,
+fill out a form, approve a request, respond by a deadline.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
 
@@ -115,7 +119,9 @@ Return [] if nothing qualifies.`,
     messages: [{ role: 'user', content: numbered }],
   })
 
-  const text = (msg.content[0] as { text: string }).text
+  const raw = (msg.content[0] as { text: string }).text
+  // Strip markdown code fences if Claude wraps the JSON (```json ... ``` or ``` ... ```)
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
   try {
     const parsed = JSON.parse(text)
     if (!Array.isArray(parsed)) return []
