@@ -42,6 +42,7 @@ interface Props {
   onDismissIntroCallout?: () => void;
   gmailAgentItems?: InboxItem[];
   onDismissGmailItem?: (id: string) => void;
+  onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -51,7 +52,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
-  showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem,
+  showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   // Tracks rows mid-action so a second click before the optimistic removal
@@ -200,6 +201,31 @@ export function InboxSuggestionsPanel({
                 <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
                   {intentLabel}
                 </span>
+                {onTagGmailItem && (
+                  <TagPickerDropdown
+                    allTags={destinationTags}
+                    itemTags={item.tags ?? []}
+                    onSelectTags={tagIds => {
+                      if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
+                    }}
+                    onCreateTag={onCreateTag}
+                    teamMembers={teamMembers}
+                    onCreatePersonTag={onCreatePersonTag}
+                    topOptions={[]}
+                    renderTrigger={({ toggle }) => (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={toggle}
+                        className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                        title="Add to a project"
+                      >
+                        Add to…
+                        <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                      </Button>
+                    )}
+                  />
+                )}
                 {gmailUrl && (
                   <a
                     href={gmailUrl}

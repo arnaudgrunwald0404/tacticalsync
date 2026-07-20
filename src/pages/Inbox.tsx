@@ -1455,6 +1455,7 @@ export default function InboxPage() {
               onDismissIntroCallout={markIntroSeen}
               gmailAgentItems={gmailAgentItems}
               onDismissGmailItem={handleDismissGmailItem}
+              onTagGmailItem={addTagToItem}
             />
           )}
           {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
