@@ -193,7 +193,21 @@ export function InboxSuggestionsPanel({
               >
                 <Mail className="h-3.5 w-3.5 shrink-0 text-white/60" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">{item.text}</p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{item.text}</p>
+                    {gmailUrl && (
+                      <a
+                        href={gmailUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
+                        title="Reply in Gmail"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-white/60">
                     {senderEmail ? `From ${senderEmail}` : 'From email'}
                     {payload?.rationale ? ` · ${payload.rationale}` : ''}
@@ -202,43 +216,46 @@ export function InboxSuggestionsPanel({
                 <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
                   {intentLabel}
                 </span>
-                {onTagGmailItem && (
-                  <TagPickerDropdown
-                    allTags={destinationTags}
-                    itemTags={item.tags ?? []}
-                    onSelectTags={tagIds => {
-                      if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
-                    }}
-                    onCreateTag={onCreateTag}
-                    teamMembers={teamMembers}
-                    onCreatePersonTag={onCreatePersonTag}
-                    topOptions={[]}
-                    renderTrigger={({ toggle }) => (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={toggle}
-                        className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
-                        title="Add to a project"
-                      >
-                        Add to…
-                        <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                      </Button>
-                    )}
-                  />
-                )}
-                {gmailUrl && (
-                  <a
-                    href={gmailUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/30 transition-colors"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Reply in Gmail
-                  </a>
-                )}
+                {onTagGmailItem && (() => {
+                  const rec = item.tag_suggestions?.[0];
+                  return (
+                    <>
+                      {rec && (
+                        <Button
+                          size="sm"
+                          onClick={() => void onTagGmailItem(item.id, rec.tag_id)}
+                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 max-w-[200px]"
+                          title={rec.reason}
+                        >
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
+                          <span className="truncate">Add to {rec.tag_name}</span>
+                        </Button>
+                      )}
+                      <TagPickerDropdown
+                        allTags={destinationTags}
+                        itemTags={item.tags ?? []}
+                        onSelectTags={tagIds => {
+                          if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
+                        }}
+                        onCreateTag={onCreateTag}
+                        teamMembers={teamMembers}
+                        onCreatePersonTag={onCreatePersonTag}
+                        topOptions={[]}
+                        renderTrigger={({ toggle }) => (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={toggle}
+                            className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                            title="Add to a project"
+                          >
+                            {rec ? <ChevronDown className="h-3.5 w-3.5 opacity-60" /> : <>Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" /></>}
+                          </Button>
+                        )}
+                      />
+                    </>
+                  );
+                })()}
                 <button
                   onClick={() => onDismissGmailItem?.(item.id)}
                   className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
