@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff } from 'lucide-react';
+import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail } from 'lucide-react';
+import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
 import { TagPickerDropdown } from '@/components/inbox/TagPickerDropdown';
@@ -39,6 +40,9 @@ interface Props {
   onCreatePersonTag?: (member: TeamMember) => Promise<InboxTag | null>;
   showIntroCallout?: boolean;
   onDismissIntroCallout?: () => void;
+  gmailAgentItems?: InboxItem[];
+  onDismissGmailItem?: (id: string) => void;
+  onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -48,7 +52,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
-  showIntroCallout, onDismissIntroCallout,
+  showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   // Tracks rows mid-action so a second click before the optimistic removal
@@ -119,10 +123,10 @@ export function InboxSuggestionsPanel({
     }
   }
 
-  if (scopedSuggestions.length === 0) return null;
+  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0) return null;
 
   const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
-  const hasEmail = scopedSuggestions.some(s => s.source_type === 'email');
+  const hasEmail = gmailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
   const hasSlack = scopedSuggestions.some(s => s.source_type === 'slack');
   const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
   const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
@@ -134,6 +138,7 @@ export function InboxSuggestionsPanel({
   const panelTitle = sources.length > 0
     ? `Suggested from your ${sources.join(', ')}`
     : 'Suggested for your inbox';
+  const totalCount = gmailAgentItems.length + scopedSuggestions.length;
 
   return (
     <div
@@ -147,7 +152,7 @@ export function InboxSuggestionsPanel({
         </div>
         <h3 className="text-sm font-semibold text-white">{panelTitle}</h3>
         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/15 px-1.5 text-xs font-medium text-white/80 ring-1 ring-white/20">
-          {scopedSuggestions.length}
+          {totalCount}
         </span>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -167,7 +172,90 @@ export function InboxSuggestionsPanel({
         <AutoSyncIntroCallout onDismiss={onDismissIntroCallout} />
       )}
 
-      {/* Rows */}
+      {/* Gmail action items — shown first, always fully expanded */}
+      {gmailAgentItems.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {gmailAgentItems.map(item => {
+            const payload = item.agent_payload as {
+              gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string;
+            } | null;
+            const gmailUrl = payload?.gmail_url;
+            const senderEmail = payload?.sender_email ?? '';
+            const intentLabel = payload?.intent_type === 'question' ? 'Question'
+              : payload?.intent_type === 'decision_needed' ? 'Decision needed'
+              : payload?.intent_type === 'introduction' ? 'Introduction'
+              : 'Request';
+            return (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
+              >
+                <Mail className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{item.text}</p>
+                  <p className="truncate text-xs text-white/60">
+                    {senderEmail ? `From ${senderEmail}` : 'From email'}
+                    {payload?.rationale ? ` · ${payload.rationale}` : ''}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                  {intentLabel}
+                </span>
+                {onTagGmailItem && (
+                  <TagPickerDropdown
+                    allTags={destinationTags}
+                    itemTags={item.tags ?? []}
+                    onSelectTags={tagIds => {
+                      if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
+                    }}
+                    onCreateTag={onCreateTag}
+                    teamMembers={teamMembers}
+                    onCreatePersonTag={onCreatePersonTag}
+                    topOptions={[]}
+                    renderTrigger={({ toggle }) => (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={toggle}
+                        className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                        title="Add to a project"
+                      >
+                        Add to…
+                        <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                      </Button>
+                    )}
+                  />
+                )}
+                {gmailUrl && (
+                  <a
+                    href={gmailUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/30 transition-colors"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Reply in Gmail
+                  </a>
+                )}
+                <button
+                  onClick={() => onDismissGmailItem?.(item.id)}
+                  className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
+                  aria-label="Mark handled"
+                  title="Mark handled"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+          {scopedSuggestions.length > 0 && (
+            <div className="border-t border-white/10 pt-2" />
+          )}
+        </div>
+      )}
+
+      {/* Meeting / Slack suggestions */}
       <div className="space-y-2">
         {(expanded ? scopedSuggestions : scopedSuggestions.slice(0, COLLAPSED_COUNT)).map(s => {
           const seed = s.memberName ?? s.source ?? s.id;
