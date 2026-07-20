@@ -446,7 +446,13 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+
+  // Gmail agent_question items live in the dark blue suggestions panel, not the main list.
+  const isGmailAgentItem = (i: InboxItem) =>
+    i.type === 'agent_question' && (i.source_ref as { type?: string } | null)?.type === 'gmail_message';
+  const gmailAgentItems = useMemo(() => allItems.filter(isGmailAgentItem), [allItems]);
+  const items = useMemo(() => rawItems.filter(i => !isGmailAgentItem(i)), [rawItems]);
 
   // Snoozed count for the sidebar badge — a separate lightweight fetch since
   // `allItems` (used for the `all`/`asap`/`waiting` counts) only ever fetches
@@ -551,7 +557,7 @@ export default function InboxPage() {
     for (const item of allItems) {
       c['all']++;
       if (item.workflow_status === 'Do Now') c['asap']++;
-      if (item.type === 'agent_question' && item.agent_payload?.action_required) c['waiting']++;
+      if (item.type === 'agent_question' && item.agent_payload?.action_required && !isGmailAgentItem(item)) c['waiting']++;
       for (const tag of item.tags ?? []) {
         c[tag.id] = (c[tag.id] ?? 0) + 1;
       }
@@ -712,6 +718,15 @@ export default function InboxPage() {
       agent_payload: item.agent_payload ? { ...item.agent_payload, action_required: false } : null,
     } as Partial<InboxItem>);
   }, [updateItem]);
+
+  // "Mark handled" on a Gmail panel item: flip action_required off so it disappears.
+  const handleDismissGmailItem = useCallback(async (id: string) => {
+    const item = allItems.find(i => i.id === id);
+    if (!item) return;
+    await updateItem(id, {
+      agent_payload: item.agent_payload ? { ...item.agent_payload, action_required: false } : null,
+    } as Partial<InboxItem>);
+  }, [allItems, updateItem]);
 
   // Dispatch table for agent_question CTA clicks, keyed by cta_action —
   // mirrors the existing cta_action convention used for
@@ -1438,6 +1453,8 @@ export default function InboxPage() {
               onCreatePersonTag={handleCreatePersonTag}
               showIntroCallout={introSeen === false}
               onDismissIntroCallout={markIntroSeen}
+              gmailAgentItems={gmailAgentItems}
+              onDismissGmailItem={handleDismissGmailItem}
             />
           )}
           {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
