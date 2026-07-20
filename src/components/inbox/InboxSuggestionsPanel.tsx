@@ -92,7 +92,8 @@ export function InboxSuggestionsPanel({
   if (loading || health.loading) return null;
 
   // Agent is on but integrations aren't connected — show a nudge instead of silence.
-  if (scopedSuggestions.length === 0 && health.agentEnabled) {
+  // Only show the nudge when there are no gmail items either; otherwise fall through to render them.
+  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0 && health.agentEnabled) {
     const missingGoogle = !health.googleConnected || !health.gmailScopeGranted;
     const missingSlack = !health.slackConnected;
     const missingZoom = !health.zoomConnected || health.zoomReauthRequired;
