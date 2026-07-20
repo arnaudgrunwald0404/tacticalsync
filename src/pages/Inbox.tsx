@@ -449,8 +449,12 @@ export default function InboxPage() {
   const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Gmail agent_question items live in the dark blue suggestions panel, not the main list.
+  // Only items still requiring action (action_required: true) belong in the panel;
+  // dismissed items have action_required flipped to false and should fall through.
   const isGmailAgentItem = (i: InboxItem) =>
-    i.type === 'agent_question' && (i.source_ref as { type?: string } | null)?.type === 'gmail_message';
+    i.type === 'agent_question'
+    && (i.source_ref as { type?: string } | null)?.type === 'gmail_message'
+    && Boolean((i.agent_payload as { action_required?: boolean } | null)?.action_required);
   const gmailAgentItems = useMemo(() => allItems.filter(isGmailAgentItem), [allItems]);
   const items = useMemo(() => rawItems.filter(i => !isGmailAgentItem(i)), [rawItems]);
 
@@ -719,14 +723,44 @@ export default function InboxPage() {
     } as Partial<InboxItem>);
   }, [updateItem]);
 
-  // "Mark handled" on a Gmail panel item: flip action_required off so it disappears.
+  // Dismiss a Gmail panel item: remove it from the panel immediately (optimistic)
+  // and write a dismissal record so the triage agent can learn suppression rules.
   const handleDismissGmailItem = useCallback(async (id: string) => {
     const item = allItems.find(i => i.id === id);
     if (!item) return;
-    await updateItem(id, {
+    const payload = item.agent_payload as {
+      intent_type?: string; sender_email?: string; sender_tier?: string;
+    } | null;
+    const updatedPayload = item.agent_payload ? { ...item.agent_payload, action_required: false } : null;
+    // Optimistically patch allItems so the item disappears from gmailAgentItems instantly.
+    mirrorToAllItems(prev => prev.map(i => i.id === id ? { ...i, agent_payload: updatedPayload } : i));
+    // Persist to DB in parallel — no need to await for the UI update.
+    void updateItem(id, { agent_payload: updatedPayload } as Partial<InboxItem>);
+    if (userId && payload?.sender_email) {
+      const senderEmail = payload.sender_email.toLowerCase();
+      const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : null;
+      void supabase.from('email_dismissal_log').insert({
+        user_id: userId,
+        inbox_item_id: id,
+        sender_email: senderEmail,
+        sender_domain: senderDomain,
+        sender_tier: payload.sender_tier ?? null,
+        intent_type: payload.intent_type ?? null,
+      });
+    }
+  }, [allItems, mirrorToAllItems, updateItem, userId]);
+
+  // Tag a Gmail panel item AND promote it to a real task so it leaves the
+  // suggestions panel and appears under the chosen project in the main list.
+  const handleTagGmailItem = useCallback(async (itemId: string, tagId: string) => {
+    const item = allItems.find(i => i.id === itemId);
+    if (!item) return;
+    await addTagToItem(itemId, tagId);
+    await updateItem(itemId, {
+      type: 'task',
       agent_payload: item.agent_payload ? { ...item.agent_payload, action_required: false } : null,
     } as Partial<InboxItem>);
-  }, [allItems, updateItem]);
+  }, [allItems, addTagToItem, updateItem]);
 
   // Dispatch table for agent_question CTA clicks, keyed by cta_action —
   // mirrors the existing cta_action convention used for
@@ -1455,7 +1489,7 @@ export default function InboxPage() {
               onDismissIntroCallout={markIntroSeen}
               gmailAgentItems={gmailAgentItems}
               onDismissGmailItem={handleDismissGmailItem}
-              onTagGmailItem={addTagToItem}
+              onTagGmailItem={handleTagGmailItem}
             />
           )}
           {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
