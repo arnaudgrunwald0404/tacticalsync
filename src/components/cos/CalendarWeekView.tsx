@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import { ChevronLeft, ChevronRight, Sparkles, Users, Loader2, Play, UserPlus, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -149,7 +150,7 @@ function EventBlock({
 
       {!short && (
         <span className="text-[10px] text-white/70 tabular-nums leading-tight">
-          {format(start, 'h:mm')}–{format(end, 'h:mm a')}
+          {format(start, 'h:mm')}–{format(end, 'h:mm a')} {getTzAbbr(start)}
         </span>
       )}
 

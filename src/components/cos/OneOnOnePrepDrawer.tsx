@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
+import { getTzAbbr } from '@/lib/prepScheduleTime';
 import {
   X, RefreshCw, Send, Loader2, FileText, Sparkles, Target, ListChecks,
   ClipboardList, NotebookText, CornerUpLeft,
@@ -771,7 +772,7 @@ export function OneOnOnePrepDrawer({
     if (mins < 60) return `${mins}m ago`;
     const hours = Math.round(mins / 60);
     if (hours < 24) return `${hours}h ago`;
-    return format(new Date(generatedAt), 'MMM d, h:mm a');
+    return `${format(new Date(generatedAt), 'MMM d, h:mm a')} ${getTzAbbr(new Date(generatedAt))}`;
   })();
 
   // AI coach summary — derived from the real signals we have on hand.

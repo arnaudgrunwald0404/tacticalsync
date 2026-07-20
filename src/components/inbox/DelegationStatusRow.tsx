@@ -102,7 +102,7 @@ function DelegationDetail({ delegation }: { delegation: Delegation }) {
             {delegation.agent_log.map((entry, i) => (
               <li key={i} className="flex gap-2">
                 <span className="text-gray-300 flex-shrink-0">
-                  {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
                 </span>
                 <span>{entry.text}</span>
               </li>

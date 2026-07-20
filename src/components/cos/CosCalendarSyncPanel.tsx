@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 function utcHourToLocalLabel(utcHour: number): string {
   const d = new Date();
   d.setUTCHours(utcHour, 0, 0, 0);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
 
 export default function CosCalendarSyncPanel() {

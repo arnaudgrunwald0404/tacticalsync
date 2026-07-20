@@ -23,6 +23,19 @@ export function isValidTimezone(tz: string): boolean {
   }
 }
 
+/**
+ * Short timezone abbreviation for the browser's local timezone, e.g. "EST", "PST", "CET".
+ * Falls back to the IANA name if the abbreviation is not available.
+ */
+export function getTzAbbr(date: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(date);
+    return parts.find(p => p.type === 'timeZoneName')?.value ?? getBrowserTimezone();
+  } catch {
+    return getBrowserTimezone();
+  }
+}
+
 /** Human label for an hour-of-day, e.g. 8 → "8:00 AM", 13 → "1:00 PM". */
 export function formatHourLabel(hour: number): string {
   const h = ((hour % 24) + 24) % 24;

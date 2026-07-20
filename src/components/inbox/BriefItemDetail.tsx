@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   DndContext, DragEndEvent, PointerSensor, useSensor, useSensors,
   closestCenter, DragOverlay,
@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { format } from 'date-fns';
-import { GripVertical, Pencil, X, Check } from 'lucide-react';
+import { GripVertical, Pencil, X, Check, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import type { BriefPriority } from '@/types/inbox';
@@ -83,14 +83,14 @@ function PriorityCard({
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="p-0.5 rounded text-gray-300 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-0.5 rounded text-gray-300 hover:text-gray-700 transition-colors"
             >
               <Pencil className="h-2.5 w-2.5" />
             </button>
           )}
           <button
             onClick={onDelete}
-            className="p-0.5 rounded text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-0.5 rounded text-gray-300 hover:text-red-500 transition-colors"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -151,6 +151,9 @@ export function BriefItemDetail({ priorities, briefDate, onSave, kind = 'daily' 
   const [items, setItems] = useState<BriefPriority[]>(priorities);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+  const [newText, setNewText] = useState('');
+  const newInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -188,6 +191,19 @@ export function BriefItemDetail({ priorities, briefDate, onSave, kind = 'daily' 
     await onSave(updated);
     setSaving(false);
   }, [items, onSave]);
+
+  const commitAdd = useCallback(async () => {
+    const text = newText.trim();
+    if (!text) { setAddingNew(false); setNewText(''); return; }
+    const newPriority: BriefPriority = { text, source: 'priorities', origin: 'cos', reasoning: '' };
+    const updated = [...items, newPriority];
+    setItems(updated);
+    setNewText('');
+    setAddingNew(false);
+    setSaving(true);
+    await onSave(updated);
+    setSaving(false);
+  }, [newText, items, onSave]);
 
   const activeItem = activeId ? items[ids.indexOf(activeId)] : null;
 
@@ -241,6 +257,34 @@ export function BriefItemDetail({ priorities, briefDate, onSave, kind = 'daily' 
           )}
         </DragOverlay>
       </DndContext>
+
+      {addingNew ? (
+        <div className="flex items-center gap-1 px-1 py-1.5 border border-dashed border-gray-300 rounded-lg">
+          <input
+            ref={newInputRef}
+            autoFocus
+            value={newText}
+            onChange={e => setNewText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitAdd(); }
+              if (e.key === 'Escape') { setAddingNew(false); setNewText(''); }
+            }}
+            onBlur={commitAdd}
+            placeholder="Add a priority…"
+            className="flex-1 text-xs outline-none bg-transparent px-1 text-gray-800 placeholder:text-gray-300"
+          />
+          <button onClick={commitAdd}><Check className="h-3 w-3 text-emerald-500" /></button>
+          <button onClick={() => { setAddingNew(false); setNewText(''); }}><X className="h-3 w-3 text-gray-300" /></button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAddingNew(true)}
+          className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors px-1"
+        >
+          <Plus className="h-3 w-3" />
+          Add a priority
+        </button>
+      )}
 
       <p className="text-[10px] text-gray-400">
         {isWeekly
