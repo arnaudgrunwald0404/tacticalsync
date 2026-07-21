@@ -91,59 +91,8 @@ export function InboxSuggestionsPanel({
     ? suggestions.filter(s => s.tag_suggestions?.some(ts => scopeTagIds.includes(ts.tag_id)))
     : suggestions;
 
-  if (loading || health.loading) return null;
-
-  // Agent is on but integrations aren't connected — show a nudge instead of silence.
-  // Only show the nudge when there are no gmail items either; otherwise fall through to render them.
-  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0 && health.agentEnabled) {
-    const missingGoogle = !health.googleConnected || !health.gmailScopeGranted;
-    const missingSlack = !health.slackConnected;
-    const missingZoom = !health.zoomConnected || health.zoomReauthRequired;
-    if (missingGoogle || missingSlack || missingZoom) {
-      const missing: string[] = [];
-      if (missingGoogle) missing.push('Gmail');
-      if (missingSlack) missing.push('Slack');
-      if (missingZoom) missing.push(health.zoomReauthRequired ? 'Zoom (reconnect needed)' : 'Zoom');
-      return (
-        <div className="mx-3 sm:mx-4 mt-2 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-          <div className="flex items-center gap-2">
-            <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-            <p className="text-xs font-medium text-red-800">
-              {missing.join(' and ')} not connected —{' '}
-              <span className="font-normal text-red-700">
-                the Agent can't mine your inbox yet.{' '}
-              </span>
-              <a
-                href="/settings?section=calendar-sync"
-                className="font-semibold underline text-red-800 hover:text-red-900"
-              >
-                Connect in Settings
-              </a>
-            </p>
-          </div>
-        </div>
-      );
-    }
-  }
-
-  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0) return null;
-
-  const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
-  const hasEmail = gmailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
-  const hasSlack = scopedSuggestions.some(s => s.source_type === 'slack');
-  const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
-  const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
-
-  const sources: string[] = [];
-  if (hasMeetings) sources.push(allOneOnOne ? '1:1s' : 'meetings');
-  if (hasEmail) sources.push('email');
-  if (hasSlack) sources.push('Slack');
-  const panelTitle = sources.length > 0
-    ? `Suggested from your ${sources.join(', ')}`
-    : 'Suggested for your inbox';
-  const totalCount = gmailAgentItems.length + scopedSuggestions.length;
-
-  // Mobile swipe sheet items — combines Gmail + meeting suggestions into one list
+  // Mobile swipe sheet items — combines Gmail + meeting suggestions into one list.
+  // Must be above early returns to satisfy rules-of-hooks.
   const swipeItems = useMemo<SwipeItem[]>(() => [
     ...gmailAgentItems.map(item => {
       const payload = item.agent_payload as { gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string } | null;
@@ -215,6 +164,58 @@ export function InboxSuggestionsPanel({
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [gmailAgentItems, scopedSuggestions, destinationTags, onTagGmailItem, onDismissGmailItem, teamMembers, onCreateTag, onCreatePersonTag]);
+
+  if (loading || health.loading) return null;
+
+  // Agent is on but integrations aren't connected — show a nudge instead of silence.
+  // Only show the nudge when there are no gmail items either; otherwise fall through to render them.
+  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0 && health.agentEnabled) {
+    const missingGoogle = !health.googleConnected || !health.gmailScopeGranted;
+    const missingSlack = !health.slackConnected;
+    const missingZoom = !health.zoomConnected || health.zoomReauthRequired;
+    if (missingGoogle || missingSlack || missingZoom) {
+      const missing: string[] = [];
+      if (missingGoogle) missing.push('Gmail');
+      if (missingSlack) missing.push('Slack');
+      if (missingZoom) missing.push(health.zoomReauthRequired ? 'Zoom (reconnect needed)' : 'Zoom');
+      return (
+        <div className="mx-3 sm:mx-4 mt-2 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+            <p className="text-xs font-medium text-red-800">
+              {missing.join(' and ')} not connected —{' '}
+              <span className="font-normal text-red-700">
+                the Agent can't mine your inbox yet.{' '}
+              </span>
+              <a
+                href="/settings?section=calendar-sync"
+                className="font-semibold underline text-red-800 hover:text-red-900"
+              >
+                Connect in Settings
+              </a>
+            </p>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0) return null;
+
+  const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
+  const hasEmail = gmailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
+  const hasSlack = scopedSuggestions.some(s => s.source_type === 'slack');
+  const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
+  const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
+
+  const sources: string[] = [];
+  if (hasMeetings) sources.push(allOneOnOne ? '1:1s' : 'meetings');
+  if (hasEmail) sources.push('email');
+  if (hasSlack) sources.push('Slack');
+  const panelTitle = sources.length > 0
+    ? `Suggested from your ${sources.join(', ')}`
+    : 'Suggested for your inbox';
+  const totalCount = gmailAgentItems.length + scopedSuggestions.length;
 
   return (
     <div
