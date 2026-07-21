@@ -90,7 +90,7 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
           return (
             <div
               key={s.id}
-              className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 sm:px-4 sm:py-3"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 sm:px-4 sm:py-3"
             >
               <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', dotColor(seed))} />
 
@@ -99,58 +99,64 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
                 <p className="truncate text-xs text-white/60">{provenance(s)}</p>
               </div>
 
-              {/* Primary: add straight to the suggested list. */}
-              {target && (
-                <Button
-                  size="sm"
-                  onClick={() => addToList(s.id, target.category)}
-                  className="h-8 shrink-0 gap-1 bg-white/20 px-3 text-white hover:bg-white/30 border-0"
-                  title={`Add to ${target.columnLabel} · ${target.sectionLabel}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Add to</span>
-                  <span className="font-semibold uppercase tracking-wide">{target.columnLabel}</span>
-                  <span className="opacity-60">·</span>
-                  <span className="max-w-[110px] truncate">{target.sectionLabel}</span>
-                </Button>
-              )}
+              {/* Forces action buttons onto their own line on mobile */}
+              <div className="basis-full sm:hidden" />
 
-              {/* Secondary: choose a different list from the full set of sections. */}
-              {targetOptions.length > 1 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
-                      title="Add to a different list"
-                    >
-                      Add to…
-                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-                    {targetOptions.map(opt => (
-                      <DropdownMenuItem
-                        key={opt.category}
-                        onSelect={() => addToList(s.id, opt.category)}
-                        className={cn('text-xs', target && opt.category === target.category && 'font-semibold')}
+              {/* Action buttons share a wrapper so the ml-[22px] indent applies once on mobile */}
+              <div className="flex items-center gap-2 ml-[22px] sm:contents sm:ml-0">
+                {/* Primary: add straight to the suggested list. */}
+                {target && (
+                  <Button
+                    size="sm"
+                    onClick={() => addToList(s.id, target.category)}
+                    className="h-8 shrink-0 gap-1 bg-white/20 px-3 text-white hover:bg-white/30 border-0 flex-1 sm:flex-none"
+                    title={`Add to ${target.columnLabel} · ${target.sectionLabel}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Add to</span>
+                    <span className="font-semibold uppercase tracking-wide">{target.columnLabel}</span>
+                    <span className="opacity-60">·</span>
+                    <span className="max-w-[110px] truncate">{target.sectionLabel}</span>
+                  </Button>
+                )}
+
+                {/* Secondary: choose a different list from the full set of sections. */}
+                {targetOptions.length > 1 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                        title="Add to a different list"
                       >
-                        <span className="mr-1.5 uppercase tracking-wide text-muted-foreground">{opt.columnLabel}</span>
-                        {opt.sectionLabel}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                        Add to…
+                        <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                      {targetOptions.map(opt => (
+                        <DropdownMenuItem
+                          key={opt.category}
+                          onSelect={() => addToList(s.id, opt.category)}
+                          className={cn('text-xs', target && opt.category === target.category && 'font-semibold')}
+                        >
+                          <span className="mr-1.5 uppercase tracking-wide text-muted-foreground">{opt.columnLabel}</span>
+                          {opt.sectionLabel}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
 
-              <button
-                onClick={() => dismiss(s.id)}
-                className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
-                aria-label="Dismiss suggestion"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                <button
+                  onClick={() => dismiss(s.id)}
+                  className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
+                  aria-label="Dismiss suggestion"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           );
         })}

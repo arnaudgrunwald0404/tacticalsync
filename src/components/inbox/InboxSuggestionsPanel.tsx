@@ -189,7 +189,7 @@ export function InboxSuggestionsPanel({
             return (
               <div
                 key={item.id}
-                className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
               >
                 <Mail className="h-3.5 w-3.5 shrink-0 text-white/60" />
                 <div className="min-w-0 flex-1">
@@ -208,14 +208,18 @@ export function InboxSuggestionsPanel({
                       </a>
                     )}
                   </div>
-                  <p className="truncate text-xs text-white/60">
-                    {senderEmail ? `From ${senderEmail}` : 'From email'}
-                    {payload?.rationale ? ` · ${payload.rationale}` : ''}
-                  </p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="truncate text-xs text-white/60">
+                      {senderEmail ? `From ${senderEmail}` : 'From email'}
+                      {payload?.rationale ? ` · ${payload.rationale}` : ''}
+                    </p>
+                    <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                      {intentLabel}
+                    </span>
+                  </div>
                 </div>
-                <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                  {intentLabel}
-                </span>
+                {/* Forces action buttons onto their own line on mobile */}
+                <div className="basis-full sm:hidden" />
                 {onTagGmailItem && (() => {
                   const rec = item.tag_suggestions?.[0];
                   return (
@@ -224,7 +228,7 @@ export function InboxSuggestionsPanel({
                         <Button
                           size="sm"
                           onClick={() => void onTagGmailItem(item.id, rec.tag_id)}
-                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 max-w-[200px]"
+                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
                           title={rec.reason}
                         >
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
@@ -246,7 +250,10 @@ export function InboxSuggestionsPanel({
                             size="sm"
                             variant="outline"
                             onClick={toggle}
-                            className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                            className={cn(
+                              'h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white',
+                              !rec && 'ml-[26px] sm:ml-0'
+                            )}
                             title="Add to a project"
                           >
                             {rec ? <ChevronDown className="h-3.5 w-3.5 opacity-60" /> : <>Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" /></>}
@@ -283,7 +290,7 @@ export function InboxSuggestionsPanel({
             <div
               key={s.id}
               className={cn(
-                'flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 transition-opacity',
+                'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 transition-opacity',
                 busy && 'opacity-50 pointer-events-none'
               )}
             >
@@ -308,12 +315,15 @@ export function InboxSuggestionsPanel({
                 </div>
               </div>
 
+              {/* Forces action buttons onto their own line on mobile */}
+              <div className="basis-full sm:hidden" />
+
               {/* Primary: add to the recommended tag, if the AI found a genuine match. */}
               <Button
                 size="sm"
                 disabled={busy}
                 onClick={() => withBusyGuard(s.id, () => addToList(s.id, rec ? [rec.tag_id] : []))}
-                className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 max-w-[200px]"
+                className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[22px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
                 title={rec ? rec.reason : undefined}
               >
                 {rec ? (
