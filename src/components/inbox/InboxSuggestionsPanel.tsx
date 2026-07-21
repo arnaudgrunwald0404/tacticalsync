@@ -114,11 +114,14 @@ export function InboxSuggestionsPanel({
           if (rec && onTagGmailItem) void onTagGmailItem(item.id, rec.tag_id);
         },
         onDismiss: () => onDismissGmailItem?.(item.id),
-        renderPickerTrigger: onTagGmailItem ? () => (
+        renderPickerTrigger: onTagGmailItem ? (onPickerSelect) => (
           <TagPickerDropdown
             allTags={destinationTags}
             itemTags={item.tags ?? []}
-            onSelectTags={tagIds => { if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]); }}
+            onSelectTags={tagIds => {
+              if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
+              onPickerSelect();
+            }}
             onCreateTag={onCreateTag}
             teamMembers={teamMembers}
             onCreatePersonTag={onCreatePersonTag}
@@ -143,15 +146,18 @@ export function InboxSuggestionsPanel({
         recommendedColor: rec?.color,
         onAccept: () => withBusyGuard(s.id, () => addToList(s.id, rec ? [rec.tag_id] : [])),
         onDismiss: () => withBusyGuard(s.id, () => dismiss(s.id)),
-        renderPickerTrigger: () => (
+        renderPickerTrigger: (onPickerSelect) => (
           <TagPickerDropdown
             allTags={destinationTags}
             itemTags={[]}
-            onSelectTags={tagIds => withBusyGuard(s.id, () => addToList(s.id, tagIds))}
+            onSelectTags={tagIds => {
+              withBusyGuard(s.id, () => addToList(s.id, tagIds));
+              onPickerSelect();
+            }}
             onCreateTag={onCreateTag}
             teamMembers={teamMembers}
             onCreatePersonTag={onCreatePersonTag}
-            topOptions={[{ key: 'none', label: 'No tag — inbox only', onSelect: () => withBusyGuard(s.id, () => addToList(s.id, [])), highlighted: !rec }]}
+            topOptions={[{ key: 'none', label: 'No tag — inbox only', onSelect: () => { withBusyGuard(s.id, () => addToList(s.id, [])); onPickerSelect(); }, highlighted: !rec }]}
             renderTrigger={({ toggle }) => (
               <Button size="sm" variant="outline" onClick={toggle}
                 className="h-9 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white">

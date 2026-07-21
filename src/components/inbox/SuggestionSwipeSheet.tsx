@@ -15,8 +15,9 @@ export interface SwipeItem {
   recommendedColor?: string;    // hex for dot on the accept button
   onAccept: () => void;
   onDismiss: () => void;
-  /** Renders the "Add to…" destination picker trigger — optional override */
-  renderPickerTrigger?: () => React.ReactNode;
+  /** Renders the "Add to…" destination picker trigger — optional override.
+   *  onPickerSelect is called once a tag is chosen; the card will fly away. */
+  renderPickerTrigger?: (onPickerSelect: () => void) => React.ReactNode;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -122,7 +123,7 @@ function SwipeCard({
               <span className="truncate">{item.recommendedLabel}</span>
             </Button>
 
-            {item.renderPickerTrigger?.()}
+            {item.renderPickerTrigger?.(() => flyOut('accept'))}
 
             <Button
               size="sm"
