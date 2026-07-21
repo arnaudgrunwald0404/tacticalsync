@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sparkles, Plus, X, ChevronDown, RefreshCw } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Sparkles, Plus, X, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { CosLayoutConfig } from '@/types/cos';
 import { useMeetingSuggestions, type MeetingSuggestion } from '@/hooks/useMeetingSuggestions';
+import { SuggestionSwipeSheet, type SwipeItem } from '@/components/inbox/SuggestionSwipeSheet';
 
 interface Member { id: string; name: string }
 
@@ -53,6 +54,45 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
     suggestions, loading, refreshing, targetOptions, resolve, addToList, dismiss, refresh,
   } = useMeetingSuggestions({ userId, layoutConfig, members, onAddToList });
 
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const swipeItems = useMemo<SwipeItem[]>(() => suggestions.map(s => {
+    const target = resolve(s.suggested_category ?? undefined);
+    const firstOption = targetOptions[0];
+    const best = target ?? firstOption;
+    return {
+      id: s.id,
+      title: s.title,
+      subtitle: provenance(s),
+      recommendedLabel: best
+        ? `Add to ${best.columnLabel} · ${best.sectionLabel}`
+        : 'Add to list',
+      onAccept: () => { if (best) addToList(s.id, best.category); },
+      onDismiss: () => dismiss(s.id),
+      renderPickerTrigger: targetOptions.length > 1 ? () => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline"
+              className="h-9 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+              title="Add to a different list">
+              Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+            {targetOptions.map(opt => (
+              <DropdownMenuItem key={opt.category} onSelect={() => addToList(s.id, opt.category)}
+                className={cn('text-xs', target && opt.category === target.category && 'font-semibold')}>
+                <span className="mr-1.5 uppercase tracking-wide text-muted-foreground">{opt.columnLabel}</span>
+                {opt.sectionLabel}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : undefined,
+    } satisfies SwipeItem;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [suggestions, targetOptions]);
+
   if (loading || suggestions.length === 0) return null;
 
   return (
@@ -82,8 +122,19 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
         </div>
       </div>
 
-      {/* Rows */}
-      <div className="space-y-2">
+      {/* Mobile: tap-to-swipe summary row */}
+      <button
+        className="sm:hidden flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-left transition-colors hover:bg-white/15 active:bg-white/20"
+        onClick={() => setSheetOpen(true)}
+      >
+        <span className="text-sm font-medium text-white">
+          Review {suggestions.length} suggestion{suggestions.length > 1 ? 's' : ''}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-white/60" />
+      </button>
+
+      {/* Desktop: full row list */}
+      <div className="hidden sm:block space-y-2">
         {suggestions.map(s => {
           const target = resolve(s.suggested_category ?? undefined);
           const seed = s.memberName ?? s.source ?? s.id;
@@ -160,7 +211,13 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
             </div>
           );
         })}
-      </div>
+      </div>{/* end desktop rows */}
+
+      <SuggestionSwipeSheet
+        items={swipeItems}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }

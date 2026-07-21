@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight } from 'lucide-react';
 import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { useMeetingSuggestions, type MeetingSuggestion } from '@/hooks/useMeetin
 import { useIntegrationHealth } from '@/hooks/useIntegrationHealth';
 import type { InboxItemType, InboxTag } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
+import { SuggestionSwipeSheet, type SwipeItem } from '@/components/inbox/SuggestionSwipeSheet';
 
 // Stable per-person dot color (same palette as the CoS panel)
 const DOT_COLORS = [
@@ -55,6 +56,7 @@ export function InboxSuggestionsPanel({
   showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   // Tracks rows mid-action so a second click before the optimistic removal
   // re-renders can't fire the same add/dismiss twice.
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
@@ -141,6 +143,79 @@ export function InboxSuggestionsPanel({
     : 'Suggested for your inbox';
   const totalCount = gmailAgentItems.length + scopedSuggestions.length;
 
+  // Mobile swipe sheet items — combines Gmail + meeting suggestions into one list
+  const swipeItems = useMemo<SwipeItem[]>(() => [
+    ...gmailAgentItems.map(item => {
+      const payload = item.agent_payload as { gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string } | null;
+      const senderEmail = payload?.sender_email ?? '';
+      const intentLabel = payload?.intent_type === 'question' ? 'Question'
+        : payload?.intent_type === 'decision_needed' ? 'Decision needed'
+        : payload?.intent_type === 'introduction' ? 'Introduction'
+        : 'Request';
+      const rec = item.tag_suggestions?.[0];
+      return {
+        id: item.id,
+        title: item.text,
+        subtitle: senderEmail ? `From ${senderEmail}` : 'From email',
+        badge: intentLabel,
+        icon: <Mail className="h-4 w-4 text-white/60" />,
+        recommendedLabel: rec ? `Add to ${rec.tag_name}` : 'Add to inbox',
+        recommendedColor: rec?.color,
+        onAccept: () => {
+          if (rec && onTagGmailItem) void onTagGmailItem(item.id, rec.tag_id);
+        },
+        onDismiss: () => onDismissGmailItem?.(item.id),
+        renderPickerTrigger: onTagGmailItem ? () => (
+          <TagPickerDropdown
+            allTags={destinationTags}
+            itemTags={item.tags ?? []}
+            onSelectTags={tagIds => { if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]); }}
+            onCreateTag={onCreateTag}
+            teamMembers={teamMembers}
+            onCreatePersonTag={onCreatePersonTag}
+            topOptions={[]}
+            renderTrigger={({ toggle }) => (
+              <Button size="sm" variant="outline" onClick={toggle}
+                className="h-9 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white">
+                Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            )}
+          />
+        ) : undefined,
+      } satisfies SwipeItem;
+    }),
+    ...scopedSuggestions.map(s => {
+      const rec = recommendedTag(s);
+      return {
+        id: s.id,
+        title: s.title,
+        subtitle: provenance(s),
+        recommendedLabel: rec ? `Add to ${rec.tag_name}` : 'Add to inbox',
+        recommendedColor: rec?.color,
+        onAccept: () => withBusyGuard(s.id, () => addToList(s.id, rec ? [rec.tag_id] : [])),
+        onDismiss: () => withBusyGuard(s.id, () => dismiss(s.id)),
+        renderPickerTrigger: () => (
+          <TagPickerDropdown
+            allTags={destinationTags}
+            itemTags={[]}
+            onSelectTags={tagIds => withBusyGuard(s.id, () => addToList(s.id, tagIds))}
+            onCreateTag={onCreateTag}
+            teamMembers={teamMembers}
+            onCreatePersonTag={onCreatePersonTag}
+            topOptions={[{ key: 'none', label: 'No tag — inbox only', onSelect: () => withBusyGuard(s.id, () => addToList(s.id, [])), highlighted: !rec }]}
+            renderTrigger={({ toggle }) => (
+              <Button size="sm" variant="outline" onClick={toggle}
+                className="h-9 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white">
+                Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            )}
+          />
+        ),
+      } satisfies SwipeItem;
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [gmailAgentItems, scopedSuggestions, destinationTags, onTagGmailItem, onDismissGmailItem, teamMembers, onCreateTag, onCreatePersonTag]);
+
   return (
     <div
       className="m-3 mb-0 rounded-2xl border border-white/10 p-3 sm:p-4"
@@ -172,6 +247,20 @@ export function InboxSuggestionsPanel({
       {showIntroCallout && onDismissIntroCallout && (
         <AutoSyncIntroCallout onDismiss={onDismissIntroCallout} />
       )}
+
+      {/* Mobile: single tap-to-swipe summary row */}
+      <button
+        className="sm:hidden flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-left transition-colors hover:bg-white/15 active:bg-white/20"
+        onClick={() => setSheetOpen(true)}
+      >
+        <span className="text-sm font-medium text-white">
+          Review {totalCount} suggestion{totalCount > 1 ? 's' : ''}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-white/60" />
+      </button>
+
+      {/* Desktop: full item list */}
+      <div className="hidden sm:block">
 
       {/* Gmail action items — shown first, always fully expanded */}
       {gmailAgentItems.length > 0 && (
@@ -383,6 +472,14 @@ export function InboxSuggestionsPanel({
           </button>
         )}
       </div>
+
+      </div>{/* end desktop wrapper */}
+
+      <SuggestionSwipeSheet
+        items={swipeItems}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }
