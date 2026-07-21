@@ -30,6 +30,17 @@ export default defineConfig({
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
+    // Mobile projects — only run e2e/mobile/** specs
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] },
+      testMatch: '**/mobile/**/*.spec.ts',
+    },
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 14'] },
+      testMatch: '**/mobile/**/*.spec.ts',
+    },
   ],
   // webServer: {
   //   command: 'npm run dev',
