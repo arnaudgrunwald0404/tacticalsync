@@ -13,7 +13,10 @@ export interface SwipeItem {
   icon?: React.ReactNode;
   recommendedLabel: string;     // "Add to Project X" or "Add to inbox"
   recommendedColor?: string;    // hex for dot on the accept button
-  onAccept: () => void;
+  /** Omit when there's no valid destination to accept into (e.g. zero configured
+   *  target lists) — the card then only offers dismiss, instead of a false
+   *  "Add to…" affordance that would silently do nothing. */
+  onAccept?: () => void;
   onDismiss: () => void;
   /** Renders the "Add to…" destination picker trigger — optional override.
    *  onPickerSelect is called once a tag is chosen; the card will fly away. */
@@ -31,6 +34,7 @@ function SwipeCard({
   onAccept: () => void;
   onDismiss: () => void;
 }) {
+  const canAccept = Boolean(item.onAccept);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-160, 160], [-15, 15], { clamp: false });
   const acceptOpacity = useTransform(x, [20, SWIPE_THRESHOLD], [0, 1], { clamp: true });
@@ -38,6 +42,7 @@ function SwipeCard({
 
   const flyOut = useCallback(
     (direction: 'accept' | 'dismiss') => {
+      if (direction === 'accept' && !canAccept) return;
       animate(x, direction === 'accept' ? 620 : -620, {
         duration: 0.25,
         ease: 'easeOut',
@@ -46,7 +51,7 @@ function SwipeCard({
         else onDismiss();
       });
     },
-    [x, onAccept, onDismiss]
+    [x, canAccept, onAccept, onDismiss]
   );
 
   return (
@@ -59,22 +64,24 @@ function SwipeCard({
       animate={{ scale: 1, opacity: 1, transition: { duration: 0.18 } }}
       className="absolute inset-0 cursor-grab active:cursor-grabbing"
       onDragEnd={(_, info) => {
-        if (info.offset.x > SWIPE_THRESHOLD) flyOut('accept');
+        if (canAccept && info.offset.x > SWIPE_THRESHOLD) flyOut('accept');
         else if (info.offset.x < -SWIPE_THRESHOLD) flyOut('dismiss');
         else animate(x, 0, { type: 'spring', stiffness: 480, damping: 34 });
       }}
     >
       <div className="relative h-full overflow-hidden rounded-2xl border border-white/20 bg-white/10">
         {/* Accept overlay — swipe right */}
-        <motion.div
-          style={{ opacity: acceptOpacity }}
-          className="absolute inset-0 flex items-center justify-start rounded-2xl bg-emerald-500/25 px-5"
-        >
-          <div className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white shadow">
-            <Check className="h-4 w-4" />
-            {item.recommendedLabel}
-          </div>
-        </motion.div>
+        {canAccept && (
+          <motion.div
+            style={{ opacity: acceptOpacity }}
+            className="absolute inset-0 flex items-center justify-start rounded-2xl bg-emerald-500/25 px-5"
+          >
+            <div className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white shadow">
+              <Check className="h-4 w-4" />
+              {item.recommendedLabel}
+            </div>
+          </motion.div>
+        )}
 
         {/* Skip overlay — swipe left */}
         <motion.div
@@ -109,19 +116,21 @@ function SwipeCard({
             className="mt-auto flex items-center gap-2 pt-4"
             onPointerDown={e => e.stopPropagation()}
           >
-            <Button
-              size="sm"
-              onClick={() => flyOut('accept')}
-              className="h-9 flex-1 shrink-0 gap-1.5 border-0 bg-white/20 px-3 text-sm text-white hover:bg-white/30"
-            >
-              {item.recommendedColor && (
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: item.recommendedColor }}
-                />
-              )}
-              <span className="truncate">{item.recommendedLabel}</span>
-            </Button>
+            {canAccept && (
+              <Button
+                size="sm"
+                onClick={() => flyOut('accept')}
+                className="h-9 flex-1 shrink-0 gap-1.5 border-0 bg-white/20 px-3 text-sm text-white hover:bg-white/30"
+              >
+                {item.recommendedColor && (
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.recommendedColor }}
+                  />
+                )}
+                <span className="truncate">{item.recommendedLabel}</span>
+              </Button>
+            )}
 
             {item.renderPickerTrigger?.(() => flyOut('accept'))}
 
@@ -159,7 +168,7 @@ export function SuggestionSwipeSheet({ items, open, onOpenChange }: Props) {
       const item = items.find(i => i.id === id);
       if (!item) return;
       setProcessedIds(prev => new Set([...prev, id]));
-      if (action === 'accept') item.onAccept();
+      if (action === 'accept') item.onAccept?.();
       else item.onDismiss();
     },
     [items]
