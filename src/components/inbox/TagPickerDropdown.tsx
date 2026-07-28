@@ -276,7 +276,7 @@ export function TagPickerDropdown({
       {open && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-[460px] flex flex-col"
+          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-[460px] max-w-[calc(100vw-16px)] flex flex-col"
           style={coords ? { top: coords.top, left: coords.left } : { top: -9999, left: -9999, visibility: 'hidden' }}
           onClick={e => e.stopPropagation()}
         >
@@ -307,10 +307,10 @@ export function TagPickerDropdown({
             </div>
           )}
 
-          {/* Three columns */}
-          <div className="grid grid-cols-3 divide-x divide-gray-100">
+          {/* Three columns — overflow-x-auto so the People column is reachable on narrow mobile screens */}
+          <div className="flex divide-x divide-gray-100 overflow-x-auto">
             {/* Projects */}
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col flex-1 min-w-[140px] flex-shrink-0">
               <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Projects</p>
               <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
                 {projectTags.length > 0 ? projectTags.map(tag => (
@@ -331,7 +331,7 @@ export function TagPickerDropdown({
             </div>
 
             {/* Folders */}
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col flex-1 min-w-[140px] flex-shrink-0">
               <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">Folders</p>
               <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
                 {folderTags.length > 0 ? folderTags.map(tag => (
@@ -352,7 +352,7 @@ export function TagPickerDropdown({
             </div>
 
             {/* People */}
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col flex-1 min-w-[140px] flex-shrink-0">
               <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400">People</p>
               <div className="overflow-y-auto px-1" style={{ maxHeight: 200 }}>
                 {personTags.map(tag => (
