@@ -17,6 +17,7 @@ import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inb
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
 import { useIsDesktop, useIsMobile, useIsTouch } from '@/hooks/use-breakpoint';
+import { MobileBottomNav } from '@/components/ui/mobile-bottom-nav';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { InboxSidebar, type MeetingsSyncInfo } from '@/components/inbox/InboxSidebar';
 import { InboxGroupedView } from '@/components/inbox/InboxGroupedView';
@@ -1478,7 +1479,7 @@ export default function InboxPage() {
         )}
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
-        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-20')}>
+        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-32')}>
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}
@@ -1646,6 +1647,7 @@ export default function InboxPage() {
       />
       </div>
 
+      {isMobile && <MobileBottomNav />}
       <ShortcutsHelpDialog open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen} />
       {/* Idea #7 (Relationship memory): first-run consent/expectations modal */}
       <PersonMemoryConsentModal

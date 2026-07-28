@@ -623,12 +623,12 @@ export function InboxAssistantPanel({
         {mobileBarOpen ? (
           <>
             <div
-              className="fixed inset-0 z-20"
+              className="fixed inset-0 z-40"
               onClick={() => setMobileBarOpen(false)}
             />
+            {/* Sits above the MobileBottomNav (h-16 = 4rem) */}
             <div
-              className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+              className="fixed inset-x-0 bottom-16 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
             >
               <AgentBar
                 tags={allTags}
@@ -641,8 +641,7 @@ export function InboxAssistantPanel({
           <button
             onClick={() => setMobileBarOpen(true)}
             aria-label="Add task, note, or ask assistant"
-            className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full bg-gray-900 text-white px-4 py-2.5 shadow-lg text-sm font-medium"
-            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+            className="fixed bottom-20 right-4 z-40 flex items-center gap-2 rounded-full bg-gray-900 text-white px-4 py-2.5 shadow-lg text-sm font-medium"
           >
             <Sparkles className="h-4 w-4" />
             Add
