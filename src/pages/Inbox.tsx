@@ -1474,7 +1474,7 @@ export default function InboxPage() {
         )}
 
         {/* Item list — extra bottom room on mobile for the fixed composer bar */}
-        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-36')}>
+        {activePanel === 'inbox' && <div ref={listContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto', isMobile && 'pb-20')}>
           {userId && (
             <InboxSuggestionsPanel
               userId={userId}
