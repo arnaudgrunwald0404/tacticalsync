@@ -202,9 +202,16 @@ serve(async (req) => {
         // Skip self-DM
         if (ch.user === mySlackId) continue
 
+        // team_member_id is metadata for the 1:1-prep queries that filter on
+        // it (generate-1on1-prep, recommend-prep-tools) — it's fine for it to
+        // be null. DMs from people who aren't a registered team member are
+        // still synced so extract-inbox-action-items, generate-dci-brief, and
+        // slack-inbox-sync (none of which filter by team_member_id) can see
+        // them too. Previously this whole block was skipped for any
+        // unmatched DM, capping "Sync now" at whatever the trailing week's
+        // messages *from registered team members* happened to be — a small,
+        // fixed number regardless of actual Slack volume.
         const memberId = matchMember(ch.user)
-        // Only sync DMs with known team members
-        if (!memberId) continue
 
         const histRes = await slackApi('conversations.history', {
           channel: ch.id,
