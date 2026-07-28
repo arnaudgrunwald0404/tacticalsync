@@ -44,6 +44,11 @@ verify_jwt = true
 [functions.disconnect-slack]
 verify_jwt = true
 
+# Hourly cron entrypoint — pg_cron posts with no Authorization header, same
+# pattern as daily-prep-batch/extract-inbox-action-items below.
+[functions.slack-sync-cron]
+verify_jwt = false
+
 [functions.daily-prep-batch]
 verify_jwt = false
 

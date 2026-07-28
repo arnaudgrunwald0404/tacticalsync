@@ -516,6 +516,7 @@ export function InboxAssistantPanel({
   onMaterializeOnboarding, onMutated,
 }: InboxAssistantPanelProps) {
   const isMobile = useIsMobile();
+  const [mobileBarOpen, setMobileBarOpen] = useState(false);
 
   // ── Item title rename — click-to-edit (not double-click, so it works on
   //    touch), shared between the mobile Sheet header and the desktop header
@@ -614,17 +615,39 @@ export function InboxAssistantPanel({
     return () => window.removeEventListener('keydown', handler);
   }, [item, onClose]);
 
-  // ── Mobile: the composer docks to the bottom of the screen, and tapping an
-  //    item opens its detail in a full-height sheet instead of a side column.
+  // ── Mobile: the composer is hidden by default and revealed on tap.
+  //    Item detail opens in a full-height sheet.
   if (isMobile) {
     return (
       <>
-        <div
-          className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <AgentBar tags={allTags} onSubmit={onAddItem} onCreateTag={onCreateTag} />
-        </div>
+        {mobileBarOpen ? (
+          <>
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => setMobileBarOpen(false)}
+            />
+            <div
+              className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+              <AgentBar
+                tags={allTags}
+                onSubmit={async (...args) => { await onAddItem(...args); setMobileBarOpen(false); }}
+                onCreateTag={onCreateTag}
+              />
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={() => setMobileBarOpen(true)}
+            aria-label="Add task, note, or ask assistant"
+            className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full bg-gray-900 text-white px-4 py-2.5 shadow-lg text-sm font-medium"
+            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <Sparkles className="h-4 w-4" />
+            Add
+          </button>
+        )}
 
         <Sheet open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
           <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
