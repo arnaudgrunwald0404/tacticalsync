@@ -48,6 +48,22 @@ function jsonResponse(body: unknown, status: number): Response {
 const MAX_ITEMS_PER_RUN = 60
 const MAX_TEXT_LEN = 300
 
+function normalizeWords(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 3)
+  )
+}
+
+function isSimilarText(a: string, b: string, threshold = 0.45): boolean {
+  const wa = normalizeWords(a)
+  const wb = normalizeWords(b)
+  if (wa.size === 0 || wb.size === 0) return false
+  let intersection = 0
+  for (const w of wa) if (wb.has(w)) intersection++
+  const union = wa.size + wb.size - intersection
+  return union > 0 && intersection / union >= threshold
+}
+
 // SenderTier, IntentType, SUPPRESSED_BY_DEFAULT, SuppressionRules imported from inboxTriageUtils
 
 interface ScanItem {
@@ -200,6 +216,19 @@ serve(async (req) => {
         let scannedSlack = false
         let scannedGmail = false
 
+        // ── Triage preferences: per-source opt-in/out + Gmail suppression ──
+        const { data: triagePref } = await supabase
+          .from('sources_triage_preferences')
+          .select('enabled, slack_enabled, suppressed_senders, suppressed_domains, suppressed_intents, max_thread_age_hours')
+          .eq('user_id', userId)
+          .maybeSingle()
+        const inboxTriageEnabled = triagePref?.enabled ?? false
+        const slackTriageEnabled = triagePref?.slack_enabled ?? true
+        const suppressedSenders = new Set<string>((triagePref?.suppressed_senders ?? []) as string[])
+        const suppressedDomains = new Set<string>((triagePref?.suppressed_domains ?? []) as string[])
+        const suppressedIntents = new Set<string>((triagePref?.suppressed_intents ?? []) as string[])
+        const maxThreadAgeHours: number | null = (triagePref?.max_thread_age_hours as number | null) ?? null
+
         // ── Slack: refresh the cache, then read only what's new ────────────
         const { data: slackCreds } = await supabase
           .from('user_slack_credentials')
@@ -229,7 +258,7 @@ serve(async (req) => {
         // param), so gating this whole block on syncChannels.length > 0 was
         // silently skipping DMs (and re-syncing) for anyone who hadn't opted
         // any channels in.
-        if (slackCreds?.access_token) {
+        if (slackCreds?.access_token && slackTriageEnabled) {
           scannedSlack = true
           try {
             await fetch(`${supabaseUrl}/functions/v1/slack-messages-sync`, {
@@ -287,18 +316,6 @@ serve(async (req) => {
         const hasGmailScope = calCreds?.scope?.includes('gmail') || calCreds?.scope?.includes('mail.google.com')
 
         // Inbox triage is opt-in — skip Gmail scan if user hasn't enabled it.
-        // Also load suppression rules for filtering before insert.
-        const { data: triagePref } = await supabase
-          .from('email_triage_preferences')
-          .select('enabled, suppressed_senders, suppressed_domains, suppressed_intents, max_thread_age_hours')
-          .eq('user_id', userId)
-          .maybeSingle()
-        const inboxTriageEnabled = triagePref?.enabled ?? false
-        const suppressedSenders = new Set<string>((triagePref?.suppressed_senders ?? []) as string[])
-        const suppressedDomains = new Set<string>((triagePref?.suppressed_domains ?? []) as string[])
-        const suppressedIntents = new Set<string>((triagePref?.suppressed_intents ?? []) as string[])
-        const maxThreadAgeHours: number | null = (triagePref?.max_thread_age_hours as number | null) ?? null
-
         if (calCreds?.access_token && hasGmailScope && inboxTriageEnabled) {
           scannedGmail = true
           let accessToken = calCreds.access_token as string
@@ -446,6 +463,15 @@ serve(async (req) => {
         }
 
         // ── Extract + upsert ────────────────────────────────────────────────
+        // Fetch existing open agent_question texts for text-similarity dedup.
+        const { data: existingAgentItems } = await supabase
+          .from('inbox_items')
+          .select('text')
+          .eq('user_id', userId)
+          .eq('type', 'agent_question')
+          .eq('status', 'open')
+        const existingTexts: string[] = (existingAgentItems ?? []).map((r: { text: string }) => r.text)
+
         let itemsCreated = 0
         if (items.length > 0) {
           const findings = await extractFindings(items)
@@ -471,10 +497,14 @@ serve(async (req) => {
 
             if (existing) continue
 
+            // Text-similarity dedup: skip if too close to an existing open item.
+            const summary = finding.summary.slice(0, 2000)
+            if (existingTexts.some(t => isSimilarText(summary, t))) continue
+
             const { error: insertErr } = await supabase.from('inbox_items').insert({
               user_id: userId,
               type: 'agent_question',
-              text: finding.summary.slice(0, 2000),
+              text: summary,
               agent_payload: {
                 source: source.source,
                 rationale: finding.rationale,
@@ -492,7 +522,10 @@ serve(async (req) => {
                 ? { priority_due_at: `${finding.due_date}T00:00:00Z`, priority_fixed: true }
                 : {}),
             })
-            if (!insertErr) itemsCreated++
+            if (!insertErr) {
+              itemsCreated++
+              existingTexts.push(summary) // prevent within-batch dupes
+            }
           }
         }
 
@@ -532,12 +565,12 @@ serve(async (req) => {
 
               if (newSenders.length || newDomains.length || newIntents.length) {
                 const { data: cur } = await supabase
-                  .from('email_triage_preferences')
+                  .from('sources_triage_preferences')
                   .select('suppressed_senders, suppressed_domains, suppressed_intents')
                   .eq('user_id', userId)
                   .maybeSingle()
 
-                await supabase.from('email_triage_preferences').upsert({
+                await supabase.from('sources_triage_preferences').upsert({
                   user_id: userId,
                   suppressed_senders: merged(cur?.suppressed_senders ?? [], newSenders),
                   suppressed_domains: merged(cur?.suppressed_domains ?? [], newDomains),

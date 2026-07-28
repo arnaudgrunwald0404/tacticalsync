@@ -64,7 +64,7 @@ export default function CosCalendarSyncPanel() {
       }
       // Load inbox triage preference
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const prefRes = await (supabase as any).from('email_triage_preferences').select('enabled').maybeSingle();
+      const prefRes = await (supabase as any).from('sources_triage_preferences').select('enabled').maybeSingle();
       setInboxTriageEnabled(prefRes.data?.enabled ?? false);
 
       setLoading(false);
@@ -188,7 +188,7 @@ export default function CosCalendarSyncPanel() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any)
-        .from('email_triage_preferences')
+        .from('sources_triage_preferences')
         .upsert({ user_id: userId, enabled, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       if (error) throw error;
     } catch (err) {

@@ -204,12 +204,12 @@ export function InboxItemRow({
                 altText="Hide sender"
                 onClick={async () => {
                   const { data: pref } = await db
-                    .from('email_triage_preferences')
+                    .from('sources_triage_preferences')
                     .select('suppressed_senders')
                     .maybeSingle();
                   const current: string[] = pref?.suppressed_senders ?? [];
                   if (!current.includes(senderEmail)) {
-                    await db.from('email_triage_preferences').upsert({
+                    await db.from('sources_triage_preferences').upsert({
                       suppressed_senders: [...current, senderEmail],
                       updated_at: new Date().toISOString(),
                     }, { onConflict: 'user_id' });
