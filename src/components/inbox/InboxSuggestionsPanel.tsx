@@ -44,6 +44,8 @@ interface Props {
   gmailAgentItems?: InboxItem[];
   onDismissGmailItem?: (id: string) => void;
   onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
+  /** Promotes a Gmail item straight to the inbox with no tag — used when there's no AI-recommended tag to apply. */
+  onApproveGmailItem?: (item: InboxItem) => Promise<void>;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -54,6 +56,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
   showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
+  onApproveGmailItem,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -112,6 +115,7 @@ export function InboxSuggestionsPanel({
         recommendedColor: rec?.color,
         onAccept: () => {
           if (rec && onTagGmailItem) void onTagGmailItem(item.id, rec.tag_id);
+          else if (onApproveGmailItem) void onApproveGmailItem(item);
         },
         onDismiss: () => onDismissGmailItem?.(item.id),
         renderPickerTrigger: onTagGmailItem ? (onPickerSelect) => (
@@ -169,7 +173,7 @@ export function InboxSuggestionsPanel({
       } satisfies SwipeItem;
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [gmailAgentItems, scopedSuggestions, destinationTags, onTagGmailItem, onDismissGmailItem, teamMembers, onCreateTag, onCreatePersonTag]);
+  ], [gmailAgentItems, scopedSuggestions, destinationTags, onTagGmailItem, onDismissGmailItem, onApproveGmailItem, teamMembers, onCreateTag, onCreatePersonTag]);
 
   if (loading || health.loading) return null;
 
@@ -320,7 +324,7 @@ export function InboxSuggestionsPanel({
                   const rec = item.tag_suggestions?.[0];
                   return (
                     <>
-                      {rec && (
+                      {rec ? (
                         <Button
                           size="sm"
                           onClick={() => void onTagGmailItem(item.id, rec.tag_id)}
@@ -329,6 +333,15 @@ export function InboxSuggestionsPanel({
                         >
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
                           <span className="truncate">Add to {rec.tag_name}</span>
+                        </Button>
+                      ) : onApproveGmailItem && (
+                        <Button
+                          size="sm"
+                          onClick={() => void onApproveGmailItem(item)}
+                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span className="truncate">Add to inbox</span>
                         </Button>
                       )}
                       <TagPickerDropdown
