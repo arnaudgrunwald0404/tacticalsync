@@ -214,7 +214,8 @@ export function InboxSuggestionsPanel({
 
   const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
   const hasEmail = gmailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
-  const hasSlack = scopedSuggestions.some(s => s.source_type === 'slack');
+  const SLACK_TYPES = new Set(['slack', 'slack_dm', 'slack_channel']);
+  const hasSlack = scopedSuggestions.some(s => SLACK_TYPES.has(s.source_type ?? ''));
   const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
   const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
 
