@@ -229,7 +229,7 @@ export function SuggestionSwipeSheet({ items, open, onOpenChange }: Props) {
                   variant="outline"
                   size="sm"
                   onClick={() => handleOpenChange(false)}
-                  className="mt-1 border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
+                  className="mt-1 border-white/20 bg-transparent text-white/80 hover:bg-white/10 hover:text-white"
                 >
                   Close
                 </Button>

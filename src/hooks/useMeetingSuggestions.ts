@@ -136,9 +136,11 @@ export function useMeetingSuggestions({
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await supabase.functions.invoke('generate-meeting-suggestions', { body: {} });
-    } catch {
-      /* surfaced as "no new suggestions" — non-fatal */
+      await Promise.allSettled([
+        supabase.functions.invoke('generate-meeting-suggestions', { body: {} }),
+        supabase.functions.invoke('slack-inbox-sync', { body: { days: 7 } }),
+        supabase.functions.invoke('gmail-inbox-sync', { body: { days: 7 } }),
+      ]);
     } finally {
       await load();
       setRefreshing(false);

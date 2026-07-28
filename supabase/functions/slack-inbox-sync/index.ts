@@ -245,6 +245,10 @@ serve(async (req) => {
       raw_context: string
       source: string
     }> = []
+    // Threads whose batch failed to extract (Gemini error / bad JSON) — excluded from
+    // suggestion_source_processed below so they're retried on the next tick instead of
+    // being silently lost forever.
+    const failedSourceIds = new Set<string>()
 
     for (let i = 0; i < actionable.length; i += BATCH_SIZE) {
       const batch = actionable.slice(i, i + BATCH_SIZE)
@@ -276,6 +280,16 @@ ${threadsSection}
 Respond with valid JSON only:
 [{"source_id":"<Source-ID>","title":"<action item max 80 chars>","urgency":"urgent|this_week|watching","rationale":"<one sentence>","raw_context":"<verbatim message text max 150 chars>","source":"<sender name>"}]`
 
+      const markBatchFailed = async (reason: string) => {
+        for (const t of batch) failedSourceIds.add(t.sourceId)
+        console.error('slack-inbox-sync: batch extraction failed, will retry next tick:', reason)
+        await supabase.from('cos_agent_log').insert({
+          user_id: userId,
+          event_type: 'error',
+          payload: { handler: 'slack_inbox_sync_extract', error: reason, thread_count: batch.length },
+        })
+      }
+
       try {
         const geminiRes = await fetch(
           'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent',
@@ -285,14 +299,14 @@ Respond with valid JSON only:
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
           },
         )
-        if (!geminiRes.ok) { console.error('slack-inbox-sync: Gemini failed:', await geminiRes.text()); continue }
+        if (!geminiRes.ok) { await markBatchFailed(`gemini_http_${geminiRes.status}: ${await geminiRes.text()}`); continue }
         // deno-lint-ignore no-explicit-any
         const geminiData = await geminiRes.json() as any
         const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
         const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
         let parsed: Array<{ source_id?: string; title?: string; urgency?: string; rationale?: string; raw_context?: string; source?: string }> = []
-        try { parsed = JSON.parse(jsonStr) } catch { continue }
-        if (!Array.isArray(parsed)) continue
+        try { parsed = JSON.parse(jsonStr) } catch { await markBatchFailed(`json_parse_error: ${jsonStr.slice(0, 300)}`); continue }
+        if (!Array.isArray(parsed)) { await markBatchFailed('gemini_response_not_array'); continue }
 
         for (const item of parsed) {
           const thread = batch.find(t => t.sourceId === item.source_id)
@@ -309,7 +323,7 @@ Respond with valid JSON only:
             source: (item.source ?? '').slice(0, 200),
           })
         }
-      } catch (err) { console.warn('slack-inbox-sync: batch failed:', (err as Error).message) }
+      } catch (err) { await markBatchFailed((err as Error).message) }
     }
 
     // ── 8. Deduplicate + insert ─────────────────────────────────────────────
@@ -350,19 +364,27 @@ Respond with valid JSON only:
       }
     }
 
-    // ── 9. Mark all processed threads ──────────────────────────────────────
-    // Mark both actionable and skipped (user-only) threads so we don't retry.
-    const allToMark = toProcess
-    await supabase.from('suggestion_source_processed').insert(
-      allToMark.map(t => ({
-        user_id: userId,
-        source_type: t.isDm ? 'slack_dm' : 'slack_channel',
-        source_id: t.sourceId,
-        suggestions_added: addedBySourceId.get(t.sourceId) ?? 0,
-      }))
-    )
+    // ── 9. Mark processed threads ───────────────────────────────────────────
+    // Mark both actionable and skipped (user-only) threads so we don't retry —
+    // but never mark a thread whose extraction batch failed, so it's retried
+    // next tick instead of being silently dropped forever.
+    const allToMark = toProcess.filter(t => !failedSourceIds.has(t.sourceId))
+    if (allToMark.length > 0) {
+      await supabase.from('suggestion_source_processed').insert(
+        allToMark.map(t => ({
+          user_id: userId,
+          source_type: t.isDm ? 'slack_dm' : 'slack_channel',
+          source_id: t.sourceId,
+          suggestions_added: addedBySourceId.get(t.sourceId) ?? 0,
+        }))
+      )
+    }
 
-    return jsonResponse({ processed: actionable.length, suggestions_added: suggestionsAdded })
+    return jsonResponse({
+      processed: actionable.length,
+      suggestions_added: suggestionsAdded,
+      failed_threads: failedSourceIds.size,
+    })
 
   } catch (err) {
     console.error('slack-inbox-sync error:', (err as Error).message)
