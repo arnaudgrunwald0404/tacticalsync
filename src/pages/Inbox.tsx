@@ -1490,6 +1490,7 @@ export default function InboxPage() {
               gmailAgentItems={gmailAgentItems}
               onDismissGmailItem={handleDismissGmailItem}
               onTagGmailItem={handleTagGmailItem}
+              onApproveGmailItem={handleApproveSuggestion}
             />
           )}
           {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
