@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight } from 'lucide-react';
+import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight, Slack } from 'lucide-react';
 import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
@@ -219,6 +219,11 @@ export function InboxSuggestionsPanel({
   const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
   const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
 
+  // Slack suggestions get their own always-expanded group (like Gmail's), rather than
+  // being buried in the generic, collapsible meeting-suggestions list below.
+  const slackSuggestions = scopedSuggestions.filter(s => SLACK_TYPES.has(s.source_type ?? ''));
+  const otherSuggestions = scopedSuggestions.filter(s => !SLACK_TYPES.has(s.source_type ?? ''));
+
   const sources: string[] = [];
   if (hasMeetings) sources.push(allOneOnOne ? '1:1s' : 'meetings');
   if (hasEmail) sources.push('email');
@@ -277,6 +282,7 @@ export function InboxSuggestionsPanel({
       {/* Gmail action items — shown first, always fully expanded */}
       {gmailAgentItems.length > 0 && (
         <div className="space-y-2 mb-2">
+          <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-white/40">From email</p>
           {gmailAgentItems.map(item => {
             const payload = item.agent_payload as {
               gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string;
@@ -384,15 +390,109 @@ export function InboxSuggestionsPanel({
               </div>
             );
           })}
-          {scopedSuggestions.length > 0 && (
+          {(slackSuggestions.length > 0 || otherSuggestions.length > 0) && (
             <div className="border-t border-white/10 pt-2" />
           )}
         </div>
       )}
 
-      {/* Meeting / Slack suggestions */}
+      {/* Slack suggestions — shown next, always fully expanded (same treatment as email) */}
+      {slackSuggestions.length > 0 && (
+        <div className="space-y-2 mb-2">
+          <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-white/40">From Slack</p>
+          {slackSuggestions.map(s => {
+            const rec = recommendedTag(s);
+            const busy = busyIds.has(s.id);
+            return (
+              <div
+                key={s.id}
+                className={cn(
+                  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 transition-opacity',
+                  busy && 'opacity-50 pointer-events-none'
+                )}
+              >
+                <Slack className="h-3.5 w-3.5 shrink-0 text-white/60" />
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{s.title}</p>
+                    {s.source_url && (
+                      <a
+                        href={s.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
+                        title="Open in Slack"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="truncate text-xs text-white/60">{provenance(s)}</p>
+                </div>
+
+                {/* Forces action buttons onto their own line on mobile */}
+                <div className="basis-full sm:hidden" />
+
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => withBusyGuard(s.id, () => addToList(s.id, rec ? [rec.tag_id] : []))}
+                  className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[22px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
+                  title={rec ? rec.reason : undefined}
+                >
+                  {rec ? (
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  <span className="truncate">{rec ? `Add to ${rec.tag_name}` : 'Add to inbox'}</span>
+                </Button>
+
+                <TagPickerDropdown
+                  allTags={destinationTags}
+                  itemTags={[]}
+                  onSelectTags={tagIds => withBusyGuard(s.id, () => addToList(s.id, tagIds))}
+                  onCreateTag={onCreateTag}
+                  teamMembers={teamMembers}
+                  onCreatePersonTag={onCreatePersonTag}
+                  topOptions={[{ key: 'none', label: 'No tag — inbox only', onSelect: () => withBusyGuard(s.id, () => addToList(s.id, [])), highlighted: !rec }]}
+                  renderTrigger={({ toggle }) => (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={toggle}
+                      className="h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white"
+                      title="Add to a different tag"
+                    >
+                      Add to…
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  )}
+                />
+
+                <button
+                  onClick={() => withBusyGuard(s.id, () => dismiss(s.id))}
+                  disabled={busy}
+                  className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
+                  aria-label="Dismiss suggestion"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+          {otherSuggestions.length > 0 && (
+            <div className="border-t border-white/10 pt-2" />
+          )}
+        </div>
+      )}
+
+      {/* Meeting suggestions */}
       <div className="space-y-2">
-        {(expanded ? scopedSuggestions : scopedSuggestions.slice(0, COLLAPSED_COUNT)).map(s => {
+        {(expanded ? otherSuggestions : otherSuggestions.slice(0, COLLAPSED_COUNT)).map(s => {
           const seed = s.memberName ?? s.source ?? s.id;
           const rec = recommendedTag(s);
           const busy = busyIds.has(s.id);
@@ -480,7 +580,7 @@ export function InboxSuggestionsPanel({
             </div>
           );
         })}
-        {scopedSuggestions.length > COLLAPSED_COUNT && (
+        {otherSuggestions.length > COLLAPSED_COUNT && (
           <button
             onClick={() => setExpanded(e => !e)}
             className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 py-2 text-xs text-white/60 hover:bg-white/10 hover:text-white transition-colors"
@@ -488,7 +588,7 @@ export function InboxSuggestionsPanel({
             {expanded ? (
               <><ChevronUp className="h-3.5 w-3.5" />Show fewer</>
             ) : (
-              <><ChevronDown className="h-3.5 w-3.5" />Show {scopedSuggestions.length - COLLAPSED_COUNT} more</>
+              <><ChevronDown className="h-3.5 w-3.5" />Show {otherSuggestions.length - COLLAPSED_COUNT} more</>
             )}
           </button>
         )}
