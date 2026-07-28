@@ -280,7 +280,12 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
     const clientId = import.meta.env.VITE_SLACK_CLIENT_ID;
     const redirectUri = `${window.location.origin}/chief-of-staff?slack=connected`;
     const scopes = 'chat:write,users:read,users:read.email,channels:read,channels:history,groups:read,groups:history,im:read,im:history,im:write';
-    const slackAuthUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    // User scopes grant the authorizing user's own token (xoxp-) so slack-messages-sync
+    // can read their personal DMs and channels directly, without the bot needing to be
+    // invited everywhere. Without this, Slack never returns authed_user.access_token and
+    // the sync silently falls back to the bot token, which can't see the user's real DMs.
+    const userScopes = 'channels:history,groups:history,im:history,im:read,users:read,users:read.email';
+    const slackAuthUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&scope=${scopes}&user_scope=${userScopes}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     window.location.href = slackAuthUrl;
   };
 
