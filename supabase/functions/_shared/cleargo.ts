@@ -6,6 +6,8 @@
  * integration_key = 'cleargo'.
  */
 
+import { retryWithBackoff } from './retryWithBackoff.ts'
+
 export interface ClearGoConfig {
   baseUrl: string
   apiKey: string
@@ -18,15 +20,18 @@ export interface ClearGoEnrichment {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function safeFetch(url: string, apiKey: string): Promise<any | null> {
+async function safeFetch(url: string, apiKey: string, label: string): Promise<any | null> {
   try {
-    const resp = await fetch(url, {
-      headers: {
-        'X-ClearGo-Key': apiKey,
-        'Accept': 'application/json',
-      },
-      signal: AbortSignal.timeout(8_000),
-    })
+    const resp = await retryWithBackoff(
+      () => fetch(url, {
+        headers: {
+          'X-ClearGo-Key': apiKey,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(8_000),
+      }),
+      { integration: 'cleargo', label },
+    )
     if (!resp.ok) return null
     const json = await resp.json()
     return json.data ?? json
@@ -47,12 +52,12 @@ export async function fetchClearGoDciContext(cfg: ClearGoConfig): Promise<ClearG
   const sections: string[] = []
 
   // 1. Team members snapshot (health + blockers)
-  const members = await safeFetch(`${baseUrl}/api/v1/team-members`, apiKey)
+  const members = await safeFetch(`${baseUrl}/api/v1/team-members`, apiKey, 'team members (dci context)')
   const memberList: Array<{ id: string; name: string; blockers_count?: number }> = Array.isArray(members) ? members : []
 
   const blockerLines: string[] = []
   for (const m of memberList.slice(0, 20)) {
-    const blockers = await safeFetch(`${baseUrl}/api/v1/team-members/${m.id}/blockers`, apiKey)
+    const blockers = await safeFetch(`${baseUrl}/api/v1/team-members/${m.id}/blockers`, apiKey, 'team member blockers (dci context)')
     if (!Array.isArray(blockers) || blockers.length === 0) continue
     for (const b of blockers.slice(0, 3)) {
       const title = b.title ?? b.name ?? b.description ?? 'Untitled blocker'
@@ -70,7 +75,7 @@ export async function fetchClearGoDciContext(cfg: ClearGoConfig): Promise<ClearG
   // 2. Epics with issues
   const epicLines: string[] = []
   for (const m of memberList.slice(0, 10)) {
-    const epics = await safeFetch(`${baseUrl}/api/v1/team-members/${m.id}/epics`, apiKey)
+    const epics = await safeFetch(`${baseUrl}/api/v1/team-members/${m.id}/epics`, apiKey, 'team member epics (dci context)')
     if (!Array.isArray(epics)) continue
     for (const e of epics.slice(0, 3)) {
       const status = (e.status ?? '').toLowerCase()
@@ -106,7 +111,7 @@ export async function fetchClearGo1on1Context(
   const sections: string[] = []
 
   // Resolve member ID from email
-  const members = await safeFetch(`${baseUrl}/api/v1/team-members`, apiKey)
+  const members = await safeFetch(`${baseUrl}/api/v1/team-members`, apiKey, 'team members (1:1 context)')
   const memberList: Array<{ id: string; name: string; email?: string }> = Array.isArray(members) ? members : []
   const found = memberList.find(m =>
     m.email?.toLowerCase() === memberEmail.toLowerCase() ||
@@ -116,7 +121,7 @@ export async function fetchClearGo1on1Context(
   if (!found) return { sections: [], sourcesUsed: [] }
 
   // Fetch 1:1 prep pack
-  const prepPack = await safeFetch(`${baseUrl}/api/v1/1on1-prep/${found.id}`, apiKey)
+  const prepPack = await safeFetch(`${baseUrl}/api/v1/1on1-prep/${found.id}`, apiKey, '1:1 prep pack')
   if (prepPack) {
     const summary = prepPack.summary ?? prepPack.overview ?? prepPack.brief ?? null
     const talkingPoints: string[] = Array.isArray(prepPack.talking_points)
@@ -132,7 +137,7 @@ export async function fetchClearGo1on1Context(
   }
 
   // Fetch open blockers
-  const blockers = await safeFetch(`${baseUrl}/api/v1/team-members/${found.id}/blockers`, apiKey)
+  const blockers = await safeFetch(`${baseUrl}/api/v1/team-members/${found.id}/blockers`, apiKey, 'team member blockers (1:1 context)')
   if (Array.isArray(blockers) && blockers.length > 0) {
     sections.push(`Open blockers (ClearGo):`)
     for (const b of blockers.slice(0, 5)) {
@@ -143,7 +148,7 @@ export async function fetchClearGo1on1Context(
   }
 
   // Fetch active epics
-  const epics = await safeFetch(`${baseUrl}/api/v1/team-members/${found.id}/epics`, apiKey)
+  const epics = await safeFetch(`${baseUrl}/api/v1/team-members/${found.id}/epics`, apiKey, 'team member epics (1:1 context)')
   if (Array.isArray(epics) && epics.length > 0) {
     const active = epics.filter((e: { status?: string }) => {
       const s = (e.status ?? '').toLowerCase()
