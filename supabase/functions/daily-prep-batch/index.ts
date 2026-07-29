@@ -150,6 +150,10 @@ serve(async (req) => {
 
         const alwaysInclude: string[] = (schedule?.always_include ?? []) as string[]
         const includedGroupSeries = new Set<string>((schedule?.included_group_series ?? []) as string[])
+        // Other-attendee emails the user has manually flagged as not really a 1:1
+        // (e.g. a group meeting invited via a single alias, which the <=1-attendee
+        // heuristic below can't tell apart from a real 1:1).
+        const excludedOneOnOneEmails = new Set<string>((schedule?.excluded_one_on_one_emails ?? []) as string[])
 
         // Curated group meetings (cos_group_meetings) get a dedicated group brief
         // rather than a 1:1-style prep. Load the user's included ones so we can
@@ -356,8 +360,13 @@ serve(async (req) => {
           // group meeting — those get a group brief instead (below).
           const coveredByGroupMeeting =
             !!event.recurring_event_id && groupMeetingRecurrenceKeys.has(event.recurring_event_id)
+          // The other attendee may really be a group (e.g. a single alias like
+          // "elt@company.com") that the ≤1-attendee heuristic can't detect — honor
+          // the user's manual exclusion of that email from auto-inclusion.
+          const attendeeEmail = event.attendee_email ?? event.attendee_emails?.[0] ?? null
+          const isManuallyExcluded = !!attendeeEmail && excludedOneOnOneEmails.has(attendeeEmail)
           if (isOneOnOne) {
-            qualifyingMemberIds.add(member.id)
+            if (!isManuallyExcluded) qualifyingMemberIds.add(member.id)
           } else if (
             !coveredByGroupMeeting &&
             event.recurring_event_id &&
