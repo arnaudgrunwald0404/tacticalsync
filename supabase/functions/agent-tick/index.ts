@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { detectEscalations } from "../agent-escalation/index.ts"
-import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { sendSlackDM } from "../_shared/sendSlackDm.ts"
 import {
   selectDueItemsToNudge,
   selectMeetingsForInboxNudge,
@@ -184,70 +184,6 @@ function meetingQualifiesForPrep(
   const attendeeCount = attendeeEmails?.length ?? 0
   if (attendeeCount <= 1) return true
   return !!recurringEventId && includedGroupSeries.includes(recurringEventId)
-}
-
-/**
- * Send a Slack DM to a user using their stored Slack credentials.
- * Returns true if the message was sent successfully.
- */
-async function sendSlackDM(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  text: string,
-  blocks?: unknown[],
-): Promise<boolean> {
-  // Get user's Slack credentials
-  const { data: slackCreds } = await supabase
-    .from('user_slack_credentials')
-    .select('access_token, slack_user_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (!slackCreds?.access_token || !slackCreds?.slack_user_id) {
-    return false
-  }
-
-  // Open DM conversation
-  const openRes = await retryWithBackoff(
-    () => fetch('https://slack.com/api/conversations.open', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${slackCreds.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ users: slackCreds.slack_user_id }),
-    }),
-    { integration: 'slack', label: 'conversations.open' },
-  )
-
-  const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
-  if (!openData.ok || !openData.channel?.id) {
-    return false
-  }
-
-  // Send message
-  const msgBody: Record<string, unknown> = {
-    channel: openData.channel.id,
-    text,
-  }
-  if (blocks) {
-    msgBody.blocks = blocks
-  }
-
-  const msgRes = await retryWithBackoff(
-    () => fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${slackCreds.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(msgBody),
-    }),
-    { integration: 'slack', label: 'chat.postMessage' },
-  )
-
-  const msgData = await msgRes.json() as { ok: boolean }
-  return msgData.ok
 }
 
 /**

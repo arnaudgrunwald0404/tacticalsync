@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { retryWithBackoff } from '../_shared/retryWithBackoff.ts'
+import { sendSlackDM } from '../_shared/sendSlackDm.ts'
 import { isCheckinStale, isMetricStale, isNudgeThrottled } from '../_shared/rcdoStaleness.ts'
 
 const corsHeaders = {
@@ -25,65 +25,6 @@ function appOrigin(): string {
 // here). See src/hooks/useNotificationPreferences.ts for the full blob.
 interface RcdoNotificationPrefs {
   rcdo_stale_alerts?: boolean
-}
-
-/**
- * Sends a Slack DM using the user's stored Slack credentials. Deliberately
- * mirrors sendSlackDM() in supabase/functions/agent-tick/index.ts rather than
- * importing it — agent-tick doesn't export it, and duplicating ~40 lines here
- * is a smaller, safer footprint than refactoring that 2000+ line function's
- * internals to share it. Keep the two in sync if Slack delivery logic changes.
- */
-async function sendSlackDM(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  text: string,
-  blocks?: unknown[],
-): Promise<boolean> {
-  const { data: slackCreds } = await supabase
-    .from('user_slack_credentials')
-    .select('access_token, slack_user_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (!slackCreds?.access_token || !slackCreds?.slack_user_id) {
-    return false
-  }
-
-  const openRes = await retryWithBackoff(
-    () => fetch('https://slack.com/api/conversations.open', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${slackCreds.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ users: slackCreds.slack_user_id }),
-    }),
-    { integration: 'slack', label: 'conversations.open' },
-  )
-
-  const openData = await openRes.json() as { ok: boolean; channel?: { id: string } }
-  if (!openData.ok || !openData.channel?.id) {
-    return false
-  }
-
-  const msgBody: Record<string, unknown> = { channel: openData.channel.id, text }
-  if (blocks) msgBody.blocks = blocks
-
-  const msgRes = await retryWithBackoff(
-    () => fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${slackCreds.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(msgBody),
-    }),
-    { integration: 'slack', label: 'chat.postMessage' },
-  )
-
-  const msgData = await msgRes.json() as { ok: boolean }
-  return msgData.ok
 }
 
 type StaleKind = 'do' | 'si' | 'metric'
@@ -132,10 +73,10 @@ function kindLabel(kind: StaleKind): string {
  * established "global sweep" shape used by inbox-unsnooze-sweep/index.ts:
  * one top-to-bottom pass, no per-user config loop, called on its own cron.
  *
- * Notification delivery (Slack DM via sendSlackDM, gated on the owner's own
- * `cos_settings.notification_preferences.rcdo_stale_alerts`) reuses the exact
- * pattern agent-tick already established, per the task's own direction —
- * only the outer loop shape differs.
+ * Notification delivery (Slack DM via the shared sendSlackDM() helper in
+ * ../_shared/sendSlackDm.ts, gated on the owner's own
+ * `cos_settings.notification_preferences.rcdo_stale_alerts`) reuses the same
+ * delivery mechanism agent-tick uses — only the outer loop shape differs.
  *
  * Staleness definitions and the re-nudge cooldown live in
  * ../_shared/rcdoStaleness.ts; see that file's header comment for the
