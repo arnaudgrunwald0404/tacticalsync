@@ -48,7 +48,7 @@ const UUID_RE =
 const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v)
 
 type ParsedRequest =
-  | { action: 'start'; item_id: string; user_id: string }
+  | { action: 'start'; item_id: string; user_id: string; instructions?: string }
   | { action: 'answer'; delegation_id: string; answer: string }
   | { action: 'approve_step'; delegation_id: string; step_id: string }
   | { action: 'reject_step'; delegation_id: string; step_id: string }
@@ -64,7 +64,14 @@ function parseRequest(body: unknown): { ok: true; value: ParsedRequest } | { ok:
   if (b.action === 'start') {
     if (!isUuid(b.item_id)) return { ok: false, error: 'item_id must be a UUID.' }
     if (!isUuid(b.user_id)) return { ok: false, error: 'user_id must be a UUID.' }
-    return { ok: true, value: { action: 'start', item_id: b.item_id, user_id: b.user_id } }
+    let instructions: string | undefined
+    if (b.instructions !== undefined && b.instructions !== null) {
+      if (typeof b.instructions !== 'string') return { ok: false, error: 'instructions must be a string.' }
+      const trimmed = b.instructions.trim()
+      if (trimmed.length > 2000) return { ok: false, error: 'instructions is too long.' }
+      instructions = trimmed || undefined
+    }
+    return { ok: true, value: { action: 'start', item_id: b.item_id, user_id: b.user_id, instructions } }
   }
 
   if (b.action === 'answer') {
@@ -155,13 +162,16 @@ async function rampUp(db: ReturnType<typeof createClient>, delegation: Record<st
 
   const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
   const taskText = item.text as string
+  const instructions = delegation.instructions as string | null
+  const instructionsBlock = instructions ? `\nUser's instructions: "${instructions}"` : ''
 
   const clarityCheck = await callClaude(
     `You are a delegation agent assessing a task. Respond ONLY with valid JSON.
 Return: { "clear": true/false, "questions": [{ "question": "...", "choices": ["A","B","C","Other"] }] }
 - "clear" = true when the task can be planned with zero additional info
-- If not clear, list up to 3 clarifying questions, each with 3-4 specific choices plus "Other" as the last choice`,
-    `Task: "${taskText}"\nTags/context: ${tagNames}`,
+- If not clear, list up to 3 clarifying questions, each with 3-4 specific choices plus "Other" as the last choice
+- If the user's instructions already answer what would otherwise be a clarifying question, treat that as clear`,
+    `Task: "${taskText}"\nTags/context: ${tagNames}${instructionsBlock}`,
   )
 
   let parsed: { clear: boolean; questions: { question: string; choices: string[] }[] }
@@ -176,7 +186,7 @@ Return: { "clear": true/false, "questions": [{ "question": "...", "choices": ["A
 
   if (parsed.clear || parsed.questions.length === 0) {
     await patch(db, id, { status: 'planning', agent_log: agentLog })
-    await planPhase(db, id, delegation.user_id as string, item.id as string, taskText, tagNames, {}, agentLog)
+    await planPhase(db, id, delegation.user_id as string, item.id as string, taskText, tagNames, {}, agentLog, instructions)
   } else {
     await patch(db, id, {
       status: 'clarifying',
@@ -215,7 +225,7 @@ async function receiveAnswer(
     agentLog.push(log('All questions answered — moving to planning.'))
     await patch(db, id, { status: 'planning', answers, agent_log: agentLog, current_question: null })
     const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
-    await planPhase(db, id, delegation.user_id as string, delegation.item_id as string, item.text as string, tagNames, answers, agentLog)
+    await planPhase(db, id, delegation.user_id as string, delegation.item_id as string, item.text as string, tagNames, answers, agentLog, delegation.instructions as string | null)
   }
 }
 
@@ -230,10 +240,12 @@ async function planPhase(
   tagNames: string,
   answers: Record<string, string>,
   agentLog: object[],
+  instructions?: string | null,
 ) {
   const answersBlock = Object.entries(answers).length
     ? '\n\nClarified context:\n' + Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n')
     : ''
+  const instructionsBlock = instructions ? `\n\nUser's instructions: "${instructions}"` : ''
 
   // Ground the planning prompt in real targets the user actually has access
   // to — Claude can't invent valid meeting series ids, and shouldn't guess at
@@ -257,7 +269,7 @@ async function planPhase(
     `You are a delegation agent. Given a task, decide which of the available tools (if any) would concretely move it forward, and produce a JSON array of steps: [{ "tool": "...", "params": {...} }]. Only use the tools listed below, with valid params. If nothing concrete can be done with these tools, return an empty array []. Respond with ONLY the JSON array, no other text.
 
 Available tools:${toolDefs}`,
-    `Task: "${taskText}"\nTags: ${tagNames}${answersBlock}`,
+    `Task: "${taskText}"\nTags: ${tagNames}${instructionsBlock}${answersBlock}`,
   )
 
   let rawSteps: unknown = []
@@ -393,7 +405,7 @@ Deno.serve(async (req) => {
   const request = parsed.value
 
   if (request.action === 'start') {
-    const { item_id, user_id } = request
+    const { item_id, user_id, instructions } = request
 
     // Fetch item with tags
     const { data: item } = await (db as any)
@@ -410,7 +422,7 @@ Deno.serve(async (req) => {
     // Create delegation record
     const { data: delegation } = await (db as any)
       .from('inbox_delegations')
-      .insert({ item_id, user_id, status: 'ramping_up', agent_log: [log('Delegation started.')] })
+      .insert({ item_id, user_id, status: 'ramping_up', agent_log: [log('Delegation started.')], instructions: instructions ?? null })
       .select()
       .single()
 
