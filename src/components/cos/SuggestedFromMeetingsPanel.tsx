@@ -67,7 +67,9 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
       recommendedLabel: best
         ? `Add to ${best.columnLabel} · ${best.sectionLabel}`
         : 'Add to list',
-      onAccept: () => { if (best) addToList(s.id, best.category); },
+      // No destination exists (user has zero enabled priority sections) — leave
+      // onAccept undefined so the card only offers dismiss, not a false "accept".
+      onAccept: best ? () => addToList(s.id, best.category) : undefined,
       onDismiss: () => dismiss(s.id),
       renderPickerTrigger: targetOptions.length > 1 ? () => (
         <DropdownMenu>
