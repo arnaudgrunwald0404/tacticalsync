@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
-import { parseVttToCues } from "../_shared/parseVtt.ts"
+import { parseVttCues, type VttCue } from "../_shared/parseVtt.ts"
+import { buildCueAnnotatedTranscript, resolveQuoteTimestamp } from "../_shared/quoteAlignment.ts"
 import { computeTalkTime } from "../_shared/talkTime.ts"
 
 const corsHeaders = {
@@ -15,22 +16,6 @@ function jsonResponse(body: unknown, status: number): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
-}
-
-// Strip VTT timestamps and metadata, returning just the spoken text with speaker labels.
-function stripVtt(vtt: string): string {
-  return vtt
-    .split('\n')
-    .filter(line => {
-      const trimmed = line.trim()
-      if (!trimmed) return false
-      if (trimmed === 'WEBVTT') return false
-      if (/^\d+$/.test(trimmed)) return false
-      if (/-->/.test(trimmed)) return false
-      if (trimmed.startsWith('NOTE')) return false
-      return true
-    })
-    .join('\n')
 }
 
 // ── Meeting-insight helpers (mirror of src/lib/meetingInsights.ts — Deno can't
@@ -62,7 +47,18 @@ function formatShortDate(saidOn: string | null | undefined): string | null {
   return `${MONTHS[monthIdx]} ${Number(match[3])}`
 }
 
-interface ExtractedQuote { speaker: string; quote: string; context?: string }
+interface ExtractedQuote {
+  speaker: string
+  quote: string
+  context?: string
+  // Soundbites timestamp alignment (PLAN_idea10 §2.1/§B3): the cue number(s)
+  // Gemini cites from the `[cue N | HH:MM:SS]`-annotated transcript it was
+  // given (see buildCueAnnotatedTranscript). Verified against the cited
+  // cue's actual text (resolveQuoteTimestamp) before ever being trusted —
+  // never taken at face value.
+  start_cue?: number
+  end_cue?: number
+}
 
 // Shape the meeting_insight row's own headline text so a user scanning the
 // list never has to open it to know where it came from (plan §9.1).
@@ -90,6 +86,12 @@ interface MeetingInsightSourceRef {
   meeting_topic?: string
   said_on: string
   context?: string
+  // Soundbites (PLAN_idea10 §B2): additive to the jsonb source_ref, mirrors
+  // cos_member_quotes.start_seconds/end_seconds so the inbox "View in
+  // recording" affordance can eventually seek/play too. Absent when
+  // alignment didn't resolve (no quote_id match, or verification failed).
+  start_seconds?: number
+  end_seconds?: number
 }
 
 function buildMeetingInsightSourceRef(opts: {
@@ -98,6 +100,8 @@ function buildMeetingInsightSourceRef(opts: {
   quoteId?: string | null
   meetingTopic?: string | null
   saidOn: string
+  startSeconds?: number | null
+  endSeconds?: number | null
 }, q: ExtractedQuote): MeetingInsightSourceRef {
   return {
     type: 'zoom_recording',
@@ -109,6 +113,8 @@ function buildMeetingInsightSourceRef(opts: {
     meeting_topic: opts.meetingTopic ?? undefined,
     said_on: opts.saidOn,
     context: q.context,
+    start_seconds: opts.startSeconds ?? undefined,
+    end_seconds: opts.endSeconds ?? undefined,
   }
 }
 
@@ -173,11 +179,14 @@ function buildCommitmentText(
 
 const EXTRACT_PROMPT = `You are analyzing a meeting transcript. Do two independent extraction passes over it.
 
+If the transcript below has lines tagged like "[cue 14 | 00:03:12] Jane Smith: some words", each tag's number is that line's citation number and the timestamp is when it starts — see PASS 1's citation instructions. If there are no such tags, ignore this paragraph.
+
 PASS 1 — QUOTES: Extract 1-3 standout quotes — things a team member said that are insightful, inspiring, funny, or show strong leadership/ownership.
 - Only extract quotes actually spoken by someone (not the meeting host/user asking questions)
 - Each quote must be a direct, verbatim phrase (clean up filler words like "um", "uh", "you know")
 - Keep quotes concise (1-3 sentences max)
 - Include the speaker's name exactly as it appears in the transcript
+- If the transcript has [cue N | ...] tags, also return "start_cue" (and "end_cue" if the quote spans a short run of consecutive cues) — the citation number(s) the quote is drawn from. If you're not confident which cue(s) it came from, omit start_cue/end_cue entirely rather than guessing — a wrong citation is worse than none.
 - If no noteworthy quotes exist, return an empty array
 
 PASS 2 — COMMITMENTS: Extract explicit commitments/action items — someone in the meeting explicitly promising to do something for someone else, with clear ownership. For each, classify direction relative to the meeting HOST (the user running the meeting — usually whoever is driving the agenda or asking the questions, not a named external participant):
@@ -190,7 +199,7 @@ PASS 2 — COMMITMENTS: Extract explicit commitments/action items — someone in
 Return ONLY valid JSON — no markdown fences, no commentary — matching this exact shape:
 {
   "quotes": [
-    { "speaker": "Jane Smith", "quote": "The exact quote here.", "context": "Brief 5-word context" }
+    { "speaker": "Jane Smith", "quote": "The exact quote here.", "context": "Brief 5-word context", "start_cue": 14, "end_cue": 14 }
   ],
   "commitments": [
     { "owner_name": "Jane Smith", "owed_by": "them", "commitment": "Send the updated numbers by EOD Friday." },
@@ -371,8 +380,17 @@ serve(async (req) => {
     let totalMeetingAnalysesAdded = 0
 
     for (const transcript of transcripts) {
-      const text = transcript.content_type === 'vtt'
-        ? stripVtt(transcript.content)
+      // Soundbites alignment (PLAN_idea10 §2.1/§B3): parse cues up front so
+      // (a) Gemini sees a citable, cue-annotated transcript instead of the
+      // old timestamp-stripped text, and (b) the cited cue(s) it returns per
+      // quote can be verified against the real cue text below. `cues` stays
+      // empty for non-VTT content (nothing to cite/verify against), which
+      // naturally makes resolveQuoteTimestamp a no-op further down.
+      const cues: VttCue[] = transcript.content_type === 'vtt'
+        ? parseVttCues(transcript.content)
+        : []
+      const text = cues.length > 0
+        ? buildCueAnnotatedTranscript(cues)
         : transcript.content
 
       // Truncate to ~8000 words to stay within context limits
@@ -412,7 +430,7 @@ serve(async (req) => {
       // Parse JSON from response (strip markdown fences if present). Expected
       // shape is { quotes: [...], commitments: [...] } — see EXTRACT_PROMPT.
       const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-      let quotes: Array<{ speaker: string; quote: string; context?: string }> = []
+      let quotes: ExtractedQuote[] = []
       let commitments: ExtractedCommitment[] = []
       try {
         const parsed = JSON.parse(jsonStr)
@@ -436,6 +454,16 @@ serve(async (req) => {
 
       for (const q of quotes) {
         if (!q.speaker || !q.quote) continue
+
+        // Soundbites alignment (PLAN_idea10 §2.1/§B3): verify Gemini's cited
+        // cue(s) actually overlap the returned quote text before trusting
+        // the timestamp. Resolves to null (no clip, never a wrong clip) when
+        // there's no citation, the cited cue doesn't exist, or the cited
+        // cue's text doesn't sufficiently match the quote — see
+        // _shared/quoteAlignment.ts and its test suite for the calibration.
+        const resolvedTimestamp = cues.length > 0
+          ? resolveQuoteTimestamp(cues, q.quote, q.start_cue, q.end_cue)
+          : null
 
         // Match speaker to a team member by name (fuzzy)
         const speakerLower = q.speaker.toLowerCase().trim()
@@ -487,6 +515,9 @@ serve(async (req) => {
                 source: 'zoom',
                 source_ref: recording?.topic ?? null,
                 featured: true,
+                recording_id: transcript.recording_id,
+                start_seconds: resolvedTimestamp?.start_seconds ?? null,
+                end_seconds: resolvedTimestamp?.end_seconds ?? null,
               })
               .select('id')
               .single()
@@ -512,6 +543,8 @@ serve(async (req) => {
             quoteId,
             meetingTopic: recording?.topic ?? null,
             saidOn,
+            startSeconds: resolvedTimestamp?.start_seconds,
+            endSeconds: resolvedTimestamp?.end_seconds,
           }, q)
 
           // Dedup on (transcript, speaker, quote) — not just transcript — so a
@@ -632,7 +665,6 @@ serve(async (req) => {
       // only runs for VTT transcripts (content_type === 'vtt'); a plain-text
       // transcript has nothing to compute talk-time from and is skipped here.
       if (transcript.content_type === 'vtt') {
-        const cues = parseVttToCues(transcript.content)
         if (cues.length === 0) {
           console.log(`No parseable VTT cues for transcript ${transcript.id} — skipping meeting analysis`)
         } else {

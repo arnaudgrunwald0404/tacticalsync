@@ -34,7 +34,7 @@ export function computeTalkTime(cues: VttCue[]): TalkTimeResult {
     const duration = Math.max(0, cue.endSeconds - cue.startSeconds)
     meetingDurationSeconds = Math.max(meetingDurationSeconds, cue.endSeconds)
 
-    const key = isNoisySpeakerName(cue.speaker) ? UNATTRIBUTED_SPEAKER_KEY : (cue.speaker as string).trim()
+    const key = (!cue.speaker || isNoisySpeakerName(cue.speaker)) ? UNATTRIBUTED_SPEAKER_KEY : cue.speaker.trim()
     secondsBySpeaker[key] = (secondsBySpeaker[key] ?? 0) + duration
   }
 

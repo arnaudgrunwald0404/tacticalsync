@@ -18,6 +18,7 @@ import {
   resolveSelfReflectiveTalkTime,
   type MeetingSentiment,
 } from '@/hooks/useMeetingAnalysis';
+import { ClipPlayer } from '@/components/media/ClipPlayer';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 interface MeetingDetailPanelProps {
@@ -39,6 +40,17 @@ interface ZoomRec {
   duration_minutes: number | null;
   has_transcript: boolean;
   ai_summary: string | null;
+}
+
+// Soundbites (PLAN_idea10_meeting_intelligence_enrichment.md §B4): the
+// featured quote (if any) tied to a specific recording, keyed by
+// cos_member_quotes.recording_id — start/end are null when the alignment
+// step in extract-zoom-quotes/index.ts never resolved a confident timestamp
+// for it, in which case only the quote text renders (no clip).
+interface RecordingQuote {
+  quote: string;
+  start_seconds: number | null;
+  end_seconds: number | null;
 }
 
 const QUESTIONS = [
@@ -146,6 +158,9 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
   // comment: this feature never shows a report's talk-time to anyone but the
   // person who was in the meeting).
   const [myName, setMyName] = useState<string | null>(null);
+  // Soundbites (PLAN_idea10 §B4) — featured quote/clip per recording, keyed
+  // by cos_zoom_recordings.id (i.e. ZoomRec.id above).
+  const [recordingQuotes, setRecordingQuotes] = useState<Record<string, RecordingQuote>>({});
 
   useEffect(() => {
     if (!member?.id) { setLoadingPrep(false); return; }
@@ -186,6 +201,25 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
       .limit(8)
       .then(({ data }: { data: ZoomRec[] | null }) => setZoomRecs(data ?? []))
       .catch(() => setZoomRecs([]));
+
+    // Soundbites (PLAN_idea10 §B4): pull this member's featured quotes that
+    // are tied to a specific recording, so each "Past 1:1s" card can show
+    // its own quote/clip rather than only the single most-recent one shown
+    // on the hero card (OneOnOnesView.tsx).
+    db.from('cos_member_quotes')
+      .select('quote, recording_id, start_seconds, end_seconds')
+      .eq('team_member_id', member.id)
+      .not('recording_id', 'is', null)
+      .then(({ data }: { data: Array<{ quote: string; recording_id: string; start_seconds: number | null; end_seconds: number | null }> | null }) => {
+        const map: Record<string, RecordingQuote> = {};
+        for (const row of data ?? []) {
+          if (!map[row.recording_id]) {
+            map[row.recording_id] = { quote: row.quote, start_seconds: row.start_seconds, end_seconds: row.end_seconds };
+          }
+        }
+        setRecordingQuotes(map);
+      })
+      .catch(() => setRecordingQuotes({}));
 
     db.from('cos_team_members')
       .select('agent_overrides')
@@ -419,6 +453,7 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
                       firstName={firstName}
                       memberName={name}
                       myName={myName}
+                      quote={recordingQuotes[rec.id]}
                     />
                   ))}
                 </div>
@@ -541,11 +576,12 @@ function SentimentBadge({ sentiment, rationale, memberFirstName }: {
   );
 }
 
-function PastMeetingCard({ rec, firstName, memberName, myName }: {
+function PastMeetingCard({ rec, firstName, memberName, myName, quote }: {
   rec: ZoomRec;
   firstName: string;
   memberName: string;
   myName: string | null;
+  quote?: RecordingQuote;
 }) {
   const { analysis } = useMeetingAnalysis(rec.id);
   const d = new Date(rec.start_time);
@@ -575,6 +611,25 @@ function PastMeetingCard({ rec, firstName, memberName, myName }: {
       </div>
       {rec.ai_summary && (
         <div className="px-5 pt-4 text-sm leading-relaxed text-gray-700 whitespace-pre-line">{rec.ai_summary}</div>
+      )}
+      {/* Soundbite (PLAN_idea10 §B4) — this recording's featured quote, with
+          a clip player when alignment resolved a verified time range. */}
+      {quote && (
+        <div className="px-5 pt-4">
+          <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
+            <p className="text-sm italic text-gray-700 leading-relaxed">"{quote.quote}"</p>
+            {quote.start_seconds != null && quote.end_seconds != null && (
+              <div className="mt-2">
+                <ClipPlayer
+                  recordingId={rec.id}
+                  startSeconds={quote.start_seconds}
+                  endSeconds={quote.end_seconds}
+                  variant="onLight"
+                />
+              </div>
+            )}
+          </div>
+        </div>
       )}
       {showTalkTime && (
         <TalkTimeBar youSeconds={resolved!.youSeconds} memberSeconds={resolved!.memberSeconds} memberFirstName={firstName} />

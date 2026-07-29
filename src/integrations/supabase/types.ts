@@ -716,41 +716,57 @@ export type Database = {
       cos_member_quotes: {
         Row: {
           created_at: string
+          end_seconds: number | null
           featured: boolean
           id: string
           quote: string
+          recording_id: string | null
           said_on: string
           source: string | null
           source_ref: string | null
+          start_seconds: number | null
           team_member_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          end_seconds?: number | null
           featured?: boolean
           id?: string
           quote: string
+          recording_id?: string | null
           said_on: string
           source?: string | null
           source_ref?: string | null
+          start_seconds?: number | null
           team_member_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          end_seconds?: number | null
           featured?: boolean
           id?: string
           quote?: string
+          recording_id?: string | null
           said_on?: string
           source?: string | null
           source_ref?: string | null
+          start_seconds?: number | null
           team_member_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_member_quotes_recording_id_fkey"
+            columns: ["recording_id"]
+            isOneToOne: false
+            referencedRelation: "cos_zoom_recordings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cos_member_quotes_team_member_id_fkey"
             columns: ["team_member_id"]

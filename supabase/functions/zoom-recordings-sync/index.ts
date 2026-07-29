@@ -9,6 +9,7 @@ import {
   type MinimalEvent,
 } from "../_shared/matchEventToMember.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { getValidZoomAccessToken } from "../_shared/zoomAuth.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -122,94 +123,21 @@ serve(async (req) => {
     if (days < 1) days = 1
     if (days > 180) days = 180
 
-    // Load credentials.
-    const { data: creds, error: credsErr } = await supabase
+    // Load the notes-folder cache separately — it's not part of auth, just
+    // read alongside it (see _shared/zoomAuth.ts for the token refresh logic
+    // this used to inline here directly).
+    const { data: notesRow } = await supabase
       .from('user_zoom_credentials')
-      .select('access_token, refresh_token, expires_at, scope, notes_folder_id')
+      .select('notes_folder_id')
       .eq('user_id', userId)
       .maybeSingle()
+    let notesFolderId: string | null = notesRow?.notes_folder_id ?? null
 
-    if (credsErr) {
-      return jsonResponse({ error: credsErr.message }, 500)
+    const zoomAuth = await getValidZoomAccessToken(supabase, userId, zoomClientId, zoomClientSecret)
+    if (!zoomAuth.ok) {
+      return jsonResponse({ error: zoomAuth.error }, zoomAuth.status)
     }
-    if (!creds) {
-      return jsonResponse({ error: 'not_connected' }, 400)
-    }
-
-    let accessToken: string = creds.access_token
-    const refreshToken: string | null = creds.refresh_token
-    const expiresAt: string | null = creds.expires_at
-    let notesFolderId: string | null = creds.notes_folder_id ?? null
-
-    // Refresh if expired or near-expired (30s skew).
-    const needsRefresh = !expiresAt || (new Date(expiresAt).getTime() - Date.now() < 30_000)
-    if (needsRefresh) {
-      if (!refreshToken) {
-        await supabase
-          .from('user_zoom_credentials')
-          .update({ last_sync_status: 'error: refresh failed' })
-          .eq('user_id', userId)
-        return jsonResponse({ error: 'refresh_failed' }, 401)
-      }
-
-      const basicAuth = btoa(`${zoomClientId}:${zoomClientSecret}`)
-      const refreshRes = await retryWithBackoff(
-        () => fetch('https://zoom.us/oauth/token', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${basicAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: refreshToken,
-          }),
-        }),
-        { integration: 'zoom', label: 'refresh access token' },
-      )
-
-      if (!refreshRes.ok) {
-        const status = refreshRes.status
-        const syncStatus = status === 401
-          ? 'error: reauth_required'
-          : 'error: refresh failed'
-        await supabase
-          .from('user_zoom_credentials')
-          .update({ last_sync_status: syncStatus })
-          .eq('user_id', userId)
-        return jsonResponse({ error: syncStatus }, 401)
-      }
-
-      const refreshData = await refreshRes.json() as {
-        access_token?: string
-        refresh_token?: string
-        expires_in?: number
-      }
-      if (!refreshData.access_token || typeof refreshData.expires_in !== 'number') {
-        await supabase
-          .from('user_zoom_credentials')
-          .update({ last_sync_status: 'error: refresh failed' })
-          .eq('user_id', userId)
-        return jsonResponse({ error: 'refresh_failed' }, 401)
-      }
-
-      accessToken = refreshData.access_token
-      const newExpiresAt = new Date(Date.now() + refreshData.expires_in * 1000).toISOString()
-
-      // Zoom issues a new refresh_token on every refresh — must persist it.
-      const updatePayload: Record<string, unknown> = {
-        access_token: accessToken,
-        expires_at: newExpiresAt,
-      }
-      if (refreshData.refresh_token) {
-        updatePayload.refresh_token = refreshData.refresh_token
-      }
-
-      await supabase
-        .from('user_zoom_credentials')
-        .update(updatePayload)
-        .eq('user_id', userId)
-    }
+    const accessToken: string = zoomAuth.accessToken
 
     // Load team members for participant matching.
     const { data: membersRows } = await supabase

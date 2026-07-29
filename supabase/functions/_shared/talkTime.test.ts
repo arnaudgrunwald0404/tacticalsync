@@ -2,8 +2,9 @@ import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts"
 import { computeTalkTime, talkTimeRatios, UNATTRIBUTED_SPEAKER_KEY } from "./talkTime.ts"
 import type { VttCue } from "./parseVtt.ts"
 
+let cueIndex = 0
 function cue(speaker: string | null, startSeconds: number, endSeconds: number, text = "x"): VttCue {
-  return { speaker, text, startSeconds, endSeconds }
+  return { index: ++cueIndex, speaker, text, startSeconds, endSeconds }
 }
 
 Deno.test("computeTalkTime: sums duration per speaker across cues", () => {
@@ -51,7 +52,7 @@ Deno.test("computeTalkTime: meetingDurationSeconds is the latest cue end-time, n
 })
 
 Deno.test("computeTalkTime: ignores negative-duration cues defensively (clamped to 0)", () => {
-  // parseVttToCues already filters these out, but the arithmetic itself
+  // parseVttCues already filters these out, but the arithmetic itself
   // should never produce a negative talk-time contribution.
   const cues = [cue("Jane Smith", 10, 5)]
   const result = computeTalkTime(cues)
