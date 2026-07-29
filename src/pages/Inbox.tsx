@@ -450,8 +450,10 @@ export default function InboxPage() {
   const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Gmail agent_question items live in the dark blue suggestions panel, not the main list.
-  // Only items still requiring action (action_required: true) belong in the panel;
-  // dismissed items have action_required flipped to false and should fall through.
+  // Only items still requiring action (action_required: true) belong in the panel.
+  // Accepting one promotes it to type: 'task' (handleTagGmailItem/handleApproveSuggestion),
+  // so it legitimately falls through into the main list as a real item; dismissing one
+  // archives it (handleDismissGmailItem) so it leaves the inbox entirely instead.
   const isGmailAgentItem = (i: InboxItem) =>
     i.type === 'agent_question'
     && (i.source_ref as { type?: string } | null)?.type === 'gmail_message'
@@ -724,19 +726,21 @@ export default function InboxPage() {
     } as Partial<InboxItem>);
   }, [updateItem]);
 
-  // Dismiss a Gmail panel item: remove it from the panel immediately (optimistic)
-  // and write a dismissal record so the triage agent can learn suppression rules.
+  // Dismiss a Gmail panel item: archive it so it leaves both the suggestions
+  // panel and the main inbox list (not just flip a flag that lets it fall
+  // through into the main list as an unactionable agent_question row), and
+  // write a dismissal record so the triage agent can learn suppression rules.
   const handleDismissGmailItem = useCallback(async (id: string) => {
     const item = allItems.find(i => i.id === id);
     if (!item) return;
     const payload = item.agent_payload as {
       intent_type?: string; sender_email?: string; sender_tier?: string;
     } | null;
-    const updatedPayload = item.agent_payload ? { ...item.agent_payload, action_required: false } : null;
-    // Optimistically patch allItems so the item disappears from gmailAgentItems instantly.
-    mirrorToAllItems(prev => prev.map(i => i.id === id ? { ...i, agent_payload: updatedPayload } : i));
-    // Persist to DB in parallel — no need to await for the UI update.
-    void updateItem(id, { agent_payload: updatedPayload } as Partial<InboxItem>);
+    // Optimistically drop it from allItems so it disappears from the panel
+    // instantly; archive() persists the removal (a harmless no-op on allItems
+    // when it runs, since the item's already gone from there).
+    mirrorToAllItems(prev => prev.filter(i => i.id !== id));
+    void archive(id);
     if (userId && payload?.sender_email) {
       const senderEmail = payload.sender_email.toLowerCase();
       const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : null;
@@ -749,7 +753,7 @@ export default function InboxPage() {
         intent_type: payload.intent_type ?? null,
       });
     }
-  }, [allItems, mirrorToAllItems, updateItem, userId]);
+  }, [allItems, mirrorToAllItems, archive, userId]);
 
   // Tag a Gmail panel item AND promote it to a real task so it leaves the
   // suggestions panel and appears under the chosen project in the main list.
