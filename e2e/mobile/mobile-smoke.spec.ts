@@ -100,19 +100,18 @@ test.describe('Auth page', () => {
 });
 
 // ─── home / landing ──────────────────────────────────────────────────────────
+//
+// "/" is a hard external redirect (see ExternalRedirect in src/App.tsx) — it
+// no longer renders an in-app landing page, so there is nothing local left to
+// check for overflow or snapshot on mobile. We only verify the redirect
+// itself fires on mobile viewports; asserting on the third-party site's
+// content/appearance is out of scope for this repo's e2e suite.
 
 test.describe('Home page', () => {
-  test.beforeEach(async ({ page }) => {
+  test('redirects to the external inbox', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-  });
-
-  test('no horizontal overflow', async ({ page }) => {
-    await assertNoHorizontalOverflow(page, 'home page');
-  });
-
-  test('visual snapshot', async ({ page }) => {
-    await expect(page).toHaveScreenshot('home.png', { fullPage: true });
+    await page.waitForURL('https://tacticalsync.com/inbox');
+    expect(page.url()).toBe('https://tacticalsync.com/inbox');
   });
 });
 

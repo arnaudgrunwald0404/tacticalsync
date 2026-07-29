@@ -35,7 +35,11 @@ async function createAndLoginUser(page: import('@playwright/test').Page): Promis
   });
   if (error || !data.user) throw new Error(`Failed to create test user: ${error?.message}`);
 
-  await page.goto('/');
+  // Use '/auth' rather than '/' to land on a same-origin page before touching
+  // storage — '/' is now a hard external redirect (see ExternalRedirect in
+  // src/App.tsx) and would navigate the page away from localhost before (or
+  // while) the localStorage/sessionStorage calls below run.
+  await page.goto('/auth');
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
 
   const { data: sessionData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({ email, password });
