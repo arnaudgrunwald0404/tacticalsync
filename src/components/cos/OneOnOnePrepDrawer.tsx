@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
 import { useColleagueSuggestions } from '@/hooks/useColleagueSuggestions';
+import { useOrgTalkingPoints } from '@/hooks/useOrgTalkingPoints';
 import { toolLabel, STATIC_TOOLS, buildStackOneTools, STACKONE_PROVIDER_CATALOG, type PrepToolDef } from '@/lib/prepTools';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import type {
@@ -307,6 +308,10 @@ export function OneOnOnePrepDrawer({
 
   const { topics: relTopics, updateTopicStatus } = useRelationshipTopics(member?.id ?? null);
   const { commitments: forgottenItems } = useForgottenCommitments(member?.id ?? null);
+  // Idea #11: org-wide talking points from leadership — direct_report only (§2.7).
+  const { points: orgTalkingPoints, dismiss: dismissOrgTalkingPoint } = useOrgTalkingPoints(
+    member && member.relationship_type === 'direct_report' ? member.id : null
+  );
   const {
     suggestions: colleagueSuggestions,
     accept: acceptColleagueSuggestion,
@@ -675,6 +680,7 @@ export function OneOnOnePrepDrawer({
   const toggleCustomPoint = (id: string) =>
     setCustomPoints(prev => prev.map(p => p.id === id ? { ...p, included: !p.included } : p));
   const includedCount =
+    orgTalkingPoints.filter(p => !p.dismissed).length +
     rankedPoints.filter(p => !excludedPoints.has(p.key)).length +
     customPoints.filter(p => p.included).length;
 
@@ -1031,21 +1037,35 @@ export function OneOnOnePrepDrawer({
                   } />
                   <p className="text-[12.5px] text-muted-foreground mt-1 mb-0.5">Pulled from your prep notes, ordered by priority. Check the ones to cover — checked topics become your agenda.</p>
 
-                  {rankedPoints.length === 0 && customPoints.length === 0 ? (
+                  {rankedPoints.length === 0 && customPoints.length === 0 && orgTalkingPoints.length === 0 ? (
                     (aiGenerating || refreshing) ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 border-t border-border/60"><Loader2 className="h-4 w-4 animate-spin" />Generating your prep brief…</div>
                     ) : (
                       <p className="text-[13px] text-muted-foreground italic py-6 border-t border-border/60">No topics yet — hit AI generate to draft a brief.</p>
                     )
                   ) : (() => {
+                      const visibleOrgPoints = orgTalkingPoints.filter(p => !p.dismissed);
+                      const dismissedOrgPoints = orgTalkingPoints.filter(p => p.dismissed);
                       const visibleRanked = rankedPoints.filter(p => !excludedPoints.has(p.key));
                       const dismissedRanked = rankedPoints.filter(p => excludedPoints.has(p.key));
                       const dismissedCustom = customPoints.filter(p => !p.included);
-                      const dismissedCount = dismissedRanked.length + dismissedCustom.length;
+                      const dismissedCount = dismissedOrgPoints.length + dismissedRanked.length + dismissedCustom.length;
                       const displayRanked = showAllPoints ? visibleRanked : visibleRanked.slice(0, TALKING_POINTS_VISIBLE);
                       const hiddenByPager = visibleRanked.length > TALKING_POINTS_VISIBLE ? visibleRanked.length - TALKING_POINTS_VISIBLE : 0;
                       return (
                         <>
+                          {visibleOrgPoints.map(p => (
+                            <button key={p.id} onClick={() => dismissOrgTalkingPoint(p.id)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
+                              <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-indigo-100 text-indigo-700">From leadership</span>
+                                  <span className="text-[14.5px] font-semibold">{p.title}</span>
+                                </div>
+                                <div className="text-[13px] text-muted-foreground mt-1.5 leading-[1.5]">{p.body}</div>
+                              </div>
+                            </button>
+                          ))}
                           {displayRanked.map(p => (
                             <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3.5 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px]">
                               <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] bg-primary grid place-items-center"><Check className="h-3.5 w-3.5 text-primary-foreground" /></span>
@@ -1101,6 +1121,17 @@ export function OneOnOnePrepDrawer({
                               </button>
                               {showDismissed && (
                                 <>
+                                  {dismissedOrgPoints.map(p => (
+                                    <button key={p.id} onClick={() => dismissOrgTalkingPoint(p.id)} className="w-full flex gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px] opacity-50">
+                                      <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2.5">
+                                          <span className="text-[10.5px] font-bold tracking-wide px-[7px] py-0.5 rounded bg-indigo-100 text-indigo-700">From leadership</span>
+                                          <span className="text-[13.5px] line-through text-muted-foreground">{p.title}</span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
                                   {dismissedRanked.map(p => (
                                     <button key={p.key} onClick={() => togglePoint(p.key)} className="w-full flex gap-3.5 py-3 text-left border-t border-border/60 hover:bg-muted/40 transition-colors -mx-[22px] px-[22px] opacity-50">
                                       <span className="w-5 h-5 flex-shrink-0 mt-px rounded-[5px] border-[1.5px] border-input bg-background" />
