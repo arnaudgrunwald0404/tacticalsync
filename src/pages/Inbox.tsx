@@ -53,6 +53,11 @@ type SortMode = 'grouped' | 'byProject';
 // ── Keyboard shortcuts — first-press education toast (Section 5.1) ──────────
 // localStorage-gated to once-ever, not once-per-session, so returning users
 // aren't nagged after the first time they discover keyboard nav.
+// source_ref.type values produced by extract-inbox-action-items — both
+// Gmail and Slack agent_question items belong in the dark blue suggestions
+// panel, not just Gmail's (see isGmailAgentItem below).
+const AGENT_SUGGESTION_SOURCE_TYPES = new Set(['gmail_message', 'slack_message']);
+
 const SHORTCUTS_TOAST_SEEN_KEY = 'inbox_shortcuts_toast_seen';
 function hasSeenShortcutsToast(): boolean {
   try { return localStorage.getItem(SHORTCUTS_TOAST_SEEN_KEY) === '1'; } catch { return true; }
@@ -449,14 +454,14 @@ export default function InboxPage() {
 
   const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
-  // Gmail agent_question items live in the dark blue suggestions panel, not the main list.
+  // Gmail + Slack agent_question items live in the dark blue suggestions panel, not the main list.
   // Only items still requiring action (action_required: true) belong in the panel.
   // Accepting one promotes it to type: 'task' (handleTagGmailItem/handleApproveSuggestion),
   // so it legitimately falls through into the main list as a real item; dismissing one
   // archives it (handleDismissGmailItem) so it leaves the inbox entirely instead.
   const isGmailAgentItem = (i: InboxItem) =>
     i.type === 'agent_question'
-    && (i.source_ref as { type?: string } | null)?.type === 'gmail_message'
+    && AGENT_SUGGESTION_SOURCE_TYPES.has((i.source_ref as { type?: string } | null)?.type ?? '')
     && Boolean((i.agent_payload as { action_required?: boolean } | null)?.action_required);
   const gmailAgentItems = useMemo(() => allItems.filter(isGmailAgentItem), [allItems]);
   const items = useMemo(() => rawItems.filter(i => !isGmailAgentItem(i)), [rawItems]);

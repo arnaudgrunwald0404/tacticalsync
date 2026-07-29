@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { type EventCategory } from '@/lib/calendar/matchEventToMember';
 import GroupMeetingsManager from '@/components/cos/GroupMeetingsManager';
+import { ClipPlayer } from '@/components/media/ClipPlayer';
 
 export type MemberRelationshipType =
   | 'direct_report' | 'collaborator' | 'boss' | 'peer' | 'skip_level' | 'stakeholder' | 'external';
@@ -67,6 +68,13 @@ export interface MemberQuote {
   quote: string;
   said_on: string;
   source: string | null;
+  // Soundbites (PLAN_idea10_meeting_intelligence_enrichment.md §B4): present
+  // only when the quote came from a Zoom recording AND the alignment step in
+  // extract-zoom-quotes/index.ts could confidently resolve a time range for
+  // it — null/absent quotes fall back to today's text-only display.
+  recording_id?: string | null;
+  start_seconds?: number | null;
+  end_seconds?: number | null;
 }
 
 interface OneOnOnesViewProps {
@@ -305,14 +313,24 @@ export function OneOnOnesView({
       const db = supabase as any;
       const { data } = await db
         .from('cos_member_quotes')
-        .select('team_member_id, quote, said_on, source')
+        .select('team_member_id, quote, said_on, source, recording_id, start_seconds, end_seconds')
         .eq('featured', true)
         .order('said_on', { ascending: false });
       if (!data) return;
       const map: Record<string, MemberQuote> = {};
-      for (const row of data as Array<{ team_member_id: string; quote: string; said_on: string; source: string | null }>) {
+      for (const row of data as Array<{
+        team_member_id: string; quote: string; said_on: string; source: string | null;
+        recording_id: string | null; start_seconds: number | null; end_seconds: number | null;
+      }>) {
         if (!map[row.team_member_id]) {
-          map[row.team_member_id] = { quote: row.quote, said_on: row.said_on, source: row.source };
+          map[row.team_member_id] = {
+            quote: row.quote,
+            said_on: row.said_on,
+            source: row.source,
+            recording_id: row.recording_id,
+            start_seconds: row.start_seconds,
+            end_seconds: row.end_seconds,
+          };
         }
       }
       setHeroQuotes(map);
@@ -641,6 +659,18 @@ function UpNextHero({
           <div className="bg-white/10 rounded-lg px-4 py-3">
             <p className="text-[15px] leading-relaxed italic text-white/90">"{heroQuotes[member.id].quote}"</p>
             <p className="text-[11px] text-white/45 mt-1.5">{format(parseLocalDate(heroQuotes[member.id].said_on), 'MMM d, yyyy')}</p>
+            {/* Soundbite (PLAN_idea10 §B4) — only when alignment resolved a
+                verified time range; older/unresolved quotes stay text-only. */}
+            {heroQuotes[member.id].recording_id && heroQuotes[member.id].start_seconds != null && heroQuotes[member.id].end_seconds != null && (
+              <div className="mt-2">
+                <ClipPlayer
+                  recordingId={heroQuotes[member.id].recording_id!}
+                  startSeconds={heroQuotes[member.id].start_seconds!}
+                  endSeconds={heroQuotes[member.id].end_seconds!}
+                  variant="onDark"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -828,6 +858,18 @@ function UpNextHeroEvent({
           <div className="bg-white/10 rounded-lg px-4 py-3">
             <p className="text-[15px] leading-relaxed italic text-white/90">"{heroQuotes[event.team_member_id].quote}"</p>
             <p className="text-[11px] text-white/45 mt-1.5">{format(parseLocalDate(heroQuotes[event.team_member_id].said_on), 'MMM d, yyyy')}</p>
+            {/* Soundbite (PLAN_idea10 §B4) — only when alignment resolved a
+                verified time range; older/unresolved quotes stay text-only. */}
+            {heroQuotes[event.team_member_id].recording_id && heroQuotes[event.team_member_id].start_seconds != null && heroQuotes[event.team_member_id].end_seconds != null && (
+              <div className="mt-2">
+                <ClipPlayer
+                  recordingId={heroQuotes[event.team_member_id].recording_id!}
+                  startSeconds={heroQuotes[event.team_member_id].start_seconds!}
+                  endSeconds={heroQuotes[event.team_member_id].end_seconds!}
+                  variant="onDark"
+                />
+              </div>
+            )}
           </div>
         )}
 
