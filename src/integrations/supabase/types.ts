@@ -1679,6 +1679,50 @@ export type Database = {
           },
         ]
       }
+      cos_meeting_analysis: {
+        Row: {
+          analyzed_at: string
+          created_at: string
+          id: string
+          meeting_duration_seconds: number | null
+          overall_sentiment: string | null
+          recording_id: string
+          sentiment_rationale: string | null
+          talk_time_seconds: Json
+          user_id: string
+        }
+        Insert: {
+          analyzed_at?: string
+          created_at?: string
+          id?: string
+          meeting_duration_seconds?: number | null
+          overall_sentiment?: string | null
+          recording_id: string
+          sentiment_rationale?: string | null
+          talk_time_seconds?: Json
+          user_id: string
+        }
+        Update: {
+          analyzed_at?: string
+          created_at?: string
+          id?: string
+          meeting_duration_seconds?: number | null
+          overall_sentiment?: string | null
+          recording_id?: string
+          sentiment_rationale?: string | null
+          talk_time_seconds?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_meeting_analysis_recording_id_fkey"
+            columns: ["recording_id"]
+            isOneToOne: true
+            referencedRelation: "cos_zoom_recordings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dci_meeting_schedule: {
         Row: {
           action_items_extracted: boolean
