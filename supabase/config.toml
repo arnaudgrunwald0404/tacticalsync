@@ -83,3 +83,10 @@ verify_jwt = true
 # Authorization header, same as agent-tick/daily-prep-batch/inbox-unsnooze-sweep.
 [functions.rcdo-stale-check]
 verify_jwt = false
+
+# Soundbites audio-streaming proxy (PLAN_idea10 §B3). A native <audio>/<video>
+# element can't attach a custom Authorization header, so the gateway-level JWT
+# check can't run here — auth happens inside the function against a JWT
+# passed via an access_token query param instead. See zoom-media-proxy/index.ts.
+[functions.zoom-media-proxy]
+verify_jwt = false

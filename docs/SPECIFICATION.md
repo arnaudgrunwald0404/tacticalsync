@@ -435,6 +435,30 @@ Flagging these here so they're tracked centrally rather than rediscovered. None 
 - Extend the account-linking pattern (built for Manager Signals/People Delegation) to any future "track a colleague" feature rather than reinventing free-text CRM rows.
 - ~~Fix the Slack channel-allowlist column mismatch (§13.11)~~ — done, see PR #147. ~~Decide whether the legacy Socket Mode bot (§13.15) should be archived~~ — done, confirmed undeployed and removed.
 
+### Competitive-gap ideas (not yet scoped)
+A competitive scan of agentic 1:1/chief-of-staff tools (Fellow, Lattice, 15Five, Leapsome, Fireflies, Reclaim, Bond, Littlebird, Tana) plus ClearCo's own just-launched Agent Platform surfaced a ranked set of strategic opportunities and a longer tail of small feature ideas. None of the following are scoped or approved — flagging here per this document's own convention so they're tracked centrally rather than re-discovered.
+
+**Strategic (ranked, most-leveraged first — see the full competitive brief for reasoning and sourcing):**
+1. Register the agentic core (`agent-tick`/`delegate-inbox-task`) as a ClearCo Agent Studio Talent Agent — both already speak the same MCP/StackOne substrate.
+2. Close the relationship-memory loop into a real queryable interface, and fix its one-sided consent gap (§13.9) at the same time, not separately.
+3. Extend Manager Signals (§7.8) into cross-report pattern detection ("3 reports raising the same theme") for a manager-of-managers audience.
+4. Pull JIRA/GitHub/Linear ticket context into 1:1 prep via the StackOne connector already wired in (§8.6), not just as a generic key-based integration.
+5. Wire RCDO goals into the 1:1 agenda — closes the existing RCDO↔CoS architectural seam (§14 structural cleanup) and matches competitor table stakes.
+6. Position TacticalSync's 1:1/commitment history as an evidence feed for ClearCo's own Review Agent, rather than building a competing review-drafting feature.
+7. Voice modality (Lattice shipped this in 2026) — fast-follow only, not urgent.
+8. Deprioritized on current market evidence: in-meeting real-time coaching prompts (highest intrusiveness risk, lowest market maturity), and matching Tana's live in-call ticket/document filing.
+
+**Small, currently un-scoped feature ideas** (beyond the 3 now in planning — see `PLAN_idea10_meeting_intelligence_enrichment.md` for shareable audio clips + sentiment/talk-time, and `PLAN_idea11_org_wide_talking_points.md` for org-wide recurring talking points):
+- Peer recognition/kudos (15Five's "High Fives") — TacticalSync has no peer-to-peer signal of any kind in its data model today, manager↔report only.
+- A feedback-request flow (Leapsome) — soliciting feedback from named colleagues, distinct from the existing task-delegation system.
+- Auto-reschedule a 1:1 on calendar conflict (Reclaim's "Smart 1:1s") — today TacticalSync reads calendar events for prep but never acts on them.
+- A meeting-anchored "~2 hours out" reminder with the agenda inline (Lattice) — a different cadence than `agent-tick`'s 30-min tick/digest and the 4×/day extraction cron.
+- A post-meeting "close out your agenda" nudge (Lattice), distinct from the general daily digest.
+- Notify the report when their 1:1 prep is ready / a meeting is scheduled (Lattice) — the cheapest first step on the §13.9 consent gap, since today a report likely has no visibility that a prep brief exists for them at all.
+- A "past activity" context panel in the prep drawer with one-click add-to-agenda (Lattice), surfacing prior topics/quotes as clickable chips instead of requiring the manager to recall/retype them.
+- Cross-meeting semantic search ("search everything I've discussed," Fireflies' Global AskFred) — a smaller, shippable-sooner stepping stone toward the full relationship-memory-graph vision in strategic item #2 above.
+- Open question, not a build item: is the weekly check-in matrix (`cos_dci_logs`) under-invested in relative to 1:1 prep? 15Five's entire design center of gravity is the weekly async pulse; TacticalSync's UX investment has visibly gone toward 1:1 prep instead. Worth a deliberate look at whether that's the right emphasis.
+
 ### How to extend this document
 When you ship a new subsystem or materially change an existing one:
 1. Add or update the relevant module section (§5–7 pattern: hierarchy/schema → lifecycle → key pages → permissions/realtime → open items), or the relevant integration subsection in §8 if it's a new external system or a new Slack-touchpoint.
