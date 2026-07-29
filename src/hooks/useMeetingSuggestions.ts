@@ -35,31 +35,34 @@ interface Member { id: string; name: string }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-interface UseMeetingSuggestionsArgs {
+// Generic over Destination: each caller has its own idea of "where this goes"
+// (the Inbox panel passes an array of tag ids; the Chief-of-Staff panel passes
+// a single category string) — the hook never inspects it, just forwards it.
+interface UseMeetingSuggestionsArgs<Destination> {
   userId: string | null;
   layoutConfig: CosLayoutConfig;
   members: Member[];
   /** Creates the actual list item. Owned by the parent so its optimistic
    *  priorities state stays in sync. */
-  onAddToList: (tagIds: string[], title: string) => Promise<void> | void;
+  onAddToList: (destination: Destination, title: string) => Promise<void> | void;
 }
 
-interface UseMeetingSuggestionsReturn {
+interface UseMeetingSuggestionsReturn<Destination> {
   suggestions: MeetingSuggestion[];
   loading: boolean;
   refreshing: boolean;
   targetOptions: TargetOption[];
   resolve: (category: string | null | undefined) => TargetOption | undefined;
-  addToList: (id: string, tagIds: string[]) => Promise<void>;
+  addToList: (id: string, destination: Destination) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
 const STALE_DAYS = 14;
 
-export function useMeetingSuggestions({
+export function useMeetingSuggestions<Destination>({
   userId, layoutConfig, members, onAddToList,
-}: UseMeetingSuggestionsArgs): UseMeetingSuggestionsReturn {
+}: UseMeetingSuggestionsArgs<Destination>): UseMeetingSuggestionsReturn<Destination> {
   const [suggestions, setSuggestions] = useState<MeetingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -95,7 +98,7 @@ export function useMeetingSuggestions({
 
   useEffect(() => { load(); }, [load]);
 
-  const addToList = useCallback(async (id: string, tagIds: string[]) => {
+  const addToList = useCallback(async (id: string, destination: Destination) => {
     if (pendingRef.current.has(id)) return; // already being actioned — avoid a duplicate add
     const suggestion = suggestions.find(s => s.id === id);
     if (!suggestion) return;
@@ -112,7 +115,7 @@ export function useMeetingSuggestions({
         .from('dci_suggested_tasks')
         .update({ status: 'accepted' })
         .eq('id', id);
-      await onAddToList(tagIds, suggestion.title);
+      await onAddToList(destination, suggestion.title);
     } finally {
       pendingRef.current.delete(id);
     }
