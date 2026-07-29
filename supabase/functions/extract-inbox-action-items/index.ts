@@ -507,6 +507,7 @@ serve(async (req) => {
               text: summary,
               agent_payload: {
                 source: source.source,
+                label: source.label,
                 rationale: finding.rationale,
                 intent_type: finding.intent_type,
                 ...(source.senderEmail ? { sender_email: source.senderEmail } : {}),

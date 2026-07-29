@@ -89,6 +89,15 @@ export function InboxSuggestionsPanel({
 
   const recommendedTag = (s: MeetingSuggestion) => s.tag_suggestions?.[0];
 
+  // gmailAgentItems (from extract-inbox-action-items via Inbox.tsx's
+  // isGmailAgentItem) actually mixes both Gmail- and Slack-sourced
+  // agent_question items — split by source_ref.type for source-specific
+  // icon/label/link treatment below.
+  const isSlackAgentItem = (item: InboxItem) =>
+    (item.source_ref as { type?: string } | null)?.type === 'slack_message';
+  const emailAgentItems = gmailAgentItems.filter(item => !isSlackAgentItem(item));
+  const slackAgentItems = gmailAgentItems.filter(isSlackAgentItem);
+
   // Viewing a specific project/folder: only surface suggestions tagged for it.
   const scopedSuggestions = scopeTagIds?.length
     ? suggestions.filter(s => s.tag_suggestions?.some(ts => scopeTagIds.includes(ts.tag_id)))
@@ -98,8 +107,12 @@ export function InboxSuggestionsPanel({
   // Must be above early returns to satisfy rules-of-hooks.
   const swipeItems = useMemo<SwipeItem[]>(() => [
     ...gmailAgentItems.map(item => {
-      const payload = item.agent_payload as { gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string } | null;
+      const payload = item.agent_payload as { gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string; label?: string } | null;
+      const isSlack = isSlackAgentItem(item);
       const senderEmail = payload?.sender_email ?? '';
+      const subtitle = isSlack
+        ? (payload?.label ?? 'From Slack')
+        : (senderEmail ? `From ${senderEmail}` : 'From email');
       const intentLabel = payload?.intent_type === 'question' ? 'Question'
         : payload?.intent_type === 'decision_needed' ? 'Decision needed'
         : payload?.intent_type === 'introduction' ? 'Introduction'
@@ -108,9 +121,9 @@ export function InboxSuggestionsPanel({
       return {
         id: item.id,
         title: item.text,
-        subtitle: senderEmail ? `From ${senderEmail}` : 'From email',
+        subtitle,
         badge: intentLabel,
-        icon: <Mail className="h-4 w-4 text-white/60" />,
+        icon: isSlack ? <Slack className="h-4 w-4 text-white/60" /> : <Mail className="h-4 w-4 text-white/60" />,
         recommendedLabel: rec ? `Add to ${rec.tag_name}` : 'Add to inbox',
         recommendedColor: rec?.color,
         onAccept: () => {
@@ -213,9 +226,9 @@ export function InboxSuggestionsPanel({
   if (scopedSuggestions.length === 0 && gmailAgentItems.length === 0) return null;
 
   const MEETING_TYPES = new Set(['meeting', 'one_on_one', 'recurring_meeting', 'group_meeting']);
-  const hasEmail = gmailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
+  const hasEmail = emailAgentItems.length > 0 || scopedSuggestions.some(s => s.source_type === 'email');
   const SLACK_TYPES = new Set(['slack', 'slack_dm', 'slack_channel']);
-  const hasSlack = scopedSuggestions.some(s => SLACK_TYPES.has(s.source_type ?? ''));
+  const hasSlack = slackAgentItems.length > 0 || scopedSuggestions.some(s => SLACK_TYPES.has(s.source_type ?? ''));
   const hasMeetings = scopedSuggestions.some(s => MEETING_TYPES.has(s.source_type ?? ''));
   const allOneOnOne = scopedSuggestions.every(s => s.source_type === 'one_on_one');
 
@@ -279,122 +292,146 @@ export function InboxSuggestionsPanel({
       {/* Desktop: full item list */}
       <div className="hidden sm:block">
 
-      {/* Gmail action items — shown first, always fully expanded */}
-      {gmailAgentItems.length > 0 && (
-        <div className="space-y-2 mb-2">
-          <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-white/40">From email</p>
-          {gmailAgentItems.map(item => {
-            const payload = item.agent_payload as {
-              gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string;
-            } | null;
-            const gmailUrl = payload?.gmail_url;
-            const senderEmail = payload?.sender_email ?? '';
-            const intentLabel = payload?.intent_type === 'question' ? 'Question'
-              : payload?.intent_type === 'decision_needed' ? 'Decision needed'
-              : payload?.intent_type === 'introduction' ? 'Introduction'
-              : 'Request';
-            return (
-              <div
-                key={item.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
-              >
-                <Mail className="h-3.5 w-3.5 shrink-0 text-white/60" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{item.text}</p>
-                    {gmailUrl && (
-                      <a
-                        href={gmailUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
-                        title="Reply in Gmail"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <p className="truncate text-xs text-white/60">
-                      {senderEmail ? `From ${senderEmail}` : 'From email'}
-                      {payload?.rationale ? ` · ${payload.rationale}` : ''}
-                    </p>
-                    <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                      {intentLabel}
-                    </span>
-                  </div>
+      {/* Email/Slack action items (from extract-inbox-action-items) — shown first, always fully expanded */}
+      {(emailAgentItems.length > 0 || slackAgentItems.length > 0) && (() => {
+        const renderAgentItem = (item: InboxItem, isSlack: boolean) => {
+          const payload = item.agent_payload as {
+            gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string; label?: string;
+          } | null;
+          const gmailUrl = !isSlack ? payload?.gmail_url : undefined;
+          const senderEmail = payload?.sender_email ?? '';
+          const originLabel = isSlack
+            ? (payload?.label ?? 'From Slack')
+            : (senderEmail ? `From ${senderEmail}` : 'From email');
+          const intentLabel = payload?.intent_type === 'question' ? 'Question'
+            : payload?.intent_type === 'decision_needed' ? 'Decision needed'
+            : payload?.intent_type === 'introduction' ? 'Introduction'
+            : 'Request';
+          return (
+            <div
+              key={item.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5"
+            >
+              {isSlack
+                ? <Slack className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                : <Mail className="h-3.5 w-3.5 shrink-0 text-white/60" />}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">{item.text}</p>
+                  {gmailUrl && (
+                    <a
+                      href={gmailUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
+                      title="Reply in Gmail"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
-                {/* Forces action buttons onto their own line on mobile */}
-                <div className="basis-full sm:hidden" />
-                {onTagGmailItem && (() => {
-                  const rec = item.tag_suggestions?.[0];
-                  return (
-                    <>
-                      {rec ? (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="truncate text-xs text-white/60">
+                    {originLabel}
+                    {payload?.rationale ? ` · ${payload.rationale}` : ''}
+                  </p>
+                  <span className="shrink-0 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                    {intentLabel}
+                  </span>
+                </div>
+              </div>
+              {/* Forces action buttons onto their own line on mobile */}
+              <div className="basis-full sm:hidden" />
+              {onTagGmailItem && (() => {
+                const rec = item.tag_suggestions?.[0];
+                return (
+                  <>
+                    {rec ? (
+                      <Button
+                        size="sm"
+                        onClick={() => void onTagGmailItem(item.id, rec.tag_id)}
+                        className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
+                        title={rec.reason}
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
+                        <span className="truncate">Add to {rec.tag_name}</span>
+                      </Button>
+                    ) : onApproveGmailItem && (
+                      <Button
+                        size="sm"
+                        onClick={() => void onApproveGmailItem(item)}
+                        className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="truncate">Add to inbox</span>
+                      </Button>
+                    )}
+                    <TagPickerDropdown
+                      allTags={destinationTags}
+                      itemTags={item.tags ?? []}
+                      onSelectTags={tagIds => {
+                        if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
+                      }}
+                      onCreateTag={onCreateTag}
+                      teamMembers={teamMembers}
+                      onCreatePersonTag={onCreatePersonTag}
+                      topOptions={[]}
+                      renderTrigger={({ toggle }) => (
                         <Button
                           size="sm"
-                          onClick={() => void onTagGmailItem(item.id, rec.tag_id)}
-                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
-                          title={rec.reason}
+                          variant="outline"
+                          onClick={toggle}
+                          className={cn(
+                            'h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white',
+                            !rec && 'ml-[26px] sm:ml-0'
+                          )}
+                          title="Add to a project"
                         >
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rec.color }} />
-                          <span className="truncate">Add to {rec.tag_name}</span>
-                        </Button>
-                      ) : onApproveGmailItem && (
-                        <Button
-                          size="sm"
-                          onClick={() => void onApproveGmailItem(item)}
-                          className="h-8 shrink-0 gap-1.5 bg-white/20 px-3 text-white hover:bg-white/30 border-0 ml-[26px] flex-1 sm:ml-0 sm:flex-none sm:max-w-[200px]"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          <span className="truncate">Add to inbox</span>
+                          {rec ? <ChevronDown className="h-3.5 w-3.5 opacity-60" /> : <>Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" /></>}
                         </Button>
                       )}
-                      <TagPickerDropdown
-                        allTags={destinationTags}
-                        itemTags={item.tags ?? []}
-                        onSelectTags={tagIds => {
-                          if (tagIds[0]) void onTagGmailItem(item.id, tagIds[0]);
-                        }}
-                        onCreateTag={onCreateTag}
-                        teamMembers={teamMembers}
-                        onCreatePersonTag={onCreatePersonTag}
-                        topOptions={[]}
-                        renderTrigger={({ toggle }) => (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={toggle}
-                            className={cn(
-                              'h-8 shrink-0 gap-1 border-white/30 bg-transparent px-2.5 text-white hover:bg-white/20 hover:text-white',
-                              !rec && 'ml-[26px] sm:ml-0'
-                            )}
-                            title="Add to a project"
-                          >
-                            {rec ? <ChevronDown className="h-3.5 w-3.5 opacity-60" /> : <>Add to…<ChevronDown className="h-3.5 w-3.5 opacity-60" /></>}
-                          </Button>
-                        )}
-                      />
-                    </>
-                  );
-                })()}
-                <button
-                  onClick={() => onDismissGmailItem?.(item.id)}
-                  className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
-                  aria-label="Mark handled"
-                  title="Mark handled"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                    />
+                  </>
+                );
+              })()}
+              <button
+                onClick={() => onDismissGmailItem?.(item.id)}
+                className="shrink-0 rounded-md p-1.5 text-white/50 hover:bg-white/15 hover:text-white transition-colors"
+                aria-label="Mark handled"
+                title="Mark handled"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        };
+
+        // "From Slack" is also used below by the separate scopedSuggestions-based
+        // Slack block (a different data source entirely) — qualify this one's
+        // label when both would otherwise stack with the same heading.
+        const slackHeaderLabel = slackSuggestions.length > 0 ? 'From Slack — action items' : 'From Slack';
+
+        return (
+          <>
+            {emailAgentItems.length > 0 && (
+              <div className="space-y-2 mb-2">
+                <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-white/40">From email</p>
+                {emailAgentItems.map(item => renderAgentItem(item, false))}
               </div>
-            );
-          })}
-          {(slackSuggestions.length > 0 || otherSuggestions.length > 0) && (
-            <div className="border-t border-white/10 pt-2" />
-          )}
-        </div>
-      )}
+            )}
+            {slackAgentItems.length > 0 && (
+              <div className="space-y-2 mb-2">
+                <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-white/40">{slackHeaderLabel}</p>
+                {slackAgentItems.map(item => renderAgentItem(item, true))}
+              </div>
+            )}
+            {(slackSuggestions.length > 0 || otherSuggestions.length > 0) && (
+              <div className="border-t border-white/10 pt-2 mb-2" />
+            )}
+          </>
+        );
+      })()}
 
       {/* Slack suggestions — shown next, always fully expanded (same treatment as email) */}
       {slackSuggestions.length > 0 && (

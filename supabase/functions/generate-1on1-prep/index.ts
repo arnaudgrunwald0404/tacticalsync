@@ -272,6 +272,34 @@ serve(async (req) => {
       context_notes: string | null; email: string | null; last_1on1_date: string | null;
     }
 
+    // ── Idea #11: org-wide talking points from leadership (direct_report only) ──
+    // Two separate queries (active points, then this user+member's dismissed
+    // ids), filtered in code — deliberately not a raw SQL subquery/string
+    // interpolation, per PLAN_idea11_org_wide_talking_points.md §4.1's
+    // explicit injection-risk callout.
+    let orgTalkingPoints: Array<{ id: string; title: string; body: string }> = []
+    if (member.relationship_type === 'direct_report') {
+      const [activeTpRes, dismissedTpRes] = await Promise.all([
+        supabase
+          .from('cos_org_talking_points')
+          .select('id, title, body')
+          .eq('active', true)
+          .eq('target_scope', 'company')
+          .lte('starts_on', todayDate)
+          .gte('ends_on', todayDate),
+        supabase
+          .from('cos_org_talking_point_dismissals')
+          .select('talking_point_id')
+          .eq('user_id', userId)
+          .eq('team_member_id', team_member_id),
+      ])
+      const dismissedIds = new Set(
+        (dismissedTpRes.data ?? []).map((d: { talking_point_id: string }) => d.talking_point_id)
+      )
+      orgTalkingPoints = ((activeTpRes.data ?? []) as Array<{ id: string; title: string; body: string }>)
+        .filter(tp => !dismissedIds.has(tp.id))
+    }
+
     // Load quarterly priorities + monthly commitments if quarter exists
     let quarterlyPriorities: Array<{ title: string; description: string | null; status: string }> = []
     let monthlyCommitments: Array<{ title: string; description: string | null; status: string }> = []
@@ -523,6 +551,7 @@ serve(async (req) => {
     if (relTopics.length > 0) dataSources.push('relationship_memory')
     if (forgottenItems.length > 0) dataSources.push('forgotten_commitments')
     if (openDelegations.length > 0) dataSources.push('open_delegations')
+    if (orgTalkingPoints.length > 0) dataSources.push('org_talking_points')
 
     // ── Build prompt ───────────────────────────────────────────────────────
     // Order: real signal first (Slack, Zoom), then commitments/accountabilities,
@@ -536,6 +565,15 @@ serve(async (req) => {
     }
     if (member.context_notes) {
       contextParts.push(`Context about ${member.name}: ${member.context_notes}`)
+    }
+
+    // ── 0. Tier 0: org-wide talking point from leadership (Idea #11) ──────
+    // Highest-priority context — an admin-authored broadcast pushed into
+    // every direct report's 1:1 for a bounded period. Placed ahead of Tier 1
+    // so the model treats it as must-include, not optional background.
+    if (orgTalkingPoints.length > 0) {
+      contextParts.push(`\n=== TALKING POINT FROM LEADERSHIP (include as its own topic, do not paraphrase the substance away) ===`)
+      orgTalkingPoints.forEach(tp => contextParts.push(`  - ${tp.title}: ${tp.body}`))
     }
 
     // ── 1. Primary signal: Zoom recordings and transcripts ────────────────
@@ -787,7 +825,11 @@ serve(async (req) => {
       }
     }
 
-    const noSignalAtAll = !hasTier1Signal && !hasTier2Signal
+    // Presence of an org-wide leadership talking point (Tier 0) counts as
+    // signal on its own — it must always surface as its own topic, even for
+    // a person with no other communication history yet (Idea #11).
+    const hasTier0Signal = orgTalkingPoints.length > 0
+    const noSignalAtAll = !hasTier0Signal && !hasTier1Signal && !hasTier2Signal
 
     const systemPrompt = isExternal
       ? `You are a chief of staff assistant preparing a brief for an external meeting.
@@ -821,7 +863,10 @@ Format: use ## headings (not #), bullet points under each, keep it brief.
 ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\n` : ''}`
       : `You are a chief of staff assistant preparing a 1:1 meeting brief. Generate a concise, actionable prep document in Markdown format.
 
-CRITICAL — THREE-TIER SOURCE DISCIPLINE:
+CRITICAL — SOURCE DISCIPLINE (Tier 0 through Tier 3):
+
+Tier 0 — LEADERSHIP TALKING POINT (section marked "=== TALKING POINT FROM LEADERSHIP ==="), if present:
+This is the highest-priority tier, above Tier 1. It is an admin-authored broadcast pushed into every direct report's 1:1 for this period. ALWAYS include it as its own dedicated topic section in the output — do not paraphrase away its substance, do not omit it, and do not merge it silently into another section. Include it even if there is no other Tier 1/2/3 signal for this person.
 
 Tier 1 — PRIMARY SIGNAL (any section marked "=== RECENT ... ==="):
 Direct communications with this person — Zoom transcripts, Slack DMs, emails. Every talking point should be traceable to something concrete here, to a pending action item, or to the person's stated accountabilities. Quote directly where useful.
