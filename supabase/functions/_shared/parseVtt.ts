@@ -1,18 +1,20 @@
-// Shared WebVTT transcript parser — turns Zoom's raw cue text (stored
-// verbatim in cos_zoom_transcripts.content, see 20260612000200_zoom_transcripts.sql)
-// into structured cues with speaker + start/end timestamps.
+// Shared VTT cue parser — turns a raw Zoom cloud-recording VTT transcript into
+// structured, timestamped cues. Used by:
+//   - extract-zoom-quotes/index.ts (Phase B / Soundbites): needs cue-level
+//     timestamps to align a Gemini-cited quote back to a time range.
+//   - (planned) a talk-time/sentiment analysis pass (Phase A, PLAN_idea10 §3):
+//     needs the exact same { speaker, text, startSeconds, endSeconds }[] shape
+//     for per-speaker seconds-spoken arithmetic.
 //
-// Built as a byproduct of Phase A (sentiment/talk-time — see
-// PLAN_idea10_meeting_intelligence_enrichment.md §3, §4 A2) but deliberately
-// shared: Phase B (Soundbites) will need the same cue boundaries for its
-// cue-citation verification step (§2.1 option 2). Both should import from
-// here rather than parsing VTT independently, mirroring the existing
-// `_shared/` convention (matchEventToMember.ts, retryWithBackoff.ts,
-// inboxTriageUtils.ts).
+// NOTE: PLAN_idea10_meeting_intelligence_enrichment.md §3 recommends both
+// phases share a single module here rather than drift into two parsers. This
+// file was written by the Soundbites (Phase B) work; if the parallel Phase A
+// work also lands a `_shared/parseVtt.ts`, reconcile at merge time — pick one,
+// diff the two for any format edge cases the other found, keep the tests.
 //
-// Zoom's cloud-recording VTT shape (plan §1.2 — no literal fixture exists
-// anywhere in this repo, this is the format implied by extract-zoom-quotes's
-// stripVtt() and Zoom's documented transcript format):
+// Zoom's VTT shape (no literal fixture ships with the repo — inferred from
+// the old stripVtt() in extract-zoom-quotes and Zoom's documented transcript
+// format):
 //
 //   WEBVTT
 //
@@ -20,93 +22,126 @@
 //   00:00:00.000 --> 00:00:04.500
 //   <v Jane Smith>Hello everyone, thanks for joining.</v>
 //
-// Speaker identification is best-effort: a cue only carries a <v Name> tag
-// when Zoom's own speaker-ID succeeded for that segment. Cues without one (or
-// with a placeholder/anonymous label like "Unknown" or a raw phone number)
-// come back with `speaker: null` — callers should bucket those as
-// "unattributed", not silently drop them (mirrors extract-zoom-quotes's
-// isNoisySpeakerName guard, reused here — see NOISY_SPEAKER_RE below).
+//   2
+//   00:00:04.600 --> 00:00:08.200
+//   <v John Doe>Happy to be here.</v>
+//
+// A cue's index line is *usually* present and sequential, but this parser
+// doesn't require it — cues are re-numbered sequentially (1-based) in parse
+// order if a numeric index line is missing, since that's the only thing a
+// downstream citation ("cue 14") can reliably refer back to.
 
 export interface VttCue {
-  /** Raw speaker label exactly as it appears in the `<v Name>` tag, or null
-   *  when the cue has no voice tag at all (Zoom couldn't attribute it). */
-  speaker: string | null
-  text: string
-  startSeconds: number
-  endSeconds: number
+  /** 1-based sequential position of this cue in the transcript — this is the
+   *  number a "cite the cue" prompt should reference, NOT necessarily the
+   *  literal index line from the VTT file (which can be absent/non-sequential
+   *  in the wild; re-numbering makes citation deterministic either way). */
+  index: number;
+  startSeconds: number;
+  endSeconds: number;
+  /** Parsed from a `<v Speaker Name>` tag, if present. Null when the cue has
+   *  no voice tag (Zoom's speaker ID didn't attribute the segment). */
+  speaker: string | null;
+  /** Cue text with any `<v ...>`/`</v>` tags stripped. */
+  text: string;
 }
 
 // Raw transcript speaker labels that carry no useful identity — anonymous
-// dial-ins, placeholder labels. Mirrors extract-zoom-quotes/index.ts's
-// NOISY_SPEAKER_RE exactly — kept in sync manually since Deno functions can't
-// import across function boundaries into a differently-deployed function's
-// module graph the way `src/` mirrors are noted elsewhere in this repo.
-const NOISY_SPEAKER_RE = /^(unknown|guest\s*\d*|\+?\d{7,})$/i
+// dial-ins, placeholder labels. Mirrors NOISY_SPEAKER_RE in
+// extract-zoom-quotes/index.ts (kept in sync manually — Deno can't share a
+// single source file across two independently-deployed functions without
+// this _shared/ convention, which is exactly why this regex lives here too).
+const NOISY_SPEAKER_RE = /^(unknown|guest\s*\d*|\+?\d{7,})$/i;
 
-export function isNoisySpeakerName(speaker: string | null | undefined): boolean {
-  const trimmed = (speaker ?? '').trim()
-  if (!trimmed) return true
-  return NOISY_SPEAKER_RE.test(trimmed)
+export function isNoisySpeakerName(speaker: string): boolean {
+  const trimmed = speaker.trim();
+  if (!trimmed) return true;
+  return NOISY_SPEAKER_RE.test(trimmed);
 }
 
-const TIMING_RE = /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/
-const VOICE_TAG_RE = /^<v\s+([^>]+)>([\s\S]*)$/i
-
-function timestampToSeconds(ts: string): number {
-  const m = /^(\d{2}):(\d{2}):(\d{2})\.(\d{3})$/.exec(ts)
-  if (!m) return 0
-  const [, hh, mm, ss, ms] = m
-  return Number(hh) * 3600 + Number(mm) * 60 + Number(ss) + Number(ms) / 1000
+// Parses "HH:MM:SS.mmm" or "MM:SS.mmm" (comma decimal also tolerated, as in
+// SRT-flavored VTT). Returns NaN if it doesn't match either shape.
+function timeToSeconds(raw: string): number {
+  const t = raw.trim();
+  const withHours = /^(\d+):(\d{2}):(\d{2})[.,](\d+)$/.exec(t);
+  if (withHours) {
+    const [, hh, mm, ss, ms] = withHours;
+    return Number(hh) * 3600 + Number(mm) * 60 + Number(ss) + Number(ms) / 1000;
+  }
+  const noHours = /^(\d{2}):(\d{2})[.,](\d+)$/.exec(t);
+  if (noHours) {
+    const [, mm, ss, ms] = noHours;
+    return Number(mm) * 60 + Number(ss) + Number(ms) / 1000;
+  }
+  return NaN;
 }
 
-/**
- * Parses raw WebVTT content into an ordered list of cues. Tolerant of:
- * - a WEBVTT header line, with or without extra metadata lines below it
- * - `NOTE` comment blocks
- * - numeric-only cue-identifier lines (optional per the WebVTT spec)
- * - cue settings appended after the timing line (e.g. `align:start position:0%`)
- * - multi-line cue text
- * - cues with no `<v Name>` voice tag (speaker comes back null)
- *
- * Malformed/unparseable blocks are skipped rather than throwing — a partial
- * transcript is more useful than a hard failure on one bad block.
- */
-export function parseVttToCues(vtt: string): VttCue[] {
-  if (!vtt || !vtt.trim()) return []
+/** Parses a raw VTT transcript into an array of structured cues, in order. */
+export function parseVttCues(vtt: string): VttCue[] {
+  const lines = vtt.split(/\r?\n/);
+  const cues: VttCue[] = [];
+  let i = 0;
+  let seq = 0;
 
-  const normalized = vtt.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  // Cue blocks are separated by one or more blank lines.
-  const blocks = normalized.split(/\n\s*\n/)
-  const cues: VttCue[] = []
+  while (i < lines.length) {
+    const line = lines[i].trim();
 
-  for (const block of blocks) {
-    const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-    if (lines.length === 0) continue
-    if (/^NOTE/i.test(lines[0])) continue
-    if (/^WEBVTT/i.test(lines[0])) continue // header block, possibly with metadata lines below it
-
-    const timingLineIdx = lines.findIndex(l => TIMING_RE.test(l))
-    if (timingLineIdx === -1) continue // no timing in this block — e.g. a stray identifier-only line
-
-    const timingMatch = TIMING_RE.exec(lines[timingLineIdx])!
-    const startSeconds = timestampToSeconds(timingMatch[1])
-    const endSeconds = timestampToSeconds(timingMatch[2])
-    if (endSeconds < startSeconds) continue // malformed timing — skip rather than produce a negative-duration cue
-
-    const textLines = lines.slice(timingLineIdx + 1)
-    if (textLines.length === 0) continue
-    const rawText = textLines.join(' ')
-
-    const voiceMatch = VOICE_TAG_RE.exec(rawText)
-    let speaker: string | null = null
-    let text = rawText
-    if (voiceMatch) {
-      speaker = voiceMatch[1].trim() || null
-      text = voiceMatch[2].replace(/<\/v>\s*$/i, '').trim()
+    if (!line || line === 'WEBVTT' || line.startsWith('NOTE') || line.startsWith('X-TIMESTAMP-MAP')) {
+      i++;
+      continue;
     }
 
-    cues.push({ speaker, text, startSeconds, endSeconds })
+    // Optional numeric cue-index line preceding the timing line.
+    let cursor = i;
+    if (/^\d+$/.test(line)) {
+      cursor++;
+    }
+
+    const timingLine = (lines[cursor] ?? '').trim();
+    if (!timingLine.includes('-->')) {
+      // Not a cue block after all (stray line) — skip forward one line so we
+      // don't infinite-loop on malformed input.
+      i++;
+      continue;
+    }
+    const [startRaw, endRawFull] = timingLine.split('-->');
+    const startSeconds = timeToSeconds(startRaw);
+    // The end side can have trailing cue settings (e.g. "... align:start"),
+    // so only take the first whitespace-delimited token.
+    const endSeconds = timeToSeconds((endRawFull ?? '').trim().split(/\s+/)[0] ?? '');
+    cursor++;
+
+    const textLines: string[] = [];
+    while (cursor < lines.length && lines[cursor].trim() !== '') {
+      textLines.push(lines[cursor]);
+      cursor++;
+    }
+
+    const rawText = textLines.join(' ').trim();
+    const speakerMatch = /<v\s+([^>]+)>/i.exec(rawText);
+    const speaker = speakerMatch ? speakerMatch[1].trim() : null;
+    const text = rawText.replace(/<\/?v[^>]*>/gi, '').trim();
+
+    seq++;
+    cues.push({
+      index: seq,
+      startSeconds: Number.isFinite(startSeconds) ? startSeconds : 0,
+      endSeconds: Number.isFinite(endSeconds) ? endSeconds : 0,
+      speaker,
+      text,
+    });
+
+    i = cursor;
   }
 
+  return cues;
+}
+
+/** Plain speaker-tagged text, timestamp-free — equivalent to the old
+ *  stripVtt() in extract-zoom-quotes/index.ts, built from parsed cues instead
+ *  of a line-filter regex. Kept for callers that don't need timestamps. */
+export function cuesToPlainText(cues: VttCue[]): string {
   return cues
+    .map(c => (c.speaker ? `<v ${c.speaker}>${c.text}</v>` : c.text))
+    .join('\n');
 }

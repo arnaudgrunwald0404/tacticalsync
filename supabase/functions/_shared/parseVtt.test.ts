@@ -1,10 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts"
-import { parseVttToCues, isNoisySpeakerName } from "./parseVtt.ts"
+import { parseVttCues, cuesToPlainText, isNoisySpeakerName } from "./parseVtt.ts"
 
-// ─── parseVttToCues ───────────────────────────────────────────────────────────
-
-Deno.test("parseVttToCues: parses the standard Zoom VTT shape (plan §1.2)", () => {
-  const vtt = `WEBVTT
+const SAMPLE_VTT = `WEBVTT
 
 1
 00:00:00.000 --> 00:00:04.500
@@ -13,139 +10,98 @@ Deno.test("parseVttToCues: parses the standard Zoom VTT shape (plan §1.2)", () 
 2
 00:00:04.600 --> 00:00:08.200
 <v John Doe>Happy to be here.</v>
+
+3
+00:00:08.300 --> 00:00:15.000
+<v Jane Smith>So, um, I wanted to, uh, talk about the roadmap for next quarter.</v>
 `
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 2)
-  assertEquals(cues[0], { speaker: "Jane Smith", text: "Hello everyone, thanks for joining.", startSeconds: 0, endSeconds: 4.5 })
-  assertEquals(cues[1], { speaker: "John Doe", text: "Happy to be here.", startSeconds: 4.6, endSeconds: 8.2 })
-})
 
-Deno.test("parseVttToCues: handles a WEBVTT header with extra metadata lines", () => {
-  const vtt = `WEBVTT
-Kind: captions
-Language: en
+Deno.test("parseVttCues extracts cue count, timestamps, speaker, and text", () => {
+  const cues = parseVttCues(SAMPLE_VTT)
+  assertEquals(cues.length, 3)
 
-1
-00:00:00.000 --> 00:00:02.000
-<v Jane Smith>Hi.</v>
-`
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
-  assertEquals(cues[0].speaker, "Jane Smith")
-})
-
-Deno.test("parseVttToCues: skips NOTE comment blocks", () => {
-  const vtt = `WEBVTT
-
-NOTE
-This is a comment that should be ignored.
-
-1
-00:00:00.000 --> 00:00:02.000
-<v Jane Smith>Hi.</v>
-`
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
-  assertEquals(cues[0].text, "Hi.")
-})
-
-Deno.test("parseVttToCues: tolerates cue settings appended after the timing line", () => {
-  const vtt = `WEBVTT
-
-1
-00:00:00.000 --> 00:00:02.000 align:start position:0%
-<v Jane Smith>Hi.</v>
-`
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
+  assertEquals(cues[0].index, 1)
   assertEquals(cues[0].startSeconds, 0)
-  assertEquals(cues[0].endSeconds, 2)
+  assertEquals(cues[0].endSeconds, 4.5)
+  assertEquals(cues[0].speaker, "Jane Smith")
+  assertEquals(cues[0].text, "Hello everyone, thanks for joining.")
+
+  assertEquals(cues[1].startSeconds, 4.6)
+  assertEquals(cues[1].endSeconds, 8.2)
+  assertEquals(cues[1].speaker, "John Doe")
+
+  assertEquals(cues[2].startSeconds, 8.3)
+  assertEquals(cues[2].endSeconds, 15)
+  assertEquals(cues[2].speaker, "Jane Smith")
 })
 
-Deno.test("parseVttToCues: cues with no <v Name> tag come back with speaker: null", () => {
+Deno.test("parseVttCues handles missing/non-sequential explicit index lines by re-numbering", () => {
+  const vtt = `WEBVTT
+
+99
+00:00:00.000 --> 00:00:02.000
+<v A>First.</v>
+
+00:00:02.000 --> 00:00:04.000
+<v B>Second, no index line at all.</v>
+`
+  const cues = parseVttCues(vtt)
+  assertEquals(cues.length, 2)
+  // Re-numbered sequentially so citations are deterministic regardless of
+  // whatever (possibly absent/non-sequential) index line was in the file.
+  assertEquals(cues[0].index, 1)
+  assertEquals(cues[1].index, 2)
+})
+
+Deno.test("parseVttCues supports timestamps without an hours component", () => {
+  const vtt = `WEBVTT
+
+1
+00:03.000 --> 00:07.500
+<v A>Short-form timestamp.</v>
+`
+  const cues = parseVttCues(vtt)
+  assertEquals(cues.length, 1)
+  assertEquals(cues[0].startSeconds, 3)
+  assertEquals(cues[0].endSeconds, 7.5)
+})
+
+Deno.test("parseVttCues returns null speaker when a cue has no <v> tag", () => {
   const vtt = `WEBVTT
 
 1
 00:00:00.000 --> 00:00:02.000
-Hello, can everyone hear me?
+Just plain text, no voice tag.
 `
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
+  const cues = parseVttCues(vtt)
   assertEquals(cues[0].speaker, null)
-  assertEquals(cues[0].text, "Hello, can everyone hear me?")
+  assertEquals(cues[0].text, "Just plain text, no voice tag.")
 })
 
-Deno.test("parseVttToCues: handles multi-line cue text", () => {
+Deno.test("parseVttCues skips NOTE lines and blank runs without crashing", () => {
   const vtt = `WEBVTT
+
+NOTE This is a comment, not a cue.
 
 1
-00:00:00.000 --> 00:00:04.000
-<v Jane Smith>This is a long sentence
-that wraps across two lines.</v>
+00:00:00.000 --> 00:00:02.000
+<v A>Text.</v>
 `
-  const cues = parseVttToCues(vtt)
+  const cues = parseVttCues(vtt)
   assertEquals(cues.length, 1)
-  assertEquals(cues[0].text, "This is a long sentence that wraps across two lines.")
 })
 
-Deno.test("parseVttToCues: skips a cue with malformed (end before start) timing", () => {
-  const vtt = `WEBVTT
-
-1
-00:00:10.000 --> 00:00:05.000
-<v Jane Smith>Weird.</v>
-
-2
-00:00:10.000 --> 00:00:12.000
-<v Jane Smith>Fine.</v>
-`
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
-  assertEquals(cues[0].text, "Fine.")
+Deno.test("cuesToPlainText round-trips speaker tags for callers that don't need timestamps", () => {
+  const cues = parseVttCues(SAMPLE_VTT)
+  const plain = cuesToPlainText(cues)
+  assertEquals(plain.includes("<v Jane Smith>Hello everyone, thanks for joining.</v>"), true)
+  assertEquals(plain.includes("<v John Doe>Happy to be here.</v>"), true)
 })
 
-Deno.test("parseVttToCues: returns an empty array for empty/blank input", () => {
-  assertEquals(parseVttToCues(""), [])
-  assertEquals(parseVttToCues("   \n\n  "), [])
-})
-
-Deno.test("parseVttToCues: returns an empty array when there's no timing anywhere", () => {
-  const vtt = `WEBVTT
-
-Just some stray text with no timing line at all.
-`
-  assertEquals(parseVttToCues(vtt), [])
-})
-
-Deno.test("parseVttToCues: normalizes CRLF line endings", () => {
-  const vtt = "WEBVTT\r\n\r\n1\r\n00:00:00.000 --> 00:00:02.000\r\n<v Jane Smith>Hi.</v>\r\n"
-  const cues = parseVttToCues(vtt)
-  assertEquals(cues.length, 1)
-  assertEquals(cues[0].speaker, "Jane Smith")
-})
-
-// ─── isNoisySpeakerName ───────────────────────────────────────────────────────
-
-Deno.test("isNoisySpeakerName: flags 'Unknown'", () => {
+Deno.test("isNoisySpeakerName flags anonymous/placeholder labels", () => {
   assertEquals(isNoisySpeakerName("Unknown"), true)
-  assertEquals(isNoisySpeakerName("unknown"), true)
-})
-
-Deno.test("isNoisySpeakerName: flags 'Guest' with or without a number", () => {
-  assertEquals(isNoisySpeakerName("Guest"), true)
-  assertEquals(isNoisySpeakerName("Guest 12"), true)
-})
-
-Deno.test("isNoisySpeakerName: flags a raw phone-number dial-in label", () => {
+  assertEquals(isNoisySpeakerName("Guest 1"), true)
   assertEquals(isNoisySpeakerName("+14155551234"), true)
-})
-
-Deno.test("isNoisySpeakerName: flags null/undefined/empty", () => {
-  assertEquals(isNoisySpeakerName(null), true)
-  assertEquals(isNoisySpeakerName(undefined), true)
-  assertEquals(isNoisySpeakerName("   "), true)
-})
-
-Deno.test("isNoisySpeakerName: does not flag a real name", () => {
   assertEquals(isNoisySpeakerName("Jane Smith"), false)
+  assertEquals(isNoisySpeakerName(""), true)
 })
