@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,10 +67,13 @@ serve(async (req) => {
       if (!api_key?.trim()) return json({ error: 'api_key required' }, 400)
 
       // Validate by listing accounts
-      const resp = await fetch(`${STACKONE_API}/accounts`, {
-        headers: stackoneHeaders(api_key.trim()),
-        signal: AbortSignal.timeout(10_000),
-      })
+      const resp = await retryWithBackoff(
+        () => fetch(`${STACKONE_API}/accounts`, {
+          headers: stackoneHeaders(api_key.trim()),
+          signal: AbortSignal.timeout(10_000),
+        }),
+        { integration: 'stackone', label: 'save key (validate)' },
+      )
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '')
@@ -100,10 +104,13 @@ serve(async (req) => {
       const apiKey = await getStoredKey()
       if (!apiKey) return json({ error: 'not_configured' }, 400)
 
-      const resp = await fetch(`${STACKONE_API}/accounts`, {
-        headers: stackoneHeaders(apiKey),
-        signal: AbortSignal.timeout(10_000),
-      })
+      const resp = await retryWithBackoff(
+        () => fetch(`${STACKONE_API}/accounts`, {
+          headers: stackoneHeaders(apiKey),
+          signal: AbortSignal.timeout(10_000),
+        }),
+        { integration: 'stackone', label: 'list accounts' },
+      )
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '')
@@ -130,12 +137,15 @@ serve(async (req) => {
         sessionBody.categories = categories
       }
 
-      const resp = await fetch(`${STACKONE_API}/connect_sessions`, {
-        method: 'POST',
-        headers: stackoneHeaders(apiKey),
-        body: JSON.stringify(sessionBody),
-        signal: AbortSignal.timeout(10_000),
-      })
+      const resp = await retryWithBackoff(
+        () => fetch(`${STACKONE_API}/connect_sessions`, {
+          method: 'POST',
+          headers: stackoneHeaders(apiKey),
+          body: JSON.stringify(sessionBody),
+          signal: AbortSignal.timeout(10_000),
+        }),
+        { integration: 'stackone', label: 'create connect session' },
+      )
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '')
@@ -151,10 +161,13 @@ serve(async (req) => {
       const apiKey = await getStoredKey()
       if (!apiKey) return json({ error: 'not_configured' }, 400)
 
-      const resp = await fetch(`${STACKONE_API}/connector_profiles`, {
-        headers: stackoneHeaders(apiKey),
-        signal: AbortSignal.timeout(10_000),
-      })
+      const resp = await retryWithBackoff(
+        () => fetch(`${STACKONE_API}/connector_profiles`, {
+          headers: stackoneHeaders(apiKey),
+          signal: AbortSignal.timeout(10_000),
+        }),
+        { integration: 'stackone', label: 'list connector profiles' },
+      )
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '')

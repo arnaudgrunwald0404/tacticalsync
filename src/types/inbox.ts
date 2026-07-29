@@ -117,6 +117,14 @@ export interface SourceRef {
   said_on?: string;
   /** The short "context" string Gemini returns per quote. */
   context?: string;
+  /** Soundbites (PLAN_idea10_meeting_intelligence_enrichment.md §B2): the
+   *  clip's verified start/end time in the Zoom recording, seconds from the
+   *  start of the meeting. Absent when the quote has no linked recording, or
+   *  when the alignment step couldn't confidently resolve a timestamp for it
+   *  (never a guessed/wrong value — see extract-zoom-quotes/index.ts and
+   *  supabase/functions/_shared/quoteAlignment.ts). */
+  start_seconds?: number;
+  end_seconds?: number;
 }
 
 export interface TagSuggestion {
