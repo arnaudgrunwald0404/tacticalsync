@@ -201,6 +201,27 @@ export type Database = {
           },
         ]
       }
+      cos_action_item_scan_state: {
+        Row: {
+          last_scanned_at: string
+          source: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_scanned_at?: string
+          source: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_scanned_at?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       cos_agent_feedback: {
         Row: {
           created_at: string
@@ -243,6 +264,7 @@ export type Database = {
           event_id: string | null
           event_type: string
           id: string
+          item_id: string | null
           member_id: string | null
           payload: Json
           user_id: string
@@ -253,6 +275,7 @@ export type Database = {
           event_id?: string | null
           event_type: string
           id?: string
+          item_id?: string | null
           member_id?: string | null
           payload?: Json
           user_id: string
@@ -263,6 +286,7 @@ export type Database = {
           event_id?: string | null
           event_type?: string
           id?: string
+          item_id?: string | null
           member_id?: string | null
           payload?: Json
           user_id?: string
@@ -288,6 +312,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "cos_one_on_one_events"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_agent_log_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "cos_agent_log_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_agent_log_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_agent_log_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
           },
           {
             foreignKeyName: "cos_agent_log_member_id_fkey"
@@ -478,6 +530,20 @@ export type Database = {
             foreignKeyName: "cos_gmail_messages_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_gmail_messages_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_gmail_messages_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -515,6 +581,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "cos_group_meetings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_group_meeting_participants_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_group_meeting_participants_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
           },
           {
             foreignKeyName: "cos_group_meeting_participants_team_member_id_fkey"
@@ -579,6 +659,7 @@ export type Database = {
           title: string
           updated_at: string
           user_id: string
+          zoom_meeting_id: string | null
         }
         Insert: {
           cadence?: string | null
@@ -592,6 +673,7 @@ export type Database = {
           title: string
           updated_at?: string
           user_id: string
+          zoom_meeting_id?: string | null
         }
         Update: {
           cadence?: string | null
@@ -605,6 +687,7 @@ export type Database = {
           title?: string
           updated_at?: string
           user_id?: string
+          zoom_meeting_id?: string | null
         }
         Relationships: []
       }
@@ -708,6 +791,20 @@ export type Database = {
             foreignKeyName: "cos_meeting_actions_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_meeting_actions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_meeting_actions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -716,56 +813,54 @@ export type Database = {
       cos_member_quotes: {
         Row: {
           created_at: string
-          end_seconds: number | null
           featured: boolean
           id: string
           quote: string
-          recording_id: string | null
           said_on: string
           source: string | null
           source_ref: string | null
-          start_seconds: number | null
           team_member_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
-          end_seconds?: number | null
           featured?: boolean
           id?: string
           quote: string
-          recording_id?: string | null
           said_on: string
           source?: string | null
           source_ref?: string | null
-          start_seconds?: number | null
           team_member_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
-          end_seconds?: number | null
           featured?: boolean
           id?: string
           quote?: string
-          recording_id?: string | null
           said_on?: string
           source?: string | null
           source_ref?: string | null
-          start_seconds?: number | null
           team_member_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "cos_member_quotes_recording_id_fkey"
-            columns: ["recording_id"]
+            foreignKeyName: "cos_member_quotes_team_member_id_fkey"
+            columns: ["team_member_id"]
             isOneToOne: false
-            referencedRelation: "cos_zoom_recordings"
-            referencedColumns: ["id"]
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_member_quotes_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
           },
           {
             foreignKeyName: "cos_member_quotes_team_member_id_fkey"
@@ -848,6 +943,20 @@ export type Database = {
             foreignKeyName: "cos_one_on_one_events_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_one_on_one_events_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_one_on_one_events_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -918,6 +1027,20 @@ export type Database = {
             foreignKeyName: "cos_one_on_one_prep_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_one_on_one_prep_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_one_on_one_prep_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -949,6 +1072,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_person_accountabilities_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_person_accountabilities_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
           {
             foreignKeyName: "cos_person_accountabilities_member_id_fkey"
             columns: ["member_id"]
@@ -993,6 +1130,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_person_topics_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_person_topics_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
           {
             foreignKeyName: "cos_person_topics_member_id_fkey"
             columns: ["member_id"]
@@ -1076,6 +1227,7 @@ export type Database = {
           dci_timezone: string | null
           enabled: boolean
           enrich_stackone: boolean
+          excluded_one_on_one_emails: string[]
           included_group_series: string[]
           last_run_at: string | null
           last_run_preps_generated: number | null
@@ -1106,6 +1258,7 @@ export type Database = {
           dci_timezone?: string | null
           enabled?: boolean
           enrich_stackone?: boolean
+          excluded_one_on_one_emails?: string[]
           included_group_series?: string[]
           last_run_at?: string | null
           last_run_preps_generated?: number | null
@@ -1136,6 +1289,7 @@ export type Database = {
           dci_timezone?: string | null
           enabled?: boolean
           enrich_stackone?: boolean
+          excluded_one_on_one_emails?: string[]
           included_group_series?: string[]
           last_run_at?: string | null
           last_run_preps_generated?: number | null
@@ -1260,6 +1414,68 @@ export type Database = {
         }
         Relationships: []
       }
+      cos_relationship_documents: {
+        Row: {
+          content: string
+          created_at: string
+          group_meeting_id: string | null
+          id: string
+          last_updated_at: string
+          team_member_id: string | null
+          user_id: string
+          version_count: number
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          group_meeting_id?: string | null
+          id?: string
+          last_updated_at?: string
+          team_member_id?: string | null
+          user_id: string
+          version_count?: number
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          group_meeting_id?: string | null
+          id?: string
+          last_updated_at?: string
+          team_member_id?: string | null
+          user_id?: string
+          version_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_relationship_documents_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_relationship_documents_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_relationship_documents_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_relationship_documents_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cos_relationship_topics: {
         Row: {
           category: string
@@ -1334,55 +1550,21 @@ export type Database = {
             foreignKeyName: "cos_relationship_topics_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
-            referencedRelation: "cos_team_members"
-            referencedColumns: ["id"]
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
           },
-        ]
-      }
-      cos_relationship_documents: {
-        Row: {
-          id: string
-          user_id: string
-          team_member_id: string | null
-          group_meeting_id: string | null
-          content: string
-          version_count: number
-          last_updated_at: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          team_member_id?: string | null
-          group_meeting_id?: string | null
-          content?: string
-          version_count?: number
-          last_updated_at?: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          team_member_id?: string | null
-          group_meeting_id?: string | null
-          content?: string
-          version_count?: number
-          last_updated_at?: string
-          created_at?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "cos_relationship_documents_team_member_id_fkey"
+            foreignKeyName: "cos_relationship_topics_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_relationship_topics_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
             referencedRelation: "cos_team_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cos_relationship_documents_group_meeting_id_fkey"
-            columns: ["group_meeting_id"]
-            isOneToOne: false
-            referencedRelation: "cos_group_meetings"
             referencedColumns: ["id"]
           },
         ]
@@ -1486,6 +1668,81 @@ export type Database = {
             foreignKeyName: "cos_slack_messages_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_slack_messages_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_slack_messages_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cos_team_member_invites: {
+        Row: {
+          claimed_at: string | null
+          claimed_by_user_id: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          invite_code: string
+          invited_email: string
+          inviter_user_id: string
+          status: string
+          team_member_id: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by_user_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invite_code?: string
+          invited_email: string
+          inviter_user_id: string
+          status?: string
+          team_member_id: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by_user_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invite_code?: string
+          invited_email?: string
+          inviter_user_id?: string
+          status?: string
+          team_member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cos_team_member_invites_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_team_member_invites_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_team_member_invites_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -1500,6 +1757,8 @@ export type Database = {
           health_score_updated_at: string | null
           id: string
           last_1on1_date: string | null
+          linked_at: string | null
+          linked_user_id: string | null
           name: string
           relationship_health_score: number | null
           relationship_type: string
@@ -1516,6 +1775,8 @@ export type Database = {
           health_score_updated_at?: string | null
           id?: string
           last_1on1_date?: string | null
+          linked_at?: string | null
+          linked_user_id?: string | null
           name: string
           relationship_health_score?: number | null
           relationship_type: string
@@ -1532,6 +1793,8 @@ export type Database = {
           health_score_updated_at?: string | null
           id?: string
           last_1on1_date?: string | null
+          linked_at?: string | null
+          linked_user_id?: string | null
           name?: string
           relationship_health_score?: number | null
           relationship_type?: string
@@ -1541,6 +1804,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_team_members_reports_to_id_fkey"
+            columns: ["reports_to_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_team_members_reports_to_id_fkey"
+            columns: ["reports_to_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
           {
             foreignKeyName: "cos_team_members_reports_to_id_fkey"
             columns: ["reports_to_id"]
@@ -1591,12 +1868,14 @@ export type Database = {
           ai_summary: string | null
           created_at: string
           duration_minutes: number | null
+          group_meeting_id: string | null
           has_transcript: boolean
           id: string
           last_synced_at: string
           participant_emails: string[]
           participant_names: string[]
           recording_files: Json
+          share_url: string | null
           start_time: string
           team_member_id: string | null
           topic: string | null
@@ -1609,12 +1888,14 @@ export type Database = {
           ai_summary?: string | null
           created_at?: string
           duration_minutes?: number | null
+          group_meeting_id?: string | null
           has_transcript?: boolean
           id?: string
           last_synced_at?: string
           participant_emails?: string[]
           participant_names?: string[]
           recording_files?: Json
+          share_url?: string | null
           start_time: string
           team_member_id?: string | null
           topic?: string | null
@@ -1627,12 +1908,14 @@ export type Database = {
           ai_summary?: string | null
           created_at?: string
           duration_minutes?: number | null
+          group_meeting_id?: string | null
           has_transcript?: boolean
           id?: string
           last_synced_at?: string
           participant_emails?: string[]
           participant_names?: string[]
           recording_files?: Json
+          share_url?: string | null
           start_time?: string
           team_member_id?: string | null
           topic?: string | null
@@ -1642,6 +1925,27 @@ export type Database = {
           zoom_meeting_uuid?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_zoom_recordings_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cos_zoom_recordings_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_zoom_recordings_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
           {
             foreignKeyName: "cos_zoom_recordings_team_member_id_fkey"
             columns: ["team_member_id"]
@@ -1688,50 +1992,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "cos_zoom_transcripts_recording_id_fkey"
-            columns: ["recording_id"]
-            isOneToOne: true
-            referencedRelation: "cos_zoom_recordings"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      cos_meeting_analysis: {
-        Row: {
-          analyzed_at: string
-          created_at: string
-          id: string
-          meeting_duration_seconds: number | null
-          overall_sentiment: string | null
-          recording_id: string
-          sentiment_rationale: string | null
-          talk_time_seconds: Json
-          user_id: string
-        }
-        Insert: {
-          analyzed_at?: string
-          created_at?: string
-          id?: string
-          meeting_duration_seconds?: number | null
-          overall_sentiment?: string | null
-          recording_id: string
-          sentiment_rationale?: string | null
-          talk_time_seconds?: Json
-          user_id: string
-        }
-        Update: {
-          analyzed_at?: string
-          created_at?: string
-          id?: string
-          meeting_duration_seconds?: number | null
-          overall_sentiment?: string | null
-          recording_id?: string
-          sentiment_rationale?: string | null
-          talk_time_seconds?: Json
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cos_meeting_analysis_recording_id_fkey"
             columns: ["recording_id"]
             isOneToOne: true
             referencedRelation: "cos_zoom_recordings"
@@ -1789,13 +2049,17 @@ export type Database = {
           assignee_member_id: string | null
           created_at: string
           date: string
+          group_meeting_id: string | null
           id: string
           member_id: string | null
+          outcome_at: string | null
           rationale: string | null
           raw_context: string | null
           recording_id: string | null
           source: string | null
+          source_thread_id: string | null
           source_type: string | null
+          source_url: string | null
           status: string
           suggested_category: string | null
           tag_suggestions: Json
@@ -1808,13 +2072,17 @@ export type Database = {
           assignee_member_id?: string | null
           created_at?: string
           date?: string
+          group_meeting_id?: string | null
           id?: string
           member_id?: string | null
+          outcome_at?: string | null
           rationale?: string | null
           raw_context?: string | null
           recording_id?: string | null
           source?: string | null
+          source_thread_id?: string | null
           source_type?: string | null
+          source_url?: string | null
           status?: string
           suggested_category?: string | null
           tag_suggestions?: Json
@@ -1827,13 +2095,17 @@ export type Database = {
           assignee_member_id?: string | null
           created_at?: string
           date?: string
+          group_meeting_id?: string | null
           id?: string
           member_id?: string | null
+          outcome_at?: string | null
           rationale?: string | null
           raw_context?: string | null
           recording_id?: string | null
           source?: string | null
+          source_thread_id?: string | null
           source_type?: string | null
+          source_url?: string | null
           status?: string
           suggested_category?: string | null
           tag_suggestions?: Json
@@ -1847,8 +2119,43 @@ export type Database = {
             foreignKeyName: "dci_suggested_tasks_assignee_member_id_fkey"
             columns: ["assignee_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "dci_suggested_tasks_assignee_member_id_fkey"
+            columns: ["assignee_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "dci_suggested_tasks_assignee_member_id_fkey"
+            columns: ["assignee_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dci_suggested_tasks_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dci_suggested_tasks_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "dci_suggested_tasks_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
           },
           {
             foreignKeyName: "dci_suggested_tasks_member_id_fkey"
@@ -1862,6 +2169,57 @@ export type Database = {
             columns: ["recording_id"]
             isOneToOne: false
             referencedRelation: "cos_zoom_recordings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_dismissal_log: {
+        Row: {
+          dismissed_at: string
+          id: string
+          inbox_item_id: string | null
+          intent_type: string | null
+          sender_domain: string | null
+          sender_email: string | null
+          sender_tier: string | null
+          thread_age_hours: number | null
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string
+          id?: string
+          inbox_item_id?: string | null
+          intent_type?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_tier?: string | null
+          thread_age_hours?: number | null
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string
+          id?: string
+          inbox_item_id?: string | null
+          intent_type?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_tier?: string | null
+          thread_age_hours?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_items"
             referencedColumns: ["id"]
           },
         ]
@@ -1893,6 +2251,94 @@ export type Database = {
         }
         Relationships: []
       }
+      inbox_delegation_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          delegation_id: string
+          id: string
+          metadata: Json
+          step_id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          delegation_id: string
+          id?: string
+          metadata?: Json
+          step_id: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          delegation_id?: string
+          id?: string
+          metadata?: Json
+          step_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_delegation_audit_log_delegation_id_fkey"
+            columns: ["delegation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_delegations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_delegation_step_executions: {
+        Row: {
+          created_at: string
+          delegation_id: string
+          id: string
+          idempotency_key: string
+          result: Json | null
+          step_id: string
+          target_id: string | null
+          target_table: string | null
+          tool: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          delegation_id: string
+          id?: string
+          idempotency_key: string
+          result?: Json | null
+          step_id: string
+          target_id?: string | null
+          target_table?: string | null
+          tool: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          delegation_id?: string
+          id?: string
+          idempotency_key?: string
+          result?: Json | null
+          step_id?: string
+          target_id?: string | null
+          target_table?: string | null
+          tool?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_delegation_step_executions_delegation_id_fkey"
+            columns: ["delegation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_delegations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inbox_delegations: {
         Row: {
           agent_log: Json
@@ -1901,8 +2347,10 @@ export type Database = {
           created_at: string
           current_question: Json | null
           id: string
+          instructions: string | null
           item_id: string
           plan: string | null
+          plan_steps: Json
           result: string | null
           status: string
           updated_at: string
@@ -1915,8 +2363,10 @@ export type Database = {
           created_at?: string
           current_question?: Json | null
           id?: string
+          instructions?: string | null
           item_id: string
           plan?: string | null
+          plan_steps?: Json
           result?: string | null
           status?: string
           updated_at?: string
@@ -1929,8 +2379,10 @@ export type Database = {
           created_at?: string
           current_question?: Json | null
           id?: string
+          instructions?: string | null
           item_id?: string
           plan?: string | null
+          plan_steps?: Json
           result?: string | null
           status?: string
           updated_at?: string
@@ -1941,7 +2393,106 @@ export type Database = {
             foreignKeyName: "inbox_delegations_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "inbox_delegations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "inbox_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_item_delegations: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          delegatee_item_id: string | null
+          delegatee_user_id: string
+          delegator_user_id: string
+          id: string
+          note: string | null
+          source_item_id: string
+          status: string
+          team_member_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          delegatee_item_id?: string | null
+          delegatee_user_id: string
+          delegator_user_id: string
+          id?: string
+          note?: string | null
+          source_item_id: string
+          status?: string
+          team_member_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          delegatee_item_id?: string | null
+          delegatee_user_id?: string
+          delegator_user_id?: string
+          id?: string
+          note?: string | null
+          source_item_id?: string
+          status?: string
+          team_member_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_item_delegations_delegatee_item_id_fkey"
+            columns: ["delegatee_item_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_delegatee_item_id_fkey"
+            columns: ["delegatee_item_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "inbox_item_delegations_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
         ]
@@ -1964,6 +2515,13 @@ export type Database = {
             foreignKeyName: "inbox_item_tags_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "inbox_item_tags_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "inbox_items"
             referencedColumns: ["id"]
           },
@@ -1978,6 +2536,7 @@ export type Database = {
       }
       inbox_items: {
         Row: {
+          active_delegation_id: string | null
           agent_payload: Json | null
           archived_at: string | null
           body: string | null
@@ -1985,11 +2544,16 @@ export type Database = {
           created_at: string
           done_at: string | null
           id: string
+          owed_by: string | null
           pinned: boolean
+          priority_due_at: string | null
+          priority_fixed: boolean
+          snooze_until_member_id: string | null
           snoozed_until: string | null
           sort_order: number
           source_ref: Json | null
           status: string
+          tag_suggestions: Json
           text: string
           type: string
           updated_at: string
@@ -1997,6 +2561,7 @@ export type Database = {
           workflow_status: string | null
         }
         Insert: {
+          active_delegation_id?: string | null
           agent_payload?: Json | null
           archived_at?: string | null
           body?: string | null
@@ -2004,11 +2569,16 @@ export type Database = {
           created_at?: string
           done_at?: string | null
           id?: string
+          owed_by?: string | null
           pinned?: boolean
+          priority_due_at?: string | null
+          priority_fixed?: boolean
+          snooze_until_member_id?: string | null
           snoozed_until?: string | null
           sort_order?: number
           source_ref?: Json | null
           status?: string
+          tag_suggestions?: Json
           text?: string
           type?: string
           updated_at?: string
@@ -2016,6 +2586,7 @@ export type Database = {
           workflow_status?: string | null
         }
         Update: {
+          active_delegation_id?: string | null
           agent_payload?: Json | null
           archived_at?: string | null
           body?: string | null
@@ -2023,18 +2594,52 @@ export type Database = {
           created_at?: string
           done_at?: string | null
           id?: string
+          owed_by?: string | null
           pinned?: boolean
+          priority_due_at?: string | null
+          priority_fixed?: boolean
+          snooze_until_member_id?: string | null
           snoozed_until?: string | null
           sort_order?: number
           source_ref?: Json | null
           status?: string
+          tag_suggestions?: Json
           text?: string
           type?: string
           updated_at?: string
           user_id?: string
           workflow_status?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inbox_items_active_delegation_id_fkey"
+            columns: ["active_delegation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_item_delegations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_items_snooze_until_member_id_fkey"
+            columns: ["snooze_until_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "inbox_items_snooze_until_member_id_fkey"
+            columns: ["snooze_until_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "inbox_items_snooze_until_member_id_fkey"
+            columns: ["snooze_until_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inbox_tags: {
         Row: {
@@ -2044,6 +2649,7 @@ export type Database = {
           member_id: string | null
           name: string
           parent_id: string | null
+          settings: Json
           sort_order: number
           type: string
           user_id: string
@@ -2055,6 +2661,7 @@ export type Database = {
           member_id?: string | null
           name: string
           parent_id?: string | null
+          settings?: Json
           sort_order?: number
           type: string
           user_id: string
@@ -2066,11 +2673,26 @@ export type Database = {
           member_id?: string | null
           name?: string
           parent_id?: string | null
+          settings?: Json
           sort_order?: number
           type?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "inbox_tags_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "inbox_tags_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
           {
             foreignKeyName: "inbox_tags_member_id_fkey"
             columns: ["member_id"]
@@ -2625,6 +3247,20 @@ export type Database = {
             foreignKeyName: "prep_generation_log_team_member_id_fkey"
             columns: ["team_member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "prep_generation_log_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "prep_generation_log_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
@@ -2932,6 +3568,7 @@ export type Database = {
           hypothesis: string | null
           id: string
           last_health_calc_at: string | null
+          last_stale_nudge_at: string | null
           locked_at: string | null
           locked_by: string | null
           owner_user_id: string
@@ -2952,6 +3589,7 @@ export type Database = {
           hypothesis?: string | null
           id?: string
           last_health_calc_at?: string | null
+          last_stale_nudge_at?: string | null
           locked_at?: string | null
           locked_by?: string | null
           owner_user_id: string
@@ -2972,6 +3610,7 @@ export type Database = {
           hypothesis?: string | null
           id?: string
           last_health_calc_at?: string | null
+          last_stale_nudge_at?: string | null
           locked_at?: string | null
           locked_by?: string | null
           owner_user_id?: string
@@ -3021,6 +3660,7 @@ export type Database = {
           direction: string
           display_order: number | null
           id: string
+          last_stale_nudge_at: string | null
           last_updated_at: string | null
           name: string
           source: string | null
@@ -3036,6 +3676,7 @@ export type Database = {
           direction: string
           display_order?: number | null
           id?: string
+          last_stale_nudge_at?: string | null
           last_updated_at?: string | null
           name: string
           source?: string | null
@@ -3051,6 +3692,7 @@ export type Database = {
           direction?: string
           display_order?: number | null
           id?: string
+          last_stale_nudge_at?: string | null
           last_updated_at?: string | null
           name?: string
           source?: string | null
@@ -3179,6 +3821,7 @@ export type Database = {
           display_order: number | null
           end_date: string | null
           id: string
+          last_stale_nudge_at: string | null
           locked_at: string | null
           locked_by: string | null
           owner_user_id: string | null
@@ -3200,6 +3843,7 @@ export type Database = {
           display_order?: number | null
           end_date?: string | null
           id?: string
+          last_stale_nudge_at?: string | null
           locked_at?: string | null
           locked_by?: string | null
           owner_user_id?: string | null
@@ -3221,6 +3865,7 @@ export type Database = {
           display_order?: number | null
           end_date?: string | null
           id?: string
+          last_stale_nudge_at?: string | null
           locked_at?: string | null
           locked_by?: string | null
           owner_user_id?: string | null
@@ -3387,6 +4032,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sources_triage_preferences: {
+        Row: {
+          enabled: boolean
+          max_thread_age_hours: number | null
+          slack_enabled: boolean
+          suppressed_domains: string[]
+          suppressed_intents: string[]
+          suppressed_senders: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          max_thread_age_hours?: number | null
+          slack_enabled?: boolean
+          suppressed_domains?: string[]
+          suppressed_intents?: string[]
+          suppressed_senders?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          max_thread_age_hours?: number | null
+          slack_enabled?: boolean
+          suppressed_domains?: string[]
+          suppressed_intents?: string[]
+          suppressed_senders?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      suggestion_source_processed: {
+        Row: {
+          id: string
+          processed_at: string
+          source_id: string
+          source_type: string
+          suggestions_added: number
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          processed_at?: string
+          source_id: string
+          source_type: string
+          suggestions_added?: number
+          user_id: string
+        }
+        Update: {
+          id?: string
+          processed_at?: string
+          source_id?: string
+          source_type?: string
+          suggestions_added?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       super_admins: {
         Row: {
@@ -3653,6 +4358,9 @@ export type Database = {
       user_slack_credentials: {
         Row: {
           access_token: string
+          auto_sync_enabled: boolean
+          auto_sync_midday_hour_utc: number
+          auto_sync_morning_hour_utc: number
           created_at: string
           last_sync_at: string | null
           last_sync_status: string | null
@@ -3664,10 +4372,15 @@ export type Database = {
           slack_user_id: string | null
           sync_channels: string[]
           updated_at: string
+          user_access_token: string | null
           user_id: string
+          user_scope: string | null
         }
         Insert: {
           access_token: string
+          auto_sync_enabled?: boolean
+          auto_sync_midday_hour_utc?: number
+          auto_sync_morning_hour_utc?: number
           created_at?: string
           last_sync_at?: string | null
           last_sync_status?: string | null
@@ -3679,10 +4392,15 @@ export type Database = {
           slack_user_id?: string | null
           sync_channels?: string[]
           updated_at?: string
+          user_access_token?: string | null
           user_id: string
+          user_scope?: string | null
         }
         Update: {
           access_token?: string
+          auto_sync_enabled?: boolean
+          auto_sync_midday_hour_utc?: number
+          auto_sync_morning_hour_utc?: number
           created_at?: string
           last_sync_at?: string | null
           last_sync_status?: string | null
@@ -3694,7 +4412,9 @@ export type Database = {
           slack_user_id?: string | null
           sync_channels?: string[]
           updated_at?: string
+          user_access_token?: string | null
           user_id?: string
+          user_scope?: string | null
         }
         Relationships: []
       }
@@ -3787,10 +4507,51 @@ export type Database = {
             foreignKeyName: "cos_meeting_actions_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_meeting_actions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_close_rate"
+            referencedColumns: ["member_id"]
+          },
+          {
+            foreignKeyName: "cos_meeting_actions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
             referencedRelation: "cos_team_members"
             referencedColumns: ["id"]
           },
         ]
+      }
+      cos_manager_signal_aging_items: {
+        Row: {
+          days_stale: number | null
+          item_id: string | null
+          manager_id: string | null
+          member_id: string | null
+          member_name: string | null
+          text: string | null
+          updated_at: string | null
+          urgency: string | null
+          workflow_status: string | null
+        }
+        Relationships: []
+      }
+      cos_manager_signal_close_rate: {
+        Row: {
+          done_30d: number | null
+          done_90d: number | null
+          manager_id: string | null
+          member_id: string | null
+          member_name: string | null
+          relationship_type: string | null
+          total_30d: number | null
+          total_90d: number | null
+        }
+        Relationships: []
       }
       rc_top_level_strategic_initiatives: {
         Row: {
@@ -3941,6 +4702,9 @@ export type Database = {
       }
       user_slack_credentials_public: {
         Row: {
+          auto_sync_enabled: boolean | null
+          auto_sync_midday_hour_utc: number | null
+          auto_sync_morning_hour_utc: number | null
           connected: boolean | null
           created_at: string | null
           last_sync_at: string | null
@@ -3954,6 +4718,9 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          auto_sync_enabled?: boolean | null
+          auto_sync_midday_hour_utc?: number | null
+          auto_sync_morning_hour_utc?: number | null
           connected?: never
           created_at?: string | null
           last_sync_at?: string | null
@@ -3967,6 +4734,9 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          auto_sync_enabled?: boolean | null
+          auto_sync_midday_hour_utc?: number | null
+          auto_sync_morning_hour_utc?: number | null
           connected?: never
           created_at?: string | null
           last_sync_at?: string | null
@@ -4031,6 +4801,28 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_cos_team_member_invite: {
+        Args: { p_invite_code: string }
+        Returns: Json
+      }
+      get_cos_team_member_invite_preview: {
+        Args: { p_invite_code: string }
+        Returns: {
+          expires_at: string
+          invited_email: string
+          inviter_name: string
+          status: string
+          team_member_name: string
+        }[]
+      }
+      get_inbox_delegation_display_names: {
+        Args: { p_delegation_ids: string[] }
+        Returns: {
+          delegatee_name: string
+          delegation_id: string
+          delegator_name: string
+        }[]
+      }
       get_recurring_meeting: {
         Args: { meeting_id: string }
         Returns: {
@@ -4064,10 +4856,7 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
-      rcdo_activate_cycle: {
-        Args: { p_cycle_id: string }
-        Returns: undefined
-      }
+      rcdo_activate_cycle: { Args: { p_cycle_id: string }; Returns: undefined }
       rcdo_convert_si_to_sub_si_mode: {
         Args: { p_si_id: string }
         Returns: string
@@ -4075,6 +4864,29 @@ export type Database = {
       rcdo_promote_task_to_sub_si: {
         Args: { p_task_id: string }
         Returns: string
+      }
+      set_feature_announcement_flag: {
+        Args: { p_key: string; p_value?: boolean }
+        Returns: Json
+      }
+      set_onboarding_flag: {
+        Args: { p_key: string; p_value?: boolean }
+        Returns: Json
+      }
+      try_transition_delegation_step: {
+        Args: {
+          p_actor: string
+          p_delegation_id: string
+          p_extra?: Json
+          p_from_statuses: string[]
+          p_step_id: string
+          p_to_status: string
+        }
+        Returns: Json
+      }
+      unlink_cos_team_member: {
+        Args: { p_team_member_id: string }
+        Returns: undefined
       }
     }
     Enums: {

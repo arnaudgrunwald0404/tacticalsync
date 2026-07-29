@@ -175,14 +175,22 @@ function meetingDayLabel(startTime: string, timeZone: string): string {
  * attendees only qualify if the user opted their series into
  * cos_prep_schedule.included_group_series via the "Group meetings" settings panel.
  * One-off group meetings never qualify. Keep this in sync with prepTools.ts.
+ *
+ * The ≤1-attendee heuristic can't tell a real 1:1 apart from a group meeting
+ * invited via a single alias (e.g. "elt@company.com") — excludedOneOnOneEmails
+ * is the user's manual override for that case (cos_prep_schedule.excluded_one_on_one_emails).
  */
 function meetingQualifiesForPrep(
   recurringEventId: string | null,
   attendeeEmails: string[] | null,
   includedGroupSeries: string[],
+  excludedOneOnOneEmails: Set<string>,
 ): boolean {
   const attendeeCount = attendeeEmails?.length ?? 0
-  if (attendeeCount <= 1) return true
+  if (attendeeCount <= 1) {
+    const email = attendeeEmails?.[0] ?? null
+    return !(email && excludedOneOnOneEmails.has(email))
+  }
   return !!recurringEventId && includedGroupSeries.includes(recurringEventId)
 }
 
@@ -767,11 +775,12 @@ async function prestagePreps(
 
   const { data: prepSchedule } = await supabase
     .from('cos_prep_schedule')
-    .select('included_group_series')
+    .select('included_group_series, excluded_one_on_one_emails')
     .eq('user_id', userId)
     .maybeSingle()
 
   const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+  const excludedOneOnOneEmails = new Set<string>((prepSchedule?.excluded_one_on_one_emails as string[] | null) ?? [])
 
   let staged = 0
 
@@ -780,7 +789,7 @@ async function prestagePreps(
     recurring_event_id: string | null; attendee_emails: string[] | null
   }>) {
     // Skip group meetings the user hasn't opted into daily prep for
-    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries, excludedOneOnOneEmails)) continue
 
     // Check per-person override
     const { data: memberOverrides } = await supabase
@@ -933,11 +942,12 @@ async function prestageInboxBriefs(
 
   const { data: prepSchedule } = await supabase
     .from('cos_prep_schedule')
-    .select('included_group_series')
+    .select('included_group_series, excluded_one_on_one_emails')
     .eq('user_id', userId)
     .maybeSingle()
 
   const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+  const excludedOneOnOneEmails = new Set<string>((prepSchedule?.excluded_one_on_one_emails as string[] | null) ?? [])
 
   let staged = 0
 
@@ -948,7 +958,7 @@ async function prestageInboxBriefs(
     // Only real 1:1s qualify — same rule prestagePreps and
     // computeFormatRecommendations already apply, kept in sync deliberately
     // rather than re-derived (see meetingQualifiesForPrep's docstring).
-    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries, excludedOneOnOneEmails)) continue
 
     // Check per-person override (same flag prep-staging honors)
     const { data: memberOverrides } = await supabase
@@ -1713,18 +1723,19 @@ async function computeFormatRecommendations(
 
   const { data: prepSchedule } = await supabase
     .from('cos_prep_schedule')
-    .select('included_group_series')
+    .select('included_group_series, excluded_one_on_one_emails')
     .eq('user_id', userId)
     .maybeSingle()
 
   const includedGroupSeries = (prepSchedule?.included_group_series as string[] | null) ?? []
+  const excludedOneOnOneEmails = new Set<string>((prepSchedule?.excluded_one_on_one_emails as string[] | null) ?? [])
 
   for (const event of (events ?? []) as Array<{
     id: string; team_member_id: string; title: string | null; start_time: string
     recurring_event_id: string | null; attendee_emails: string[] | null
   }>) {
     // Skip group meetings the user hasn't opted into daily prep for
-    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries)) continue
+    if (!meetingQualifiesForPrep(event.recurring_event_id, event.attendee_emails, includedGroupSeries, excludedOneOnOneEmails)) continue
 
     // Check if we already recommended for this event today
     const { count: alreadyDone } = await supabase

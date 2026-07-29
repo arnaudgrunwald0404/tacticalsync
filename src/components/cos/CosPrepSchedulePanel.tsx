@@ -25,6 +25,7 @@ import {
   type PrepScheduleConfig,
 } from '@/hooks/usePrepScheduleConfig';
 import { useUpcomingMeetingGroups } from '@/hooks/useUpcomingMeetingGroups';
+import { useGroupMeetings } from '@/hooks/useGroupMeetings';
 import { STATIC_TOOLS, buildStackOneTools, STACKONE_PROVIDER_CATALOG, type PrepToolDef, resolveToolTier } from '@/lib/prepTools';
 import {
   CalendarSyncRules,
@@ -262,6 +263,7 @@ function usePanelState() {
       timezone: d.timezone,
       always_include: d.always_include,
       included_group_series: d.included_group_series,
+      excluded_one_on_one_emails: d.excluded_one_on_one_emails,
       prep_tools: d.prep_tools,
       tool_tiers: d.tool_tiers,
       sync_zoom_before: d.prep_tools.includes('zoom'),
@@ -522,14 +524,18 @@ function MeetingsManualRunCard({ draft, running, onRunNow, logs, userId, onRefre
 // ── Meetings — Scope columns ──────────────────────────────────────────────────
 
 function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; update: Patch }) {
-  const { recurringOneOnOnes, oneOffOneOnOnes, recurringGroups, loading } = useUpcomingMeetingGroups();
+  const { recurringOneOnOnes, oneOffOneOnOnes, loading } = useUpcomingMeetingGroups();
+  const { meetings: groupMeetings, loading: groupMeetingsLoading, setIncluded } = useGroupMeetings();
 
-  const toggleGroupSeries = (key: string) =>
+  const excluded = draft.excluded_one_on_one_emails;
+  const toggleOneOnOneEmail = (email: string | null) => {
+    if (!email) return;
     update({
-      included_group_series: draft.included_group_series.includes(key)
-        ? draft.included_group_series.filter(k => k !== key)
-        : [...draft.included_group_series, key],
+      excluded_one_on_one_emails: excluded.includes(email)
+        ? excluded.filter(e => e !== email)
+        : [...excluded, email],
     });
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -549,10 +555,15 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
           ) : (
             <div className="space-y-1.5">
               {recurringOneOnOnes.map(m => (
-                <div key={m.key} className="flex items-center gap-1.5">
+                <label key={m.key} className="flex items-center gap-1.5 cursor-pointer" title="Uncheck if this isn't really a 1:1 (e.g. a group alias)">
+                  <Checkbox
+                    checked={!m.attendeeEmail || !excluded.includes(m.attendeeEmail)}
+                    disabled={!m.attendeeEmail}
+                    onCheckedChange={() => toggleOneOnOneEmail(m.attendeeEmail)}
+                  />
                   <Repeat className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm">{m.attendeeLabel}</span>
-                </div>
+                </label>
               ))}
             </div>
           )}
@@ -575,10 +586,15 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
           ) : (
             <div className="space-y-1.5">
               {oneOffOneOnOnes.map(m => (
-                <div key={m.key} className="flex items-center gap-1.5">
+                <label key={m.key} className="flex items-center gap-1.5 cursor-pointer" title="Uncheck if this isn't really a 1:1 (e.g. a group alias)">
+                  <Checkbox
+                    checked={!m.attendeeEmail || !excluded.includes(m.attendeeEmail)}
+                    disabled={!m.attendeeEmail}
+                    onCheckedChange={() => toggleOneOnOneEmail(m.attendeeEmail)}
+                  />
                   <Star className="h-3 w-3 text-amber-500 flex-shrink-0" />
                   <span className="text-sm">{m.attendeeLabel}</span>
-                </div>
+                </label>
               ))}
             </div>
           )}
@@ -591,21 +607,21 @@ function MeetingsScopeCard({ draft, update }: { draft: PrepScheduleConfig; updat
           <CardTitle className="text-sm font-medium">Group meetings (opt-in)</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {groupMeetingsLoading ? (
             <p className="text-[11px] text-muted-foreground">Loading…</p>
-          ) : recurringGroups.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">No recurring group meetings found.</p>
+          ) : groupMeetings.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">No group meetings found.</p>
           ) : (
             <div className="space-y-1.5">
-              {recurringGroups.map(m => (
-                <label key={m.key} className="flex items-center gap-2.5 cursor-pointer">
+              {groupMeetings.map(m => (
+                <label key={m.id} className="flex items-center gap-2.5 cursor-pointer">
                   <Checkbox
-                    checked={draft.included_group_series.includes(m.key)}
-                    onCheckedChange={() => toggleGroupSeries(m.key)}
+                    checked={m.included}
+                    onCheckedChange={() => setIncluded(m.id, !m.included)}
                   />
                   <div>
-                    <p className="text-sm">{m.title}</p>
-                    <p className="text-[11px] text-muted-foreground">{m.attendeeCount} attendees</p>
+                    <p className="text-sm">{m.subject ?? m.title}</p>
+                    <p className="text-[11px] text-muted-foreground">{m.participants.length} attendees</p>
                   </div>
                 </label>
               ))}
@@ -683,7 +699,7 @@ function MeetingsToolsCard({
   const [recurringMemberIds, setRecurringMemberIds] = useState<Set<string>>(new Set());
   const [loadingMembers, setLoadingMembers] = useState(true);
   const { toast } = useToast();
-  const { recurringGroups } = useUpcomingMeetingGroups();
+  const { included: includedGroupMeetings } = useGroupMeetings();
   const { dynamicTools } = useStackOneConnections(userId);
 
   const availableTools = [...STATIC_TOOLS, ...dynamicTools];
@@ -964,42 +980,37 @@ function MeetingsToolsCard({
                   </tr>
 
                   {/* Section C: group meetings in scope */}
-                  {draft.included_group_series.length > 0 && (
+                  {includedGroupMeetings.length > 0 && (
                     <>
                       <tr>
                         <td colSpan={totalCols} className="pt-4 pb-1">
                           <p className="text-[10px] uppercase tracking-wide text-muted-foreground/50">Group meetings in scope</p>
                         </td>
                       </tr>
-                      {draft.included_group_series.map((seriesKey, i) => {
-                        const group = recurringGroups.find(g => g.key === seriesKey);
-                        return (
-                          <tr key={seriesKey} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
-                            <td className="py-2.5 pr-6">
-                              <span className="font-medium text-sm text-muted-foreground">
-                                {group?.title ?? seriesKey}
-                              </span>
-                              {group && (
-                                <p className="text-[10px] text-muted-foreground/60">{group.attendeeCount} attendees · global tools</p>
-                              )}
-                            </td>
-                            {coreTools.map(t => (
-                              <td key={t.id} className="py-2.5 px-3 text-center">
-                                <div className="flex items-center justify-center" title="Inherits global defaults">
-                                  <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
-                                    <Lock className="h-2.5 w-2.5 text-muted-foreground/40" />
-                                  </div>
+                      {includedGroupMeetings.map((group, i) => (
+                        <tr key={group.id} className={cn('border-t border-border/40', i % 2 !== 0 && 'bg-muted/20')}>
+                          <td className="py-2.5 pr-6">
+                            <span className="font-medium text-sm text-muted-foreground">
+                              {group.subject ?? group.title}
+                            </span>
+                            <p className="text-[10px] text-muted-foreground/60">{group.participants.length} attendees · global tools</p>
+                          </td>
+                          {coreTools.map(t => (
+                            <td key={t.id} className="py-2.5 px-3 text-center">
+                              <div className="flex items-center justify-center" title="Inherits global defaults">
+                                <div className="h-4 w-4 rounded border border-border/40 bg-muted/30 flex items-center justify-center">
+                                  <Lock className="h-2.5 w-2.5 text-muted-foreground/40" />
                                 </div>
-                              </td>
-                            ))}
-                            {perPersonToolDefs.map(t => (
-                              <td key={t.id} className="py-2.5 px-3 text-center">
-                                <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
+                              </div>
+                            </td>
+                          ))}
+                          {perPersonToolDefs.map(t => (
+                            <td key={t.id} className="py-2.5 px-3 text-center">
+                              <div className="h-4 w-4 rounded border border-border/40 mx-auto opacity-30" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
                     </>
                   )}
                 </tbody>
