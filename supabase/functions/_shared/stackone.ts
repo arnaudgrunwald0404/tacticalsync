@@ -6,6 +6,8 @@
  * strings ready to inject into the prep prompt.
  */
 
+import { retryWithBackoff } from './retryWithBackoff.ts'
+
 interface StackOneAccount {
   id: string
   provider: string
@@ -29,9 +31,12 @@ function headers(apiKey: string, accountId: string): Record<string, string> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function safeFetch(url: string, hdrs: Record<string, string>): Promise<any | null> {
+async function safeFetch(url: string, hdrs: Record<string, string>, label: string): Promise<any | null> {
   try {
-    const resp = await fetch(url, { headers: hdrs, signal: AbortSignal.timeout(8_000) })
+    const resp = await retryWithBackoff(
+      () => fetch(url, { headers: hdrs, signal: AbortSignal.timeout(8_000) }),
+      { integration: 'stackone', label },
+    )
     if (!resp.ok) return null
     const json = await resp.json()
     return json.data ?? json
@@ -54,6 +59,7 @@ async function fetchHrisData(
   const employees = await safeFetch(
     `${STACKONE_API}/unified/hris/employees?filter[email]=${encodeURIComponent(email)}`,
     hdrs,
+    'hris employees lookup',
   )
 
   if (!employees || (Array.isArray(employees) && employees.length === 0)) return parts
@@ -88,6 +94,7 @@ async function fetchHrisData(
     const timeOff = await safeFetch(
       `${STACKONE_API}/unified/hris/employees/${emp.id}/time_off?filter[status]=approved&page_size=5`,
       hdrs,
+      'hris time off',
     )
     if (Array.isArray(timeOff) && timeOff.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,6 +132,7 @@ async function fetchTicketingData(
   const tickets = await safeFetch(
     `${STACKONE_API}/unified/ticketing/tickets?filter[assignee_email]=${encodeURIComponent(email)}&filter[status]=open&page_size=10`,
     hdrs,
+    'ticketing assigned tickets',
   )
 
   if (!tickets || (Array.isArray(tickets) && tickets.length === 0)) return parts
@@ -158,6 +166,7 @@ async function fetchCrmData(
   const contacts = await safeFetch(
     `${STACKONE_API}/unified/crm/contacts?filter[email]=${encodeURIComponent(email)}&page_size=1`,
     hdrs,
+    'crm contact lookup',
   )
 
   if (!contacts || (Array.isArray(contacts) && contacts.length === 0)) return parts
@@ -169,6 +178,7 @@ async function fetchCrmData(
     const deals = await safeFetch(
       `${STACKONE_API}/unified/crm/contacts/${contact.id}/deals?page_size=5`,
       hdrs,
+      'crm contact deals',
     )
 
     if (Array.isArray(deals) && deals.length > 0) {
@@ -279,13 +289,16 @@ export async function getStackOneConfig(
 
   // Fetch accounts
   try {
-    const resp = await fetch(`${STACKONE_API}/accounts`, {
-      headers: {
-        'Authorization': `Basic ${btoa(row.auth_value + ':')}`,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(8_000),
-    })
+    const resp = await retryWithBackoff(
+      () => fetch(`${STACKONE_API}/accounts`, {
+        headers: {
+          'Authorization': `Basic ${btoa(row.auth_value + ':')}`,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(8_000),
+      }),
+      { integration: 'stackone', label: 'list accounts (config)' },
+    )
     if (!resp.ok) return null
     const json = await resp.json()
     const accounts = Array.isArray(json) ? json : (json.data ?? [])

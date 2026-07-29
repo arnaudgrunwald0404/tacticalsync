@@ -32,6 +32,7 @@ import { AgentSettingsPanel } from "@/components/cos/AgentSettingsPanel";
 import { NotificationSettingsPanel } from "@/components/cos/NotificationSettingsPanel";
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
+import OrgTalkingPointsPanel from "@/components/settings/OrgTalkingPointsPanel";
 import IntegrationExplainer from "@/components/cos/IntegrationExplainer";
 import { INTEGRATION_COPY } from "@/lib/integrationCopy";
 import { getPreset } from "@/types/mcp-integration";
@@ -2112,6 +2113,7 @@ const Settings = () => {
           userEmail={userEmail}
           showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
           canManagePermissions={canManagePermissions}
+          showOrgTalkingPoints={isAdmin || isSuperAdmin}
         />
 
         <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
@@ -2514,6 +2516,16 @@ const Settings = () => {
                 </div>
               </div>
             )}
+          </div>
+        ) : activeSection === "org-talking-points" && (isAdmin || isSuperAdmin) ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Talking Points</h2>
+              <p className="text-muted-foreground text-sm">
+                Push a standing talking point into every direct report's 1:1 prep for a bounded period.
+              </p>
+            </div>
+            <OrgTalkingPointsPanel />
           </div>
         ) : activeSection === "strategy-cycles" ? (
           <div className="mb-8">

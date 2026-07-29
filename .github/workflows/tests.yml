@@ -45,6 +45,12 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
+  # NOTE: this whole job is disabled (`if: false`) and has been since it was
+  # added — e2e tests do not run in CI today, only Vitest (unit-tests, above).
+  # That's a pre-existing decision this PR does not change; the mobile step
+  # below is kept wired up consistently with the desktop step so that if/when
+  # this job is re-enabled, mobile coverage comes along with it rather than
+  # needing to be rediscovered later.
   e2e-tests:
     name: E2E Tests
     if: false
@@ -70,7 +76,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
@@ -80,8 +86,11 @@ jobs:
       - name: Start Supabase
         run: supabase start
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Run E2E tests (desktop)
+        run: npx playwright test --project=chromium --project=firefox --project=webkit
+
+      - name: Run E2E tests (mobile)
+        run: npm run test:e2e:mobile
 
       - name: Stop Supabase
         if: always()

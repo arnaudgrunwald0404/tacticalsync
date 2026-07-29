@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { getTzAbbr } from '@/lib/prepScheduleTime';
 import {
   ArrowLeft, CalendarDays, Sparkles, Send, Video, Loader2,
-  FileText, History, X, EyeOff, ChevronDown, ChevronUp,
+  FileText, History, X, EyeOff, ChevronDown, ChevronUp, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,6 +12,13 @@ import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import { PrepSettingsPanel } from '@/components/inbox/PrepSettingsPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import {
+  useMeetingAnalysis,
+  resolveSelfReflectiveTalkTime,
+  type MeetingSentiment,
+} from '@/hooks/useMeetingAnalysis';
+import { ClipPlayer } from '@/components/media/ClipPlayer';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
 interface MeetingDetailPanelProps {
@@ -33,6 +40,17 @@ interface ZoomRec {
   duration_minutes: number | null;
   has_transcript: boolean;
   ai_summary: string | null;
+}
+
+// Soundbites (PLAN_idea10_meeting_intelligence_enrichment.md §B4): the
+// featured quote (if any) tied to a specific recording, keyed by
+// cos_member_quotes.recording_id — start/end are null when the alignment
+// step in extract-zoom-quotes/index.ts never resolved a confident timestamp
+// for it, in which case only the quote text renders (no clip).
+interface RecordingQuote {
+  quote: string;
+  start_seconds: number | null;
+  end_seconds: number | null;
 }
 
 const QUESTIONS = [
@@ -135,6 +153,14 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
 
   // Past 1:1s tab
   const [zoomRecs, setZoomRecs] = useState<ZoomRec[]>([]);
+  // The viewing user's own display name — used only to resolve "You" in the
+  // self-reflective talk-time bar below (see useMeetingAnalysis.ts's framing
+  // comment: this feature never shows a report's talk-time to anyone but the
+  // person who was in the meeting).
+  const [myName, setMyName] = useState<string | null>(null);
+  // Soundbites (PLAN_idea10 §B4) — featured quote/clip per recording, keyed
+  // by cos_zoom_recordings.id (i.e. ZoomRec.id above).
+  const [recordingQuotes, setRecordingQuotes] = useState<Record<string, RecordingQuote>>({});
 
   useEffect(() => {
     if (!member?.id) { setLoadingPrep(false); return; }
@@ -143,6 +169,13 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoadingPrep(false); return; }
+
+      db.from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }: { data: { full_name: string } | null }) => setMyName(data?.full_name ?? null));
+
       const { data } = await db
         .from('cos_one_on_one_prep')
         .select('content, generated_at')
@@ -168,6 +201,25 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
       .limit(8)
       .then(({ data }: { data: ZoomRec[] | null }) => setZoomRecs(data ?? []))
       .catch(() => setZoomRecs([]));
+
+    // Soundbites (PLAN_idea10 §B4): pull this member's featured quotes that
+    // are tied to a specific recording, so each "Past 1:1s" card can show
+    // its own quote/clip rather than only the single most-recent one shown
+    // on the hero card (OneOnOnesView.tsx).
+    db.from('cos_member_quotes')
+      .select('quote, recording_id, start_seconds, end_seconds')
+      .eq('team_member_id', member.id)
+      .not('recording_id', 'is', null)
+      .then(({ data }: { data: Array<{ quote: string; recording_id: string; start_seconds: number | null; end_seconds: number | null }> | null }) => {
+        const map: Record<string, RecordingQuote> = {};
+        for (const row of data ?? []) {
+          if (!map[row.recording_id]) {
+            map[row.recording_id] = { quote: row.quote, start_seconds: row.start_seconds, end_seconds: row.end_seconds };
+          }
+        }
+        setRecordingQuotes(map);
+      })
+      .catch(() => setRecordingQuotes({}));
 
     db.from('cos_team_members')
       .select('agent_overrides')
@@ -394,38 +446,16 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
-                  {zoomRecs.map(rec => {
-                    const d = new Date(rec.start_time);
-                    return (
-                      <div key={rec.id} className="bg-white rounded-xl border border-gray-200/80 shadow-sm overflow-hidden">
-                        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50/60">
-                          <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-white border border-gray-200 flex flex-col items-center justify-center leading-none">
-                            <span className="text-[9px] font-bold tracking-wide uppercase text-primary">{MONTHS[d.getMonth()]}</span>
-                            <span className="text-base font-bold mt-px">{d.getDate()}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-bold truncate">{rec.topic ?? `1:1 with ${firstName}`}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5 text-xs text-gray-400">
-                              <span>{format(d, 'MMM d, yyyy')}</span>
-                              {rec.duration_minutes != null && <><span>·</span><span>{rec.duration_minutes} min</span></>}
-                            </div>
-                          </div>
-                          {rec.has_transcript && (
-                            <Badge variant="outline" className="text-[11px] h-6 px-2.5 border-emerald-200 text-emerald-700">Transcript</Badge>
-                          )}
-                        </div>
-                        {rec.ai_summary && (
-                          <div className="px-5 pt-4 text-sm leading-relaxed text-gray-700 whitespace-pre-line">{rec.ai_summary}</div>
-                        )}
-                        <div className="flex items-center gap-2 px-5 py-3">
-                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Sparkles className="h-3 w-3 text-primary" />
-                            {rec.ai_summary ? 'Summarized by Zoom AI Companion' : rec.has_transcript ? 'Transcript captured — summary pending' : 'Recording captured — summary pending'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {zoomRecs.map(rec => (
+                    <PastMeetingCard
+                      key={rec.id}
+                      rec={rec}
+                      firstName={firstName}
+                      memberName={name}
+                      myName={myName}
+                      quote={recordingQuotes[rec.id]}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -459,6 +489,159 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
           )}
 
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Past-meeting card: talk-time bar + sentiment badge (Phase A) ───────────
+// PLAN_idea10_meeting_intelligence_enrichment.md §4 A3. Split into its own
+// component (rather than inlined in the .map above) because it needs its own
+// useMeetingAnalysis() call per recording — hooks can't run inside a loop
+// body directly.
+//
+// FRAMING GUARDRAILS (do not loosen without re-reading the plan's §5/§7 and
+// useManagerSignals.ts's own framing comment):
+// - Self-reflective only: only rendered when both "you" and the member have
+//   nonzero resolved talk-time (i.e. the viewer was actually a party to this
+//   conversation) — never a report's talk-time surfaced to someone who
+//   wasn't in the room.
+// - No bare percentage below MIN_MEETING_SECONDS_FOR_TALK_TIME — a very
+//   short call rounding to "You: 100%" is misleading, not insightful.
+// - Sentiment copy describes the CONVERSATION ("Positive tone", "Some
+//   tension"), never the other person ("Jane was negative") — and every
+//   tooltip says explicitly that this is private to the viewer.
+
+function TalkTimeBar({ youSeconds, memberSeconds, memberFirstName }: {
+  youSeconds: number;
+  memberSeconds: number;
+  memberFirstName: string;
+}) {
+  const total = youSeconds + memberSeconds;
+  if (total <= 0) return null;
+  const youPct = Math.round((youSeconds / total) * 100);
+  const memberPct = 100 - youPct;
+
+  return (
+    <div className="px-5 pt-3 flex items-center gap-2.5">
+      <div className="flex-1 h-2 rounded-full overflow-hidden bg-gray-100 flex">
+        <div className="h-full bg-primary" style={{ width: `${youPct}%` }} />
+        <div className="h-full bg-primary/30" style={{ width: `${memberPct}%` }} />
+      </div>
+      <span className="text-[11px] text-gray-500 whitespace-nowrap">
+        You {youPct}% · {memberFirstName} {memberPct}%
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" aria-label="What is this?" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px] text-xs leading-relaxed">
+          Estimated from this meeting's transcript speaker labels — a reflection on
+          your own conversation balance, not a rating of {memberFirstName}. Only visible to you.
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+const SENTIMENT_COPY: Record<MeetingSentiment, { label: string; className: string }> = {
+  positive: { label: 'Positive tone', className: 'border-emerald-200 text-emerald-700 bg-emerald-50' },
+  neutral: { label: 'Neutral tone', className: 'border-gray-200 text-gray-600 bg-gray-50' },
+  mixed: { label: 'Mixed tone', className: 'border-amber-200 text-amber-700 bg-amber-50' },
+  negative: { label: 'Some tension', className: 'border-rose-200 text-rose-700 bg-rose-50' },
+};
+
+function SentimentBadge({ sentiment, rationale, memberFirstName }: {
+  sentiment: MeetingSentiment;
+  rationale: string | null;
+  memberFirstName: string;
+}) {
+  const copy = SENTIMENT_COPY[sentiment];
+  return (
+    <div className="px-5 pt-3 flex items-center gap-1.5">
+      <Badge variant="outline" className={cn('text-[11px] h-6 px-2.5', copy.className)}>{copy.label}</Badge>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" aria-label="What is this?" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px] text-xs leading-relaxed">
+          {rationale ?? 'A read on this conversation as a whole, not a judgment of ' + memberFirstName + '.'} Private to you — {memberFirstName} never sees this.
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+function PastMeetingCard({ rec, firstName, memberName, myName, quote }: {
+  rec: ZoomRec;
+  firstName: string;
+  memberName: string;
+  myName: string | null;
+  quote?: RecordingQuote;
+}) {
+  const { analysis } = useMeetingAnalysis(rec.id);
+  const d = new Date(rec.start_time);
+
+  const resolved = analysis
+    ? resolveSelfReflectiveTalkTime(analysis.talkTimeSeconds, memberName, myName, analysis.meetingDurationSeconds)
+    : null;
+  const showTalkTime = !!resolved && resolved.hasEnoughData && resolved.youSeconds > 0 && resolved.memberSeconds > 0;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50/60">
+        <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-white border border-gray-200 flex flex-col items-center justify-center leading-none">
+          <span className="text-[9px] font-bold tracking-wide uppercase text-primary">{MONTHS[d.getMonth()]}</span>
+          <span className="text-base font-bold mt-px">{d.getDate()}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold truncate">{rec.topic ?? `1:1 with ${firstName}`}</div>
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-gray-400">
+            <span>{format(d, 'MMM d, yyyy')}</span>
+            {rec.duration_minutes != null && <><span>·</span><span>{rec.duration_minutes} min</span></>}
+          </div>
+        </div>
+        {rec.has_transcript && (
+          <Badge variant="outline" className="text-[11px] h-6 px-2.5 border-emerald-200 text-emerald-700">Transcript</Badge>
+        )}
+      </div>
+      {rec.ai_summary && (
+        <div className="px-5 pt-4 text-sm leading-relaxed text-gray-700 whitespace-pre-line">{rec.ai_summary}</div>
+      )}
+      {/* Soundbite (PLAN_idea10 §B4) — this recording's featured quote, with
+          a clip player when alignment resolved a verified time range. */}
+      {quote && (
+        <div className="px-5 pt-4">
+          <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
+            <p className="text-sm italic text-gray-700 leading-relaxed">"{quote.quote}"</p>
+            {quote.start_seconds != null && quote.end_seconds != null && (
+              <div className="mt-2">
+                <ClipPlayer
+                  recordingId={rec.id}
+                  startSeconds={quote.start_seconds}
+                  endSeconds={quote.end_seconds}
+                  variant="onLight"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {showTalkTime && (
+        <TalkTimeBar youSeconds={resolved!.youSeconds} memberSeconds={resolved!.memberSeconds} memberFirstName={firstName} />
+      )}
+      {analysis?.overallSentiment && (
+        <SentimentBadge sentiment={analysis.overallSentiment} rationale={analysis.sentimentRationale} memberFirstName={firstName} />
+      )}
+      <div className="flex items-center gap-2 px-5 py-3">
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Sparkles className="h-3 w-3 text-primary" />
+          {rec.ai_summary ? 'Summarized by Zoom AI Companion' : rec.has_transcript ? 'Transcript captured — summary pending' : 'Recording captured — summary pending'}
+        </span>
       </div>
     </div>
   );

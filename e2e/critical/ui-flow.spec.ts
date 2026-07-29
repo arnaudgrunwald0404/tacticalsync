@@ -117,16 +117,13 @@ test.describe('UI Flow Tests', () => {
     expect(isJoinPage || isAuthPage).toBeTruthy();
   });
 
-  test('should load home page', async ({ page }) => {
+  test('should redirect home page to the external inbox', async ({ page }) => {
+    // "/" is a hard external redirect (see ExternalRedirect in src/App.tsx) —
+    // it no longer renders an in-app landing page. We only verify the
+    // redirect fires correctly; asserting on the third-party site's content
+    // is out of scope for this repo's e2e suite.
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Should load home page
-    const title = await page.title();
-    expect(title).toContain('TacticalSync');
-    
-    // Should have navigation or content
-    const hasContent = await page.locator('h1, h2, main, [data-testid="home"]').count() > 0;
-    expect(hasContent).toBeTruthy();
+    await page.waitForURL('https://tacticalsync.com/inbox');
+    expect(page.url()).toBe('https://tacticalsync.com/inbox');
   });
 });
