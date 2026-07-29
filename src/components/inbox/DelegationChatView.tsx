@@ -2,20 +2,25 @@ import { Loader2, CheckCircle2 } from 'lucide-react';
 import { ChatBubble } from './ChatBubble';
 import { ClarifyingQuestion } from './DelegationStatusRow';
 import { PlanStepList } from './PlanStepList';
-import { useInboxDelegation, type DelegationStatus } from '@/hooks/useInboxDelegation';
+import type { Delegation, DelegationStatus } from '@/hooks/useInboxDelegation';
 
 const SPINNING_STATUSES: DelegationStatus[] = ['ramping_up', 'planning', 'getting_it_done'];
 
 interface DelegationChatViewProps {
-  itemId: string;
+  delegation: Delegation | null;
+  submitAnswer: (answer: string) => Promise<void>;
+  approveStep: (stepId: string) => Promise<void>;
+  rejectStep: (stepId: string) => Promise<void>;
+  retryStep: (stepId: string) => Promise<void>;
 }
 
 /** Renders an active delegation as a chat thread inside the item's Assistant
  *  panel view — each agent_log entry is its own turn, arriving live via the
- *  realtime subscription already wired up in useInboxDelegation. The compact
- *  DelegationStatusRow in the list stays as a separate, quicker-glance surface. */
-export function DelegationChatView({ itemId }: DelegationChatViewProps) {
-  const { delegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(itemId);
+ *  realtime subscription the parent panel already holds via useInboxDelegation
+ *  (subscribing again here would open a second realtime channel for the same
+ *  item). The compact DelegationStatusRow in the list stays as a separate,
+ *  quicker-glance surface. */
+export function DelegationChatView({ delegation, submitAnswer, approveStep, rejectStep, retryStep }: DelegationChatViewProps) {
   if (!delegation) return null;
 
   const spinning = SPINNING_STATUSES.includes(delegation.status);

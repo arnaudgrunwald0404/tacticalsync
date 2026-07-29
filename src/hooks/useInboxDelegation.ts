@@ -85,7 +85,7 @@ export function useInboxDelegation(itemId: string | null) {
     return () => { supabase.removeChannel(channel); };
   }, [itemId]);
 
-  const startDelegation = useCallback(async (userId: string) => {
+  const startDelegation = useCallback(async (userId: string, instructions?: string) => {
     if (!itemId) return;
     setLoading(true);
     try {
@@ -96,7 +96,7 @@ export function useInboxDelegation(itemId: string | null) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ action: 'start', item_id: itemId, user_id: userId }),
+        body: JSON.stringify({ action: 'start', item_id: itemId, user_id: userId, instructions }),
       });
     } finally {
       setLoading(false);

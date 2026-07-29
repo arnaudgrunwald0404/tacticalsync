@@ -266,6 +266,7 @@ export const delegationRequestSchema = z.discriminatedUnion('action', [
     action: z.literal('start'),
     item_id: z.string().refine(isUuid, 'item_id must be a UUID.'),
     user_id: z.string().refine(isUuid, 'user_id must be a UUID.'),
+    instructions: z.string().trim().max(2000, 'instructions is too long.').optional(),
   }),
   z.object({
     action: z.literal('answer'),

@@ -10,6 +10,7 @@ import { InboxTagPill } from './InboxTagPill';
 import { ChatBubble } from './ChatBubble';
 import { AssistantChatPanel, type AssistantChatMsg } from './AssistantChatPanel';
 import { DelegationChatView } from './DelegationChatView';
+import { useInboxDelegation, type Delegation } from '@/hooks/useInboxDelegation';
 import { BriefItemDetail } from './BriefItemDetail';
 import { PersonBriefDetail } from './PersonBriefDetail';
 import { AgentBar } from './AgentBar';
@@ -256,6 +257,7 @@ function DefaultState({
 function ItemDetail({
   item, allTags, onClose, onCycleWorkflowStatus, onSetWorkflowStatus, onRemoveTag, onAddTag,
   onCreateWorkstream, onUpdateItem, onItemDone,
+  delegation, submitAnswer, approveStep, rejectStep, retryStep,
 }: {
   item: InboxItem;
   allTags: InboxTag[];
@@ -267,6 +269,11 @@ function ItemDetail({
   onCreateWorkstream: (parentId: string, name: string) => Promise<InboxTag | null>;
   onUpdateItem?: (id: string, patch: Partial<InboxItem>) => Promise<void>;
   onItemDone?: (id: string, done: boolean) => void;
+  delegation: Delegation | null;
+  submitAnswer: (answer: string) => Promise<void>;
+  approveStep: (stepId: string) => Promise<void>;
+  rejectStep: (stepId: string) => Promise<void>;
+  retryStep: (stepId: string) => Promise<void>;
 }) {
   const [textDraft, setTextDraft] = useState(item.text);
   const [editingText, setEditingText] = useState(false);
@@ -343,7 +350,14 @@ function ItemDetail({
       )}
 
       {/* Active delegation — renders as a chat thread when this item was delegated to the Assistant */}
-      <DelegationChatView itemId={item.id} />
+      <DelegationChatView
+        delegation={delegation}
+        submitAnswer={submitAnswer}
+        approveStep={approveStep}
+        rejectStep={rejectStep}
+        retryStep={retryStep}
+      />
+
 
       {/* Brief item: daily/weekly priorities */}
       {item.type === 'brief_item' && item.agent_payload?.brief_priorities && (
@@ -597,9 +611,17 @@ export function InboxAssistantPanel({
     void onMaterializeOnboarding(items);
   };
 
-  // Task/Note mode still create real items via onAddItem; "Assistant" mode
-  // (agent_nudge) from this home view routes into the chat instead.
+  // Task/Note mode still create real items via onAddItem. "Assistant" mode
+  // (agent_nudge) never creates a new item: from the home view (no item open)
+  // it routes into the general chat; with an item open, it delegates that
+  // item to the Assistant using the typed text as the instructions, rendered
+  // via the DelegationChatView thread already mounted in ItemDetail below.
+  const { delegation, startDelegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(item?.id ?? null);
   const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[], webSearch?: boolean) => {
+    if (type === 'agent_nudge' && item && !meetingEvent && !projectTag) {
+      if (userId) await startDelegation(userId, text);
+      return;
+    }
     if (!item && !meetingEvent && !projectTag && type === 'agent_nudge') {
       await sendChatMessage(text, tagIds, webSearch);
       return;
@@ -684,6 +706,11 @@ export function InboxAssistantPanel({
                 onCreateWorkstream={onCreateWorkstream}
                 onUpdateItem={onUpdateItem}
                 onItemDone={onItemDone}
+                delegation={delegation}
+                submitAnswer={submitAnswer}
+                approveStep={approveStep}
+                rejectStep={rejectStep}
+                retryStep={retryStep}
               />
             )}
           </SheetContent>
@@ -801,6 +828,11 @@ export function InboxAssistantPanel({
               onCreateWorkstream={onCreateWorkstream}
               onUpdateItem={onUpdateItem}
               onItemDone={onItemDone}
+              delegation={delegation}
+              submitAnswer={submitAnswer}
+              approveStep={approveStep}
+              rejectStep={rejectStep}
+              retryStep={retryStep}
             />
           ) : chatMessages.length > 0 ? (
             <AssistantChatPanel
