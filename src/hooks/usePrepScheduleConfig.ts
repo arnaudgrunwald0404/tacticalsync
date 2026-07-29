@@ -23,6 +23,7 @@ export interface PrepScheduleConfig {
   always_include: string[];
   max_others_after_exclude: number;
   included_group_series: string[];
+  excluded_one_on_one_emails: string[];
   prep_tools: string[];
   tool_tiers: Record<string, number>;
   sync_zoom_before: boolean;
@@ -53,6 +54,7 @@ export const DEFAULT_PREP_SCHEDULE: PrepScheduleConfig = {
   always_include: [],
   max_others_after_exclude: 1,
   included_group_series: [],
+  excluded_one_on_one_emails: [],
   prep_tools: ['zoom', 'slack'],
   tool_tiers: {},
   sync_zoom_before: true,
@@ -85,6 +87,7 @@ function mapRow(data: Record<string, unknown> | null): PrepScheduleConfig {
     always_include: (data.always_include as string[]) ?? d.always_include,
     max_others_after_exclude: (data.max_others_after_exclude as number) ?? d.max_others_after_exclude,
     included_group_series: (data.included_group_series as string[]) ?? d.included_group_series,
+    excluded_one_on_one_emails: (data.excluded_one_on_one_emails as string[]) ?? d.excluded_one_on_one_emails,
     prep_tools: (data.prep_tools as string[]) ?? d.prep_tools,
     tool_tiers: (data.tool_tiers as Record<string, number>) ?? d.tool_tiers,
     sync_zoom_before: (data.sync_zoom_before as boolean) ?? d.sync_zoom_before,
