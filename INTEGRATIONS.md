@@ -6,7 +6,7 @@ Source of truth for every external-system integration in this codebase, extracte
 
 All integrations share three architectural conventions worth calling out once:
 - **Credential storage**: every OAuth-based integration (Zoom, Slack, Google) has its own `user_*_credentials` table (`user_id` PK) with RLS locked down on the base table and a `_public` view (`security_barrier`) that strips tokens and exposes only a `connected` boolean to the client. StackOne and ClearGo instead share one generic table, `cos_mcp_integrations`, keyed by `(user_id, integration_key)`, plus a generic settings-UI + edge-function pair (`McpIntegrationPanel.tsx` + `test-mcp-integration`) that any future api-key-based integration can reuse by adding a preset — no bespoke panel/edge-function required.
-- **Dual invocation auth**: every sync edge function accepts either a normal user JWT (manual "Sync now" button) or `service-role key + x-supabase-user-id header` (cron/batch invocation on behalf of a specific user).
+- **Dual invocation auth**: every sync edge function accepts either a normal user JWT (manual "Sync now" button) or `service-role key + x-supabase-user-id header` (cron/batch invocation on behalf of a specific user). `extract-inbox-action-items` additionally treats a bare `SUPABASE_ANON_KEY` as cron mode — a project-specific workaround, since `pg_net` on this Supabase project appends the anon key as `Authorization` even when the cron job's own `net.http_post` call omits one; no other sync function has this branch.
 - **Retry/backoff**: `supabase/functions/_shared/retryWithBackoff.ts` wraps outbound calls for Zoom, Slack, Gmail, and Google Calendar (3 attempts, exponential backoff + jitter, honors `Retry-After` on 429, skips other 4xx). StackOne and ClearGo aren't covered yet — same gap, smaller blast radius (opt-in enrichment connectors, not the always-on agent pipeline).
 
 ## Contents
@@ -170,16 +170,17 @@ async function slackApi(method: string, params: Record<string, string> = {}) {
 
 ### Authentication
 
-- **Scopes**: `chat:write, commands, users:read, users:read.email, channels:read, channels:history, groups:read, groups:history, im:read, im:history, im:write`. Comment notes `commands` must be included or re-installs drop the slash-command registration.
+- **Two token types**: the OAuth flow now requests both **bot scopes** (`chat:write, commands, users:read, users:read.email, channels:read, channels:history, groups:read, groups:history, im:read, im:history, im:write` — installed workspace-wide) and **user scopes** (`channels:history, groups:history, im:history, im:read, users:read, users:read.email`, via `scope=`/`user_scope=` on the same authorize URL, granting `authed_user.access_token`). `exchange-slack-token` stores both: `access_token` (bot, `xoxb-`) and `user_access_token`/`user_scope` (user, `xoxp-`). Reading a person's own DMs/channel history requires the user token — a bot token only sees conversations it's actually a member of. Comment notes `commands` must be included in the bot scope list or re-installs drop the slash-command registration.
+- **Two separate connect entry points, must be kept scope-for-scope identical**: `src/components/cos/CosSlackSyncPanel.tsx` (Settings → Slack sync) and `src/components/cos/PrepSetupWizard.tsx` (onboarding wizard) each build their own authorize URL. These drifted once — the wizard requested only bot scopes, so anyone connecting through onboarding got the personal-DM-blind bot-token fallback until this was caught and fixed.
 - **Env vars**: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`, `SLACK_SIGNING_SECRET` (server); `VITE_SLACK_CLIENT_ID` (client).
-- **Storage**: `user_slack_credentials` (PK `user_id`, one workspace per user) — `access_token`, `scope`, `slack_team_id`, `slack_team_name`, `slack_user_id`, `slack_email`, `last_sync_at/status`, plus `sync_channels text[]` added later. Client view `user_slack_credentials_public` strips the token.
-- **No token refresh** — intentional, per migration comment: `-- Slack bot tokens don't expire, so no refresh flow needed`.
+- **Storage**: `user_slack_credentials` (PK `user_id`, one workspace per user) — `access_token`, `user_access_token`, `user_scope`, `scope`, `slack_team_id`, `slack_team_name`, `slack_user_id`, `slack_email`, `last_sync_at/status`, `sync_channels text[]` (legacy, see Slack §13.11 in `docs/SPECIFICATION.md`), plus `auto_sync_enabled`/`auto_sync_morning_hour_utc`/`auto_sync_midday_hour_utc` for the newer scheduled-sync feature. Client view `user_slack_credentials_public` strips the tokens.
+- **No token refresh** — intentional, per migration comment: `-- Slack bot tokens don't expire, so no refresh flow needed`. (Applies to the bot token; the user token's lifetime follows the same Slack no-expiry behavior.)
 - **Bot-vs-user ID pitfall handled explicitly in code**: `auth.test`'s `user_id` is the *bot's* id (identical across every install), so the account's `slack_user_id` must come from `tokenData.authed_user.id` instead, or the slash command lookup breaks for everyone.
 - **Slash-command / interactivity auth**: `slack-add-suggestion` verifies Slack's HMAC-SHA256 request signature (`X-Slack-Signature`/`X-Slack-Request-Timestamp`, 5-min replay window, constant-time compare). **`agent-slack-action` reads `SLACK_SIGNING_SECRET` into a variable but never calls a verify function on it** — a real gap, since that endpoint has `verify_jwt=false` and handles interactive `block_actions` payloads unauthenticated.
 
 ### Rate Limits
 
-None. No 429 handling, no `Retry-After`, no backoff, no delay between the sequential per-channel `conversations.history` calls in the sync loop. A rate-limited call is treated identically to an empty result (`if (!res.ok || ...) continue`).
+`supabase/functions/_shared/retryWithBackoff.ts` now wraps every outbound Slack API call (3 attempts, exponential backoff + jitter, honors `Retry-After` on 429, skips other 4xx) — previously there was no retry/backoff at all. Still no proactive rate-limit *awareness* (no request throttling ahead of hitting a 429), just reactive retry after one occurs.
 
 ### Data Shape
 
@@ -200,7 +201,7 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 ### Transformation Logic
 
 - **Timestamp conversion**: `new Date(parseFloat(msg.ts) * 1000).toISOString()`, applied uniformly across every sync path.
-- **Member matching**: email first (normalized-lowercase), then exact normalized-name match. **DMs with no matched member are dropped entirely** (`if (!memberId) continue`) — no logging of the skip.
+- **Member matching**: email first (normalized-lowercase), then exact normalized-name match. **DMs from an unmatched sender now sync too** (this used to drop them entirely via `if (!memberId) continue`) — `team_member_id` is stored as optional metadata when a match exists, and left null otherwise. Only `generate-1on1-prep`/`recommend-prep-tools` filter on `team_member_id`; `extract-inbox-action-items`, `generate-dci-brief`, and `slack-inbox-sync` read all messages regardless, and were being silently starved of unmatched-sender DMs before this changed.
 - **Noise filtering**: DMs under 5 chars and channel messages under 10 chars are dropped; self-DMs skipped.
 - **Channel-name normalization**: lowercased, leading `#` stripped, before matching against Slack's channel list.
 - **Markdown → mrkdwn**: outbound briefs run through a dedicated `markdownToSlack()` (bold/italic/strikethrough conversion, since Slack doesn't support `#` headings).
@@ -219,7 +220,7 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 ### Known Gotchas
 
 - No refresh flow means a workspace-side revoke (app uninstalled, admin action) breaks sync silently — `last_sync_status` isn't updated to reflect it since the sync just returns empty results, not an auth error.
-- **Pagination is capped, not iterated**: `users.list` at `limit=200` with no cursor follow-up; `conversations.list` at `limit=500` with no cursor handling. Workspaces past those caps have unresolved users/channels with no error surfaced.
+- **Pagination: `users.list` now iterates via cursor** (fetches every page, not capped at one); **`conversations.list` is still capped at `limit=500` with no cursor follow-up** — workspaces with more channels than that have some unresolved/unmatched channels with no error surfaced.
 - **History fetch limits are small**: 20 for DMs, 50 for channels, no cursor-based follow-up — older messages in the window are silently dropped.
 - **Security gap**: `agent-slack-action` never verifies `SLACK_SIGNING_SECRET` against the incoming interactive payload, unlike its sibling `slack-add-suggestion` which does this correctly.
 - **`ts` string precision**: the *raw string* `msg.ts`, not the parsed float, is used in the DB unique key — intentional, avoids float-precision collisions.
@@ -231,6 +232,8 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 - `supabase/functions/exchange-slack-token/index.ts`
 - `supabase/functions/disconnect-slack/index.ts`
 - `supabase/functions/slack-messages-sync/index.ts`
+- `supabase/functions/slack-sync-cron/index.ts` — hourly cron matching each user's configured auto-sync hour, mirrors `calendar-sync-cron`'s pattern
+- `supabase/functions/slack-inbox-sync/index.ts` — separate Gemini 2.5 Flash-based pipeline mining `cos_slack_messages` into `dci_suggested_tasks`, distinct from `extract-inbox-action-items`'s Claude Haiku pipeline (see `docs/SPECIFICATION.md` §7.7 for the two-pipeline architecture)
 - `supabase/functions/slack-add-suggestion/index.ts`
 - `supabase/functions/agent-slack-action/index.ts`
 - `supabase/functions/agent-command/index.ts`, `agent-tick/index.ts`
