@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { parseVttCues, type VttCue } from "../_shared/parseVtt.ts"
 import { buildCueAnnotatedTranscript, resolveQuoteTimestamp } from "../_shared/quoteAlignment.ts"
+import { computeTalkTime } from "../_shared/talkTime.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -208,6 +210,76 @@ Return ONLY valid JSON — no markdown fences, no commentary — matching this e
 Transcript:
 `
 
+// ── Sentiment & talk-time analysis (Phase A, PLAN_idea10_meeting_intelligence_
+// enrichment.md §4 A2) ───────────────────────────────────────────────────────
+//
+// Talk-time is pure arithmetic over parsed VTT cues (_shared/talkTime.ts) —
+// no LLM call. Sentiment reuses the exact mechanism generate-1on1-prep/index.ts
+// already established for cos_relationship_topics.sentiment (Claude Haiku,
+// same model id, same 4-value scale) — applied here to a whole meeting
+// instead of a single extracted topic, since idea #10 asks for a per-meeting
+// signal, not a topic-level one.
+//
+// Framing (plan §5.1-§5.2, §7 risk 3): this is scoped self-reflective/manager-
+// facing-about-their-own-conversation, mirroring useManagerSignals.ts's house
+// style ("your notes and tasks about this person — not their work or
+// performance"). The prompt below is written so the model's own rationale
+// stays about the conversation as a whole, never singling out a participant
+// as the cause of a negative reading — the UI layer must preserve that
+// framing too (see src/hooks/useMeetingAnalysis.ts).
+const SENTIMENT_PROMPT = `You are classifying the overall tone of a single meeting transcript, for the meeting host's own private reflection on the conversation — this is never shown as a judgment of any other participant.
+
+Classify the meeting's overall sentiment using this scale (same 4-value scale already used elsewhere in this product for topic sentiment):
+- "positive": constructive, upbeat, or resolution-oriented tone throughout
+- "negative": notable tension, frustration, or unresolved conflict
+- "neutral": routine status-update tone, no strong emotional signal either way
+- "mixed": both positive and negative/tense moments present
+
+Return ONLY valid JSON — no markdown fences, no commentary — matching this exact shape:
+{ "overall_sentiment": "positive", "rationale": "One concise sentence about the conversation as a whole, not about any one person." }
+
+The rationale must describe the conversation/meeting, never attribute the tone to a specific named participant.
+
+Transcript:
+`
+
+interface MeetingSentimentResult {
+  overall_sentiment: 'positive' | 'negative' | 'neutral' | 'mixed'
+  rationale: string
+}
+
+const VALID_SENTIMENTS = new Set(['positive', 'negative', 'neutral', 'mixed'])
+
+async function classifyMeetingSentiment(
+  anthropic: Anthropic,
+  transcriptText: string,
+): Promise<MeetingSentimentResult | null> {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      system: SENTIMENT_PROMPT,
+      messages: [{ role: 'user', content: transcriptText }],
+    })
+
+    const text = response.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text: string }) => b.text)
+      .join('')
+
+    const cleaned = text.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
+    const parsed = JSON.parse(cleaned)
+    if (!parsed || typeof parsed !== 'object') return null
+    if (!VALID_SENTIMENTS.has(parsed.overall_sentiment)) return null
+    if (typeof parsed.rationale !== 'string' || !parsed.rationale.trim()) return null
+
+    return { overall_sentiment: parsed.overall_sentiment, rationale: parsed.rationale.trim() }
+  } catch (err) {
+    console.warn('Meeting sentiment classification failed:', String(err))
+    return null
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -220,10 +292,18 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
     if (!googleApiKey) {
       return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
+
+    // Sentiment analysis (Phase A) is additive, not required — if no
+    // Anthropic key is configured, talk-time still gets computed (pure
+    // arithmetic, no LLM) and stored with overall_sentiment left null, rather
+    // than failing the whole quote-extraction pass over a missing key for a
+    // feature that's independent of it.
+    const anthropic = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -276,7 +356,7 @@ serve(async (req) => {
     const { data: transcripts, error: fetchErr } = await query
     if (fetchErr) return jsonResponse({ error: fetchErr.message }, 500)
     if (!transcripts || transcripts.length === 0) {
-      return jsonResponse({ processed: 0, quotes_added: 0, insights_added: 0, commitments_added: 0, message: 'No unprocessed transcripts found' }, 200)
+      return jsonResponse({ processed: 0, quotes_added: 0, insights_added: 0, commitments_added: 0, meeting_analyses_added: 0, message: 'No unprocessed transcripts found' }, 200)
     }
 
     // Load team members for speaker matching
@@ -297,6 +377,7 @@ serve(async (req) => {
     let totalQuotesAdded = 0
     let totalInsightsAdded = 0
     let totalCommitmentsAdded = 0
+    let totalMeetingAnalysesAdded = 0
 
     for (const transcript of transcripts) {
       // Soundbites alignment (PLAN_idea10 §2.1/§B3): parse cues up front so
@@ -577,6 +658,46 @@ serve(async (req) => {
         }
       }
 
+      // ── Meeting analysis: sentiment & talk-time (Phase A) ────────────────
+      // Independent of the quotes/commitments passes above — reuses the same
+      // per-transcript loop and `truncated` text, but never blocks or is
+      // blocked by them (plan §4 A2). Talk-time needs cue timestamps, so this
+      // only runs for VTT transcripts (content_type === 'vtt'); a plain-text
+      // transcript has nothing to compute talk-time from and is skipped here.
+      if (transcript.content_type === 'vtt') {
+        if (cues.length === 0) {
+          console.log(`No parseable VTT cues for transcript ${transcript.id} — skipping meeting analysis`)
+        } else {
+          const talkTime = computeTalkTime(cues)
+
+          // Sentiment reuses the same stripped/truncated transcript text
+          // already computed above for the Gemini quote-extraction call —
+          // no need to re-strip or re-truncate.
+          const sentiment = anthropic ? await classifyMeetingSentiment(anthropic, truncated) : null
+          if (!anthropic) {
+            console.log(`ANTHROPIC_API_KEY not configured — storing talk-time only for transcript ${transcript.id}`)
+          }
+
+          const { error: analysisErr } = await supabase
+            .from('cos_meeting_analysis')
+            .upsert({
+              recording_id: transcript.recording_id,
+              user_id: userId,
+              talk_time_seconds: talkTime.secondsBySpeaker,
+              meeting_duration_seconds: talkTime.meetingDurationSeconds,
+              overall_sentiment: sentiment?.overall_sentiment ?? null,
+              sentiment_rationale: sentiment?.rationale ?? null,
+              analyzed_at: new Date().toISOString(),
+            }, { onConflict: 'recording_id' })
+
+          if (analysisErr) {
+            console.error(`Failed to upsert meeting analysis for transcript ${transcript.id}:`, analysisErr.message)
+          } else {
+            totalMeetingAnalysesAdded++
+          }
+        }
+      }
+
       // Mark transcript as processed
       await supabase
         .from('cos_zoom_transcripts')
@@ -589,6 +710,7 @@ serve(async (req) => {
       quotes_added: totalQuotesAdded,
       insights_added: totalInsightsAdded,
       commitments_added: totalCommitmentsAdded,
+      meeting_analyses_added: totalMeetingAnalysesAdded,
     }, 200)
 
   } catch (err) {
