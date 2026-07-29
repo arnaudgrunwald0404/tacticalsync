@@ -4,7 +4,7 @@
 // version; this copy exists only because the edge function can't import from
 // the app bundle.
 
-export type ToolName = 'create_meeting_topic' | 'post_slack_update'
+export type ToolName = 'create_meeting_topic' | 'post_slack_update' | 'propose_meeting_time'
 
 export type PlanStepStatus =
   | 'proposed' | 'approved' | 'rejected' | 'running' | 'succeeded' | 'failed' | 'skipped'

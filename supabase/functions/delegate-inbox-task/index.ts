@@ -148,7 +148,11 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   })
-  return (msg.content[0] as { text: string }).text
+  // claude-sonnet-5 returns an extended-thinking block before the text block,
+  // so content[0] is not reliably the text — find it by type instead (same
+  // guard agent-command/index.ts already uses for this).
+  const textBlock = msg.content.find((b): b is { type: 'text'; text: string } => b.type === 'text')
+  return textBlock?.text ?? ''
 }
 
 // ── Phase: Ramping up → decide clarity ───────────────────────────────────────
@@ -261,9 +265,20 @@ async function planPhase(
     ? seriesOptions.map(s => `- ${s.id} (${s.name})`).join('\n')
     : 'none available'
 
+  // Grounds propose_meeting_time's team_member_id — Claude can't invent a
+  // valid id, and needs real names to match against the task text (e.g. "Melissa").
+  const { data: memberRows } = await (db as any).from('cos_team_members').select('id, name').eq('user_id', userId)
+  const memberOptions = ((memberRows ?? []) as { id: string; name: string }[])
+  const membersBlock = memberOptions.length
+    ? memberOptions.map(m => `- ${m.id} (${m.name})`).join('\n')
+    : 'none available'
+
+  const nowIso = new Date().toISOString()
+
   const toolDefs = `
 - create_meeting_topic: params { series_id: one of the ids below, title: string, notes?: string }. Available series:\n${seriesBlock}
-- post_slack_update: params { message: string, and EITHER channel: string (a Slack channel name without '#') OR dm_user_email: string }`
+- post_slack_update: params { message: string, and EITHER channel: string (a Slack channel name without '#') OR dm_user_email: string }
+- propose_meeting_time: params { team_member_id: one of the ids below, window_start_utc: ISO datetime, window_end_utc: ISO datetime, duration_minutes: number }. Reads the user's own calendar for open slots in that window and Slack-DMs up to 3 options to the team member — it does NOT check the other person's calendar or book anything. The current time is ${nowIso}; resolve relative dates (e.g. "this Friday") against it and convert any stated time/timezone into UTC. Available team members:\n${membersBlock}`
 
   const planningResponse = await callClaude(
     `You are a delegation agent. Given a task, decide which of the available tools (if any) would concretely move it forward, and produce a JSON array of steps: [{ "tool": "...", "params": {...} }]. Only use the tools listed below, with valid params. If nothing concrete can be done with these tools, return an empty array []. Respond with ONLY the JSON array, no other text.
@@ -302,6 +317,11 @@ Available tools:${toolDefs}`,
         step.params.resolved_series_name = resolved.seriesName
         step.params.resolved_date = resolved.instance.start_date
       }
+    }
+    if (step.tool === 'propose_meeting_time') {
+      const memberId = (step.params as any).team_member_id as string
+      const member = memberOptions.find(m => m.id === memberId)
+      if (member) step.params.resolved_member_name = member.name
     }
     step.description = getTool(step.tool)!.describe(step.params)
   }
