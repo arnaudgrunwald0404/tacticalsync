@@ -191,77 +191,92 @@ serve(async (req) => {
 
     // ── 1. Sync DMs ──────────────────────────────────────────────────────────
     // Must use userToken — bot token only sees DMs the bot is in.
-    const convRes = await slackApi('conversations.list', {
-      types: 'im',
-      limit: '100',
-    }, userToken)
+    // Fetch all DM conversations with cursor pagination (limit 100 per page),
+    // mirroring the users.list loop above.
+    const dmChannels: SlackChannel[] = []
+    let dmCursor: string | undefined
+    do {
+      const params: Record<string, string> = { types: 'im', limit: '100' }
+      if (dmCursor) params.cursor = dmCursor
+      const convRes = await slackApi('conversations.list', params, userToken)
+      if (!convRes.ok || !Array.isArray(convRes.channels)) break
+      dmChannels.push(...(convRes.channels as SlackChannel[]))
+      const meta = convRes.response_metadata as { next_cursor?: string } | undefined
+      dmCursor = meta?.next_cursor || undefined
+    } while (dmCursor)
 
-    if (convRes.ok && Array.isArray(convRes.channels)) {
-      for (const ch of convRes.channels as SlackChannel[]) {
-        if (!ch.is_im || !ch.user) continue
-        // Skip self-DM
-        if (ch.user === mySlackId) continue
+    for (const ch of dmChannels) {
+      if (!ch.is_im || !ch.user) continue
+      // Skip self-DM
+      if (ch.user === mySlackId) continue
 
-        // team_member_id is metadata for the 1:1-prep queries that filter on
-        // it (generate-1on1-prep, recommend-prep-tools) — it's fine for it to
-        // be null. DMs from people who aren't a registered team member are
-        // still synced so extract-inbox-action-items, generate-dci-brief, and
-        // slack-inbox-sync (none of which filter by team_member_id) can see
-        // them too. Previously this whole block was skipped for any
-        // unmatched DM, capping "Sync now" at whatever the trailing week's
-        // messages *from registered team members* happened to be — a small,
-        // fixed number regardless of actual Slack volume.
-        const memberId = matchMember(ch.user)
+      // team_member_id is metadata for the 1:1-prep queries that filter on
+      // it (generate-1on1-prep, recommend-prep-tools) — it's fine for it to
+      // be null. DMs from people who aren't a registered team member are
+      // still synced so extract-inbox-action-items, generate-dci-brief, and
+      // slack-inbox-sync (none of which filter by team_member_id) can see
+      // them too. Previously this whole block was skipped for any
+      // unmatched DM, capping "Sync now" at whatever the trailing week's
+      // messages *from registered team members* happened to be — a small,
+      // fixed number regardless of actual Slack volume.
+      const memberId = matchMember(ch.user)
 
-        const histRes = await slackApi('conversations.history', {
-          channel: ch.id,
-          oldest,
-          limit: '20',
-        }, userToken)
+      const histRes = await slackApi('conversations.history', {
+        channel: ch.id,
+        oldest,
+        limit: '20',
+      }, userToken)
 
-        if (!histRes.ok || !Array.isArray(histRes.messages)) continue
+      if (!histRes.ok || !Array.isArray(histRes.messages)) continue
 
-        for (const msg of histRes.messages as SlackMessage[]) {
-          if (msg.type !== 'message' || !msg.text) continue
-          // Skip bot messages and very short messages
-          if (msg.text.length < 5) continue
+      for (const msg of histRes.messages as SlackMessage[]) {
+        if (msg.type !== 'message' || !msg.text) continue
+        // Skip bot messages and very short messages
+        if (msg.text.length < 5) continue
 
-          const senderInfo = slackUsers.get(msg.user ?? '')
-          const messageDate = new Date(parseFloat(msg.ts) * 1000).toISOString()
+        const senderInfo = slackUsers.get(msg.user ?? '')
+        const messageDate = new Date(parseFloat(msg.ts) * 1000).toISOString()
 
-          const { error: insertErr } = await supabase
-            .from('cos_slack_messages')
-            .upsert({
-              user_id: userId,
-              team_member_id: memberId,
-              channel_id: ch.id,
-              channel_name: null, // DMs don't have a name
-              message_ts: msg.ts,
-              sender_slack_id: msg.user ?? null,
-              sender_name: senderInfo?.name ?? null,
-              content: msg.text.slice(0, 2000), // cap length
-              is_dm: true,
-              thread_ts: msg.thread_ts ?? null,
-              message_date: messageDate,
-            }, { onConflict: 'user_id,channel_id,message_ts' })
+        const { error: insertErr } = await supabase
+          .from('cos_slack_messages')
+          .upsert({
+            user_id: userId,
+            team_member_id: memberId,
+            channel_id: ch.id,
+            channel_name: null, // DMs don't have a name
+            message_ts: msg.ts,
+            sender_slack_id: msg.user ?? null,
+            sender_name: senderInfo?.name ?? null,
+            content: msg.text.slice(0, 2000), // cap length
+            is_dm: true,
+            thread_ts: msg.thread_ts ?? null,
+            message_date: messageDate,
+          }, { onConflict: 'user_id,channel_id,message_ts' })
 
-          if (!insertErr) synced++
-        }
+        if (!insertErr) synced++
       }
     }
 
     // ── 2. Sync specified channels ───────────────────────────────────────────
     // Use userToken so the bot doesn't need to be invited to every channel.
     if (extraChannels.length > 0) {
-      // Find channel IDs by name.
-      const allChRes = await slackApi('conversations.list', {
-        types: 'public_channel,private_channel',
-        limit: '500',
-      }, userToken)
+      // Find channel IDs by name. Fetch all public/private channels with
+      // cursor pagination (limit 500 per page), mirroring the users.list loop.
+      const allChannels: Array<{ id: string; name: string }> = []
+      let chCursor: string | undefined
+      do {
+        const params: Record<string, string> = { types: 'public_channel,private_channel', limit: '500' }
+        if (chCursor) params.cursor = chCursor
+        const allChRes = await slackApi('conversations.list', params, userToken)
+        if (!allChRes.ok || !Array.isArray(allChRes.channels)) break
+        allChannels.push(...(allChRes.channels as Array<{ id: string; name: string }>))
+        const meta = allChRes.response_metadata as { next_cursor?: string } | undefined
+        chCursor = meta?.next_cursor || undefined
+      } while (chCursor)
 
-      if (allChRes.ok && Array.isArray(allChRes.channels)) {
+      if (allChannels.length > 0) {
         const channelMap = new Map<string, { id: string; name: string }>()
-        for (const ch of allChRes.channels as Array<{ id: string; name: string }>) {
+        for (const ch of allChannels) {
           channelMap.set(ch.name.toLowerCase(), { id: ch.id, name: ch.name })
         }
 

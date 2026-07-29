@@ -18,17 +18,23 @@ export default defineConfig({
     timeout: 10000,
   },
   projects: [
+    // Desktop projects — exclude e2e/mobile/** so the mobile-only smoke
+    // suite doesn't unintentionally run 3x extra (once per desktop browser)
+    // on top of the two mobile projects below.
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: '**/mobile/**',
     },
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      testIgnore: '**/mobile/**',
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      testIgnore: '**/mobile/**',
     },
     // Mobile projects — only run e2e/mobile/** specs
     {

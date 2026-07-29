@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,11 +118,14 @@ serve(async (req) => {
     let responsePreview: unknown = null
 
     try {
-      const resp = await fetch(testUrl, {
-        method: 'GET',
-        headers,
-        signal: AbortSignal.timeout(10_000),
-      })
+      const resp = await retryWithBackoff(
+        () => fetch(testUrl, {
+          method: 'GET',
+          headers,
+          signal: AbortSignal.timeout(10_000),
+        }),
+        { integration: integration_key, label: 'connection test' },
+      )
 
       if (resp.ok) {
         testStatus = 'ok'
