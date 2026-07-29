@@ -8,12 +8,18 @@ interface SettingsNavbarProps {
   userEmail?: string;
   showAdminManagement?: boolean;
   canManagePermissions?: boolean;
+  // Idea #11: org-wide talking points admin panel. Deliberately a separate
+  // gate from showAdminManagement — that one is super-admin-only (Users /
+  // Domains / Permissions), while this feature is open to any is_admin (or
+  // is_super_admin) user. See PLAN_idea11_org_wide_talking_points.md §2.4.
+  showOrgTalkingPoints?: boolean;
 }
 
 const NAV_ITEMS = [
   { id: "user-management-users",       label: "Users",             group: "User Management" },
   { id: "user-management-domains",     label: "Domains",           group: "User Management" },
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
+  { id: "org-talking-points",          label: "Talking Points",    group: "User Management" },
   { id: "strategy-cycles",             label: "Strategy Cycles",   group: "RCDO" },
   { id: "configure-my-lists",          label: "My Lists",          group: "Check-Ins" },
   { id: "prep-schedule",               label: "Daily Brief",       group: "Check-Ins" },
@@ -30,10 +36,14 @@ const NAV_ITEMS = [
   { id: "testing-mode",                label: "Role Preview",      group: null },
 ];
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions, showOrgTalkingPoints }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   const visibleItems = NAV_ITEMS.filter(item => {
+    // org-talking-points shares the "User Management" group label for
+    // discoverability but has its own, less restrictive gate — see the
+    // showOrgTalkingPoints prop doc above.
+    if (item.id === "org-talking-points") return !!showOrgTalkingPoints;
     if (item.group === "User Management" && !showAdminManagement) return false;
     if (item.id === "user-management-permissions" && !canManagePermissions) return false;
     if (item.id === "testing-mode" && !isTestUser) return false;
