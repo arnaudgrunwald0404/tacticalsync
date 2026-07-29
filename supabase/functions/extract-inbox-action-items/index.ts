@@ -75,6 +75,14 @@ interface ScanItem {
   senderEmail?: string          // gmail only
   senderTier?: SenderTier       // gmail only
   gmailUrl?: string             // gmail only — direct link to thread
+  slackUrl?: string             // slack only — direct link to the message
+}
+
+// Slack deep link: works across workspaces (redirects when logged in).
+// ts format: "1716000000.123456" → "1716000000123456". Mirrors slackUrl()
+// in supabase/functions/slack-inbox-sync/index.ts.
+function slackPermalink(channelId: string, ts: string): string {
+  return `https://slack.com/archives/${channelId}/p${ts.replace('.', '')}`
 }
 
 // IntentType, SUPPRESSED_BY_DEFAULT imported from inboxTriageUtils
@@ -302,6 +310,7 @@ serve(async (req) => {
               sourceId: `${m.channel_id}:${m.message_ts}`,
               label: m.is_dm ? `DM from ${m.sender_name ?? 'unknown'}` : `#${m.channel_name} — ${m.sender_name ?? 'unknown'}`,
               text: m.content.slice(0, MAX_TEXT_LEN),
+              slackUrl: slackPermalink(m.channel_id, m.message_ts),
             })
           }
         }
@@ -513,6 +522,7 @@ serve(async (req) => {
                 ...(source.senderEmail ? { sender_email: source.senderEmail } : {}),
                 ...(source.senderTier ? { sender_tier: source.senderTier } : {}),
                 ...(source.gmailUrl ? { gmail_url: source.gmailUrl } : {}),
+                ...(source.slackUrl ? { slack_url: source.slackUrl } : {}),
                 action_required: true,
                 cta_label: source.source === 'gmail' ? 'Reply in Gmail' : 'Add to inbox',
                 cta_action: 'approve_suggestion',
