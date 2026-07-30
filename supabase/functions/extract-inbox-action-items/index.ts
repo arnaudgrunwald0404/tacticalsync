@@ -142,10 +142,13 @@ fill out a form, approve a request, respond by a deadline.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
 
+These summaries are shown directly to the reader, so always refer to them as
+"you"/"your" — never by their own name, even if it appears in the text.
+
 Respond ONLY with valid JSON: an array of
 {"item_id": "<id from the list>",
  "intent_type": "question"|"request"|"introduction"|"decision_needed"|"fyi",
- "summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
+ "summary": "<one-line paraphrase, imperative or question form, under 140 chars, addressed to the reader as \"you\">",
  "rationale": "<one short clause on why this needs attention>",
  "owed_by": "me"|"them"|null,
  "due_date": "<YYYY-MM-DD>"|null}.
