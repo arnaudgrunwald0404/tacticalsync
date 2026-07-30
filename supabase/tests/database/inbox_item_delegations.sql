@@ -36,7 +36,7 @@
 -- for the SET LOCAL role/claims + SAVEPOINT pattern used throughout.
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(33);
 
 -- ── Fixtures (inserted as postgres/superuser, bypassing RLS) ────────────────
 -- Delegator (manager), delegatee (their linked report), and a stranger who
@@ -375,6 +375,108 @@ SELECT is(
   'The delegatee still cannot see an unrelated stranger''s inbox_items row (additive policy is narrowly scoped, not a blanket cross-user grant)'
 );
 ROLLBACK TO SAVEPOINT as_delegatee_broad_scan;
+
+-- ── Regression test: cross-user IDOR via delegation identity-column
+--    tampering (reports/security_audit_20260730.md finding #1; fixed by
+--    20260803000006_lock_inbox_item_delegation_identity_columns.sql). Fresh
+--    fixtures so this is independent of the mutated (done/cancelled) state
+--    from the sync tests above.
+INSERT INTO inbox_items (id, user_id, type, text, status)
+VALUES ('32000000-0000-0000-0000-000000000005', '30000000-0000-0000-0000-000000000001', 'task', 'Third task', 'open');
+INSERT INTO inbox_items (id, user_id, type, text, status)
+VALUES ('32000000-0000-0000-0000-000000000006', '30000000-0000-0000-0000-000000000002', 'task', 'Third task', 'open');
+
+SAVEPOINT as_delegator_fresh_insert;
+SET LOCAL role authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"30000000-0000-0000-0000-000000000001"}';
+INSERT INTO inbox_item_delegations (id, source_item_id, delegator_user_id, delegatee_user_id, delegatee_item_id, team_member_id, status)
+VALUES (
+  '33000000-0000-0000-0000-000000000003',
+  '32000000-0000-0000-0000-000000000005',
+  '30000000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000002',
+  '32000000-0000-0000-0000-000000000006',
+  '31000000-0000-0000-0000-000000000001',
+  'pending'
+);
+SELECT is(
+  (SELECT count(*)::int FROM inbox_item_delegations WHERE id = '33000000-0000-0000-0000-000000000003'),
+  1,
+  'Fresh legitimate delegation fixture for the tampering test can be created'
+);
+-- RELEASE, not ROLLBACK TO — this fixture must persist for the tests below.
+RESET role;
+RESET request.jwt.claims;
+RELEASE SAVEPOINT as_delegator_fresh_insert;
+
+-- READ-IDOR path: the delegatee (a legitimate party on the fresh delegation
+-- above) tries to rewrite source_item_id to point at the stranger's private
+-- item ('...0099', already proven invisible to the delegatee earlier in this
+-- file). The "delegatee can view delegated source item" policy trusts
+-- source_item_id blindly, so if this UPDATE succeeded, the very next SELECT
+-- would leak the stranger's item to the delegatee.
+SAVEPOINT as_delegatee_tamper_source;
+SET LOCAL role authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"30000000-0000-0000-0000-000000000002"}';
+SELECT throws_ok(
+  $$UPDATE inbox_item_delegations SET source_item_id = '32000000-0000-0000-0000-000000000099' WHERE id = '33000000-0000-0000-0000-000000000003'$$,
+  NULL,
+  'fn_lock_inbox_item_delegation_identity blocks a delegatee from rewriting source_item_id to a victim''s item (read-IDOR)'
+);
+ROLLBACK TO SAVEPOINT as_delegatee_tamper_source;
+
+-- Confirm the blocked attempt left no side channel: the delegatee still
+-- cannot see the stranger's item. ROLLBACK TO SAVEPOINT above also reverts
+-- the SET LOCAL role/claims from the block it closes, so this re-enters the
+-- delegatee's session explicitly rather than (incorrectly) inheriting
+-- whatever role was active before that block — without this, the query
+-- silently runs as the outer superuser session and passes for the wrong
+-- reason (bypassing RLS entirely, not proving the policy holds).
+SAVEPOINT as_delegatee_source_recheck;
+SET LOCAL role authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"30000000-0000-0000-0000-000000000002"}';
+SELECT is(
+  (SELECT count(*)::int FROM inbox_items WHERE id = '32000000-0000-0000-0000-000000000099'),
+  0,
+  'After the blocked tamper attempt, the delegatee still cannot SELECT the stranger''s item'
+);
+ROLLBACK TO SAVEPOINT as_delegatee_source_recheck;
+
+-- Ground-truth check (postgres, bypassing RLS deliberately, matching the
+-- convention used for the sync-trigger assertions above).
+SELECT is(
+  (SELECT source_item_id FROM inbox_item_delegations WHERE id = '33000000-0000-0000-0000-000000000003'),
+  '32000000-0000-0000-0000-000000000005'::uuid,
+  'The fresh delegation''s source_item_id is unchanged after the blocked tamper attempt'
+);
+
+-- WRITE-IDOR path: rewriting delegatee_item_id to point at another of the
+-- delegatee's own items would let their own status change on that item
+-- redirect the SECURITY DEFINER sync trigger at whichever inbox_items row
+-- source_item_id names — confirm this is blocked too.
+SAVEPOINT as_delegatee_tamper_delegatee_item;
+SET LOCAL role authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"30000000-0000-0000-0000-000000000002"}';
+SELECT throws_ok(
+  $$UPDATE inbox_item_delegations SET delegatee_item_id = '32000000-0000-0000-0000-000000000004' WHERE id = '33000000-0000-0000-0000-000000000003'$$,
+  NULL,
+  'fn_lock_inbox_item_delegation_identity blocks a delegatee from rewriting delegatee_item_id (write-IDOR setup)'
+);
+ROLLBACK TO SAVEPOINT as_delegatee_tamper_delegatee_item;
+
+-- Regression guard: the lock trigger must not break legitimate non-identity
+-- updates — the delegatee can still update `note`, which none of the guarded
+-- columns touch.
+SAVEPOINT as_delegatee_benign_update;
+SET LOCAL role authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"30000000-0000-0000-0000-000000000002"}';
+UPDATE inbox_item_delegations SET note = 'looks good' WHERE id = '33000000-0000-0000-0000-000000000003';
+SELECT is(
+  (SELECT note FROM inbox_item_delegations WHERE id = '33000000-0000-0000-0000-000000000003'),
+  'looks good',
+  'fn_lock_inbox_item_delegation_identity does not block legitimate non-identity updates (note field)'
+);
+ROLLBACK TO SAVEPOINT as_delegatee_benign_update;
 
 SELECT * FROM finish();
 ROLLBACK;
