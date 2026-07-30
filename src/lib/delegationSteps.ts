@@ -4,7 +4,7 @@
 // repo's existing pattern for logic shared between the two runtimes (see
 // src/lib/slack/verifySlackSignature.ts / supabase/functions/_shared/slackSignature.ts).
 
-export type ToolName = 'create_meeting_topic' | 'post_slack_update';
+export type ToolName = 'create_meeting_topic' | 'post_slack_update' | 'propose_meeting_time';
 
 export type PlanStepStatus =
   | 'proposed'
