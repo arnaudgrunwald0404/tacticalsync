@@ -87,7 +87,7 @@ test.describe('Idea #7: person memory data isolation (RLS)', () => {
       user_id: userA.userId, team_member_id: memberIdA, topic: 'Performance concern', category: 'feedback', sentiment: 'negative',
     });
     await admin.from('cos_one_on_one_prep').insert({
-      user_id: userA.userId, team_member_id: memberIdA, content: 'Confidential prep notes', source: 'manual', status: 'ready', prep_date: '2026-07-01',
+      user_id: userA.userId, team_member_id: memberIdA, content: 'Confidential prep notes', source: 'static', status: 'ready', prep_date: '2026-07-01',
     });
     await admin.from('cos_meeting_actions').insert({
       user_id: userA.userId, member_id: memberIdA, text: 'Overdue sensitive commitment', status: 'pending',
