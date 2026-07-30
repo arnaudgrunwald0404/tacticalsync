@@ -4,6 +4,8 @@ import {
   describeCreateMeetingTopic,
   validatePostSlackUpdateParams,
   describePostSlackUpdate,
+  validateProposeMeetingTimeParams,
+  describeProposeMeetingTime,
   validateToolParams,
   describeToolStep,
 } from '@/lib/delegationTools';
@@ -88,11 +90,98 @@ describe('describePostSlackUpdate', () => {
   });
 });
 
+describe('validateProposeMeetingTimeParams', () => {
+  const validParams = {
+    team_member_id: UUID,
+    window_start_utc: '2026-08-01T00:00:00.000Z',
+    window_end_utc: '2026-08-02T00:00:00.000Z',
+    duration_minutes: 30,
+  };
+
+  it('accepts valid params', () => {
+    expect(validateProposeMeetingTimeParams(validParams)).toBeNull();
+  });
+
+  it('rejects missing required fields', () => {
+    expect(validateProposeMeetingTimeParams({ team_member_id: UUID })).toMatch(/required/);
+  });
+
+  it('rejects a non-UUID team_member_id', () => {
+    expect(validateProposeMeetingTimeParams({ ...validParams, team_member_id: 'not-a-uuid' })).toMatch(/UUID/);
+  });
+
+  it('rejects invalid ISO datetimes', () => {
+    expect(validateProposeMeetingTimeParams({ ...validParams, window_start_utc: 'not-a-date' })).toMatch(/window_start_utc/);
+    expect(validateProposeMeetingTimeParams({ ...validParams, window_end_utc: 'not-a-date' })).toMatch(/window_end_utc/);
+  });
+
+  it('rejects an end before the start', () => {
+    expect(validateProposeMeetingTimeParams({
+      ...validParams,
+      window_start_utc: '2026-08-02T00:00:00.000Z',
+      window_end_utc: '2026-08-01T00:00:00.000Z',
+    })).toMatch(/after/);
+  });
+
+  it('rejects a window spanning more than 14 days', () => {
+    expect(validateProposeMeetingTimeParams({
+      ...validParams,
+      window_start_utc: '2026-08-01T00:00:00.000Z',
+      window_end_utc: '2026-08-20T00:00:00.000Z',
+    })).toMatch(/14 days/);
+  });
+
+  it('rejects a duration outside 5-480 minutes', () => {
+    expect(validateProposeMeetingTimeParams({ ...validParams, duration_minutes: 2 })).toMatch(/duration_minutes/);
+    expect(validateProposeMeetingTimeParams({ ...validParams, duration_minutes: 500 })).toMatch(/duration_minutes/);
+  });
+
+  it('rejects a window shorter than the requested duration', () => {
+    expect(validateProposeMeetingTimeParams({
+      ...validParams,
+      window_start_utc: '2026-08-01T00:00:00.000Z',
+      window_end_utc: '2026-08-01T00:10:00.000Z',
+      duration_minutes: 30,
+    })).toMatch(/shorter/);
+  });
+});
+
+describe('describeProposeMeetingTime', () => {
+  it('names the resolved team member when available', () => {
+    const desc = describeProposeMeetingTime({
+      resolved_member_name: 'Melissa',
+      window_start_utc: '2026-08-01T17:00:00.000Z',
+      window_end_utc: '2026-08-01T18:00:00.000Z',
+    });
+    expect(desc).toContain('Melissa');
+    expect(desc).toContain('UTC');
+  });
+
+  it('falls back to a generic pronoun when no member name has been resolved', () => {
+    const desc = describeProposeMeetingTime({
+      window_start_utc: '2026-08-01T17:00:00.000Z',
+      window_end_utc: '2026-08-01T18:00:00.000Z',
+    });
+    expect(desc).toContain('them');
+  });
+});
+
 describe('validateToolParams / describeToolStep dispatch', () => {
   it('dispatches to the right validator and describer per tool name', () => {
     expect(validateToolParams('create_meeting_topic', { series_id: UUID, title: 'x' })).toBeNull();
     expect(validateToolParams('post_slack_update', { message: 'hi', channel: 'x' })).toBeNull();
+    expect(validateToolParams('propose_meeting_time', {
+      team_member_id: UUID,
+      window_start_utc: '2026-08-01T00:00:00.000Z',
+      window_end_utc: '2026-08-02T00:00:00.000Z',
+      duration_minutes: 30,
+    })).toBeNull();
     expect(describeToolStep('create_meeting_topic', { title: 'x' })).toContain('x');
     expect(describeToolStep('post_slack_update', { message: 'hi', channel: 'x' })).toContain('hi');
+    expect(describeToolStep('propose_meeting_time', {
+      resolved_member_name: 'Sam',
+      window_start_utc: '2026-08-01T17:00:00.000Z',
+      window_end_utc: '2026-08-01T18:00:00.000Z',
+    })).toContain('Sam');
   });
 });
