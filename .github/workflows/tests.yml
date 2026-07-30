@@ -112,6 +112,56 @@ jobs:
           path: test-results/
           retention-days: 30
 
+  # Runs independently of the (disabled) e2e-tests job above: this is the
+  # merge-blocking live-RLS check for relationship-memory privacy (Idea #7).
+  # personMemoryRls.test.ts (unit-tests job) only checks that migration SQL
+  # *declares* auth.uid() = user_id scoping — only a real Postgres instance
+  # can confirm RLS actually *enforces* it, which is what this job verifies.
+  person-memory-privacy:
+    name: Person Memory Privacy (RLS)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start
+
+      # Uses e2e/setup/localSupabaseDefaults.ts's well-known local anon/service
+      # keys — no secrets needed; this test never leaves the CI runner.
+      - name: Run person memory privacy spec
+        run: npx playwright test e2e/inbox/personMemoryPrivacy.spec.ts --project=chromium
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: person-memory-privacy-report
+          path: playwright-report/
+          retention-days: 30
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
