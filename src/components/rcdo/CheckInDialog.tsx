@@ -92,10 +92,6 @@ export function CheckInDialog({
       setProfilesLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setCurrentUserId(user.id);
-          setFormData(prev => ({ ...prev, reporterId: user.id }));
-        }
 
         const { data: profilesData, error } = await supabase
           .from('profiles')
@@ -103,7 +99,38 @@ export function CheckInDialog({
           .order('full_name', { ascending: true });
 
         if (error) throw error;
-        setProfiles(profilesData || []);
+
+        let allProfiles = profilesData || [];
+
+        if (user) {
+          setCurrentUserId(user.id);
+          setFormData(prev => ({ ...prev, reporterId: user.id }));
+
+          // Ensure the current user always appears as a selectable, default
+          // reporter even if their profiles row hasn't been created yet or
+          // was excluded by RLS (e.g. brand-new accounts).
+          if (!allProfiles.some(p => p.id === user.id)) {
+            const meta = (user.user_metadata || {}) as Record<string, unknown>;
+            const metaFullName = typeof meta.full_name === 'string' ? meta.full_name : undefined;
+            const metaFirstName = typeof meta.first_name === 'string' ? meta.first_name : undefined;
+            const metaLastName = typeof meta.last_name === 'string' ? meta.last_name : undefined;
+            const metaAvatarUrl = typeof meta.avatar_url === 'string' ? meta.avatar_url : undefined;
+
+            allProfiles = [
+              {
+                id: user.id,
+                full_name: metaFullName || user.email || null,
+                first_name: metaFirstName || null,
+                last_name: metaLastName || null,
+                avatar_url: metaAvatarUrl || null,
+                avatar_name: null,
+              },
+              ...allProfiles,
+            ];
+          }
+        }
+
+        setProfiles(allProfiles);
       } catch (err: unknown) {
         toast({
           title: 'Error',
