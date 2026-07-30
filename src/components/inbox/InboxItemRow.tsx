@@ -5,7 +5,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle, Pencil, ExternalLink, Mail,
+  Check, Pin, X, Clock, RotateCcw, Users, ThumbsUp, BookmarkPlus, XCircle, Pencil, ExternalLink, Mail, Slack,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -107,6 +107,7 @@ const SYNC_SOURCE_LABEL: Partial<Record<NonNullable<InboxItem['source_ref']>['ty
   meeting_action_item: 'From a meeting',
   cos_meeting_action: 'From a 1:1',
   gmail_message: 'From email',
+  slack_message: 'From Slack',
 };
 
 const INTENT_BADGE: Record<string, { label: string; className: string }> = {
@@ -487,41 +488,46 @@ export function InboxItemRow({
               View in recording
             </button>
           )}
-          {/* Source chip — for items auto-synced in from a meeting, 1:1, or email.
-              For email-sourced items, this stays a live link back to the Gmail
-              thread even after the item is categorized — it must not depend on
-              item.type/agent_payload.action_required, since those flip once the
-              item is tagged and would otherwise strand the only way back to the
-              source message. */}
+          {/* Source chip — for items auto-synced in from a meeting, 1:1, email, or Slack.
+              For email/Slack-sourced items, this stays a live link back to the
+              source thread/message even after the item is categorized — it must
+              not depend on item.type/agent_payload.action_required, since those
+              flip once the item is tagged and would otherwise strand the only
+              way back to the source. */}
           {syncSourceLabel && (() => {
-            const gmailUrl = item.source_ref?.type === 'gmail_message'
+            const isGmail = item.source_ref?.type === 'gmail_message';
+            const isSlack = item.source_ref?.type === 'slack_message';
+            const sourceUrl = isGmail
               ? (item.agent_payload?.gmail_url as string | undefined)
-              : undefined;
+              : isSlack
+                ? (item.agent_payload?.slack_url as string | undefined)
+                : undefined;
+            const SourceIcon = isGmail ? Mail : isSlack ? Slack : null;
             const className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap border border-gray-200 bg-gray-50 text-gray-500';
-            if (gmailUrl) {
+            if (sourceUrl) {
               return (
                 <a
-                  href={gmailUrl}
+                  href={sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={e => e.stopPropagation()}
                   className={cn(className, 'hover:bg-gray-100 hover:text-gray-700 transition-colors')}
-                  title="Open the source email"
+                  title={isSlack ? 'Open the source Slack message' : 'Open the source email'}
                 >
-                  <Mail className="h-3 w-3" />
+                  {SourceIcon && <SourceIcon className="h-3 w-3" />}
                   {syncSourceLabel}
                 </a>
               );
             }
             return (
               <span className={className} title={syncSourceLabel}>
-                {item.source_ref?.type === 'gmail_message' && <Mail className="h-3 w-3" />}
+                {SourceIcon && <SourceIcon className="h-3 w-3" />}
                 {syncSourceLabel}
               </span>
             );
           })()}
-          {/* Intent badge — email-sourced items only. */}
-          {item.source_ref?.type === 'gmail_message' && item.agent_payload?.intent_type && (
+          {/* Intent badge — email/Slack-sourced items only. */}
+          {(item.source_ref?.type === 'gmail_message' || item.source_ref?.type === 'slack_message') && item.agent_payload?.intent_type && (
             (() => {
               const badge = INTENT_BADGE[item.agent_payload.intent_type as string];
               return badge ? (

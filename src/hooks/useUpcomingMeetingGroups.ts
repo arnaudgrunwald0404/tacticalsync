@@ -16,6 +16,8 @@ export interface MeetingGroup {
   key: string;
   title: string;
   attendeeLabel: string;
+  /** The other attendee's email, if known — the stable key for manual exclusion. */
+  attendeeEmail: string | null;
   attendeeCount: number;
   occurrences: number;
 }
@@ -36,6 +38,10 @@ function attendeeLabelFor(e: RawEvent): string {
   const email = e.attendee_email ?? e.attendee_emails?.[0];
   if (email) return email.split('@')[0];
   return e.title ?? 'Untitled';
+}
+
+function attendeeEmailFor(e: RawEvent): string | null {
+  return e.attendee_email ?? e.attendee_emails?.[0] ?? null;
 }
 
 export function useUpcomingMeetingGroups() {
@@ -84,6 +90,7 @@ export function useUpcomingMeetingGroups() {
             key: e.id,
             title: e.title ?? 'Untitled',
             attendeeLabel: attendeeLabelFor(e),
+            attendeeEmail: attendeeEmailFor(e),
             attendeeCount,
             occurrences: 1,
           });
@@ -97,6 +104,7 @@ export function useUpcomingMeetingGroups() {
           key: seriesId,
           title: s.rep.title ?? 'Untitled',
           attendeeLabel: attendeeLabelFor(s.rep),
+          attendeeEmail: attendeeEmailFor(s.rep),
           attendeeCount: s.maxAttendees,
           occurrences: s.count,
         };

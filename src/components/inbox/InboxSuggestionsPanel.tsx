@@ -296,9 +296,9 @@ export function InboxSuggestionsPanel({
       {(emailAgentItems.length > 0 || slackAgentItems.length > 0) && (() => {
         const renderAgentItem = (item: InboxItem, isSlack: boolean) => {
           const payload = item.agent_payload as {
-            gmail_url?: string; rationale?: string; intent_type?: string; sender_email?: string; label?: string;
+            gmail_url?: string; slack_url?: string; rationale?: string; intent_type?: string; sender_email?: string; label?: string;
           } | null;
-          const gmailUrl = !isSlack ? payload?.gmail_url : undefined;
+          const sourceUrl = isSlack ? payload?.slack_url : payload?.gmail_url;
           const senderEmail = payload?.sender_email ?? '';
           const originLabel = isSlack
             ? (payload?.label ?? 'From Slack')
@@ -318,13 +318,13 @@ export function InboxSuggestionsPanel({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <p className="truncate text-sm font-semibold text-white">{item.text}</p>
-                  {gmailUrl && (
+                  {sourceUrl && (
                     <a
-                      href={gmailUrl}
+                      href={sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="shrink-0 text-white/40 hover:text-white/80 transition-colors"
-                      title="Reply in Gmail"
+                      title={isSlack ? 'Open in Slack' : 'Reply in Gmail'}
                       onClick={e => e.stopPropagation()}
                     >
                       <ExternalLink className="h-3 w-3" />
