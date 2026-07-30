@@ -52,12 +52,28 @@ serve(async (req) => {
       .maybeSingle()
 
     if (creds?.access_token) {
-      await retryWithBackoff(
-        () => fetch('https://slack.com/api/auth.revoke', {
-          headers: { 'Authorization': `Bearer ${creds.access_token}` },
-        }),
-        { integration: 'slack', label: 'auth.revoke', maxAttempts: 2 },
-      ).catch(() => { /* best-effort */ })
+      try {
+        const revokeRes = await retryWithBackoff(
+          () => fetch('https://slack.com/api/auth.revoke', {
+            headers: { 'Authorization': `Bearer ${creds.access_token}` },
+          }),
+          { integration: 'slack', label: 'auth.revoke', maxAttempts: 2 },
+        )
+        if (!revokeRes.ok) {
+          console.error(`[disconnect-slack] auth.revoke failed for user ${userId}: HTTP ${revokeRes.status}`)
+        } else {
+          // Slack's Web API returns HTTP 200 even on logical failure —
+          // the real outcome is in the JSON body's `ok`/`error` fields.
+          const body = await revokeRes.json().catch(() => null) as { ok?: boolean; error?: string } | null
+          if (body && body.ok === false) {
+            console.error(`[disconnect-slack] auth.revoke rejected for user ${userId}: ${body.error ?? 'unknown_error'}`)
+          }
+        }
+      } catch (err) {
+        // Best-effort: local disconnect must still proceed even if Slack's
+        // side is unreachable, but the failure is no longer discarded silently.
+        console.error(`[disconnect-slack] auth.revoke threw for user ${userId}: ${(err as Error).message}`)
+      }
     }
 
     const { error: delErr } = await supabase
