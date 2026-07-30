@@ -60,6 +60,8 @@ export interface UpcomingOneOnOneEvent {
   prep_available: boolean;
   recurring_event_id: string | null;
   attendee_count: number;
+  /** Set for a group-meeting occurrence (attendee_count > 1) instead of team_member_id; references cos_group_meetings. */
+  group_meeting_id: string | null;
 }
 
 export type { EventCategory };

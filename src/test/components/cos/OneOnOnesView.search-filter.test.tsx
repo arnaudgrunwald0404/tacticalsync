@@ -51,6 +51,7 @@ function makeEvent(overrides: Partial<UpcomingOneOnOneEvent> & { id: string }): 
     prep_available: false,
     recurring_event_id: null,
     attendee_count: 1,
+    group_meeting_id: null,
     ...overrides,
   };
 }
