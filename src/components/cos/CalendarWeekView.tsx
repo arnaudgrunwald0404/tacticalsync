@@ -15,7 +15,7 @@ import type { UpcomingOneOnOneEvent, OneOnOneMember } from './OneOnOnesView';
 
 const HOUR_PX = 64;        // px per hour
 const START_HOUR = 7;      // 7 am
-const END_HOUR = 20;       // 8 pm
+const END_HOUR = 23;       // 11 pm
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 const GUTTER_W = 52;       // time-label column width in px
 
