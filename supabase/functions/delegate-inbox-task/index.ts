@@ -102,22 +102,45 @@ function log(entry: string): { timestamp: string; text: string } {
   return { timestamp: new Date().toISOString(), text: entry }
 }
 
+// Logs a write failure to cos_agent_log (event_type 'error') so it's
+// discoverable outside a manual function-log check — this file previously
+// discarded every patch()/writeAudit() error, so a CHECK-constraint or RLS
+// failure on either table would leave a delegation stuck forever with no
+// trace, the same class of bug as the daily_digest_sent incident
+// (SPECIFICATION.md §13.16 item 16).
+async function logAgentError(
+  db: ReturnType<typeof createClient>,
+  userId: string,
+  handler: string,
+  error: unknown,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  console.error(`delegate-inbox-task: ${handler} failed:`, error)
+  await (db as any).from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'error',
+    payload: { handler, error: (error as { message?: string })?.message ?? String(error), ...extra },
+  })
+}
+
 async function patch(
   db: ReturnType<typeof createClient>,
   id: string,
+  userId: string,
   fields: Record<string, unknown>,
 ) {
-  await (db as any)
+  const { error } = await (db as any)
     .from('inbox_delegations')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
+  if (error) await logAgentError(db, userId, 'inbox_delegations_patch', error, { delegation_id: id, fields: Object.keys(fields) })
 }
 
 async function writeAudit(
   db: ReturnType<typeof createClient>,
   params: { delegationId: string; userId: string; stepId: string; action: 'approved' | 'rejected' | 'executed' | 'failed'; actorUserId: string; metadata?: Record<string, unknown> },
 ) {
-  await (db as any).from('inbox_delegation_audit_log').insert({
+  const { error } = await (db as any).from('inbox_delegation_audit_log').insert({
     delegation_id: params.delegationId,
     user_id: params.userId,
     step_id: params.stepId,
@@ -125,6 +148,11 @@ async function writeAudit(
     actor_user_id: params.actorUserId,
     metadata: params.metadata ?? {},
   })
+  if (error) {
+    await logAgentError(db, params.userId, 'inbox_delegation_audit_log_insert', error, {
+      delegation_id: params.delegationId, step_id: params.stepId, action: params.action,
+    })
+  }
 }
 
 /** Verifies the caller's JWT and returns their user id, or null if missing/invalid. Used to gate the approval actions — 'start'/'answer' keep v1's existing (looser) trust model to avoid changing behavior outside this feature's scope. */
@@ -159,10 +187,11 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
 
 async function rampUp(db: ReturnType<typeof createClient>, delegation: Record<string, unknown>, item: Record<string, unknown>) {
   const id = delegation.id as string
+  const userId = delegation.user_id as string
   const agentLog = (delegation.agent_log as object[]) ?? []
 
   agentLog.push(log('Reading the task and gathering context…'))
-  await patch(db, id, { agent_log: agentLog })
+  await patch(db, id, userId, { agent_log: agentLog })
 
   const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
   const taskText = item.text as string
@@ -189,10 +218,10 @@ Return: { "clear": true/false, "questions": [{ "question": "...", "choices": ["A
   agentLog.push(log(parsed.clear ? 'Task is clear — moving to planning.' : `${parsed.questions.length} clarifying question(s) needed.`))
 
   if (parsed.clear || parsed.questions.length === 0) {
-    await patch(db, id, { status: 'planning', agent_log: agentLog })
+    await patch(db, id, userId, { status: 'planning', agent_log: agentLog })
     await planPhase(db, id, delegation.user_id as string, item.id as string, taskText, tagNames, {}, agentLog, instructions)
   } else {
-    await patch(db, id, {
+    await patch(db, id, userId, {
       status: 'clarifying',
       agent_log: agentLog,
       current_question: { ...parsed.questions[0], _all: parsed.questions, _idx: 0 },
@@ -209,6 +238,7 @@ async function receiveAnswer(
   answer: string,
 ) {
   const id = delegation.id as string
+  const userId = delegation.user_id as string
   const agentLog = (delegation.agent_log as object[]) ?? []
   const cq = delegation.current_question as Record<string, unknown>
   const answers = (delegation.answers as Record<string, string>) ?? {}
@@ -220,14 +250,14 @@ async function receiveAnswer(
   const nextIdx = (cq._idx as number) + 1
 
   if (nextIdx < all.length) {
-    await patch(db, id, {
+    await patch(db, id, userId, {
       answers,
       agent_log: agentLog,
       current_question: { ...all[nextIdx], _all: all, _idx: nextIdx },
     })
   } else {
     agentLog.push(log('All questions answered — moving to planning.'))
-    await patch(db, id, { status: 'planning', answers, agent_log: agentLog, current_question: null })
+    await patch(db, id, userId, { status: 'planning', answers, agent_log: agentLog, current_question: null })
     const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
     await planPhase(db, id, delegation.user_id as string, delegation.item_id as string, item.text as string, tagNames, answers, agentLog, delegation.instructions as string | null)
   }
@@ -330,12 +360,12 @@ Available tools:${toolDefs}`,
 
   if (steps.length === 0) {
     agentLog.push(log('No concrete actions identified for this task — nothing to approve.'))
-    await patch(db, id, { status: 'done', plan: plan || null, plan_steps: [], agent_log: agentLog })
+    await patch(db, id, userId, { status: 'done', plan: plan || null, plan_steps: [], agent_log: agentLog })
     return
   }
 
   agentLog.push(log(`Plan drafted — ${steps.length} step(s) awaiting your approval.`))
-  await patch(db, id, {
+  await patch(db, id, userId, {
     status: computeAggregateStatus(steps as PlanStep[]),
     plan,
     plan_steps: steps,
@@ -400,7 +430,7 @@ async function executeStep(
   const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegationId).maybeSingle()
   const steps = ((after?.plan_steps ?? []) as PlanStep[])
   const aggregate = computeAggregateStatus(steps)
-  if (aggregate) await patch(db, delegationId, { status: aggregate })
+  if (aggregate) await patch(db, delegationId, userId, { status: aggregate })
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -450,7 +480,7 @@ Deno.serve(async (req) => {
 
     // Run async — don't block the response
     rampUp(db, delegation, item).catch(err =>
-      patch(db, delegation.id, {
+      patch(db, delegation.id, user_id, {
         agent_log: [...(delegation.agent_log ?? []), log(`Error: ${err.message}`)],
       })
     )
@@ -478,7 +508,7 @@ Deno.serve(async (req) => {
     if (item) item.tags = (item.tags ?? []).map((t: any) => t.tag)
 
     receiveAnswer(db, delegation, item ?? {}, answer).catch(err =>
-      patch(db, delegation_id, {
+      patch(db, delegation_id, delegation.user_id, {
         agent_log: [...(delegation.agent_log ?? []), log(`Error: ${err.message}`)],
       })
     )
@@ -517,12 +547,12 @@ Deno.serve(async (req) => {
     const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegation_id).maybeSingle()
     const steps = ((after?.plan_steps ?? []) as PlanStep[])
     const aggregate = computeAggregateStatus(steps)
-    if (aggregate) await patch(db, delegation_id, { status: aggregate })
+    if (aggregate) await patch(db, delegation_id, authedUserId, { status: aggregate })
 
     if (toStatus === 'approved') {
       const step = steps.find(s => s.id === step_id)
       if (step) executeStep(db, delegation_id, authedUserId, step).catch(err =>
-        patch(db, delegation_id, { agent_log: [log(`Error executing step: ${err.message}`)] }),
+        patch(db, delegation_id, authedUserId, { agent_log: [log(`Error executing step: ${err.message}`)] }),
       )
     }
 
@@ -549,11 +579,11 @@ Deno.serve(async (req) => {
     const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegation_id).maybeSingle()
     const steps = ((after?.plan_steps ?? []) as PlanStep[])
     const aggregate = computeAggregateStatus(steps)
-    if (aggregate) await patch(db, delegation_id, { status: aggregate })
+    if (aggregate) await patch(db, delegation_id, authedUserId, { status: aggregate })
 
     for (const step of steps.filter(s => s.status === 'approved')) {
       executeStep(db, delegation_id, authedUserId, step).catch(err =>
-        patch(db, delegation_id, { agent_log: [log(`Error executing step: ${err.message}`)] }),
+        patch(db, delegation_id, authedUserId, { agent_log: [log(`Error executing step: ${err.message}`)] }),
       )
     }
 
@@ -566,7 +596,7 @@ Deno.serve(async (req) => {
     if (!delegation) return json({ error: 'Delegation not found' }, 404)
     if (delegation.user_id !== authedUserId) return json({ error: 'not_authorized' }, 403)
 
-    await patch(db, delegation_id, { status: 'cancelled' })
+    await patch(db, delegation_id, authedUserId, { status: 'cancelled' })
     return json({ status: 'ok' })
   }
 

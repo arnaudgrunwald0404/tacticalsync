@@ -68,7 +68,19 @@ Deno.serve(async (req) => {
           .from('inbox_items')
           .update({ snoozed_until: nextEvent.start_time, updated_at: nowIso })
           .eq('id', item.id);
-        if (!updateError) reresolved++;
+        if (!updateError) {
+          reresolved++;
+        } else {
+          // If this silently fails, the cached snoozed_until stays stale and
+          // pass 2 below may never unsnooze the item at the right time (or
+          // at all) — with nothing recording why.
+          console.error('inbox-unsnooze-sweep: failed to re-resolve snoozed_until', updateError);
+          await supabase.from('cos_agent_log').insert({
+            user_id: item.user_id,
+            event_type: 'error',
+            payload: { handler: 'inbox_items_snooze_resolve_update', item_id: item.id, error: updateError.message },
+          });
+        }
       }
     }
 

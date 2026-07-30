@@ -140,7 +140,8 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
         const tag = tagMap.get(s.tag_id)!
         return { tag_id: tag.id, tag_name: tag.name, color: tag.color, reason: String(s.reason ?? '').slice(0, 120) }
       })
-  } catch {
+  } catch (err) {
+    console.error('gmail-inbox-sync: suggestTagsForSuggestion failed:', err)
     return []
   }
 }
@@ -271,6 +272,23 @@ serve(async (req) => {
     }
 
     const threads: ThreadSummary[] = []
+    // Threads that failed anywhere in the pipeline (fetch, Gemini extraction,
+    // or the DB insert of an extracted item) — excluded from
+    // suggestion_source_processed below so they're retried next tick instead
+    // of being silently and permanently marked "done". Mirrors
+    // slack-inbox-sync's failedSourceIds/markBatchFailed, which this file
+    // never had — every failure here previously still got marked processed.
+    const failedThreadIds = new Set<string>()
+
+    const markThreadsFailed = async (threadIds: string[], reason: string) => {
+      for (const id of threadIds) failedThreadIds.add(id)
+      console.error('gmail-inbox-sync: failed, will retry next tick:', reason)
+      await supabase.from('cos_agent_log').insert({
+        user_id: userId,
+        event_type: 'error',
+        payload: { handler: 'gmail_inbox_sync_extract', error: reason, thread_count: threadIds.length },
+      })
+    }
 
     for (const threadId of toProcess) {
       try {
@@ -278,7 +296,10 @@ serve(async (req) => {
           `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
           { headers: { 'Authorization': `Bearer ${accessToken}` } },
         )
-        if (!threadRes.ok) continue
+        if (!threadRes.ok) {
+          await markThreadsFailed([threadId], `thread_fetch_http_${threadRes.status}`)
+          continue
+        }
 
         const threadData = await threadRes.json() as {
           messages?: Array<{
@@ -336,16 +357,20 @@ serve(async (req) => {
           bodyText: truncatedBody,
         })
       } catch (err) {
-        console.warn(`gmail-inbox-sync: failed to fetch thread ${threadId}:`, (err as Error).message)
+        await markThreadsFailed([threadId], `thread_fetch_error: ${(err as Error).message}`)
       }
     }
 
     if (threads.length === 0) {
-      // Mark all as processed so we don't retry them.
-      await supabase.from('suggestion_source_processed').insert(
-        toProcess.map(id => ({ user_id: userId, source_type: 'gmail_thread', source_id: id, suggestions_added: 0 }))
-      )
-      return jsonResponse({ processed: toProcess.length, suggestions_added: 0 }, 200)
+      // Mark only the threads that didn't fail as processed — a failed fetch
+      // must stay retryable, not be recorded as "done" with zero suggestions.
+      const stillToMark = toProcess.filter(id => !failedThreadIds.has(id))
+      if (stillToMark.length > 0) {
+        await supabase.from('suggestion_source_processed').insert(
+          stillToMark.map(id => ({ user_id: userId, source_type: 'gmail_thread', source_id: id, suggestions_added: 0 }))
+        )
+      }
+      return jsonResponse({ processed: toProcess.length, suggestions_added: 0, failed_threads: failedThreadIds.size }, 200)
     }
 
     // ── 5. Load context for prompt ─────────────────────────────────────────
@@ -457,7 +482,7 @@ Respond with valid JSON only — an array of objects. Schema:
           },
         )
         if (!geminiRes.ok) {
-          console.error('gmail-inbox-sync: Gemini failed:', await geminiRes.text())
+          await markThreadsFailed(batch.map(t => t.threadId), `gemini_http_${geminiRes.status}: ${await geminiRes.text()}`)
           continue
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -466,8 +491,14 @@ Respond with valid JSON only — an array of objects. Schema:
         const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 
         let parsed: Array<{ thread_id?: string; title?: string; urgency?: string; rationale?: string; raw_context?: string; source?: string }> = []
-        try { parsed = JSON.parse(jsonStr) } catch { continue }
-        if (!Array.isArray(parsed)) continue
+        try { parsed = JSON.parse(jsonStr) } catch {
+          await markThreadsFailed(batch.map(t => t.threadId), `json_parse_error: ${jsonStr.slice(0, 300)}`)
+          continue
+        }
+        if (!Array.isArray(parsed)) {
+          await markThreadsFailed(batch.map(t => t.threadId), 'gemini_response_not_array')
+          continue
+        }
 
         for (const item of parsed) {
           const threadId = item.thread_id ?? ''
@@ -484,7 +515,7 @@ Respond with valid JSON only — an array of objects. Schema:
           })
         }
       } catch (err) {
-        console.warn('gmail-inbox-sync: batch analysis failed:', (err as Error).message)
+        await markThreadsFailed(batch.map(t => t.threadId), (err as Error).message)
       }
     }
 
@@ -522,22 +553,35 @@ Respond with valid JSON only — an array of objects. Schema:
         suggestionsAdded++
         existingTexts.push(item.title) // prevent within-batch dupes
         processedByThread.set(item.threadId, (processedByThread.get(item.threadId) ?? 0) + 1)
+      } else {
+        // A DB insert failure for an already-successfully-extracted item was
+        // previously unlogged AND the thread still got marked "processed"
+        // below — permanently losing this action item, the gmail twin of
+        // slack-inbox-sync's dci_suggested_tasks-insert fix.
+        await markThreadsFailed([item.threadId], `dci_suggested_tasks_insert_failed: ${insertErr.message}`)
       }
     }
 
     // ── 8. Mark all processed threads ──────────────────────────────────────
-    // Insert all threads (processed ones = 0 suggestions, active ones = N).
-    const processedInserts = toProcess.map(id => ({
-      user_id: userId,
-      source_type: 'gmail_thread',
-      source_id: id,
-      suggestions_added: processedByThread.get(id) ?? 0,
-    }))
-    await supabase.from('suggestion_source_processed').insert(processedInserts)
+    // Insert all non-failed threads (processed ones = 0 suggestions, active
+    // ones = N) — never mark a thread whose extraction or insert failed
+    // anywhere in the pipeline, so it's retried next tick instead of being
+    // silently dropped forever.
+    const stillToMark = toProcess.filter(id => !failedThreadIds.has(id))
+    if (stillToMark.length > 0) {
+      const processedInserts = stillToMark.map(id => ({
+        user_id: userId,
+        source_type: 'gmail_thread',
+        source_id: id,
+        suggestions_added: processedByThread.get(id) ?? 0,
+      }))
+      await supabase.from('suggestion_source_processed').insert(processedInserts)
+    }
 
     return jsonResponse({
       processed: threads.length,
       suggestions_added: suggestionsAdded,
+      failed_threads: failedThreadIds.size,
     })
 
   } catch (err) {

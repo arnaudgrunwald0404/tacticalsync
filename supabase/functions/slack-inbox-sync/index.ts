@@ -75,7 +75,10 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
         const tag = tagMap.get(s.tag_id)!
         return { tag_id: tag.id, tag_name: tag.name, color: tag.color, reason: String(s.reason ?? '').slice(0, 120) }
       })
-  } catch { return [] }
+  } catch (err) {
+    console.error('slack-inbox-sync: suggestTagsForSuggestion failed:', err)
+    return []
+  }
 }
 
 interface SlackMessageRow {
@@ -361,6 +364,19 @@ Respond with valid JSON only:
         suggestionsAdded++
         existingTexts.push(item.title)
         addedBySourceId.set(item.sourceId, (addedBySourceId.get(item.sourceId) ?? 0) + 1)
+      } else {
+        // A DB insert failure for an already-successfully-extracted item was
+        // previously unlogged AND not excluded from processed-marking below —
+        // the thread would be marked "processed" and this action item
+        // permanently lost, the same class of bug as item 19
+        // (SPECIFICATION.md §13.16) just one step later in the pipeline.
+        failedSourceIds.add(item.sourceId)
+        console.error('slack-inbox-sync: dci_suggested_tasks insert failed:', insertErr)
+        await supabase.from('cos_agent_log').insert({
+          user_id: userId,
+          event_type: 'error',
+          payload: { handler: 'dci_suggested_tasks_insert', source_id: item.sourceId, error: insertErr.message },
+        })
       }
     }
 
