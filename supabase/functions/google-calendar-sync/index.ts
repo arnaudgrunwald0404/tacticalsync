@@ -32,6 +32,13 @@ interface GoogleEvent extends MinimalEvent {
   recurrence?: string[] | null;
   location?: string | null;
   description?: string | null;
+  conferenceData?: {
+    entryPoints?: Array<{
+      entryPointType?: string | null;
+      uri?: string | null;
+      meetingCode?: string | null;
+    }> | null;
+  } | null;
 }
 
 /**
@@ -56,6 +63,24 @@ function normalizeEventStatus(status: string | null | undefined): 'confirmed' | 
   if (status === 'cancelled') return 'cancelled'
   if (status === 'tentative') return 'tentative'
   return 'confirmed'
+}
+
+/**
+ * Extract a Zoom meeting ID from an event's conferenceData. Events scheduled
+ * via the "Zoom for Google Workspace" add-on carry their join link/meeting
+ * code here instead of in location/description text, so extractZoomMeetingId
+ * alone misses them.
+ */
+function extractZoomFromConferenceData(event: GoogleEvent): string | null {
+  const entryPoints = event.conferenceData?.entryPoints ?? []
+  for (const ep of entryPoints) {
+    if (ep.uri) {
+      const fromUri = extractZoomMeetingId(ep.uri)
+      if (fromUri) return fromUri
+    }
+    if (ep.meetingCode && /^\d+$/.test(ep.meetingCode)) return ep.meetingCode
+  }
+  return null
 }
 
 /** Convert average days between meetings to a human-friendly label. */
@@ -399,6 +424,7 @@ serve(async (req) => {
         // this is what lets zoom-recordings-sync discover non-hosted recordings
         // for a tracked group meeting.
         const occurrenceZoomId =
+          extractZoomFromConferenceData(event) ??
           (event.location ? extractZoomMeetingId(event.location) : null) ??
           (event.description ? extractZoomMeetingId(event.description) : null)
         if (!acc.zoomMeetingId) acc.zoomMeetingId = occurrenceZoomId
@@ -474,10 +500,12 @@ serve(async (req) => {
         .map((a: { email?: string | null }) => a.email)
         .filter((e: string | null | undefined): e is string => !!e)
 
-      // Extract Zoom meeting ID from location or description.
+      // Extract Zoom meeting ID from conferenceData (add-on scheduled events),
+      // falling back to location/description (pasted Zoom invite text).
       const eventLocation = event.location ?? null
       const eventDescription = event.description ?? null
       const zoomMeetingId =
+        extractZoomFromConferenceData(event) ??
         (eventLocation ? extractZoomMeetingId(eventLocation) : null) ??
         (eventDescription ? extractZoomMeetingId(eventDescription) : null)
 
