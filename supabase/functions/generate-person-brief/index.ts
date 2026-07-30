@@ -66,6 +66,16 @@ Deno.serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
+    // Service-role-only: this function trusts body.user_id for every read
+    // and writes a new inbox_items row for that user, so it must never be
+    // reachable with a caller-controlled identity — only agent-tick (which
+    // always sends the service-role key) may call it.
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const callerToken = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (callerToken !== serviceRoleKey) {
+      return json({ error: 'unauthorized' }, 401)
+    }
+
     const body = await req.json() as {
       user_id: string
       member_id: string

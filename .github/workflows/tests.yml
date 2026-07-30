@@ -137,10 +137,18 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      # Pinned, not `latest`: supabase-cli >= 2.110 pulls
+      # supabase/postgres:17.6.1.143, which boots without SELECT/INSERT/
+      # UPDATE/DELETE grants on public-schema tables for anon/authenticated/
+      # service_role at all ("permission denied for table X" on the very
+      # first insert) — confirmed via information_schema.role_table_grants
+      # on a fresh db. 2.105.0 resolves to 17.6.1.132, which grants
+      # correctly. This is an upstream supabase-postgres image regression,
+      # unrelated to this repo's migrations; re-test before bumping.
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
         with:
-          version: latest
+          version: 2.105.0
 
       - name: Start Supabase
         run: supabase start

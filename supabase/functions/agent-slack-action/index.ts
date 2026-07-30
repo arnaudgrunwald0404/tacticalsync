@@ -229,6 +229,25 @@ serve(async (req) => {
         const logId = parts[1]
         const feedbackType = parts[2] ?? 'helpful'
 
+        // Verify logId actually belongs to this caller before attaching
+        // feedback to it — the callback_id is client-supplied (echoed back
+        // by Slack from the original message), so without this check a
+        // forged action could attribute feedback to another user's log entry.
+        const { data: ownedLog } = await supabase
+          .from('cos_agent_log')
+          .select('id')
+          .eq('id', logId)
+          .eq('user_id', userId)
+          .single()
+
+        if (!ownedLog) {
+          return respond(payload.response_url, {
+            response_type: 'ephemeral',
+            replace_original: false,
+            text: ':warning: Could not record feedback — item not found.',
+          })
+        }
+
         await supabase.from('cos_agent_feedback').insert({
           user_id: userId,
           log_id: logId,
