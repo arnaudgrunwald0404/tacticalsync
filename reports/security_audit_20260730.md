@@ -248,3 +248,56 @@ file/lines after the initial pass (self-refute step) — quoted code is verbatim
   functions) — recommend checking edge function logs for calls to these three
   functions with an `Authorization` header that is a user JWT rather than the
   service-role key.
+
+## Addendum (2026-07-30): production exploitation check for findings #2/#3
+
+Followed up on the open question above via the Supabase MCP against the live
+`tactical-sync` project (`pxirfndomjlqpkwfpqxq`).
+
+**Platform edge-function logs (`get_logs`) only retain the last 24 hours** —
+this cannot answer the question for the actual exposure window, which ran
+from `generate-person-brief`'s creation (`751d21f`, 2026-07-08) to the fix
+(`fb09b10`, 2026-07-30), roughly 3 weeks. The last-24h window itself shows
+zero calls to `generate-person-brief` at all (it only fires when agent-tick
+has a due 1:1 brief), so it's uninformative either way. This means **no
+direct request-level confirmation is possible** — the platform simply didn't
+retain logs that far back.
+
+Fell back to a DB-side forensic check instead: `generate-person-brief`'s
+*write* side (finding #2) leaves a data trail — every call inserts an
+`inbox_items` row with `type = 'brief_item'`. If an attacker had exploited
+the no-auth gap to write into a victim's inbox, the `user_id` on some of
+those rows would belong to someone other than the legitimate caller.
+
+```sql
+-- 322 real accounts existed before the fix — a genuine multi-tenant
+-- attack surface, not a single-user toy deployment.
+SELECT count(*) FROM auth.users;  --> 322
+
+-- Every brief_item row, across the function's entire lifetime, belongs to
+-- exactly one user_id.
+SELECT count(*), count(DISTINCT user_id) FROM inbox_items WHERE type = 'brief_item';
+--> 19 rows, 1 distinct user_id
+
+-- Same check on the gmail/slack sync pipelines (finding #3): every
+-- dci_suggested_tasks row's user_id matches the (also single) real
+-- user_slack_credentials holder — no orphaned/mismatched user_id.
+SELECT count(DISTINCT user_id) FROM dci_suggested_tasks;  --> 1
+SELECT count(DISTINCT user_id) FROM user_slack_credentials;  --> 1
+```
+
+**No evidence of cross-user exploitation was found** for either finding: the
+write-side data trail shows only one real user ever received a `brief_item`
+or a synced Slack/Gmail suggestion, despite 322 accounts existing that could
+have served as either attacker or victim. This is not proof of absence
+(a pure read-only exfiltration via `generate-person-brief`'s response body —
+reading a victim's relationship topics/forgotten commitments without ever
+writing anything — would leave no trace in this data, and is exactly the
+scenario finding #2 also describes), but it rules out the write-IDOR path
+being used, and is the strongest evidence obtainable given the log-retention
+gap above.
+
+**Recommend**, if this needs a firmer answer: check whether the Supabase
+project's plan includes extended log retention via the dashboard's Logs
+Explorer (some plans retain 7–28 days, longer than this tool's 24h window) —
+though even that would still fall short of the full 3-week exposure window.
