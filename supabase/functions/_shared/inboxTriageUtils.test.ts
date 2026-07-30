@@ -2,6 +2,7 @@ import { assertEquals, assertFalse, assert } from "https://deno.land/std@0.168.0
 import {
   classifySenderTier,
   shouldSuppressMessage,
+  shouldSuppressSlackMessage,
   shouldSuppressIntent,
   shouldIncludeSlackMessage,
   normalizeChannelName,
@@ -195,6 +196,43 @@ Deno.test("shouldSuppressMessage: null sender email skips sender and domain chec
     maxThreadAgeHours: null,
   })
   assertFalse(shouldSuppressMessage(null, null, rules))
+})
+
+// ─── shouldSuppressSlackMessage ───────────────────────────────────────────────
+
+Deno.test("shouldSuppressSlackMessage: suppresses when sender id is in suppressed-senders list", () => {
+  const rules = makeRules({ suppressedSenders: new Set(["U_SPAMMER"]) })
+  assert(shouldSuppressSlackMessage("U_SPAMMER", "C123", rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: does not suppress when sender id is not in the list", () => {
+  const rules = makeRules({ suppressedSenders: new Set(["U_OTHER"]) })
+  assertFalse(shouldSuppressSlackMessage("U_ME", "C123", rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: suppresses when channel id is in suppressed-domains list", () => {
+  const rules = makeRules({ suppressedDomains: new Set(["C_NOISY"]) })
+  assert(shouldSuppressSlackMessage("U_ME", "C_NOISY", rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: does not suppress when only a different channel matches", () => {
+  const rules = makeRules({ suppressedDomains: new Set(["C_NOISY"]) })
+  assertFalse(shouldSuppressSlackMessage("U_ME", "C_QUIET", rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: null sender id skips the sender check", () => {
+  const rules = makeRules({ suppressedSenders: new Set(["U_ME"]) })
+  assertFalse(shouldSuppressSlackMessage(null, "C_QUIET", rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: null channel id skips the domain check", () => {
+  const rules = makeRules({ suppressedDomains: new Set(["C_NOISY"]) })
+  assertFalse(shouldSuppressSlackMessage("U_ME", null, rules))
+})
+
+Deno.test("shouldSuppressSlackMessage: does not suppress when all rules are empty", () => {
+  const rules = makeRules()
+  assertFalse(shouldSuppressSlackMessage("U_ME", "C_ANY", rules))
 })
 
 // ─── shouldSuppressIntent ─────────────────────────────────────────────────────

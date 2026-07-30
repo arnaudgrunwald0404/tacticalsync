@@ -180,8 +180,9 @@ export function InboxItemRow({
       const threadAgeHours = Math.round((Date.now() - receivedAt) / 3_600_000);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
-      await db.from('email_dismissal_log').insert({
+      await db.from('inbox_dismissal_log').insert({
         inbox_item_id: item.id,
+        source: 'gmail',
         sender_email: senderEmail ?? null,
         sender_tier: payload?.sender_tier ?? null,
         intent_type: payload?.intent_type ?? null,
@@ -192,7 +193,7 @@ export function InboxItemRow({
       // After 3 dismissals of the same sender, offer to suppress them.
       if (senderEmail) {
         const { count } = await db
-          .from('email_dismissal_log')
+          .from('inbox_dismissal_log')
           .select('id', { count: 'exact', head: true })
           .eq('sender_email', senderEmail);
         if ((count ?? 0) >= 3) {
