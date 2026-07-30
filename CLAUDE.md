@@ -73,3 +73,9 @@ npm run db:validate
 ```
 
 Required env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. E2E tests also need `SUPABASE_SERVICE_ROLE_KEY` and `PLAYWRIGHT_BASE_URL`.
+
+## Parallel Sessions
+
+This repo is worked on by multiple concurrent Claude Code sessions. A shared working directory has exactly one checked-out branch at a time — two sessions switching branches, rebasing, or committing in the same checkout race each other and can corrupt state or silently deploy stale code (this has already happened once: a mid-deploy rebase from another session caused an edge function to ship without that session's in-flight fix, caught only by re-diffing the deployed bundle against disk).
+
+**Always work in a git worktree (`.claude/worktrees/`) when starting a new session or task here, unless you're a short-lived agent that only reads files.** Use the `EnterWorktree` tool at the start of the session. Each worktree gets its own branch and working tree, so concurrent sessions stop fighting over `HEAD`.
