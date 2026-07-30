@@ -86,6 +86,23 @@ export function shouldSuppressIntent(
 }
 
 /**
+ * Returns true when a Slack message should be suppressed before classification,
+ * based on learned per-user suppression rules. Mirrors shouldSuppressMessage,
+ * but keys off Slack sender id / channel id instead of an email address+domain
+ * (a Slack channel is the closest equivalent of a Gmail "domain": suppressing
+ * it silences everyone posting there, same as suppressing a whole company).
+ */
+export function shouldSuppressSlackMessage(
+  senderId: string | null,
+  channelId: string | null,
+  rules: SuppressionRules,
+): boolean {
+  if (senderId && rules.suppressedSenders.has(senderId)) return true
+  if (channelId && rules.suppressedDomains.has(channelId)) return true
+  return false
+}
+
+/**
  * Returns true when a Slack message should be included in the scan batch.
  *
  * DMs are always in scope. Channel messages are only included when the
