@@ -170,7 +170,7 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    if (xUserId) {
+    if (xUserId && token === serviceRoleKey) {
       userId = xUserId
     } else if (token && token !== serviceRoleKey) {
       const { data: { user }, error } = await supabase.auth.getUser(token)
