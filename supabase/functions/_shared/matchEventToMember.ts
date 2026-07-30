@@ -317,9 +317,18 @@ export function normaliseTitleKey(summary: string | null | undefined): string {
   return (summary ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Google forks a series into a new synthetic recurringEventId of the form
+// "<originalId>_R<YYYYMMDDTHHMMSS>[Z]" when a "this and following event(s)"
+// edit is made (e.g. the organizer nudges the time or agenda partway through
+// the series) — so the same logical recurring meeting can carry a different
+// recurringEventId every time it's forked again. Strip that suffix so a
+// forked series still keys to the same group instead of splintering into a
+// new row each time.
+const RECURRENCE_FORK_SUFFIX_RE = /_R\d{8}T\d{6}Z?$/;
+
 export function recurrenceKeyForEvent(event: MinimalEvent): string {
   const rid = (event.recurringEventId ?? '').trim();
-  if (rid) return `series:${rid}`;
+  if (rid) return `series:${rid.replace(RECURRENCE_FORK_SUFFIX_RE, '')}`;
   return `title:${normaliseTitleKey(event.summary)}`;
 }
 

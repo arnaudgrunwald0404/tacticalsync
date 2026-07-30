@@ -305,6 +305,18 @@ describe('recurrenceKeyForEvent', () => {
     expect(recurrenceKeyForEvent(a)).toBe('title:project x sync');
     expect(recurrenceKeyForEvent(a)).toBe(recurrenceKeyForEvent(b));
   });
+
+  it('strips the "this and following events" fork suffix so a re-forked series still groups as one', () => {
+    // Google mints a new recurringEventId of the form "<originalId>_R<timestamp>"
+    // when an organizer edits "this and following" events partway through a
+    // series — the same logical meeting can fork more than once over time.
+    const original = makeEvent({ recurringEventId: 'kvumoeaam1qmajhh72svbfl244' });
+    const firstFork = makeEvent({ recurringEventId: 'kvumoeaam1qmajhh72svbfl244_R20260625T173000' });
+    const secondFork = makeEvent({ recurringEventId: 'kvumoeaam1qmajhh72svbfl244_R20260716T173000Z' });
+    expect(recurrenceKeyForEvent(original)).toBe('series:kvumoeaam1qmajhh72svbfl244');
+    expect(recurrenceKeyForEvent(firstFork)).toBe(recurrenceKeyForEvent(original));
+    expect(recurrenceKeyForEvent(secondFork)).toBe(recurrenceKeyForEvent(original));
+  });
 });
 
 describe('matchMemberByTitle', () => {
