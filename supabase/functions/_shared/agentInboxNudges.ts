@@ -146,6 +146,8 @@ export function selectMeetingsForInboxNudge(
 
 // ── Opt-in gating (plan Section 5.1) ────────────────────────────────────────────
 
+export type OptInStatus = 'not_yet_prompted' | 'prompt_pending' | 'opted_in' | 'declined_in_cooldown' | 'declined_can_reprompt'
+
 export interface OptInState {
   /** True once the user has explicitly flipped agent_config.nudge_inbox_items
    *  to true — via the one-time prompt's CTA or the Settings toggle. */
