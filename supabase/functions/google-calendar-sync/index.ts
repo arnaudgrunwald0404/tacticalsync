@@ -51,6 +51,13 @@ function extractZoomMeetingId(text: string): string | null {
   return null
 }
 
+/** Normalize a Google event status to the three values cos_one_on_one_events.status allows. */
+function normalizeEventStatus(status: string | null | undefined): 'confirmed' | 'tentative' | 'cancelled' {
+  if (status === 'cancelled') return 'cancelled'
+  if (status === 'tentative') return 'tentative'
+  return 'confirmed'
+}
+
 /** Convert average days between meetings to a human-friendly label. */
 function toCadenceLabel(avgDays: number): string {
   if (avgDays >= 1 && avgDays <= 2) return 'Daily';
@@ -329,12 +336,29 @@ serve(async (req) => {
     // Track discovered recurring group meetings (self + 2 or more others), keyed
     // by recurrence key. These are surfaced for manual inclusion rather than
     // auto-synced as 1:1 placeholders.
+    interface GroupOccurrence {
+      googleEventId: string
+      recurringEventId: string | null
+      startTime: string
+      endTime: string | null
+      status: 'confirmed' | 'tentative' | 'cancelled'
+      attendeeEmails: string[]
+      title: string | null
+      location: string | null
+      description: string | null
+      zoomMeetingId: string | null
+    }
     interface GroupAcc {
       title: string | null
       participants: Map<string, { name: string | null; email: string; team_member_id: string | null }>
       times: string[]
       nextStart: string | null
       zoomMeetingId: string | null
+      // One entry per calendar instance seen this run — written to
+      // cos_one_on_one_events (tagged with group_meeting_id) once this
+      // series resolves to a cos_group_meetings row below, the same way
+      // 1:1 occurrences are stored, so the Calendar tab can render them.
+      occurrences: GroupOccurrence[]
     }
     const nowIso = new Date().toISOString()
     const groupMeetings = new Map<string, GroupAcc>()
@@ -369,15 +393,29 @@ serve(async (req) => {
           times: [],
           nextStart: null,
           zoomMeetingId: null,
+          occurrences: [],
         }
         // Extract Zoom meeting ID from location/description, same as 1:1 events —
         // this is what lets zoom-recordings-sync discover non-hosted recordings
         // for a tracked group meeting.
-        if (!acc.zoomMeetingId) {
-          acc.zoomMeetingId =
-            (event.location ? extractZoomMeetingId(event.location) : null) ??
-            (event.description ? extractZoomMeetingId(event.description) : null)
-        }
+        const occurrenceZoomId =
+          (event.location ? extractZoomMeetingId(event.location) : null) ??
+          (event.description ? extractZoomMeetingId(event.description) : null)
+        if (!acc.zoomMeetingId) acc.zoomMeetingId = occurrenceZoomId
+        acc.occurrences.push({
+          googleEventId: event.id,
+          recurringEventId: event.recurringEventId ?? null,
+          startTime: event.start.dateTime,
+          endTime: event.end?.dateTime ?? null,
+          status: normalizeEventStatus(event.status),
+          attendeeEmails: (others as Array<{ email?: string | null }>)
+            .map(a => a.email)
+            .filter((e): e is string => !!e),
+          title: event.summary ?? null,
+          location: event.location ?? null,
+          description: event.description ?? null,
+          zoomMeetingId: occurrenceZoomId,
+        })
         const roster = matchEventToMembers(event, members, rules)
         const memberByEmail = new Map<string, string>()
         for (const m of roster) {
@@ -430,12 +468,7 @@ serve(async (req) => {
       }
       const category: EventCategory = inferCategory(attendeeEmail, userEmail, match?.member ?? null)
 
-      const status: string =
-        event.status === 'cancelled'
-          ? 'cancelled'
-          : event.status === 'tentative'
-            ? 'tentative'
-            : 'confirmed'
+      const status = normalizeEventStatus(event.status)
 
       const attendeeEmails = others
         .map((a: { email?: string | null }) => a.email)
@@ -678,6 +711,38 @@ serve(async (req) => {
           await supabase
             .from('cos_group_meeting_participants')
             .upsert(participantRows, { onConflict: 'group_meeting_id,email' })
+        }
+
+        // Write one cos_one_on_one_events row per occurrence, tagged with
+        // group_meeting_id instead of team_member_id, the same shape as 1:1
+        // rows — this is what lets the Calendar tab (CalendarWeekView /
+        // OneOnOnesView, already built to render attendee_count > 1 blocks)
+        // actually show group meetings.
+        const occurrenceRows = acc.occurrences.map(occ => ({
+          user_id: userId,
+          team_member_id: null,
+          group_meeting_id: groupId,
+          google_event_id: occ.googleEventId,
+          recurring_event_id: occ.recurringEventId,
+          calendar_id: 'primary',
+          title: occ.title,
+          start_time: occ.startTime,
+          end_time: occ.endTime,
+          attendee_emails: occ.attendeeEmails,
+          status: occ.status,
+          location: occ.location,
+          description: occ.description,
+          zoom_meeting_id: occ.zoomMeetingId,
+          last_synced_at: new Date().toISOString(),
+        }))
+        if (occurrenceRows.length > 0) {
+          const { error: occErr } = await supabase
+            .from('cos_one_on_one_events')
+            .upsert(occurrenceRows, { onConflict: 'user_id,google_event_id' })
+          if (occErr) {
+            writeErrors++
+            if (!firstWriteError) firstWriteError = occErr.message
+          }
         }
       }
     }
