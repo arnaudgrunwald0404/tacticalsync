@@ -150,15 +150,36 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
             }
           })
       }
-    } catch {
-      // Claude returned non-JSON — treat as no suggestions
+    } catch (err) {
+      // Fully silent before: indistinguishable from Claude legitimately
+      // finding no matching tags. Log it so a real parse failure (bad
+      // model output) is discoverable instead of masquerading as "no match".
+      console.error('suggest-inbox-tags: failed to parse Claude response:', err)
+      await supabase.from('cos_agent_log').insert({
+        user_id,
+        event_type: 'error',
+        payload: { handler: 'suggest_inbox_tags_parse', item_id, raw_preview: raw.slice(0, 200) },
+      })
     }
 
     // ── Persist suggestions ───────────────────────────────────────────────────
-    await supabase
+    const { error: persistErr } = await supabase
       .from('inbox_items')
       .update({ tag_suggestions: suggestions })
       .eq('id', item_id)
+
+    if (persistErr) {
+      // Previously unchecked: the function still returned 200 { suggestions }
+      // as if they were saved, so the ghost pills would vanish on next load
+      // with nothing recording why.
+      console.error('suggest-inbox-tags: failed to persist tag_suggestions:', persistErr)
+      await supabase.from('cos_agent_log').insert({
+        user_id,
+        event_type: 'error',
+        payload: { handler: 'inbox_items_tag_suggestions_update', item_id, error: persistErr.message },
+      })
+      return json({ suggestions, warning: 'persist_failed' })
+    }
 
     return json({ suggestions })
   } catch (err) {

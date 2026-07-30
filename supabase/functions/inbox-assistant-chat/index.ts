@@ -246,7 +246,9 @@ async function toolGetPersonContext(db: any, userId: string, teamMemberId: strin
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function upsertBriefItem(db: any, userId: string, kind: 'daily' | 'weekly', priorities: string[], summaryText: string) {
+async function upsertBriefItem(
+  db: any, userId: string, kind: 'daily' | 'weekly', priorities: string[], summaryText: string,
+): Promise<{ ok: boolean; error?: string }> {
   const sourceType = kind === 'weekly' ? 'dci_weekly_brief' : 'dci_brief'
   const date = new Date().toISOString().slice(0, 10)
 
@@ -263,14 +265,26 @@ async function upsertBriefItem(db: any, userId: string, kind: 'daily' | 'weekly'
     .contains('source_ref', { type: sourceType, id: date })
     .maybeSingle()
 
-  if (existing) {
-    await db.from('inbox_items').update({ agent_payload: payload, updated_at: new Date().toISOString() }).eq('id', existing.id)
-  } else {
-    await db.from('inbox_items').insert({
-      user_id: userId, type: 'brief_item', text: summaryText, status: 'open', bucket: 'now',
-      agent_payload: payload, source_ref: { type: sourceType, id: date },
+  // Both branches previously discarded their write error, so runDciBrief's
+  // caller always reported mutated:true — the assistant would tell the user
+  // "I've added your brief" even when nothing was actually persisted.
+  const { error } = existing
+    ? await db.from('inbox_items').update({ agent_payload: payload, updated_at: new Date().toISOString() }).eq('id', existing.id)
+    : await db.from('inbox_items').insert({
+        user_id: userId, type: 'brief_item', text: summaryText, status: 'open', bucket: 'now',
+        agent_payload: payload, source_ref: { type: sourceType, id: date },
+      })
+
+  if (error) {
+    console.error('inbox-assistant-chat: upsertBriefItem failed:', error)
+    await db.from('cos_agent_log').insert({
+      user_id: userId,
+      event_type: 'error',
+      payload: { handler: existing ? 'brief_item_update' : 'brief_item_insert', kind, error: error.message },
     })
+    return { ok: false, error: error.message }
   }
+  return { ok: true }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -295,7 +309,8 @@ async function runDciBrief(db: any, userId: string, supabaseUrl: string, service
     ? `Weekly priorities: ${priorities.join('; ')}`
     : `Daily brief: ${priorities.join('; ')}`
 
-  await upsertBriefItem(db, userId, kind, priorities, summaryText)
+  const saved = await upsertBriefItem(db, userId, kind, priorities, summaryText)
+  if (!saved.ok) return { mutated: false, error: 'brief_item_save_failed' }
   return { mutated: true, priorities }
 }
 

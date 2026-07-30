@@ -45,6 +45,26 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
+// Durable failure log — mirrors slack-inbox-sync's markBatchFailed. A run
+// that only console.error's a failed write is invisible outside a manual
+// function-log check; cos_agent_log makes it queryable and alertable, the
+// same gap that let the daily_digest_sent CHECK-constraint failure go
+// unnoticed for weeks (SPECIFICATION.md §13.16 item 16).
+async function logAgentError(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  handler: string,
+  error: unknown,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  console.error(`extract-inbox-action-items: ${handler} failed:`, error)
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'error',
+    payload: { handler, error: error instanceof Error ? error.message : String(error), ...extra },
+  })
+}
+
 const MAX_ITEMS_PER_RUN = 60
 const MAX_TEXT_LEN = 300
 
@@ -100,7 +120,11 @@ interface Finding {
 
 const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
 
-async function extractFindings(items: ScanItem[]): Promise<Finding[]> {
+async function extractFindings(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  items: ScanItem[],
+): Promise<Finding[]> {
   const numbered = items.map(i => `${i.id}) [${i.label}] ${i.text}`).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
@@ -159,8 +183,11 @@ Return [] if nothing qualifies.`,
       owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
       due_date: typeof f.due_date === 'string' && isoDateRe.test(f.due_date) ? f.due_date : null,
     }))
-  } catch {
-    console.warn('extract-inbox-action-items: failed to parse Claude response:', text.slice(0, 200))
+  } catch (err) {
+    // Not just a console.warn: an entire batch's worth of Slack/Gmail
+    // candidates is discarded here with no items created, indistinguishable
+    // from "Claude legitimately found nothing" unless this is logged.
+    await logAgentError(supabase, userId, 'extractFindings_parse', err, { raw_preview: text.slice(0, 200) })
     return []
   }
 }
@@ -288,6 +315,10 @@ serve(async (req) => {
         const items: ScanItem[] = []
         let scannedSlack = false
         let scannedGmail = false
+        // Set only on a real fetch failure — gates cursor advancement below
+        // so a Gmail API error doesn't get treated as "scanned clean" and
+        // permanently skip the messages that were never actually read.
+        let gmailFetchFailed = false
 
         // ── Triage preferences: per-source opt-in/out + Gmail suppression ──
         const { data: triagePref } = await supabase
@@ -460,7 +491,16 @@ serve(async (req) => {
               () => fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } }),
               { integration: 'gmail', label: 'list messages' },
             )
-            if (listRes.ok) {
+            if (!listRes.ok) {
+              // No `else` previously — a failed list call (expired token,
+              // 403, quota) fell straight through with zero logging, and
+              // the cursor still advanced below as if the scan succeeded,
+              // permanently skipping this window of messages.
+              gmailFetchFailed = true
+              await logAgentError(supabase, userId, 'gmail_list_messages', new Error(`HTTP ${listRes.status}`), {
+                status: listRes.status,
+              })
+            } else {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
 
               // Build a sent-mail lookup for sender tier classification.
@@ -552,7 +592,8 @@ serve(async (req) => {
               }
             }
           } catch (err) {
-            console.warn(`extract-inbox-action-items: gmail fetch failed for ${userId}:`, (err as Error).message)
+            gmailFetchFailed = true
+            await logAgentError(supabase, userId, 'gmail_fetch', err)
           }
         }
 
@@ -568,7 +609,7 @@ serve(async (req) => {
 
         let itemsCreated = 0
         if (items.length > 0) {
-          const findings = await extractFindings(items)
+          const findings = await extractFindings(supabase, userId, items)
           const byId = new Map(items.map(i => [i.id, i]))
 
           for (const finding of findings) {
@@ -629,6 +670,15 @@ serve(async (req) => {
             if (!insertErr) {
               itemsCreated++
               existingTexts.push(summary) // prevent within-batch dupes
+            } else {
+              // A failed insert here silently drops a real finding — the
+              // scan looks like it ran clean (items_created just stays
+              // lower) with no trace of why this particular item never
+              // landed.
+              await logAgentError(supabase, userId, 'inbox_items_insert', insertErr, {
+                source: source.source,
+                source_ref: { type: sourceRefType, id: source.sourceId },
+              })
             }
           }
         }
@@ -638,7 +688,7 @@ serve(async (req) => {
         // same growing window on every future run.
         const nowIso = new Date().toISOString()
         for (const source of (['slack', 'gmail'] as const)) {
-          if ((source === 'slack' && scannedSlack) || (source === 'gmail' && scannedGmail)) {
+          if ((source === 'slack' && scannedSlack) || (source === 'gmail' && scannedGmail && !gmailFetchFailed)) {
             await supabase.from('cos_action_item_scan_state').upsert({
               user_id: userId,
               source,
