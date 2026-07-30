@@ -74,6 +74,10 @@ npm run db:validate
 
 Required env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. E2E tests also need `SUPABASE_SERVICE_ROLE_KEY` and `PLAYWRIGHT_BASE_URL`.
 
+## Documentation
+
+`docs/SPECIFICATION.md` and `INTEGRATIONS.md` are living docs, not a separate follow-up step — the PR template's checklist item covers this, so update them in the same PR whenever you add a table, edge function, or integration, or resolve a tracked issue in `docs/SPECIFICATION.md` §13. Don't defer doc updates to a later PR.
+
 ## Parallel Sessions
 
 This repo is worked on by multiple concurrent Claude Code sessions. A shared working directory has exactly one checked-out branch at a time — two sessions switching branches, rebasing, or committing in the same checkout race each other and can corrupt state or silently deploy stale code (this has already happened once: a mid-deploy rebase from another session caused an edge function to ship without that session's in-flight fix, caught only by re-diffing the deployed bundle against disk).
