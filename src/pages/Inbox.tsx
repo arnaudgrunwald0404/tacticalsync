@@ -731,27 +731,40 @@ export default function InboxPage() {
     } as Partial<InboxItem>);
   }, [updateItem]);
 
-  // Dismiss a Gmail panel item: archive it so it leaves both the suggestions
-  // panel and the main inbox list (not just flip a flag that lets it fall
-  // through into the main list as an unactionable agent_question row), and
-  // write a dismissal record so the triage agent can learn suppression rules.
+  // Dismiss a Gmail or Slack panel item: archive it so it leaves both the
+  // suggestions panel and the main inbox list (not just flip a flag that lets
+  // it fall through into the main list as an unactionable agent_question
+  // row), and write a dismissal record so the triage agent can learn
+  // suppression rules — for whichever source (source_ref.type) it came from.
   const handleDismissGmailItem = useCallback(async (id: string) => {
     const item = allItems.find(i => i.id === id);
     if (!item) return;
     const payload = item.agent_payload as {
       intent_type?: string; sender_email?: string; sender_tier?: string;
+      slack_sender_id?: string; slack_channel_id?: string;
     } | null;
+    const isSlack = item.source_ref?.type === 'slack_message';
     // Optimistically drop it from allItems so it disappears from the panel
     // instantly; archive() persists the removal (a harmless no-op on allItems
     // when it runs, since the item's already gone from there).
     mirrorToAllItems(prev => prev.filter(i => i.id !== id));
     void archive(id);
-    if (userId && payload?.sender_email) {
-      const senderEmail = payload.sender_email.toLowerCase();
-      const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : null;
-      void supabase.from('email_dismissal_log').insert({
+    if (userId && isSlack && (payload?.slack_sender_id || payload?.slack_channel_id)) {
+      void supabase.from('inbox_dismissal_log').insert({
         user_id: userId,
         inbox_item_id: id,
+        source: 'slack',
+        slack_sender_id: payload.slack_sender_id ?? null,
+        slack_channel_id: payload.slack_channel_id ?? null,
+        intent_type: payload.intent_type ?? null,
+      });
+    } else if (userId && payload?.sender_email) {
+      const senderEmail = payload.sender_email.toLowerCase();
+      const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : null;
+      void supabase.from('inbox_dismissal_log').insert({
+        user_id: userId,
+        inbox_item_id: id,
+        source: 'gmail',
         sender_email: senderEmail,
         sender_domain: senderDomain,
         sender_tier: payload.sender_tier ?? null,
