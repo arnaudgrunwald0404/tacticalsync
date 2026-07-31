@@ -486,6 +486,24 @@ const DEFAULT_NODE_DIMENSIONS: Record<NodeKind, { w: number; h: number }> = {
   rally: { w: 280, h: 100 },
 };
 
+// DO cards widen to fill the same total horizontal span that 4 DOs would
+// occupy, so fewer DOs don't leave empty space. Width is capped at what a
+// 2-DO layout would use — otherwise a single DO would balloon to the full
+// 4-card span (1220px), which looks absurd rather than just "wider".
+const DO_REFERENCE_COUNT = 4;
+const DO_BASE_GAP_X = 320;
+const DO_BASE_MARGIN = DO_BASE_GAP_X - DEFAULT_NODE_DIMENSIONS.do.w;
+const DO_REFERENCE_SPAN = (DO_REFERENCE_COUNT - 1) * DO_BASE_GAP_X + DEFAULT_NODE_DIMENSIONS.do.w;
+const DO_MAX_WIDTH = (DO_REFERENCE_SPAN - DO_BASE_MARGIN) / 2;
+
+function computeDOCardLayout(count: number): { w: number; gapX: number } {
+  if (count <= 0 || count >= DO_REFERENCE_COUNT) {
+    return { w: DEFAULT_NODE_DIMENSIONS.do.w, gapX: DO_BASE_GAP_X };
+  }
+  const w = Math.min((DO_REFERENCE_SPAN - (count - 1) * DO_BASE_MARGIN) / count, DO_MAX_WIDTH);
+  return { w, gapX: w + DO_BASE_MARGIN };
+}
+
 function rectForNode(n: Node<NodeData>) {
   const data = (n.data as NodeData) || {};
   const kind = (n.type as NodeKind) || "do";
@@ -1000,8 +1018,9 @@ export default function StrategyCanvasPage() {
 
         const { data: doMetrics } = await supabase
           .from('rc_do_metrics')
-          .select('defining_objective_id, name')
+          .select('defining_objective_id, name, type')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+          .eq('type', 'lagging')
           .order('display_order', { ascending: true });
         const metricsMap = new Map<string, string>();
         for (const m of doMetrics || []) {
@@ -1014,8 +1033,8 @@ export default function StrategyCanvasPage() {
         const baseX = 400;
         const baseY = 80;
         const startY = baseY + 180;
-        const gapX = 320;
         const count = (dos?.length) || 0;
+        const { w: doWidth, gapX } = computeDOCardLayout(count);
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
 
@@ -1063,7 +1082,7 @@ export default function StrategyCanvasPage() {
               hypothesis: d.hypothesis || '',
               primarySuccessMetric: metricsMap.get(d.id) || '',
               saiItems,
-              size: { w: 260, h: 110 },
+              size: { w: doWidth, h: 110 },
               dbId: d.id,
             },
           });
@@ -1468,15 +1487,48 @@ const duplicateSelectedDo = useCallback(() => {
     setNodes([...nodes, newDo]);
   }, [nodes, selectedNode]);
 
-  const deleteSelectedDo = useCallback(() => {
+  const deleteSelectedDo = useCallback(async () => {
     if (selectedNode?.type !== "do") return;
     const doId = selectedNode.id;
+    const doTitle = selectedNode.data.title || "this Defining Objective";
+    const dbId = doLockedStatus.get(doId)?.dbId || (selectedNode.data as NodeData & { dbId?: string }).dbId;
+
+    if (!window.confirm(`Delete "${doTitle}"? This will also delete its Strategic Initiatives and cannot be undone.`)) {
+      return;
+    }
+
+    if (dbId) {
+      const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
+      try {
+        // rc_links/rc_checkins reference DOs/SIs by parent_type+parent_id (no FK), so clean those up explicitly.
+        await Promise.all([
+          supabase.from('rc_links').delete().eq('parent_type', 'do').eq('parent_id', dbId),
+          siDbIds.length > 0 ? supabase.from('rc_links').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
+          supabase.from('rc_checkins').delete().eq('parent_type', 'do').eq('parent_id', dbId),
+          siDbIds.length > 0 ? supabase.from('rc_checkins').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
+        ]);
+
+        // Deleting the DO cascades to rc_do_metrics, rc_strategic_initiatives (and their rc_tasks).
+        const { error } = await supabase.from('rc_defining_objectives').delete().eq('id', dbId);
+        if (error) {
+          console.error('Delete DO error:', error);
+          toast({ title: 'Delete failed', description: error.message || 'Could not delete this Defining Objective.', variant: 'destructive' });
+          return;
+        }
+      } catch (e) {
+        console.error('deleteSelectedDo error', e);
+        toast({ title: 'Delete failed', description: 'Could not delete this Defining Objective.', variant: 'destructive' });
+        return;
+      }
+    }
+
     const remainingNodes = nodes.filter((n) => n.id !== doId && !(n.type === "sai" && (n.data as NodeData).parentDoId === doId));
     const remainingEdges = edges.filter((e) => e.source !== doId && e.target !== doId);
     setNodes(remainingNodes);
     setEdges(remainingEdges);
     setSelectedNode(null);
-  }, [nodes, edges, selectedNode]);
+    toast({ title: 'Deleted', description: `"${doTitle}" was deleted.` });
+  }, [nodes, edges, selectedNode, doLockedStatus, toast]);
 
   const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 
@@ -1960,8 +2012,9 @@ const duplicateSelectedDo = useCallback(() => {
 
       const { data: importedMetrics } = await supabase
         .from('rc_do_metrics')
-        .select('defining_objective_id, name')
+        .select('defining_objective_id, name, type')
         .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+        .eq('type', 'lagging')
         .order('display_order', { ascending: true });
       const importMetricsMap = new Map<string, string>();
       for (const m of importedMetrics || []) {
@@ -1973,8 +2026,8 @@ const duplicateSelectedDo = useCallback(() => {
       const baseX = 400;
       const baseY = 80;
       const startY = baseY + 180;
-      const gapX = 320;
       const doCount = (importedDOs || []).length;
+      const { w: doWidth, gapX } = computeDOCardLayout(doCount);
       const totalWidth = (doCount - 1) * gapX;
       const startX = baseX - totalWidth / 2;
 
@@ -2022,7 +2075,7 @@ const duplicateSelectedDo = useCallback(() => {
             hypothesis: d.hypothesis || '',
             primarySuccessMetric: importMetricsMap.get(d.id) || '',
             saiItems,
-            size: { w: 260, h: 110 },
+            size: { w: doWidth, h: 110 },
             dbId: d.id,
           },
         });
