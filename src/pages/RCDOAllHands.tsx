@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useActiveCycle, useRallyingCry, useCycles } from '@/hooks/useRCDO';
-import { useCycleAllSIs, type AllHandsSIRow } from '@/hooks/useCycleAllSIs';
+import { useCycleAllSIs, type AllHandsSIRow, type CheckinStatus } from '@/hooks/useCycleAllSIs';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
 import { ProgressBadge, PercentCell, DeltaCell } from '@/components/rcdo/SIProgressCells';
 
@@ -23,6 +23,25 @@ function OwnerCell({ row }: { row: AllHandsSIRow }) {
       <span className="text-sm font-medium truncate">{row.doOwnerName}</span>
     </div>
   );
+}
+
+// Worst-status-wins so a DO reads "at risk" the moment any of its SIs does.
+const STATUS_PRIORITY: Record<CheckinStatus, number> = {
+  off_track: 3,
+  at_risk: 2,
+  on_track: 1,
+  unknown: 0,
+};
+
+interface DOGroup {
+  doId: string;
+  doNumber: string;
+  doTitle: string;
+  rows: (AllHandsSIRow & { siNumber: string })[];
+  rollupStatus: CheckinStatus;
+  rollupPercent: number | null;
+  rollupPriorPercent: number | null;
+  rollupPriorDate: string | null;
 }
 
 export default function RCDOAllHands() {
@@ -61,19 +80,48 @@ export default function RCDOAllHands() {
     });
   }, [rallyingCry?.id, cycleId]);
 
-  // Group rows visually by DO so the owner column reads as a section header
-  const grouped = useMemo(() => {
+  // Group rows by DO, numbering them like the canvas tree (1.0, 1.1, 1.2…)
+  // and rolling up a DO-level status/% so the DO itself reads as a summary row.
+  const grouped = useMemo<DOGroup[]>(() => {
     const map = new Map<string, AllHandsSIRow[]>();
     for (const r of rows) {
       const list = map.get(r.doId) ?? [];
       list.push(r);
       map.set(r.doId, list);
     }
-    return Array.from(map.entries()).map(([doId, list]) => ({
-      doId,
-      doTitle: list[0]?.doTitle ?? '',
-      rows: list,
-    }));
+    return Array.from(map.entries()).map(([doId, list], doIdx) => {
+      const doNumber = `${doIdx + 1}.0`;
+      const numberedRows = list.map((r, siIdx) => ({ ...r, siNumber: `${doIdx + 1}.${siIdx + 1}` }));
+
+      const worstStatus = list.reduce<CheckinStatus>(
+        (worst, r) => (STATUS_PRIORITY[r.status] > STATUS_PRIORITY[worst] ? r.status : worst),
+        'unknown',
+      );
+
+      const percents = list.map((r) => r.latestPercent).filter((p): p is number => p !== null);
+      const rollupPercent = percents.length > 0 ? percents.reduce((a, b) => a + b, 0) / percents.length : null;
+
+      const priorPercents = list.filter((r) => r.priorPercent !== null && r.priorCheckinDate !== null);
+      const rollupPriorPercent =
+        priorPercents.length > 0
+          ? priorPercents.reduce((a, r) => a + (r.priorPercent ?? 0), 0) / priorPercents.length
+          : null;
+      const rollupPriorDate =
+        priorPercents.length > 0
+          ? priorPercents.reduce((latest, r) => (r.priorCheckinDate! > latest ? r.priorCheckinDate! : latest), priorPercents[0].priorCheckinDate!)
+          : null;
+
+      return {
+        doId,
+        doNumber,
+        doTitle: list[0]?.doTitle ?? '',
+        rows: numberedRows,
+        rollupStatus: worstStatus,
+        rollupPercent,
+        rollupPriorPercent,
+        rollupPriorDate,
+      };
+    });
   }, [rows]);
 
   return (
@@ -123,19 +171,36 @@ export default function RCDOAllHands() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  grouped.flatMap((group) =>
-                    group.rows.map((row, idx) => (
+                  grouped.flatMap((group) => [
+                    <TableRow key={`${group.doId}-header`} className="align-top bg-muted/40 border-b-2 border-border hover:bg-muted/40">
+                      <TableCell className="py-3" rowSpan={group.rows.length + 1}>
+                        <OwnerCell row={group.rows[0]} />
+                      </TableCell>
+                      <TableCell className="py-3 text-sm font-semibold">
+                        {group.doNumber} {group.doTitle}
+                      </TableCell>
+                      <TableCell className="py-3"><ProgressBadge status={group.rollupStatus} /></TableCell>
+                      <TableCell className="py-3"><PercentCell value={group.rollupPercent} /></TableCell>
+                      <TableCell className="py-3">
+                        <DeltaCell
+                          latestPercent={group.rollupPercent}
+                          priorPercent={group.rollupPriorPercent}
+                          priorCheckinDate={group.rollupPriorDate}
+                        />
+                      </TableCell>
+                    </TableRow>,
+                    ...group.rows.map((row) => (
                       <TableRow key={row.siId} className="align-top">
-                        <TableCell className="py-3">
-                          {idx === 0 ? <OwnerCell row={row} /> : null}
+                        <TableCell className="py-3 text-sm pl-8 text-muted-foreground">
+                          <span className="text-xs font-medium text-muted-foreground/70 mr-1.5">{row.siNumber}</span>
+                          {row.siTitle}
                         </TableCell>
-                        <TableCell className="py-3 text-sm">{row.siTitle}</TableCell>
                         <TableCell className="py-3"><ProgressBadge status={row.status} /></TableCell>
                         <TableCell className="py-3"><PercentCell value={row.latestPercent} /></TableCell>
                         <TableCell className="py-3"><DeltaCell latestPercent={row.latestPercent} priorPercent={row.priorPercent} priorCheckinDate={row.priorCheckinDate} /></TableCell>
                       </TableRow>
                     )),
-                  )
+                  ])
                 )}
               </TableBody>
             </Table>
