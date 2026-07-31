@@ -393,9 +393,18 @@ export default function DODetail() {
               .from('rc_do_metrics')
               .update({ name: value })
               .eq('id', laggingMetric.id);
-            if (!error) {
-              refetchMetrics();
-            }
+            if (!error) refetchMetrics();
+          } else if (value.trim()) {
+            const { error } = await supabase
+              .from('rc_do_metrics')
+              .insert({
+                defining_objective_id: doDetails.id,
+                name: value,
+                type: 'lagging',
+                direction: 'up',
+                source: 'manual',
+              });
+            if (!error) refetchMetrics();
           }
         }}
         onLock={handleLock}

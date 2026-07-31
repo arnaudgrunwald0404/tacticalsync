@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock, Pencil } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -88,6 +88,7 @@ export function DOPanelContent({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(selectedNode.data.title || '');
+  const titleInputRef = useRef<HTMLInputElement>(null);
   
   // Check if DO is locked
   const doStatus = doLockedStatus.get(selectedNode.id);
@@ -136,6 +137,57 @@ export function DOPanelContent({
       }
     } catch (e) {
       console.warn('[DOPanel] Error updating DO owner in DB', e);
+    }
+  };
+
+  const handleHypothesisBlur = async (content: string) => {
+    if (isLocked || !dbId) return;
+    try {
+      const { error } = await supabase
+        .from('rc_defining_objectives')
+        .update({ hypothesis: content })
+        .eq('id', dbId);
+      if (error) {
+        console.warn('[DOPanel] Failed to persist hypothesis change', error);
+        toast({ title: 'Update failed', description: 'Could not save Definition & Hypothesis', variant: 'destructive' });
+      }
+    } catch (e) {
+      console.warn('[DOPanel] Error updating hypothesis in DB', e);
+    }
+  };
+
+  const handlePrimarySuccessMetricBlur = async (value: string) => {
+    if (isLocked || !dbId) return;
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from('rc_do_metrics')
+        .select('id')
+        .eq('defining_objective_id', dbId)
+        .eq('type', 'lagging')
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+
+      if (existing) {
+        const { error } = await supabase
+          .from('rc_do_metrics')
+          .update({ name: value })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else if (value.trim()) {
+        const { error } = await supabase
+          .from('rc_do_metrics')
+          .insert({
+            defining_objective_id: dbId,
+            name: value,
+            type: 'lagging',
+            direction: 'up',
+            source: 'manual',
+          });
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.warn('[DOPanel] Failed to persist primary success metric', e);
+      toast({ title: 'Update failed', description: 'Could not save Primary Success Metric', variant: 'destructive' });
     }
   };
 
@@ -276,6 +328,7 @@ export function DOPanelContent({
             <RichTextEditor
               content={selectedNode.data.hypothesis || ""}
               onChange={(content) => { if (isLocked) return; handleUpdate({ hypothesis: content }); }}
+              onBlur={handleHypothesisBlur}
               placeholder="If we do X, then Y will happen because Z..."
               minHeight="96px"
             />
@@ -291,6 +344,7 @@ export function DOPanelContent({
             placeholder="e.g., OpEx management and achievement of SI-level metrics"
             value={selectedNode.data.primarySuccessMetric || ""}
             onChange={(e) => { if (isLocked) return; handleUpdate({ primarySuccessMetric: e.target.value }); }}
+            onBlur={(e) => handlePrimarySuccessMetricBlur(e.target.value)}
             disabled={isLocked}
             style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
           />
