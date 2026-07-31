@@ -2724,10 +2724,38 @@ const duplicateSelectedDo = useCallback(() => {
               setNodes(next);
               setFocusedSI({ doId: doNode.id, siId: newId });
             }}
-            onDelete={() => {
+            onDelete={async () => {
+              const siTitle = si.title || "this Strategic Initiative";
+              if (!window.confirm(`Delete "${siTitle}"? This cannot be undone.`)) {
+                return;
+              }
+
+              if (si.dbId) {
+                try {
+                  // rc_links/rc_checkins reference SIs by parent_type+parent_id (no FK), so clean those up explicitly.
+                  await Promise.all([
+                    supabase.from('rc_links').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
+                    supabase.from('rc_checkins').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
+                  ]);
+
+                  // Deleting the SI cascades to rc_tasks.
+                  const { error } = await supabase.from('rc_strategic_initiatives').delete().eq('id', si.dbId);
+                  if (error) {
+                    console.error('Delete SI error:', error);
+                    toast({ title: 'Delete failed', description: error.message || 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                    return;
+                  }
+                } catch (e) {
+                  console.error('SI onDelete error', e);
+                  toast({ title: 'Delete failed', description: 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                  return;
+                }
+              }
+
               const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).filter(x => x.id !== si.id) } } : n);
               setNodes(next);
               setFocusedSI(null);
+              toast({ title: 'Deleted', description: `"${siTitle}" was deleted.` });
             }}
             onClose={() => setFocusedSI(null)}
             isDoPanelOpen={selectedNode?.type === "do"}
