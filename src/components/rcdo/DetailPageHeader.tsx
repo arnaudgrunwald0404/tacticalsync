@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, TrendingDown, Table2, BarChart3, Pencil, Calendar } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -81,6 +81,10 @@ export interface DetailPageHeaderProps {
 
   // SI kebab actions
   onBreakIntoSubSIs?: () => void;
+
+  // Delete
+  onDelete?: () => void;
+  canDelete?: boolean;
 }
 
 export function DetailPageHeader({
@@ -123,6 +127,8 @@ export function DetailPageHeader({
   onEndDateChange,
   dateError,
   onBreakIntoSubSIs,
+  onDelete,
+  canDelete = false,
 }: DetailPageHeaderProps) {
   const ownerName = getFullNameForAvatar(
     owner?.first_name,
@@ -503,7 +509,9 @@ export function DetailPageHeader({
             {status.replace('_', ' ').toUpperCase()}
           </Badge>
         )}
-        {isLocked && canLock && onUnlock && (
+        {((isLocked && canLock && onUnlock) ||
+          (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||
+          (onDelete && canDelete)) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -511,24 +519,27 @@ export function DetailPageHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onUnlock}>
-                <Unlock className="h-4 w-4 mr-2" />
-                Unlock
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
-              </DropdownMenuItem>
+              {isLocked && canLock && onUnlock && (
+                <DropdownMenuItem onClick={onUnlock}>
+                  <Unlock className="h-4 w-4 mr-2" />
+                  Unlock
+                </DropdownMenuItem>
+              )}
+              {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
+                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
+                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                </DropdownMenuItem>
+              )}
+              {onDelete && canDelete && (
+                <>
+                  {((isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
+                    <DropdownMenuSeparator />
+                  )}
+                  <DropdownMenuItem className="text-red-600" onClick={onDelete}>
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
