@@ -8,8 +8,9 @@ import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { Tables } from '@/integrations/supabase/types';
 import type { Node } from 'reactflow';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { updateDO } from '@/hooks/useRCDOMutations';
+import { useDOMetrics } from '@/hooks/useRCDO';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -83,7 +84,6 @@ export function DOPanelContent({
   const navigateHook = useNavigate();
   const [panelSearchParams] = useSearchParams();
   const cycleParam = panelSearchParams.get('cycle');
-  const { toast } = useToast();
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -94,7 +94,8 @@ export function DOPanelContent({
   const doStatus = doLockedStatus.get(selectedNode.id);
   const isLocked = doStatus?.locked ?? false;
   const dbId = doStatus?.dbId;
-  
+  const { upsertPrimaryMetric } = useDOMetrics(dbId);
+
   useEffect(() => {
     const getCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -119,75 +120,43 @@ export function DOPanelContent({
     setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ...patch } });
   };
 
+  const handleTitleBlur = async (title: string) => {
+    if (isLocked || !dbId) return;
+    try {
+      await updateDO(dbId, { title });
+    } catch (e) {
+      console.warn('[DOPanel] Failed to persist title change', e);
+    }
+  };
+
   const handleOwnerChange = async (val: string) => {
     if (isLocked) return;
     handleUpdate({ ownerId: val || undefined });
 
-    // Persist to DB if DO is linked to a DB row
-    try {
-      if (dbId && val) {
-        const { error } = await supabase
-          .from('rc_defining_objectives')
-          .update({ owner_user_id: val })
-          .eq('id', dbId);
-        if (error) {
-          console.warn('[DOPanel] Failed to persist DO owner change', error);
-          toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
-        }
+    if (dbId && val) {
+      try {
+        await updateDO(dbId, { owner_user_id: val });
+      } catch (e) {
+        console.warn('[DOPanel] Failed to persist DO owner change', e);
       }
-    } catch (e) {
-      console.warn('[DOPanel] Error updating DO owner in DB', e);
     }
   };
 
   const handleHypothesisBlur = async (content: string) => {
     if (isLocked || !dbId) return;
     try {
-      const { error } = await supabase
-        .from('rc_defining_objectives')
-        .update({ hypothesis: content })
-        .eq('id', dbId);
-      if (error) {
-        console.warn('[DOPanel] Failed to persist hypothesis change', error);
-        toast({ title: 'Update failed', description: 'Could not save Definition & Hypothesis', variant: 'destructive' });
-      }
+      await updateDO(dbId, { hypothesis: content });
     } catch (e) {
-      console.warn('[DOPanel] Error updating hypothesis in DB', e);
+      console.warn('[DOPanel] Failed to persist hypothesis change', e);
     }
   };
 
   const handlePrimarySuccessMetricBlur = async (value: string) => {
     if (isLocked || !dbId) return;
     try {
-      const { data: existing, error: fetchError } = await supabase
-        .from('rc_do_metrics')
-        .select('id')
-        .eq('defining_objective_id', dbId)
-        .eq('type', 'lagging')
-        .maybeSingle();
-      if (fetchError) throw fetchError;
-
-      if (existing) {
-        const { error } = await supabase
-          .from('rc_do_metrics')
-          .update({ name: value })
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else if (value.trim()) {
-        const { error } = await supabase
-          .from('rc_do_metrics')
-          .insert({
-            defining_objective_id: dbId,
-            name: value,
-            type: 'lagging',
-            direction: 'up',
-            source: 'manual',
-          });
-        if (error) throw error;
-      }
+      await upsertPrimaryMetric(value);
     } catch (e) {
       console.warn('[DOPanel] Failed to persist primary success metric', e);
-      toast({ title: 'Update failed', description: 'Could not save Primary Success Metric', variant: 'destructive' });
     }
   };
 
@@ -265,6 +234,7 @@ export function DOPanelContent({
             onBlur={() => {
               if (titleDraft.trim() && titleDraft !== selectedNode.data.title) {
                 handleUpdate({ title: titleDraft.trim() });
+                handleTitleBlur(titleDraft.trim());
               } else {
                 setTitleDraft(selectedNode.data.title || '');
               }
@@ -272,7 +242,10 @@ export function DOPanelContent({
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                if (titleDraft.trim() && titleDraft !== selectedNode.data.title) handleUpdate({ title: titleDraft.trim() });
+                if (titleDraft.trim() && titleDraft !== selectedNode.data.title) {
+                  handleUpdate({ title: titleDraft.trim() });
+                  handleTitleBlur(titleDraft.trim());
+                }
                 setEditingTitle(false);
               }
               if (e.key === 'Escape') {

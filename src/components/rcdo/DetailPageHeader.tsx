@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, TrendingDown, Table2, BarChart3, Pencil, Calendar } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -81,6 +81,10 @@ export interface DetailPageHeaderProps {
 
   // SI kebab actions
   onBreakIntoSubSIs?: () => void;
+
+  // Delete
+  onDelete?: () => void;
+  canDelete?: boolean;
 }
 
 export function DetailPageHeader({
@@ -123,6 +127,8 @@ export function DetailPageHeader({
   onEndDateChange,
   dateError,
   onBreakIntoSubSIs,
+  onDelete,
+  canDelete = false,
 }: DetailPageHeaderProps) {
   const ownerName = getFullNameForAvatar(
     owner?.first_name,
@@ -240,9 +246,20 @@ export function DetailPageHeader({
       {/* Description */}
       <div className="group/desc mb-3">
         {descriptionLabel && (
-          <label className={`text-sm font-medium block mb-1 ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-            {descriptionLabel}
-          </label>
+          <div className="flex items-center gap-1 mb-1">
+            <label className={`text-sm font-medium ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              {descriptionLabel}
+            </label>
+            {!editingDesc && !isLocked && canEdit && onDescriptionChange && (
+              <button
+                type="button"
+                onClick={() => setEditingDesc(true)}
+                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         )}
         {editingDesc ? (
           <textarea
@@ -266,33 +283,33 @@ export function DetailPageHeader({
             className="w-full text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
           />
         ) : (
-          <div className="flex items-start gap-2">
-            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1">
-              {strippedDescription
-                ? strippedDescription
-                : onDescriptionChange
-                  ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
-                  : null}
-            </p>
-            {!isLocked && canEdit && onDescriptionChange && (
-              <button
-                type="button"
-                onClick={() => setEditingDesc(true)}
-                className="opacity-0 group-hover/desc:opacity-100 mt-0.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+            {strippedDescription
+              ? strippedDescription
+              : onDescriptionChange
+                ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
+                : null}
+          </p>
         )}
       </div>
 
       {/* Primary Success Metric — DO only */}
       {type === 'do' && (primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
         <div className="group/metric mb-3">
-          <label className={`text-sm font-medium block mb-1 ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-            Primary Success Metric
-          </label>
+          <div className="flex items-center gap-1 mb-1">
+            <label className={`text-sm font-medium ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              Primary Success Metric
+            </label>
+            {!editingMetric && !isLocked && canEdit && onPrimarySuccessMetricChange && (
+              <button
+                type="button"
+                onClick={() => setEditingMetric(true)}
+                className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           {editingMetric ? (
             <textarea
               value={metricDraft}
@@ -315,24 +332,13 @@ export function DetailPageHeader({
               className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
             />
           ) : (
-            <div className="flex items-start gap-2">
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1">
-                {primarySuccessMetric?.trim()
-                  ? primarySuccessMetric
-                  : onPrimarySuccessMetricChange
-                    ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
-                    : null}
-              </p>
-              {!isLocked && canEdit && onPrimarySuccessMetricChange && (
-                <button
-                  type="button"
-                  onClick={() => setEditingMetric(true)}
-                  className="opacity-0 group-hover/metric:opacity-100 mt-0.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {primarySuccessMetric?.trim()
+                ? primarySuccessMetric
+                : onPrimarySuccessMetricChange
+                  ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
+                  : null}
+            </p>
           )}
         </div>
       )}
@@ -503,7 +509,9 @@ export function DetailPageHeader({
             {status.replace('_', ' ').toUpperCase()}
           </Badge>
         )}
-        {isLocked && canLock && onUnlock && (
+        {((isLocked && canLock && onUnlock) ||
+          (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||
+          (onDelete && canDelete)) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -511,24 +519,27 @@ export function DetailPageHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onUnlock}>
-                <Unlock className="h-4 w-4 mr-2" />
-                Unlock
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
-              </DropdownMenuItem>
+              {isLocked && canLock && onUnlock && (
+                <DropdownMenuItem onClick={onUnlock}>
+                  <Unlock className="h-4 w-4 mr-2" />
+                  Unlock
+                </DropdownMenuItem>
+              )}
+              {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
+                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
+                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                </DropdownMenuItem>
+              )}
+              {onDelete && canDelete && (
+                <>
+                  {((isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
+                    <DropdownMenuSeparator />
+                  )}
+                  <DropdownMenuItem className="text-red-600" onClick={onDelete}>
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
