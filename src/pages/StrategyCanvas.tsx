@@ -42,6 +42,8 @@ import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { reconcileCanvasSnapshot, type RawCanvasNode, type ReconcileCanvasSnapshotParams } from "@/lib/canvasSnapshotReconciliation";
+import { deleteDOCascade, deleteSICascade } from "@/lib/rcdoCascadeDelete";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -832,6 +834,7 @@ export default function StrategyCanvasPage() {
                 .eq('rallying_cry_id', rc.id)
                 .order('display_order', { ascending: true })
             : { data: [] as DOReconcileRow[] };
+
           const doIds = (doRows || []).map((d: DOReconcileRow) => d.id);
 
           const [siRowsRes, doMetricsRes] = doIds.length
@@ -849,133 +852,20 @@ export default function StrategyCanvasPage() {
               ])
             : [{ data: [] as SIReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
 
-          const doRowById = new Map((doRows || []).map((d: DOReconcileRow) => [d.id, d]));
-          const sisByDoId = new Map<string, SIReconcileRow[]>();
-          for (const s of siRowsRes.data || []) {
-            const list = sisByDoId.get(s.defining_objective_id) || [];
-            list.push(s as SIReconcileRow);
-            sisByDoId.set(s.defining_objective_id, list);
-          }
-          const metricByDoId = new Map<string, string>();
-          for (const m of doMetricsRes.data || []) {
-            if (!metricByDoId.has(m.defining_objective_id)) metricByDoId.set(m.defining_objective_id, m.name);
-          }
-
-          const matchedDoIds = new Set<string>();
-
-          const reconciledExisting: RawNode[] = loadedNodes.map((n) => {
-            if (n.type === 'rally' && rc?.title) {
-              const rallyData = (n.data || {}) as NodeData;
-              if (!rallyData.rallyFinalized) return n;
-              const candidates = [rc.title, ...((rallyData.rallyCandidates || []).slice(1))];
-              return { ...n, data: { ...rallyData, rallyCandidates: candidates } };
-            }
-            if (n.type === 'do' && n.data?.dbId) {
-              const doDbId = String(n.data.dbId);
-              const row = doRowById.get(doDbId);
-              if (!row) return n; // DO no longer exists in DB — leave the cached card rather than guess
-              matchedDoIds.add(doDbId);
-
-              const canonicalSIs = sisByDoId.get(doDbId) || [];
-              const siRowById = new Map(canonicalSIs.map((s) => [s.id, s]));
-
-              const items = (n.data.saiItems as Array<Record<string, unknown>> | undefined) || [];
-              const seenSiIds = new Set<string>();
-              const reconciledItems: Array<Record<string, unknown>> = [];
-              for (const it of items) {
-                const siId = it.dbId ? String(it.dbId) : undefined;
-                // Drop duplicate cards that point at an SI dbId already kept — a
-                // real initiative shouldn't render twice just because the canvas
-                // ended up with two node entries sharing one database row.
-                if (siId && seenSiIds.has(siId)) continue;
-                if (siId) seenSiIds.add(siId);
-                const siRow = siId ? siRowById.get(siId) : undefined;
-                if (!siRow) { reconciledItems.push(it); continue; }
-                reconciledItems.push({
-                  ...it,
-                  title: siRow.title,
-                  ownerId: siRow.owner_user_id || undefined,
-                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
-                  description: siRow.description || '',
-                  metric: siRow.primary_success_metric || '',
-                  benchmark: siRow.benchmark || '',
-                });
-              }
-              // Append canonical SIs with no matching card at all — created from
-              // a Detail page after this snapshot was last saved.
-              for (const siRow of canonicalSIs) {
-                if (seenSiIds.has(siRow.id)) continue;
-                reconciledItems.push({
-                  id: `si-${n.id}-${siRow.id.slice(0, 6)}`,
-                  dbId: siRow.id,
-                  title: siRow.title,
-                  ownerId: siRow.owner_user_id || undefined,
-                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
-                  description: siRow.description || '',
-                  metric: siRow.primary_success_metric || '',
-                  benchmark: siRow.benchmark || '',
-                });
-              }
-
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  title: row.title,
-                  hypothesis: row.hypothesis || '',
-                  ownerId: row.owner_user_id || undefined,
-                  status: row.status === 'locked' ? 'locked' : 'draft',
-                  primarySuccessMetric: metricByDoId.get(doDbId) || '',
-                  saiItems: reconciledItems,
-                },
-              };
-            }
-            return n;
+          const { nodes: reconciledNodes, appendedDoCount } = reconcileCanvasSnapshot({
+            loadedNodes: loadedNodes as unknown as RawCanvasNode[],
+            rallyingCry: rc,
+            doRows: (doRows || []) as DOReconcileRow[],
+            siRows: (siRowsRes.data || []) as SIReconcileRow[],
+            doMetrics: (doMetricsRes.data || []) as Array<{ defining_objective_id: string; name: string }>,
+            findNonOverlappingPosition: findNonOverlappingPosition as unknown as ReconcileCanvasSnapshotParams['findNonOverlappingPosition'],
           });
 
-          // Append DOs that exist in the database but have no card on this
-          // canvas at all — e.g. added via the Detail page's "Add DO" flow
-          // after the snapshot was last saved, so nothing ever pushed them here.
-          const missingDos = (doRows || []).filter((d: DOReconcileRow) => !matchedDoIds.has(d.id));
-          const appendedDoNodes: Node<NodeData>[] = [];
-          let layoutCursor = reconciledExisting.filter((n) => n.type === 'do') as unknown as Node<NodeData>[];
-          missingDos.forEach((d: DOReconcileRow, idx: number) => {
-            const pos = findNonOverlappingPosition(layoutCursor, 'do', 200 + idx * 320, 700);
-            const canonicalSIs = sisByDoId.get(d.id) || [];
-            const saiItems = canonicalSIs.map((si) => ({
-              id: `si-do-${d.id.slice(0, 6)}-${si.id.slice(0, 6)}`,
-              dbId: si.id,
-              title: si.title,
-              ownerId: si.owner_user_id || undefined,
-              participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
-              description: si.description || '',
-              metric: si.primary_success_metric || '',
-              benchmark: si.benchmark || '',
-            }));
-            const newNode: Node<NodeData> = {
-              id: `do-db-${d.id.slice(0, 8)}`,
-              type: 'do',
-              position: pos,
-              data: {
-                title: d.title,
-                status: d.status === 'locked' ? 'locked' : 'draft',
-                ownerId: d.owner_user_id || undefined,
-                hypothesis: d.hypothesis || '',
-                primarySuccessMetric: metricByDoId.get(d.id) || '',
-                saiItems,
-                size: { w: 260, h: 110 },
-                dbId: d.id,
-              } as NodeData,
-            };
-            appendedDoNodes.push(newNode);
-            layoutCursor = [...layoutCursor, newNode];
-          });
-
-          if (appendedDoNodes.length) {
-            console.log('[Canvas] Added', appendedDoNodes.length, 'DO(s) found in the database but missing from the cached canvas snapshot');
+          if (appendedDoCount) {
+            console.log('[Canvas] Added', appendedDoCount, 'DO(s) found in the database but missing from the cached canvas snapshot');
           }
 
-          setNodes([...reconciledExisting, ...appendedDoNodes] as unknown as Node<NodeData>[]);
+          setNodes(reconciledNodes as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
@@ -1500,16 +1390,7 @@ const duplicateSelectedDo = useCallback(() => {
     if (dbId) {
       const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
       try {
-        // rc_links/rc_checkins reference DOs/SIs by parent_type+parent_id (no FK), so clean those up explicitly.
-        await Promise.all([
-          supabase.from('rc_links').delete().eq('parent_type', 'do').eq('parent_id', dbId),
-          siDbIds.length > 0 ? supabase.from('rc_links').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
-          supabase.from('rc_checkins').delete().eq('parent_type', 'do').eq('parent_id', dbId),
-          siDbIds.length > 0 ? supabase.from('rc_checkins').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
-        ]);
-
-        // Deleting the DO cascades to rc_do_metrics, rc_strategic_initiatives (and their rc_tasks).
-        const { error } = await supabase.from('rc_defining_objectives').delete().eq('id', dbId);
+        const { error } = await deleteDOCascade(dbId, siDbIds);
         if (error) {
           console.error('Delete DO error:', error);
           toast({ title: 'Delete failed', description: error.message || 'Could not delete this Defining Objective.', variant: 'destructive' });
@@ -2785,14 +2666,7 @@ const duplicateSelectedDo = useCallback(() => {
 
               if (si.dbId) {
                 try {
-                  // rc_links/rc_checkins reference SIs by parent_type+parent_id (no FK), so clean those up explicitly.
-                  await Promise.all([
-                    supabase.from('rc_links').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
-                    supabase.from('rc_checkins').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
-                  ]);
-
-                  // Deleting the SI cascades to rc_tasks.
-                  const { error } = await supabase.from('rc_strategic_initiatives').delete().eq('id', si.dbId);
+                  const { error } = await deleteSICascade(si.dbId);
                   if (error) {
                     console.error('Delete SI error:', error);
                     toast({ title: 'Delete failed', description: error.message || 'Could not delete this Strategic Initiative.', variant: 'destructive' });
