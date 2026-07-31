@@ -808,13 +808,16 @@ export default function StrategyCanvasPage() {
         const filteredEdges = (data.edges as RawEdge[]).filter((e) => !(e.source === ROOT_ID && loadedNodes.find((n) => n.id === e.target)?.type === 'do'));
 
         // The snapshot in rc_canvas_states is only a layout/collaboration cache
-        // (positions, sizes, colors). Its text fields go stale the moment someone
-        // edits a title/owner/metric from a Detail page, which writes straight to
-        // the canonical tables and never touches this snapshot. Overlay the live
-        // rows onto the cached nodes so Canvas and Detail can't drift apart.
+        // (positions, sizes, colors). Its content goes stale the moment someone
+        // edits a title/owner/metric from a Detail page (writes straight to the
+        // canonical tables, never touches this snapshot), or creates a brand new
+        // DO/SI there (nothing ever pushes it onto an existing snapshot either).
+        // Reconcile structurally against the canonical rows: overlay live text
+        // onto matched cards, drop duplicate cards that collapsed onto the same
+        // underlying row, and add cards for DOs/SIs that have none yet.
         try {
-          type DOReconcileRow = { id: string; title: string; hypothesis?: string | null; owner_user_id?: string | null; status?: string | null; locked_at?: string | null };
-          type SIReconcileRow = { id: string; title: string; owner_user_id?: string | null; participant_user_ids?: string[] | null; description?: string | null; primary_success_metric?: string | null; benchmark?: string | null; status?: string | null; locked_at?: string | null };
+          type DOReconcileRow = { id: string; title: string; hypothesis?: string | null; owner_user_id?: string | null; status?: string | null; locked_at?: string | null; display_order?: number | null };
+          type SIReconcileRow = { id: string; title: string; owner_user_id?: string | null; participant_user_ids?: string[] | null; description?: string | null; primary_success_metric?: string | null; benchmark?: string | null; status?: string | null; locked_at?: string | null; defining_objective_id: string };
 
           const { data: rc } = await supabase
             .from('rc_rallying_cries')
@@ -822,44 +825,45 @@ export default function StrategyCanvasPage() {
             .eq('cycle_id', cycleId)
             .maybeSingle();
 
-          const doDbIds = loadedNodes
-            .filter((n) => n.type === 'do' && n.data?.dbId)
-            .map((n) => String(n.data!.dbId));
+          const { data: doRows } = rc?.id
+            ? await supabase
+                .from('rc_defining_objectives')
+                .select('id, title, hypothesis, owner_user_id, status, locked_at, display_order')
+                .eq('rallying_cry_id', rc.id)
+                .order('display_order', { ascending: true })
+            : { data: [] as DOReconcileRow[] };
+          const doIds = (doRows || []).map((d: DOReconcileRow) => d.id);
 
-          const [doRowsRes, doMetricsRes] = doDbIds.length
+          const [siRowsRes, doMetricsRes] = doIds.length
             ? await Promise.all([
                 supabase
-                  .from('rc_defining_objectives')
-                  .select('id, title, hypothesis, owner_user_id, status, locked_at')
-                  .in('id', doDbIds),
+                  .from('rc_strategic_initiatives')
+                  .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at, defining_objective_id')
+                  .in('defining_objective_id', doIds)
+                  .is('parent_si_id', null),
                 supabase
                   .from('rc_do_metrics')
                   .select('defining_objective_id, name')
-                  .in('defining_objective_id', doDbIds)
+                  .in('defining_objective_id', doIds)
                   .order('display_order', { ascending: true }),
               ])
-            : [{ data: [] as DOReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
-          const doRowById = new Map((doRowsRes.data || []).map((d: DOReconcileRow) => [d.id, d]));
+            : [{ data: [] as SIReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
+
+          const doRowById = new Map((doRows || []).map((d: DOReconcileRow) => [d.id, d]));
+          const sisByDoId = new Map<string, SIReconcileRow[]>();
+          for (const s of siRowsRes.data || []) {
+            const list = sisByDoId.get(s.defining_objective_id) || [];
+            list.push(s as SIReconcileRow);
+            sisByDoId.set(s.defining_objective_id, list);
+          }
           const metricByDoId = new Map<string, string>();
           for (const m of doMetricsRes.data || []) {
             if (!metricByDoId.has(m.defining_objective_id)) metricByDoId.set(m.defining_objective_id, m.name);
           }
 
-          const siDbIds: string[] = [];
-          for (const n of loadedNodes) {
-            if (n.type !== 'do') continue;
-            const items = (n.data?.saiItems as Array<{ dbId?: string }> | undefined) || [];
-            for (const it of items) if (it.dbId) siDbIds.push(it.dbId);
-          }
-          const siRowsRes = siDbIds.length
-            ? await supabase
-                .from('rc_strategic_initiatives')
-                .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at')
-                .in('id', siDbIds)
-            : { data: [] as SIReconcileRow[] };
-          const siRowById = new Map((siRowsRes.data || []).map((s: SIReconcileRow) => [s.id, s]));
+          const matchedDoIds = new Set<string>();
 
-          const reconciledNodes = loadedNodes.map((n) => {
+          const reconciledExisting: RawNode[] = loadedNodes.map((n) => {
             if (n.type === 'rally' && rc?.title) {
               const rallyData = (n.data || {}) as NodeData;
               if (!rallyData.rallyFinalized) return n;
@@ -867,14 +871,27 @@ export default function StrategyCanvasPage() {
               return { ...n, data: { ...rallyData, rallyCandidates: candidates } };
             }
             if (n.type === 'do' && n.data?.dbId) {
-              const row = doRowById.get(String(n.data.dbId));
-              if (!row) return n;
+              const doDbId = String(n.data.dbId);
+              const row = doRowById.get(doDbId);
+              if (!row) return n; // DO no longer exists in DB — leave the cached card rather than guess
+              matchedDoIds.add(doDbId);
+
+              const canonicalSIs = sisByDoId.get(doDbId) || [];
+              const siRowById = new Map(canonicalSIs.map((s) => [s.id, s]));
+
               const items = (n.data.saiItems as Array<Record<string, unknown>> | undefined) || [];
-              const reconciledItems = items.map((it) => {
+              const seenSiIds = new Set<string>();
+              const reconciledItems: Array<Record<string, unknown>> = [];
+              for (const it of items) {
                 const siId = it.dbId ? String(it.dbId) : undefined;
+                // Drop duplicate cards that point at an SI dbId already kept — a
+                // real initiative shouldn't render twice just because the canvas
+                // ended up with two node entries sharing one database row.
+                if (siId && seenSiIds.has(siId)) continue;
+                if (siId) seenSiIds.add(siId);
                 const siRow = siId ? siRowById.get(siId) : undefined;
-                if (!siRow) return it;
-                return {
+                if (!siRow) { reconciledItems.push(it); continue; }
+                reconciledItems.push({
                   ...it,
                   title: siRow.title,
                   ownerId: siRow.owner_user_id || undefined,
@@ -882,8 +899,24 @@ export default function StrategyCanvasPage() {
                   description: siRow.description || '',
                   metric: siRow.primary_success_metric || '',
                   benchmark: siRow.benchmark || '',
-                };
-              });
+                });
+              }
+              // Append canonical SIs with no matching card at all — created from
+              // a Detail page after this snapshot was last saved.
+              for (const siRow of canonicalSIs) {
+                if (seenSiIds.has(siRow.id)) continue;
+                reconciledItems.push({
+                  id: `si-${n.id}-${siRow.id.slice(0, 6)}`,
+                  dbId: siRow.id,
+                  title: siRow.title,
+                  ownerId: siRow.owner_user_id || undefined,
+                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
+                  description: siRow.description || '',
+                  metric: siRow.primary_success_metric || '',
+                  benchmark: siRow.benchmark || '',
+                });
+              }
+
               return {
                 ...n,
                 data: {
@@ -892,7 +925,7 @@ export default function StrategyCanvasPage() {
                   hypothesis: row.hypothesis || '',
                   ownerId: row.owner_user_id || undefined,
                   status: row.status === 'locked' ? 'locked' : 'draft',
-                  primarySuccessMetric: metricByDoId.get(String(n.data.dbId)) || '',
+                  primarySuccessMetric: metricByDoId.get(doDbId) || '',
                   saiItems: reconciledItems,
                 },
               };
@@ -900,7 +933,49 @@ export default function StrategyCanvasPage() {
             return n;
           });
 
-          setNodes(reconciledNodes);
+          // Append DOs that exist in the database but have no card on this
+          // canvas at all — e.g. added via the Detail page's "Add DO" flow
+          // after the snapshot was last saved, so nothing ever pushed them here.
+          const missingDos = (doRows || []).filter((d: DOReconcileRow) => !matchedDoIds.has(d.id));
+          const appendedDoNodes: Node<NodeData>[] = [];
+          let layoutCursor = reconciledExisting.filter((n) => n.type === 'do') as unknown as Node<NodeData>[];
+          missingDos.forEach((d: DOReconcileRow, idx: number) => {
+            const pos = findNonOverlappingPosition(layoutCursor, 'do', 200 + idx * 320, 700);
+            const canonicalSIs = sisByDoId.get(d.id) || [];
+            const saiItems = canonicalSIs.map((si) => ({
+              id: `si-do-${d.id.slice(0, 6)}-${si.id.slice(0, 6)}`,
+              dbId: si.id,
+              title: si.title,
+              ownerId: si.owner_user_id || undefined,
+              participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
+              description: si.description || '',
+              metric: si.primary_success_metric || '',
+              benchmark: si.benchmark || '',
+            }));
+            const newNode: Node<NodeData> = {
+              id: `do-db-${d.id.slice(0, 8)}`,
+              type: 'do',
+              position: pos,
+              data: {
+                title: d.title,
+                status: d.status === 'locked' ? 'locked' : 'draft',
+                ownerId: d.owner_user_id || undefined,
+                hypothesis: d.hypothesis || '',
+                primarySuccessMetric: metricByDoId.get(d.id) || '',
+                saiItems,
+                size: { w: 260, h: 110 },
+                dbId: d.id,
+              } as NodeData,
+            };
+            appendedDoNodes.push(newNode);
+            layoutCursor = [...layoutCursor, newNode];
+          });
+
+          if (appendedDoNodes.length) {
+            console.log('[Canvas] Added', appendedDoNodes.length, 'DO(s) found in the database but missing from the cached canvas snapshot');
+          }
+
+          setNodes([...reconciledExisting, ...appendedDoNodes] as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
@@ -2702,10 +2777,38 @@ const duplicateSelectedDo = useCallback(() => {
               setNodes(next);
               setFocusedSI({ doId: doNode.id, siId: newId });
             }}
-            onDelete={() => {
+            onDelete={async () => {
+              const siTitle = si.title || "this Strategic Initiative";
+              if (!window.confirm(`Delete "${siTitle}"? This cannot be undone.`)) {
+                return;
+              }
+
+              if (si.dbId) {
+                try {
+                  // rc_links/rc_checkins reference SIs by parent_type+parent_id (no FK), so clean those up explicitly.
+                  await Promise.all([
+                    supabase.from('rc_links').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
+                    supabase.from('rc_checkins').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
+                  ]);
+
+                  // Deleting the SI cascades to rc_tasks.
+                  const { error } = await supabase.from('rc_strategic_initiatives').delete().eq('id', si.dbId);
+                  if (error) {
+                    console.error('Delete SI error:', error);
+                    toast({ title: 'Delete failed', description: error.message || 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                    return;
+                  }
+                } catch (e) {
+                  console.error('SI onDelete error', e);
+                  toast({ title: 'Delete failed', description: 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                  return;
+                }
+              }
+
               const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).filter(x => x.id !== si.id) } } : n);
               setNodes(next);
               setFocusedSI(null);
+              toast({ title: 'Deleted', description: `"${siTitle}" was deleted.` });
             }}
             onClose={() => setFocusedSI(null)}
             isDoPanelOpen={selectedNode?.type === "do"}
