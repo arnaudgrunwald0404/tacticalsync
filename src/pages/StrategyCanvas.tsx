@@ -486,18 +486,21 @@ const DEFAULT_NODE_DIMENSIONS: Record<NodeKind, { w: number; h: number }> = {
   rally: { w: 280, h: 100 },
 };
 
-// DO cards are laid out to fill the same total horizontal span whether the
-// cycle has 1-4 DOs, so fewer DOs render wider instead of leaving empty space.
+// DO cards widen to fill the same total horizontal span that 4 DOs would
+// occupy, so fewer DOs don't leave empty space. Width is capped at what a
+// 2-DO layout would use — otherwise a single DO would balloon to the full
+// 4-card span (1220px), which looks absurd rather than just "wider".
 const DO_REFERENCE_COUNT = 4;
 const DO_BASE_GAP_X = 320;
 const DO_BASE_MARGIN = DO_BASE_GAP_X - DEFAULT_NODE_DIMENSIONS.do.w;
 const DO_REFERENCE_SPAN = (DO_REFERENCE_COUNT - 1) * DO_BASE_GAP_X + DEFAULT_NODE_DIMENSIONS.do.w;
+const DO_MAX_WIDTH = (DO_REFERENCE_SPAN - DO_BASE_MARGIN) / 2;
 
 function computeDOCardLayout(count: number): { w: number; gapX: number } {
   if (count <= 0 || count >= DO_REFERENCE_COUNT) {
     return { w: DEFAULT_NODE_DIMENSIONS.do.w, gapX: DO_BASE_GAP_X };
   }
-  const w = (DO_REFERENCE_SPAN - (count - 1) * DO_BASE_MARGIN) / count;
+  const w = Math.min((DO_REFERENCE_SPAN - (count - 1) * DO_BASE_MARGIN) / count, DO_MAX_WIDTH);
   return { w, gapX: w + DO_BASE_MARGIN };
 }
 
