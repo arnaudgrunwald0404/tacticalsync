@@ -504,6 +504,29 @@ function computeDOCardLayout(count: number): { w: number; gapX: number } {
   return { w, gapX: w + DO_BASE_MARGIN };
 }
 
+// Re-centers a row of DO nodes and applies computeDOCardLayout's width for
+// the current count. Used whenever DO nodes are (re)hydrated — from a fresh
+// DB build, an import, or a reconciled cached snapshot — so cards widen (or
+// shrink back) as DOs are added/removed instead of keeping whatever width
+// they had when the snapshot was last saved. Each node keeps its own y.
+function layoutDONodesRow<T extends { position: { x: number; y: number }; data?: Record<string, unknown> }>(
+  doNodes: T[],
+  centerX: number
+): T[] {
+  const ordered = [...doNodes].sort((a, b) => a.position.x - b.position.x);
+  const { w, gapX } = computeDOCardLayout(ordered.length);
+  const totalWidth = (ordered.length - 1) * gapX;
+  const startX = centerX - totalWidth / 2;
+  return ordered.map((n, i) => {
+    const prevSize = n.data?.size as { w: number; h: number } | undefined;
+    return {
+      ...n,
+      position: { x: startX + i * gapX, y: n.position.y },
+      data: { ...(n.data || {}), size: { w, h: prevSize?.h ?? DEFAULT_NODE_DIMENSIONS.do.h } },
+    };
+  });
+}
+
 function rectForNode(n: Node<NodeData>) {
   const data = (n.data as NodeData) || {};
   const kind = (n.type as NodeKind) || "do";
@@ -799,7 +822,7 @@ export default function StrategyCanvasPage() {
         } catch { /* ignore */ }
       }
 
-      type RawNode = { id: string; type?: string; data?: Record<string, unknown> };
+      type RawNode = { id: string; type?: string; data?: Record<string, unknown>; position: { x: number; y: number } };
       type RawEdge = { source: string; target: string };
       if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as RawNode[]).length > 0 && !snapshotLooksLikeTemplate) {
         console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as RawNode[]).length, edgeCount: (data.edges as RawEdge[]).length });
@@ -975,7 +998,19 @@ export default function StrategyCanvasPage() {
             console.log('[Canvas] Added', appendedDoNodes.length, 'DO(s) found in the database but missing from the cached canvas snapshot');
           }
 
-          setNodes([...reconciledExisting, ...appendedDoNodes] as unknown as Node<NodeData>[]);
+          // Re-derive DO widths/positions from the current DO count instead of
+          // trusting whatever was cached — a snapshot saved with 4 DOs still had
+          // 260px-wide cards baked in even after one was deleted down to 3.
+          const nonDoNodes = reconciledExisting.filter((n) => n.type !== 'do');
+          const rallyNode = reconciledExisting.find((n) => n.type === 'rally');
+          const centerX = rallyNode?.position?.x ?? 400;
+          const doNodesForLayout = [
+            ...(reconciledExisting.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>),
+            ...(appendedDoNodes as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>),
+          ];
+          const laidOutDoNodes = layoutDONodesRow(doNodesForLayout, centerX);
+
+          setNodes([...nonDoNodes, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
