@@ -42,6 +42,8 @@ import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { deleteDO, deleteInitiative, lockDO, unlockDO, lockInitiative, unlockInitiative } from "@/hooks/useRCDOMutations";
+import { getDOLockBlockers, getSILockBlockers } from "@/lib/rcdoValidation";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -160,12 +162,13 @@ const createDoNode = (
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
 
-    // Check if DO is missing required fields
-    const strip = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-    const hasMissingFields = !data.title?.trim() ||
-                            !strip(data.hypothesis || '') ||
-                            !data.primarySuccessMetric?.trim() ||
-                            !data.ownerId;
+    // Check if DO is missing required fields (same rule used for lock eligibility everywhere else)
+    const hasMissingFields = getDOLockBlockers({
+      title: data.title,
+      hypothesis: data.hypothesis,
+      primarySuccessMetricName: data.primarySuccessMetric,
+      ownerId: data.ownerId,
+    }).length > 0;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1535,24 +1538,10 @@ const duplicateSelectedDo = useCallback(() => {
     if (dbId) {
       const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
       try {
-        // rc_links/rc_checkins reference DOs/SIs by parent_type+parent_id (no FK), so clean those up explicitly.
-        await Promise.all([
-          supabase.from('rc_links').delete().eq('parent_type', 'do').eq('parent_id', dbId),
-          siDbIds.length > 0 ? supabase.from('rc_links').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
-          supabase.from('rc_checkins').delete().eq('parent_type', 'do').eq('parent_id', dbId),
-          siDbIds.length > 0 ? supabase.from('rc_checkins').delete().eq('parent_type', 'si').in('parent_id', siDbIds) : Promise.resolve(),
-        ]);
-
-        // Deleting the DO cascades to rc_do_metrics, rc_strategic_initiatives (and their rc_tasks).
-        const { error } = await supabase.from('rc_defining_objectives').delete().eq('id', dbId);
-        if (error) {
-          console.error('Delete DO error:', error);
-          toast({ title: 'Delete failed', description: error.message || 'Could not delete this Defining Objective.', variant: 'destructive' });
-          return;
-        }
+        await deleteDO(dbId, siDbIds);
       } catch (e) {
         console.error('deleteSelectedDo error', e);
-        toast({ title: 'Delete failed', description: 'Could not delete this Defining Objective.', variant: 'destructive' });
+        toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Defining Objective.', variant: 'destructive' });
         return;
       }
     }
@@ -1565,8 +1554,6 @@ const duplicateSelectedDo = useCallback(() => {
     toast({ title: 'Deleted', description: `"${doTitle}" was deleted.` });
   }, [nodes, edges, selectedNode, doLockedStatus, toast]);
 
-  const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-
   // Bulk actions
   const lockEverything = useCallback(async () => {
     // Check for incomplete DOs and SIs before locking
@@ -1574,26 +1561,51 @@ const duplicateSelectedDo = useCallback(() => {
     const incompleteDOs: string[] = [];
     const incompleteSIs: Array<{ doTitle: string; siTitle: string }> = [];
 
+    // Canvas node data doesn't carry SI start/end dates — fetch them in bulk
+    // so this validates against the same rules as everywhere else (getSILockBlockers).
+    const allSiDbIds = currentNodes
+      .filter((n) => n.type === 'do')
+      .flatMap((n) => (n.data.saiItems || []).map((si) => si.dbId))
+      .filter(Boolean) as string[];
+    const siDatesMap = new Map<string, { start_date: string | null; end_date: string | null }>();
+    if (allSiDbIds.length > 0) {
+      const { data: siRows } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, start_date, end_date')
+        .in('id', allSiDbIds);
+      for (const row of siRows || []) {
+        siDatesMap.set(row.id, { start_date: row.start_date, end_date: row.end_date });
+      }
+    }
+
     for (const n of currentNodes) {
       if (n.type === 'do') {
         const data = n.data;
-        const hasMissingFields = !data.title?.trim() ||
-                                !stripHtml(data.hypothesis || '') ||
-                                !data.primarySuccessMetric?.trim() ||
-                                !data.ownerId;
+        const doMissing = getDOLockBlockers({
+          title: data.title,
+          hypothesis: data.hypothesis,
+          primarySuccessMetricName: data.primarySuccessMetric,
+          ownerId: data.ownerId,
+        });
 
-        if (hasMissingFields) {
+        if (doMissing.length > 0) {
           incompleteDOs.push(data.title || n.id);
         }
 
         // Check SIs within this DO
         const items = data.saiItems || [];
         for (const si of items) {
-          const siHasMissingFields = !si.title?.trim() ||
-                                    !si.metric?.trim() ||
-                                    !si.ownerId;
+          const dates = si.dbId ? siDatesMap.get(si.dbId) : undefined;
+          const siMissing = getSILockBlockers({
+            title: si.title,
+            description: si.description,
+            ownerId: si.ownerId,
+            metric: si.metric,
+            startDate: dates?.start_date,
+            endDate: dates?.end_date,
+          });
 
-          if (siHasMissingFields) {
+          if (siMissing.length > 0) {
             incompleteSIs.push({
               doTitle: data.title || n.id,
               siTitle: si.title || 'Untitled SI'
@@ -1602,7 +1614,7 @@ const duplicateSelectedDo = useCallback(() => {
         }
       }
     }
-    
+
     if (incompleteDOs.length > 0 || incompleteSIs.length > 0) {
       const messages: string[] = [];
       if (incompleteDOs.length > 0) {
@@ -1611,9 +1623,9 @@ const duplicateSelectedDo = useCallback(() => {
       if (incompleteSIs.length > 0) {
         messages.push(`${incompleteSIs.length} incomplete Strategic Initiative(s)`);
       }
-      toast({ 
-        title: 'Cannot lock incomplete items', 
-        description: `Please complete all required fields (Name, Definition, Primary Success Metric, Owner) before locking. ${messages.join('. ')}`,
+      toast({
+        title: 'Cannot lock incomplete items',
+        description: `Please complete all required fields (Name, Definition, Primary Success Metric, Owner for DOs; Name, Description, Owner, Metric, Dates for SIs) before locking. ${messages.join('. ')}`,
         variant: 'destructive',
       });
       return;
@@ -1710,11 +1722,12 @@ const duplicateSelectedDo = useCallback(() => {
     const data = doNode.data;
 
     // Validate required fields on the DO itself
-    const missing: string[] = [];
-    if (!data.title?.trim()) missing.push('Name');
-    if (!stripHtml(data.hypothesis || '')) missing.push('Definition');
-    if (!data.primarySuccessMetric?.trim()) missing.push('Primary Success Metric');
-    if (!data.ownerId) missing.push('Owner');
+    const missing = getDOLockBlockers({
+      title: data.title,
+      hypothesis: data.hypothesis,
+      primarySuccessMetricName: data.primarySuccessMetric,
+      ownerId: data.ownerId,
+    });
 
     if (missing.length > 0) {
       toast({
@@ -1725,14 +1738,30 @@ const duplicateSelectedDo = useCallback(() => {
       return;
     }
 
-    // Validate SIs
+    // Validate SIs — canvas node data doesn't carry SI start/end dates, fetch them in bulk.
+    const siDbIdsForDO = (data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
+    const siDatesMap = new Map<string, { start_date: string | null; end_date: string | null }>();
+    if (siDbIdsForDO.length > 0) {
+      const { data: siRows } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, start_date, end_date')
+        .in('id', siDbIdsForDO);
+      for (const row of siRows || []) {
+        siDatesMap.set(row.id, { start_date: row.start_date, end_date: row.end_date });
+      }
+    }
+
     const incompleteSIs: string[] = [];
     for (const si of data.saiItems || []) {
-      const siMissing: string[] = [];
-      if (!si.title?.trim()) siMissing.push('Title');
-      // Description is optional
-      if (!si.metric?.trim()) siMissing.push('Metric');
-      if (!si.ownerId) siMissing.push('Owner');
+      const dates = si.dbId ? siDatesMap.get(si.dbId) : undefined;
+      const siMissing = getSILockBlockers({
+        title: si.title,
+        description: si.description,
+        ownerId: si.ownerId,
+        metric: si.metric,
+        startDate: dates?.start_date,
+        endDate: dates?.end_date,
+      });
       if (siMissing.length > 0) {
         incompleteSIs.push(`${si.title || 'Untitled SI'} (${siMissing.join(', ')})`);
       }
@@ -1780,27 +1809,11 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({ title: 'Lock failed', description: 'You must be logged in.', variant: 'destructive' });
-        return;
-      }
-
-      const nowIso = new Date().toISOString();
-      const { error: doErr } = await supabase
-        .from('rc_defining_objectives')
-        .update({ status: 'locked', locked_at: nowIso, locked_by: user.id })
-        .eq('id', doDbId);
-
-      if (doErr) {
-        console.error('Single DO lock error:', doErr);
-        toast({ title: 'Lock failed', description: doErr.message, variant: 'destructive' });
-        return;
-      }
-
+      await lockDO(doDbId);
       toast({ title: 'Locked', description: `"${data.title}" and its SIs have been locked.` });
     } catch (e) {
       console.error('finalizeSingleDO error', e);
+      toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
   }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
@@ -1810,28 +1823,13 @@ const duplicateSelectedDo = useCallback(() => {
     if (!doDbId) return;
 
     try {
-      const { error: doErr } = await supabase
-        .from('rc_defining_objectives')
-        .update({ status: 'draft', locked_at: null, locked_by: null } as Record<string, unknown>)
-        .eq('id', doDbId);
-
-      if (doErr) {
-        toast({ title: 'Unlock failed', description: doErr.message, variant: 'destructive' });
-        return;
-      }
-
-      // Unlock child SIs in database
-      const node = nodesRef.current.find(n => n.id === doNodeId);
-      const siItems = node?.data?.saiItems || [];
-      const siDbIds = siItems.map(si => si.dbId).filter(Boolean) as string[];
-      if (siDbIds.length > 0) {
-        await supabase
-          .from('rc_strategic_initiatives')
-          .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
-          .in('id', siDbIds);
-      }
+      await unlockDO(doDbId);
+      // A DB trigger (20251122060500_cascade_unlock_si_on_do.sql) cascades
+      // this unlock to child SIs automatically — no manual SI write needed.
 
       // Update local state
+      const node = nodesRef.current.find(n => n.id === doNodeId);
+      const siItems = node?.data?.saiItems || [];
       setNodes(prev => prev.map(n =>
         n.id === doNodeId ? { ...n, data: { ...n.data, status: 'draft' as const } } : n
       ));
@@ -1852,26 +1850,38 @@ const duplicateSelectedDo = useCallback(() => {
       toast({ title: 'Unlocked', description: `"${node?.data?.title}" and its SIs have been unlocked.` });
     } catch (e) {
       console.error('unlockSingleDO error', e);
+      toast({ title: 'Unlock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
   }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
   const lockSingleSI = useCallback(async (siId: string, siDbId: string) => {
-    const missing: string[] = [];
     const doNode = nodesRef.current.find(n => (n.data.saiItems || []).some(s => s.id === siId));
     const si = doNode?.data.saiItems?.find(s => s.id === siId);
-    if (!si?.ownerId) missing.push('Owner');
-    if (!si?.metric?.trim()) missing.push('Primary Success Metric');
+
+    // Canvas node data doesn't carry SI start/end dates — fetch the row fresh
+    // so this validates against the same rules as everywhere else.
+    const { data: siRow } = await supabase
+      .from('rc_strategic_initiatives')
+      .select('start_date, end_date')
+      .eq('id', siDbId)
+      .single();
+
+    const missing = getSILockBlockers({
+      title: si?.title,
+      description: si?.description,
+      ownerId: si?.ownerId,
+      metric: si?.metric,
+      startDate: siRow?.start_date,
+      endDate: siRow?.end_date,
+    });
     if (missing.length > 0) {
       toast({ title: 'Cannot lock — incomplete SI', description: `Missing: ${missing.join(', ')}`, variant: 'destructive' });
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update({ locked_at: new Date().toISOString(), locked_by: user?.id ?? null } as Record<string, unknown>)
-      .eq('id', siDbId);
-    if (error) {
-      toast({ title: 'Lock failed', description: error.message, variant: 'destructive' });
+    try {
+      await lockInitiative(siDbId);
+    } catch (e) {
+      toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
     }
     setSiProgressMap(prev => {
@@ -1884,12 +1894,10 @@ const duplicateSelectedDo = useCallback(() => {
   }, [toast, setSiProgressMap]);
 
   const unlockSingleSI = useCallback(async (siId: string, siDbId: string) => {
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
-      .eq('id', siDbId);
-    if (error) {
-      toast({ title: 'Unlock failed', description: error.message, variant: 'destructive' });
+    try {
+      await unlockInitiative(siDbId);
+    } catch (e) {
+      toast({ title: 'Unlock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
     }
     setSiProgressMap(prev => {
@@ -2820,22 +2828,10 @@ const duplicateSelectedDo = useCallback(() => {
 
               if (si.dbId) {
                 try {
-                  // rc_links/rc_checkins reference SIs by parent_type+parent_id (no FK), so clean those up explicitly.
-                  await Promise.all([
-                    supabase.from('rc_links').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
-                    supabase.from('rc_checkins').delete().eq('parent_type', 'si').eq('parent_id', si.dbId),
-                  ]);
-
-                  // Deleting the SI cascades to rc_tasks.
-                  const { error } = await supabase.from('rc_strategic_initiatives').delete().eq('id', si.dbId);
-                  if (error) {
-                    console.error('Delete SI error:', error);
-                    toast({ title: 'Delete failed', description: error.message || 'Could not delete this Strategic Initiative.', variant: 'destructive' });
-                    return;
-                  }
+                  await deleteInitiative(si.dbId);
                 } catch (e) {
                   console.error('SI onDelete error', e);
-                  toast({ title: 'Delete failed', description: 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                  toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Strategic Initiative.', variant: 'destructive' });
                   return;
                 }
               }
