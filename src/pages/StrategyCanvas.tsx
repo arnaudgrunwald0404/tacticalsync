@@ -803,7 +803,105 @@ export default function StrategyCanvasPage() {
         // Filter out edges connecting ROOT_ID to DOs
         const loadedNodes = data.nodes as RawNode[];
         const filteredEdges = (data.edges as RawEdge[]).filter((e) => !(e.source === ROOT_ID && loadedNodes.find((n) => n.id === e.target)?.type === 'do'));
-        setNodes(loadedNodes);
+
+        // The snapshot in rc_canvas_states is only a layout/collaboration cache
+        // (positions, sizes, colors). Its text fields go stale the moment someone
+        // edits a title/owner/metric from a Detail page, which writes straight to
+        // the canonical tables and never touches this snapshot. Overlay the live
+        // rows onto the cached nodes so Canvas and Detail can't drift apart.
+        try {
+          type DOReconcileRow = { id: string; title: string; hypothesis?: string | null; owner_user_id?: string | null; status?: string | null; locked_at?: string | null };
+          type SIReconcileRow = { id: string; title: string; owner_user_id?: string | null; participant_user_ids?: string[] | null; description?: string | null; primary_success_metric?: string | null; benchmark?: string | null; status?: string | null; locked_at?: string | null };
+
+          const { data: rc } = await supabase
+            .from('rc_rallying_cries')
+            .select('id, title')
+            .eq('cycle_id', cycleId)
+            .maybeSingle();
+
+          const doDbIds = loadedNodes
+            .filter((n) => n.type === 'do' && n.data?.dbId)
+            .map((n) => String(n.data!.dbId));
+
+          const [doRowsRes, doMetricsRes] = doDbIds.length
+            ? await Promise.all([
+                supabase
+                  .from('rc_defining_objectives')
+                  .select('id, title, hypothesis, owner_user_id, status, locked_at')
+                  .in('id', doDbIds),
+                supabase
+                  .from('rc_do_metrics')
+                  .select('defining_objective_id, name')
+                  .in('defining_objective_id', doDbIds)
+                  .order('display_order', { ascending: true }),
+              ])
+            : [{ data: [] as DOReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
+          const doRowById = new Map((doRowsRes.data || []).map((d: DOReconcileRow) => [d.id, d]));
+          const metricByDoId = new Map<string, string>();
+          for (const m of doMetricsRes.data || []) {
+            if (!metricByDoId.has(m.defining_objective_id)) metricByDoId.set(m.defining_objective_id, m.name);
+          }
+
+          const siDbIds: string[] = [];
+          for (const n of loadedNodes) {
+            if (n.type !== 'do') continue;
+            const items = (n.data?.saiItems as Array<{ dbId?: string }> | undefined) || [];
+            for (const it of items) if (it.dbId) siDbIds.push(it.dbId);
+          }
+          const siRowsRes = siDbIds.length
+            ? await supabase
+                .from('rc_strategic_initiatives')
+                .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at')
+                .in('id', siDbIds)
+            : { data: [] as SIReconcileRow[] };
+          const siRowById = new Map((siRowsRes.data || []).map((s: SIReconcileRow) => [s.id, s]));
+
+          const reconciledNodes = loadedNodes.map((n) => {
+            if (n.type === 'rally' && rc?.title) {
+              const rallyData = (n.data || {}) as NodeData;
+              if (!rallyData.rallyFinalized) return n;
+              const candidates = [rc.title, ...((rallyData.rallyCandidates || []).slice(1))];
+              return { ...n, data: { ...rallyData, rallyCandidates: candidates } };
+            }
+            if (n.type === 'do' && n.data?.dbId) {
+              const row = doRowById.get(String(n.data.dbId));
+              if (!row) return n;
+              const items = (n.data.saiItems as Array<Record<string, unknown>> | undefined) || [];
+              const reconciledItems = items.map((it) => {
+                const siId = it.dbId ? String(it.dbId) : undefined;
+                const siRow = siId ? siRowById.get(siId) : undefined;
+                if (!siRow) return it;
+                return {
+                  ...it,
+                  title: siRow.title,
+                  ownerId: siRow.owner_user_id || undefined,
+                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
+                  description: siRow.description || '',
+                  metric: siRow.primary_success_metric || '',
+                  benchmark: siRow.benchmark || '',
+                };
+              });
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  title: row.title,
+                  hypothesis: row.hypothesis || '',
+                  ownerId: row.owner_user_id || undefined,
+                  status: row.status === 'locked' ? 'locked' : 'draft',
+                  primarySuccessMetric: metricByDoId.get(String(n.data.dbId)) || '',
+                  saiItems: reconciledItems,
+                },
+              };
+            }
+            return n;
+          });
+
+          setNodes(reconciledNodes);
+        } catch (reconcileErr) {
+          console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
+          setNodes(loadedNodes);
+        }
         setEdges(filteredEdges);
         return;
       } else if (snapshotLooksLikeTemplate) {
