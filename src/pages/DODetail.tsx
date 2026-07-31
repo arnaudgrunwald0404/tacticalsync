@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, MessageSquare } from 'lucide-react';
 import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins, useActiveCycle } from '@/hooks/useRCDO';
+import { updateDO, lockDO, unlockDO, deleteDO } from '@/hooks/useRCDOMutations';
+import { getDOLockBlockers } from '@/lib/rcdoValidation';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { useRCDORealtime } from '@/hooks/useRCDORealtime';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
@@ -99,6 +101,7 @@ export default function DODetail() {
     loading: metricsLoading,
     refetch: refetchMetrics,
     updateMetric,
+    upsertPrimaryMetric,
   } = useDOMetrics(doId);
 
   // Fetch initiatives
@@ -271,15 +274,12 @@ export default function DODetail() {
   const handleLock = async () => {
     if (!doDetails) return;
 
-    const missing: string[] = [];
-    const hypothesisText = doDetails.hypothesis
-      ? String(doDetails.hypothesis).replace(/<[^>]*>/g, '').trim()
-      : '';
-    if (!hypothesisText) missing.push('Hypothesis / description');
-    const hasNamedSuccessMetric = metrics.some(
-      m => m.type === 'lagging' && String(m.name ?? '').trim()
-    );
-    if (!hasNamedSuccessMetric) missing.push('Success metric (lagging indicator)');
+    const missing = getDOLockBlockers({
+      title: doDetails.title,
+      hypothesis: doDetails.hypothesis,
+      primarySuccessMetricName: metrics.find(m => m.type === 'lagging')?.name,
+      ownerId: doDetails.owner_user_id,
+    });
 
     if (missing.length > 0) {
       toast({
@@ -291,44 +291,37 @@ export default function DODetail() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const updates: Record<string, unknown> = {
-        locked_at: new Date().toISOString(),
-        locked_by: user?.id || null,
-        status: 'locked'
-      };
-      const { error } = await supabase
-        .from('rc_defining_objectives')
-        .update(updates)
-        .eq('id', doDetails.id);
-      if (error) throw error;
+      await lockDO(doDetails.id);
       await Promise.all([refetchDO(), refetchInitiatives()]);
     } catch (e) {
       console.warn('Failed to lock DO', e);
-      toast({
-        title: 'Failed to lock',
-        description: 'Something went wrong. Please try again.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Failed to lock', description: 'Something went wrong. Please try again.', variant: 'destructive' });
     }
   };
 
   const handleUnlock = async () => {
     if (!doDetails) return;
     try {
-      const updates: Record<string, unknown> = {
-        locked_at: null,
-        locked_by: null,
-        status: 'draft'
-      };
-      const { error } = await supabase
-        .from('rc_defining_objectives')
-        .update(updates)
-        .eq('id', doDetails.id);
-      if (error) throw error;
+      await unlockDO(doDetails.id);
       await Promise.all([refetchDO(), refetchInitiatives()]);
     } catch (e) {
       console.warn('Failed to unlock DO', e);
+      toast({ title: 'Failed to unlock', description: 'Something went wrong. Please try again.', variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!doDetails) return;
+    if (!window.confirm(`Delete "${doDetails.title}"? This will also delete its Strategic Initiatives and cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteDO(doDetails.id, initiatives.map((i) => i.id));
+      toast({ title: 'Deleted', description: `"${doDetails.title}" was deleted.` });
+      navigate(`/rcdo/canvas${cycleId ? `?cycle=${cycleId}` : ''}`);
+    } catch (e) {
+      console.error('Failed to delete DO', e);
+      toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Defining Objective.', variant: 'destructive' });
     }
   };
 
@@ -387,53 +380,28 @@ export default function DODetail() {
         status={doDetails.status}
         primarySuccessMetric={metrics.find(m => m.type === 'lagging')?.name || ''}
         onPrimarySuccessMetricChange={async (value) => {
-          const laggingMetric = metrics.find(m => m.type === 'lagging');
-          if (laggingMetric) {
-            const { error } = await supabase
-              .from('rc_do_metrics')
-              .update({ name: value })
-              .eq('id', laggingMetric.id);
-            if (!error) refetchMetrics();
-          } else if (value.trim()) {
-            const { error } = await supabase
-              .from('rc_do_metrics')
-              .insert({
-                defining_objective_id: doDetails.id,
-                name: value,
-                type: 'lagging',
-                direction: 'up',
-                source: 'manual',
-              });
-            if (!error) refetchMetrics();
-          }
+          try { await upsertPrimaryMetric(value); } catch { /* hook already toasted */ }
         }}
         onLock={handleLock}
         onUnlock={handleUnlock}
+        onDelete={handleDelete}
+        canDelete={canLockDO}
         onCheckIn={() => setShowCheckInDialog(true)}
         canLock={canLockDO}
         canEdit={canEdit}
         additionalContent={additionalContent}
         editableTitle={doDetails.title}
         onTitleChange={async (val) => {
-          const { error } = await supabase
-            .from('rc_defining_objectives')
-            .update({ title: val })
-            .eq('id', doDetails.id);
-          if (!error) refetchDO();
+          try { await updateDO(doDetails.id, { title: val }); refetchDO(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save title', variant: 'destructive' }); }
         }}
         onDescriptionChange={async (val) => {
-          const { error } = await supabase
-            .from('rc_defining_objectives')
-            .update({ hypothesis: val })
-            .eq('id', doDetails.id);
-          if (!error) refetchDO();
+          try { await updateDO(doDetails.id, { hypothesis: val }); refetchDO(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save Definition & Hypothesis', variant: 'destructive' }); }
         }}
         onOwnerChange={async (val) => {
-          const { error } = await supabase
-            .from('rc_defining_objectives')
-            .update({ owner_user_id: val })
-            .eq('id', doDetails.id);
-          if (!error) refetchDO();
+          try { await updateDO(doDetails.id, { owner_user_id: val }); refetchDO(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save owner', variant: 'destructive' }); }
         }}
         profiles={profiles}
       />

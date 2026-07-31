@@ -20,6 +20,7 @@ import { useRoles } from '@/hooks/useRoles';
 import type { InitiativeStatus } from '@/types/rcdo';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { updateInitiative } from '@/hooks/useRCDOMutations';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -253,7 +254,7 @@ export function SIPanelContent({
                 if (!acceptsSubSis) {
                   return (
                     <DropdownMenuItem onClick={async () => {
-                      await supabase.from('rc_strategic_initiatives').update({ accepts_sub_sis: true }).eq('id', si.dbId!);
+                      await updateInitiative(si.dbId!, { accepts_sub_sis: true });
                       await refetchSI();
                     }}>
                       Allow sub-SIs
@@ -265,7 +266,7 @@ export function SIPanelContent({
                     disabled={hasSubSIs}
                     onClick={async () => {
                       if (hasSubSIs) return;
-                      await supabase.from('rc_strategic_initiatives').update({ accepts_sub_sis: false }).eq('id', si.dbId!);
+                      await updateInitiative(si.dbId!, { accepts_sub_sis: false });
                       await refetchSI();
                     }}
                     title={hasSubSIs ? 'Delete all sub-initiatives first' : undefined}
@@ -292,13 +293,20 @@ export function SIPanelContent({
             value={titleDraft}
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => {
-              if (titleDraft.trim() && titleDraft !== si.title) onUpdate({ title: titleDraft.trim() });
-              else setTitleDraft(si.title || '');
+              if (titleDraft.trim() && titleDraft !== si.title) {
+                onUpdate({ title: titleDraft.trim() });
+                if (si.dbId) updateInitiative(si.dbId, { title: titleDraft.trim() }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+              } else {
+                setTitleDraft(si.title || '');
+              }
               setEditingTitle(false);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                if (titleDraft.trim() && titleDraft !== si.title) onUpdate({ title: titleDraft.trim() });
+                if (titleDraft.trim() && titleDraft !== si.title) {
+                  onUpdate({ title: titleDraft.trim() });
+                  if (si.dbId) updateInitiative(si.dbId, { title: titleDraft.trim() }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+                }
                 setEditingTitle(false);
               }
               if (e.key === 'Escape') { setTitleDraft(si.title || ''); setEditingTitle(false); }
@@ -343,18 +351,13 @@ export function SIPanelContent({
               onSelectionChange={async (val) => {
                 if (isLocked) return;
                 onUpdate({ ownerId: val });
-                try {
-                  if (si.dbId && val) {
-                    const { error } = await supabase
-                      .from('rc_strategic_initiatives')
-                      .update({ owner_user_id: val })
-                      .eq('id', si.dbId);
-                    if (error) {
-                      toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
-                    }
+                if (si.dbId && val) {
+                  try {
+                    await updateInitiative(si.dbId, { owner_user_id: val });
+                  } catch (e) {
+                    console.warn('[SIPanel] Error updating SI owner in DB', e);
+                    toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
                   }
-                } catch (e) {
-                  console.warn('[SIPanel] Error updating SI owner in DB', e);
                 }
               }}
             />
@@ -368,6 +371,15 @@ export function SIPanelContent({
             <RichTextEditor
               content={si.description || ""}
               onChange={(content) => { if (isLocked) return; onUpdate({ description: content }); }}
+              onBlur={async (content) => {
+                if (isLocked || !si.dbId) return;
+                try {
+                  await updateInitiative(si.dbId, { description: content });
+                } catch (e) {
+                  console.warn('[SIPanel] Failed to persist description change', e);
+                  toast({ title: 'Update failed', description: 'Could not save description', variant: 'destructive' });
+                }
+              }}
               placeholder="What is this initiative?"
               minHeight="96px"
             />
@@ -385,7 +397,12 @@ export function SIPanelContent({
             onChange={(e) => { if (isLocked) return; onUpdate({ metric: e.target.value }); }}
             onBlur={async () => {
               if (!si.dbId || isLocked) return;
-              await supabase.from('rc_strategic_initiatives').update({ primary_success_metric: si.metric || null } as Record<string, unknown>).eq('id', si.dbId);
+              try {
+                await updateInitiative(si.dbId, { primary_success_metric: si.metric || null });
+              } catch (e) {
+                console.warn('[SIPanel] Failed to persist metric change', e);
+                toast({ title: 'Update failed', description: 'Could not save Primary Success Metric', variant: 'destructive' });
+              }
             }}
             disabled={isLocked}
             style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
@@ -403,7 +420,12 @@ export function SIPanelContent({
             onChange={(e) => { if (isLocked) return; onUpdate({ benchmark: e.target.value }); }}
             onBlur={async () => {
               if (!si.dbId || isLocked) return;
-              await supabase.from('rc_strategic_initiatives').update({ benchmark: si.benchmark || null } as Record<string, unknown>).eq('id', si.dbId);
+              try {
+                await updateInitiative(si.dbId, { benchmark: si.benchmark || null });
+              } catch (e) {
+                console.warn('[SIPanel] Failed to persist benchmark change', e);
+                toast({ title: 'Update failed', description: 'Could not save benchmark', variant: 'destructive' });
+              }
             }}
             disabled={isLocked}
             style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
@@ -425,11 +447,13 @@ export function SIPanelContent({
                 const value = e.target.value;
                 const currentEnd = (siWithProgress?.end_date as string) || '';
                 if (value && currentEnd && currentEnd < value) return;
-                const { error } = await supabase
-                  .from('rc_strategic_initiatives')
-                  .update({ start_date: value || null })
-                  .eq('id', si.dbId);
-                if (!error) await refetchSI();
+                try {
+                  await updateInitiative(si.dbId, { start_date: value || null });
+                  await refetchSI();
+                } catch (e) {
+                  console.warn('[SIPanel] Failed to persist start date change', e);
+                  toast({ title: 'Update failed', description: 'Could not save start date', variant: 'destructive' });
+                }
               }}
             />
           </div>
@@ -446,11 +470,13 @@ export function SIPanelContent({
                 const value = e.target.value;
                 const currentStart = (siWithProgress?.start_date as string) || '';
                 if (value && currentStart && value < currentStart) return;
-                const { error } = await supabase
-                  .from('rc_strategic_initiatives')
-                  .update({ end_date: value || null })
-                  .eq('id', si.dbId);
-                if (!error) await refetchSI();
+                try {
+                  await updateInitiative(si.dbId, { end_date: value || null });
+                  await refetchSI();
+                } catch (e) {
+                  console.warn('[SIPanel] Failed to persist end date change', e);
+                  toast({ title: 'Update failed', description: 'Could not save target delivery date', variant: 'destructive' });
+                }
               }}
             />
           </div>
@@ -466,14 +492,7 @@ export function SIPanelContent({
               if (!canEditStatus) return;
               try {
                 if (si.dbId) {
-                  const { error } = await supabase
-                    .from('rc_strategic_initiatives')
-                    .update({ status: value })
-                    .eq('id', si.dbId);
-                  if (error) {
-                    toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
-                    return;
-                  }
+                  await updateInitiative(si.dbId, { status: value });
                   await refetchSI();
                   toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
                 }
@@ -522,19 +541,13 @@ export function SIPanelContent({
                   onUpdate({ participantIds: ids });
 
                   // Persist to DB if SI is linked
-                  try {
-                    if (si.dbId) {
-                      const { error } = await supabase
-                        .from('rc_strategic_initiatives')
-                        .update({ participant_user_ids: ids })
-                        .eq('id', si.dbId);
-                      if (error) {
-                        console.warn('[SIPanel] Failed to persist SI participants change', error);
-                        toast({ title: 'Update failed', description: 'Could not save participants', variant: 'destructive' });
-                      }
+                  if (si.dbId) {
+                    try {
+                      await updateInitiative(si.dbId, { participant_user_ids: ids });
+                    } catch (e) {
+                      console.warn('[SIPanel] Error updating SI participants in DB', e);
+                      toast({ title: 'Update failed', description: 'Could not save participants', variant: 'destructive' });
                     }
-                  } catch (e) {
-                    console.warn('[SIPanel] Error updating SI participants in DB', e);
                   }
                 }}
                 placeholder="Select participants to help accomplish this goal..."
