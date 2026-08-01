@@ -22,6 +22,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CheckinParentType } from '@/types/rcdo';
+import { ensureCurrentUserProfile } from '@/lib/reporterDefaulting';
 import { format } from 'date-fns';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -109,25 +110,7 @@ export function CheckInDialog({
           // Ensure the current user always appears as a selectable, default
           // reporter even if their profiles row hasn't been created yet or
           // was excluded by RLS (e.g. brand-new accounts).
-          if (!allProfiles.some(p => p.id === user.id)) {
-            const meta = (user.user_metadata || {}) as Record<string, unknown>;
-            const metaFullName = typeof meta.full_name === 'string' ? meta.full_name : undefined;
-            const metaFirstName = typeof meta.first_name === 'string' ? meta.first_name : undefined;
-            const metaLastName = typeof meta.last_name === 'string' ? meta.last_name : undefined;
-            const metaAvatarUrl = typeof meta.avatar_url === 'string' ? meta.avatar_url : undefined;
-
-            allProfiles = [
-              {
-                id: user.id,
-                full_name: metaFullName || user.email || null,
-                first_name: metaFirstName || null,
-                last_name: metaLastName || null,
-                avatar_url: metaAvatarUrl || null,
-                avatar_name: null,
-              },
-              ...allProfiles,
-            ];
-          }
+          allProfiles = ensureCurrentUserProfile(allProfiles, user);
         }
 
         setProfiles(allProfiles);
