@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useOrgTalkingPoints, isWithinActiveWindow } from '@/hooks/useOrgTalkingPoints';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,6 +52,11 @@ function buildMutationBuilder() {
 }
 
 beforeEach(() => {
+  // Fixed "today" so the active-window fixtures below (dated around
+  // 2026-07-xx/2026-08-01) don't silently expire as real time passes.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-07-15T00:00:00Z'));
+
   activePointsData = [];
   dismissedIdsData = [];
   mutationError = null;
@@ -71,6 +76,10 @@ beforeEach(() => {
     }
     throw new Error(`Unexpected table in test: ${table}`);
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 // ── isWithinActiveWindow: pure boundary function ─────────────────────────────
