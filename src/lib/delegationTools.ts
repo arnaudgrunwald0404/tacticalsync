@@ -45,10 +45,55 @@ export function describePostSlackUpdate(params: Record<string, unknown>): string
   return `Post to ${target}: "${preview}"`;
 }
 
+const MAX_PROPOSE_MEETING_WINDOW_DAYS = 14;
+
+export function validateProposeMeetingTimeParams(params: Record<string, unknown>): string | null {
+  if (
+    typeof params.team_member_id !== 'string'
+    || typeof params.window_start_utc !== 'string'
+    || typeof params.window_end_utc !== 'string'
+    || typeof params.duration_minutes !== 'number'
+  ) {
+    return 'team_member_id, window_start_utc, window_end_utc and duration_minutes are required.';
+  }
+  if (!UUID_RE.test(params.team_member_id)) return 'team_member_id must be a UUID.';
+
+  const start = Date.parse(params.window_start_utc);
+  const end = Date.parse(params.window_end_utc);
+  if (Number.isNaN(start)) return 'window_start_utc must be a valid ISO datetime.';
+  if (Number.isNaN(end)) return 'window_end_utc must be a valid ISO datetime.';
+  if (end <= start) return 'window_end_utc must be after window_start_utc.';
+  if (end - start > MAX_PROPOSE_MEETING_WINDOW_DAYS * 86_400_000) {
+    return `window cannot span more than ${MAX_PROPOSE_MEETING_WINDOW_DAYS} days.`;
+  }
+
+  if (!Number.isFinite(params.duration_minutes) || params.duration_minutes < 5 || params.duration_minutes > 480) {
+    return 'duration_minutes must be between 5 and 480.';
+  }
+  if (end - start < params.duration_minutes * 60_000) return 'the window is shorter than duration_minutes.';
+
+  return null;
+}
+
+function formatProposeMeetingWindow(startUtc: string, endUtc: string): string {
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' };
+  const start = new Date(startUtc).toLocaleString('en-US', opts);
+  const end = new Date(endUtc).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return `${start}–${end} UTC`;
+}
+
+export function describeProposeMeetingTime(params: Record<string, unknown>): string {
+  const name = (params.resolved_member_name as string | undefined) ?? 'them';
+  const windowStart = params.window_start_utc as string;
+  const windowEnd = params.window_end_utc as string;
+  return `Check my calendar ${formatProposeMeetingWindow(windowStart, windowEnd)} and send ${name} time options via Slack`;
+}
+
 export function validateToolParams(tool: ToolName, params: Record<string, unknown>): string | null {
   switch (tool) {
     case 'create_meeting_topic': return validateCreateMeetingTopicParams(params);
     case 'post_slack_update': return validatePostSlackUpdateParams(params);
+    case 'propose_meeting_time': return validateProposeMeetingTimeParams(params);
     default: return 'unknown tool';
   }
 }
@@ -57,6 +102,7 @@ export function describeToolStep(tool: ToolName, params: Record<string, unknown>
   switch (tool) {
     case 'create_meeting_topic': return describeCreateMeetingTopic(params);
     case 'post_slack_update': return describePostSlackUpdate(params);
+    case 'propose_meeting_time': return describeProposeMeetingTime(params);
     default: return `Run ${tool}`;
   }
 }

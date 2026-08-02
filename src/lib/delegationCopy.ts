@@ -14,6 +14,10 @@ export function tooltipForStep(step: PlanStep): string {
       const preview = typeof p.message === 'string' && p.message.length > 140 ? `${p.message.slice(0, 140)}…` : p.message;
       return `What happens: Posts this message to ${target}, visible right away: "${preview}"`;
     }
+    case 'propose_meeting_time': {
+      const name = (p.resolved_member_name as string) ?? 'them';
+      return `What happens: Reads your calendar for open slots in the given window and sends ${name} up to 3 options over Slack DM. It doesn't check their calendar or book anything — they pick a time and you follow up.`;
+    }
     default:
       return 'What happens: this action runs immediately once approved.';
   }
@@ -24,6 +28,7 @@ export function badgeForTool(tool: ToolName): string {
   switch (tool) {
     case 'create_meeting_topic': return 'Adds to meeting';
     case 'post_slack_update': return 'Posts to Slack';
+    case 'propose_meeting_time': return 'Proposes a time';
     default: return '';
   }
 }
@@ -38,6 +43,8 @@ export function describeStepOutcome(step: PlanStep, actorName: string): string {
         return `${actorName}'s agent added this topic to the meeting${when ? ` on ${when}` : ''}.`;
       case 'post_slack_update':
         return `${actorName}'s agent posted this Slack update on your behalf${when ? ` on ${when}` : ''}.`;
+      case 'propose_meeting_time':
+        return `${actorName}'s agent sent time options over Slack${when ? ` on ${when}` : ''}.`;
       default:
         return `${actorName}'s agent completed this${when ? ` on ${when}` : ''}.`;
     }

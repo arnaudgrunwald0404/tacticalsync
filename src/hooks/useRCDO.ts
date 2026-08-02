@@ -538,7 +538,40 @@ export function useDOMetrics(doId: string | undefined) {
     }
   };
 
-  return { metrics, loading, refetch: fetchMetrics, createMetric, updateMetric };
+  /**
+   * Canonical upsert for the DO's Primary Success Metric (rc_do_metrics,
+   * type='lagging'). Replaces the several hand-rolled fetch-then-update-or-
+   * insert implementations that used to live separately in the canvas panel
+   * and the detail page — those bypassed updateMetric and never set
+   * last_updated_at, so the staleness badge never cleared after an edit.
+   */
+  const upsertPrimaryMetric = async (name: string) => {
+    if (!doId) return;
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from('rc_do_metrics')
+        .select('id')
+        .eq('defining_objective_id', doId)
+        .eq('type', 'lagging')
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+
+      if (existing) {
+        await updateMetric(existing.id, { name });
+      } else if (name.trim()) {
+        await createMetric({ defining_objective_id: doId, name, type: 'lagging', direction: 'up' });
+      }
+    } catch (err) {
+      toast({
+        title: 'Update failed',
+        description: 'Could not save Primary Success Metric',
+        variant: 'destructive',
+      });
+      throw err;
+    }
+  };
+
+  return { metrics, loading, refetch: fetchMetrics, createMetric, updateMetric, upsertPrimaryMetric };
 }
 
 // ============================================================================

@@ -3,9 +3,12 @@
 // v1 shipped exactly two tools (see PLAN_idea6_delegation_v2.md §6): the plan
 // doc's other two candidates (draft_email, schedule_checkin) both need infra
 // or a product decision this pass doesn't make, so ToolName only lists the
-// two that are actually wired.
+// two that are actually wired. `propose_meeting_time` was added after v1 —
+// it only reads the acting user's own (already-connected, read-only-scoped)
+// calendar and proposes times over Slack, rather than booking anything, so
+// it needed no new OAuth consent or infra.
 
-export type ToolName = 'create_meeting_topic' | 'post_slack_update';
+export type ToolName = 'create_meeting_topic' | 'post_slack_update' | 'propose_meeting_time';
 
 export type PlanStepStatus =
   | 'proposed'

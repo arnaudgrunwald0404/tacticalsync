@@ -42,6 +42,9 @@ import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { reconcileCanvasSnapshot, type RawCanvasNode, type ReconcileCanvasSnapshotParams } from "@/lib/canvasSnapshotReconciliation";
+import { deleteDO, deleteInitiative, lockDO, unlockDO, lockInitiative, unlockInitiative } from "@/hooks/useRCDOMutations";
+import { getDOLockBlockers, getSILockBlockers } from "@/lib/rcdoValidation";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -160,12 +163,13 @@ const createDoNode = (
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
 
-    // Check if DO is missing required fields
-    const strip = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-    const hasMissingFields = !data.title?.trim() ||
-                            !strip(data.hypothesis || '') ||
-                            !data.primarySuccessMetric?.trim() ||
-                            !data.ownerId;
+    // Check if DO is missing required fields (same rule used for lock eligibility everywhere else)
+    const hasMissingFields = getDOLockBlockers({
+      title: data.title,
+      hypothesis: data.hypothesis,
+      primarySuccessMetricName: data.primarySuccessMetric,
+      ownerId: data.ownerId,
+    }).length > 0;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -486,6 +490,47 @@ const DEFAULT_NODE_DIMENSIONS: Record<NodeKind, { w: number; h: number }> = {
   rally: { w: 280, h: 100 },
 };
 
+// DO cards widen to fill the same total horizontal span that 4 DOs would
+// occupy, so fewer DOs don't leave empty space. Width is capped at what a
+// 2-DO layout would use — otherwise a single DO would balloon to the full
+// 4-card span (1220px), which looks absurd rather than just "wider".
+const DO_REFERENCE_COUNT = 4;
+const DO_BASE_GAP_X = 320;
+const DO_BASE_MARGIN = DO_BASE_GAP_X - DEFAULT_NODE_DIMENSIONS.do.w;
+const DO_REFERENCE_SPAN = (DO_REFERENCE_COUNT - 1) * DO_BASE_GAP_X + DEFAULT_NODE_DIMENSIONS.do.w;
+const DO_MAX_WIDTH = (DO_REFERENCE_SPAN - DO_BASE_MARGIN) / 2;
+
+function computeDOCardLayout(count: number): { w: number; gapX: number } {
+  if (count <= 0 || count >= DO_REFERENCE_COUNT) {
+    return { w: DEFAULT_NODE_DIMENSIONS.do.w, gapX: DO_BASE_GAP_X };
+  }
+  const w = Math.min((DO_REFERENCE_SPAN - (count - 1) * DO_BASE_MARGIN) / count, DO_MAX_WIDTH);
+  return { w, gapX: w + DO_BASE_MARGIN };
+}
+
+// Re-centers a row of DO nodes and applies computeDOCardLayout's width for
+// the current count. Used whenever DO nodes are (re)hydrated — from a fresh
+// DB build, an import, or a reconciled cached snapshot — so cards widen (or
+// shrink back) as DOs are added/removed instead of keeping whatever width
+// they had when the snapshot was last saved. Each node keeps its own y.
+function layoutDONodesRow<T extends { position: { x: number; y: number }; data?: Record<string, unknown> }>(
+  doNodes: T[],
+  centerX: number
+): T[] {
+  const ordered = [...doNodes].sort((a, b) => a.position.x - b.position.x);
+  const { w, gapX } = computeDOCardLayout(ordered.length);
+  const totalWidth = (ordered.length - 1) * gapX;
+  const startX = centerX - totalWidth / 2;
+  return ordered.map((n, i) => {
+    const prevSize = n.data?.size as { w: number; h: number } | undefined;
+    return {
+      ...n,
+      position: { x: startX + i * gapX, y: n.position.y },
+      data: { ...(n.data || {}), size: { w, h: prevSize?.h ?? DEFAULT_NODE_DIMENSIONS.do.h } },
+    };
+  });
+}
+
 function rectForNode(n: Node<NodeData>) {
   const data = (n.data as NodeData) || {};
   const kind = (n.type as NodeKind) || "do";
@@ -781,14 +826,84 @@ export default function StrategyCanvasPage() {
         } catch { /* ignore */ }
       }
 
-      type RawNode = { id: string; type?: string; data?: Record<string, unknown> };
+      type RawNode = { id: string; type?: string; data?: Record<string, unknown>; position: { x: number; y: number } };
       type RawEdge = { source: string; target: string };
       if (!error && data && Array.isArray(data.nodes) && Array.isArray(data.edges) && (data.nodes as RawNode[]).length > 0 && !snapshotLooksLikeTemplate) {
         console.log('[Canvas] Loaded saved snapshot for', roomName, { nodeCount: (data.nodes as RawNode[]).length, edgeCount: (data.edges as RawEdge[]).length });
         // Filter out edges connecting ROOT_ID to DOs
         const loadedNodes = data.nodes as RawNode[];
         const filteredEdges = (data.edges as RawEdge[]).filter((e) => !(e.source === ROOT_ID && loadedNodes.find((n) => n.id === e.target)?.type === 'do'));
-        setNodes(loadedNodes);
+
+        // The snapshot in rc_canvas_states is only a layout/collaboration cache
+        // (positions, sizes, colors). Its content goes stale the moment someone
+        // edits a title/owner/metric from a Detail page (writes straight to the
+        // canonical tables, never touches this snapshot), or creates a brand new
+        // DO/SI there (nothing ever pushes it onto an existing snapshot either).
+        // Reconcile structurally against the canonical rows: overlay live text
+        // onto matched cards, drop duplicate cards that collapsed onto the same
+        // underlying row, and add cards for DOs/SIs that have none yet.
+        try {
+          type DOReconcileRow = { id: string; title: string; hypothesis?: string | null; owner_user_id?: string | null; status?: string | null; locked_at?: string | null; display_order?: number | null };
+          type SIReconcileRow = { id: string; title: string; owner_user_id?: string | null; participant_user_ids?: string[] | null; description?: string | null; primary_success_metric?: string | null; benchmark?: string | null; status?: string | null; locked_at?: string | null; defining_objective_id: string };
+
+          const { data: rc } = await supabase
+            .from('rc_rallying_cries')
+            .select('id, title')
+            .eq('cycle_id', cycleId)
+            .maybeSingle();
+
+          const { data: doRows } = rc?.id
+            ? await supabase
+                .from('rc_defining_objectives')
+                .select('id, title, hypothesis, owner_user_id, status, locked_at, display_order')
+                .eq('rallying_cry_id', rc.id)
+                .order('display_order', { ascending: true })
+            : { data: [] as DOReconcileRow[] };
+
+          const doIds = (doRows || []).map((d: DOReconcileRow) => d.id);
+
+          const [siRowsRes, doMetricsRes] = doIds.length
+            ? await Promise.all([
+                supabase
+                  .from('rc_strategic_initiatives')
+                  .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at, defining_objective_id')
+                  .in('defining_objective_id', doIds)
+                  .is('parent_si_id', null),
+                supabase
+                  .from('rc_do_metrics')
+                  .select('defining_objective_id, name')
+                  .in('defining_objective_id', doIds)
+                  .order('display_order', { ascending: true }),
+              ])
+            : [{ data: [] as SIReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
+
+          const { nodes: reconciledNodes, appendedDoCount } = reconcileCanvasSnapshot({
+            loadedNodes: loadedNodes as unknown as RawCanvasNode[],
+            rallyingCry: rc,
+            doRows: (doRows || []) as DOReconcileRow[],
+            siRows: (siRowsRes.data || []) as SIReconcileRow[],
+            doMetrics: (doMetricsRes.data || []) as Array<{ defining_objective_id: string; name: string }>,
+            findNonOverlappingPosition: findNonOverlappingPosition as unknown as ReconcileCanvasSnapshotParams['findNonOverlappingPosition'],
+          });
+
+          if (appendedDoCount) {
+            console.log('[Canvas] Added', appendedDoCount, 'DO(s) found in the database but missing from the cached canvas snapshot');
+          }
+
+          // Re-derive DO widths/positions from the current DO count instead of
+          // trusting whatever was cached — a snapshot saved with 4 DOs still had
+          // 260px-wide cards baked in even after one was deleted down to 3.
+          const nonDoNodes = reconciledNodes.filter((n) => n.type !== 'do');
+          const rallyNode = reconciledNodes.find((n) => n.type === 'rally');
+          const centerX = (rallyNode?.position as { x?: number } | undefined)?.x ?? 400;
+          const doNodesForLayout = reconciledNodes.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>;
+          const laidOutDoNodes = layoutDONodesRow(doNodesForLayout, centerX);
+
+          setNodes([...nonDoNodes, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
+        } catch (reconcileErr) {
+          console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
+          setNodes(loadedNodes);
+        }
         setEdges(filteredEdges);
         return;
       } else if (snapshotLooksLikeTemplate) {
@@ -827,8 +942,9 @@ export default function StrategyCanvasPage() {
 
         const { data: doMetrics } = await supabase
           .from('rc_do_metrics')
-          .select('defining_objective_id, name')
+          .select('defining_objective_id, name, type')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+          .eq('type', 'lagging')
           .order('display_order', { ascending: true });
         const metricsMap = new Map<string, string>();
         for (const m of doMetrics || []) {
@@ -841,8 +957,8 @@ export default function StrategyCanvasPage() {
         const baseX = 400;
         const baseY = 80;
         const startY = baseY + 180;
-        const gapX = 320;
         const count = (dos?.length) || 0;
+        const { w: doWidth, gapX } = computeDOCardLayout(count);
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
 
@@ -890,7 +1006,7 @@ export default function StrategyCanvasPage() {
               hypothesis: d.hypothesis || '',
               primarySuccessMetric: metricsMap.get(d.id) || '',
               saiItems,
-              size: { w: 260, h: 110 },
+              size: { w: doWidth, h: 110 },
               dbId: d.id,
             },
           });
@@ -1295,17 +1411,34 @@ const duplicateSelectedDo = useCallback(() => {
     setNodes([...nodes, newDo]);
   }, [nodes, selectedNode]);
 
-  const deleteSelectedDo = useCallback(() => {
+  const deleteSelectedDo = useCallback(async () => {
     if (selectedNode?.type !== "do") return;
     const doId = selectedNode.id;
+    const doTitle = selectedNode.data.title || "this Defining Objective";
+    const dbId = doLockedStatus.get(doId)?.dbId || (selectedNode.data as NodeData & { dbId?: string }).dbId;
+
+    if (!window.confirm(`Delete "${doTitle}"? This will also delete its Strategic Initiatives and cannot be undone.`)) {
+      return;
+    }
+
+    if (dbId) {
+      const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
+      try {
+        await deleteDO(dbId, siDbIds);
+      } catch (e) {
+        console.error('deleteSelectedDo error', e);
+        toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Defining Objective.', variant: 'destructive' });
+        return;
+      }
+    }
+
     const remainingNodes = nodes.filter((n) => n.id !== doId && !(n.type === "sai" && (n.data as NodeData).parentDoId === doId));
     const remainingEdges = edges.filter((e) => e.source !== doId && e.target !== doId);
     setNodes(remainingNodes);
     setEdges(remainingEdges);
     setSelectedNode(null);
-  }, [nodes, edges, selectedNode]);
-
-  const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    toast({ title: 'Deleted', description: `"${doTitle}" was deleted.` });
+  }, [nodes, edges, selectedNode, doLockedStatus, toast]);
 
   // Bulk actions
   const lockEverything = useCallback(async () => {
@@ -1314,26 +1447,51 @@ const duplicateSelectedDo = useCallback(() => {
     const incompleteDOs: string[] = [];
     const incompleteSIs: Array<{ doTitle: string; siTitle: string }> = [];
 
+    // Canvas node data doesn't carry SI start/end dates — fetch them in bulk
+    // so this validates against the same rules as everywhere else (getSILockBlockers).
+    const allSiDbIds = currentNodes
+      .filter((n) => n.type === 'do')
+      .flatMap((n) => (n.data.saiItems || []).map((si) => si.dbId))
+      .filter(Boolean) as string[];
+    const siDatesMap = new Map<string, { start_date: string | null; end_date: string | null }>();
+    if (allSiDbIds.length > 0) {
+      const { data: siRows } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, start_date, end_date')
+        .in('id', allSiDbIds);
+      for (const row of siRows || []) {
+        siDatesMap.set(row.id, { start_date: row.start_date, end_date: row.end_date });
+      }
+    }
+
     for (const n of currentNodes) {
       if (n.type === 'do') {
         const data = n.data;
-        const hasMissingFields = !data.title?.trim() ||
-                                !stripHtml(data.hypothesis || '') ||
-                                !data.primarySuccessMetric?.trim() ||
-                                !data.ownerId;
+        const doMissing = getDOLockBlockers({
+          title: data.title,
+          hypothesis: data.hypothesis,
+          primarySuccessMetricName: data.primarySuccessMetric,
+          ownerId: data.ownerId,
+        });
 
-        if (hasMissingFields) {
+        if (doMissing.length > 0) {
           incompleteDOs.push(data.title || n.id);
         }
 
         // Check SIs within this DO
         const items = data.saiItems || [];
         for (const si of items) {
-          const siHasMissingFields = !si.title?.trim() ||
-                                    !si.metric?.trim() ||
-                                    !si.ownerId;
+          const dates = si.dbId ? siDatesMap.get(si.dbId) : undefined;
+          const siMissing = getSILockBlockers({
+            title: si.title,
+            description: si.description,
+            ownerId: si.ownerId,
+            metric: si.metric,
+            startDate: dates?.start_date,
+            endDate: dates?.end_date,
+          });
 
-          if (siHasMissingFields) {
+          if (siMissing.length > 0) {
             incompleteSIs.push({
               doTitle: data.title || n.id,
               siTitle: si.title || 'Untitled SI'
@@ -1342,7 +1500,7 @@ const duplicateSelectedDo = useCallback(() => {
         }
       }
     }
-    
+
     if (incompleteDOs.length > 0 || incompleteSIs.length > 0) {
       const messages: string[] = [];
       if (incompleteDOs.length > 0) {
@@ -1351,9 +1509,9 @@ const duplicateSelectedDo = useCallback(() => {
       if (incompleteSIs.length > 0) {
         messages.push(`${incompleteSIs.length} incomplete Strategic Initiative(s)`);
       }
-      toast({ 
-        title: 'Cannot lock incomplete items', 
-        description: `Please complete all required fields (Name, Definition, Primary Success Metric, Owner) before locking. ${messages.join('. ')}`,
+      toast({
+        title: 'Cannot lock incomplete items',
+        description: `Please complete all required fields (Name, Definition, Primary Success Metric, Owner for DOs; Name, Description, Owner, Metric, Dates for SIs) before locking. ${messages.join('. ')}`,
         variant: 'destructive',
       });
       return;
@@ -1450,11 +1608,12 @@ const duplicateSelectedDo = useCallback(() => {
     const data = doNode.data;
 
     // Validate required fields on the DO itself
-    const missing: string[] = [];
-    if (!data.title?.trim()) missing.push('Name');
-    if (!stripHtml(data.hypothesis || '')) missing.push('Definition');
-    if (!data.primarySuccessMetric?.trim()) missing.push('Primary Success Metric');
-    if (!data.ownerId) missing.push('Owner');
+    const missing = getDOLockBlockers({
+      title: data.title,
+      hypothesis: data.hypothesis,
+      primarySuccessMetricName: data.primarySuccessMetric,
+      ownerId: data.ownerId,
+    });
 
     if (missing.length > 0) {
       toast({
@@ -1465,14 +1624,30 @@ const duplicateSelectedDo = useCallback(() => {
       return;
     }
 
-    // Validate SIs
+    // Validate SIs — canvas node data doesn't carry SI start/end dates, fetch them in bulk.
+    const siDbIdsForDO = (data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
+    const siDatesMap = new Map<string, { start_date: string | null; end_date: string | null }>();
+    if (siDbIdsForDO.length > 0) {
+      const { data: siRows } = await supabase
+        .from('rc_strategic_initiatives')
+        .select('id, start_date, end_date')
+        .in('id', siDbIdsForDO);
+      for (const row of siRows || []) {
+        siDatesMap.set(row.id, { start_date: row.start_date, end_date: row.end_date });
+      }
+    }
+
     const incompleteSIs: string[] = [];
     for (const si of data.saiItems || []) {
-      const siMissing: string[] = [];
-      if (!si.title?.trim()) siMissing.push('Title');
-      // Description is optional
-      if (!si.metric?.trim()) siMissing.push('Metric');
-      if (!si.ownerId) siMissing.push('Owner');
+      const dates = si.dbId ? siDatesMap.get(si.dbId) : undefined;
+      const siMissing = getSILockBlockers({
+        title: si.title,
+        description: si.description,
+        ownerId: si.ownerId,
+        metric: si.metric,
+        startDate: dates?.start_date,
+        endDate: dates?.end_date,
+      });
       if (siMissing.length > 0) {
         incompleteSIs.push(`${si.title || 'Untitled SI'} (${siMissing.join(', ')})`);
       }
@@ -1520,27 +1695,11 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({ title: 'Lock failed', description: 'You must be logged in.', variant: 'destructive' });
-        return;
-      }
-
-      const nowIso = new Date().toISOString();
-      const { error: doErr } = await supabase
-        .from('rc_defining_objectives')
-        .update({ status: 'locked', locked_at: nowIso, locked_by: user.id })
-        .eq('id', doDbId);
-
-      if (doErr) {
-        console.error('Single DO lock error:', doErr);
-        toast({ title: 'Lock failed', description: doErr.message, variant: 'destructive' });
-        return;
-      }
-
+      await lockDO(doDbId);
       toast({ title: 'Locked', description: `"${data.title}" and its SIs have been locked.` });
     } catch (e) {
       console.error('finalizeSingleDO error', e);
+      toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
   }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
@@ -1550,28 +1709,13 @@ const duplicateSelectedDo = useCallback(() => {
     if (!doDbId) return;
 
     try {
-      const { error: doErr } = await supabase
-        .from('rc_defining_objectives')
-        .update({ status: 'draft', locked_at: null, locked_by: null } as Record<string, unknown>)
-        .eq('id', doDbId);
-
-      if (doErr) {
-        toast({ title: 'Unlock failed', description: doErr.message, variant: 'destructive' });
-        return;
-      }
-
-      // Unlock child SIs in database
-      const node = nodesRef.current.find(n => n.id === doNodeId);
-      const siItems = node?.data?.saiItems || [];
-      const siDbIds = siItems.map(si => si.dbId).filter(Boolean) as string[];
-      if (siDbIds.length > 0) {
-        await supabase
-          .from('rc_strategic_initiatives')
-          .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
-          .in('id', siDbIds);
-      }
+      await unlockDO(doDbId);
+      // A DB trigger (20251122060500_cascade_unlock_si_on_do.sql) cascades
+      // this unlock to child SIs automatically — no manual SI write needed.
 
       // Update local state
+      const node = nodesRef.current.find(n => n.id === doNodeId);
+      const siItems = node?.data?.saiItems || [];
       setNodes(prev => prev.map(n =>
         n.id === doNodeId ? { ...n, data: { ...n.data, status: 'draft' as const } } : n
       ));
@@ -1592,26 +1736,38 @@ const duplicateSelectedDo = useCallback(() => {
       toast({ title: 'Unlocked', description: `"${node?.data?.title}" and its SIs have been unlocked.` });
     } catch (e) {
       console.error('unlockSingleDO error', e);
+      toast({ title: 'Unlock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
   }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
 
   const lockSingleSI = useCallback(async (siId: string, siDbId: string) => {
-    const missing: string[] = [];
     const doNode = nodesRef.current.find(n => (n.data.saiItems || []).some(s => s.id === siId));
     const si = doNode?.data.saiItems?.find(s => s.id === siId);
-    if (!si?.ownerId) missing.push('Owner');
-    if (!si?.metric?.trim()) missing.push('Primary Success Metric');
+
+    // Canvas node data doesn't carry SI start/end dates — fetch the row fresh
+    // so this validates against the same rules as everywhere else.
+    const { data: siRow } = await supabase
+      .from('rc_strategic_initiatives')
+      .select('start_date, end_date')
+      .eq('id', siDbId)
+      .single();
+
+    const missing = getSILockBlockers({
+      title: si?.title,
+      description: si?.description,
+      ownerId: si?.ownerId,
+      metric: si?.metric,
+      startDate: siRow?.start_date,
+      endDate: siRow?.end_date,
+    });
     if (missing.length > 0) {
       toast({ title: 'Cannot lock — incomplete SI', description: `Missing: ${missing.join(', ')}`, variant: 'destructive' });
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update({ locked_at: new Date().toISOString(), locked_by: user?.id ?? null } as Record<string, unknown>)
-      .eq('id', siDbId);
-    if (error) {
-      toast({ title: 'Lock failed', description: error.message, variant: 'destructive' });
+    try {
+      await lockInitiative(siDbId);
+    } catch (e) {
+      toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
     }
     setSiProgressMap(prev => {
@@ -1624,12 +1780,10 @@ const duplicateSelectedDo = useCallback(() => {
   }, [toast, setSiProgressMap]);
 
   const unlockSingleSI = useCallback(async (siId: string, siDbId: string) => {
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update({ locked_at: null, locked_by: null } as Record<string, unknown>)
-      .eq('id', siDbId);
-    if (error) {
-      toast({ title: 'Unlock failed', description: error.message, variant: 'destructive' });
+    try {
+      await unlockInitiative(siDbId);
+    } catch (e) {
+      toast({ title: 'Unlock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
     }
     setSiProgressMap(prev => {
@@ -1787,8 +1941,9 @@ const duplicateSelectedDo = useCallback(() => {
 
       const { data: importedMetrics } = await supabase
         .from('rc_do_metrics')
-        .select('defining_objective_id, name')
+        .select('defining_objective_id, name, type')
         .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
+        .eq('type', 'lagging')
         .order('display_order', { ascending: true });
       const importMetricsMap = new Map<string, string>();
       for (const m of importedMetrics || []) {
@@ -1800,8 +1955,8 @@ const duplicateSelectedDo = useCallback(() => {
       const baseX = 400;
       const baseY = 80;
       const startY = baseY + 180;
-      const gapX = 320;
       const doCount = (importedDOs || []).length;
+      const { w: doWidth, gapX } = computeDOCardLayout(doCount);
       const totalWidth = (doCount - 1) * gapX;
       const startX = baseX - totalWidth / 2;
 
@@ -1849,7 +2004,7 @@ const duplicateSelectedDo = useCallback(() => {
             hypothesis: d.hypothesis || '',
             primarySuccessMetric: importMetricsMap.get(d.id) || '',
             saiItems,
-            size: { w: 260, h: 110 },
+            size: { w: doWidth, h: 110 },
             dbId: d.id,
           },
         });
@@ -2551,10 +2706,26 @@ const duplicateSelectedDo = useCallback(() => {
               setNodes(next);
               setFocusedSI({ doId: doNode.id, siId: newId });
             }}
-            onDelete={() => {
+            onDelete={async () => {
+              const siTitle = si.title || "this Strategic Initiative";
+              if (!window.confirm(`Delete "${siTitle}"? This cannot be undone.`)) {
+                return;
+              }
+
+              if (si.dbId) {
+                try {
+                  await deleteInitiative(si.dbId);
+                } catch (e) {
+                  console.error('SI onDelete error', e);
+                  toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Strategic Initiative.', variant: 'destructive' });
+                  return;
+                }
+              }
+
               const next = nodes.map(n => n.id === doNode.id ? { ...n, data: { ...n.data, saiItems: (n.data.saiItems||[]).filter(x => x.id !== si.id) } } : n);
               setNodes(next);
               setFocusedSI(null);
+              toast({ title: 'Deleted', description: `"${siTitle}" was deleted.` });
             }}
             onClose={() => setFocusedSI(null)}
             isDoPanelOpen={selectedNode?.type === "do"}

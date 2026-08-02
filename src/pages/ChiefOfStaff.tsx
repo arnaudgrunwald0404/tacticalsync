@@ -3653,7 +3653,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const memberIds = members.map(m => m.id);
-    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes, prepScheduleRes] = await Promise.all([
+    const [eventsRes, credsRes, zoomCredsRes, slackCredsRes, prepRes, myProfileRes, allProfilesRes, syncSettingsRes, prepScheduleRes, groupMeetingsRes] = await Promise.all([
       db.from('cos_one_on_one_events')
         .select('*')
         .eq('user_id', user.id)
@@ -3677,6 +3677,9 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       db.from('cos_prep_schedule').select('enabled, included_group_series').eq('user_id', user.id).maybeSingle()
         .then((r: { data: unknown; error: unknown }) => r)
         .catch(() => ({ data: null, error: null })),
+      db.from('cos_group_meetings').select('id, included').eq('user_id', user.id)
+        .then((r: { data: unknown; error: unknown }) => r)
+        .catch(() => ({ data: [], error: null })),
     ]);
 
     // Check if prep schedule is configured — show wizard if not
@@ -3690,7 +3693,16 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
     const memberById = new Map(members.map(m => [m.id, m]));
 
 
-    const includedGroupSeries = new Set<string>(scheduleRow?.included_group_series ?? []);
+    // Group-meeting occurrence rows (attendee_count > 1) are only shown on the
+    // calendar once the user has opted the series into prep via
+    // cos_group_meetings.included (the GroupMeetingsManager/Coverage tab
+    // toggle) — the same flag daily-prep-batch checks, unlike the legacy
+    // cos_prep_schedule.included_group_series list this used to read.
+    const includedGroupMeetingIds = new Set<string>(
+      ((groupMeetingsRes?.data ?? []) as Array<{ id: string; included: boolean }>)
+        .filter(g => g.included)
+        .map(g => g.id),
+    );
 
     const syncRules = syncSettingsRes?.data?.calendar_sync_rules as { exclude_emails?: string[] } | null;
     const excludedEmails = new Set(
@@ -3769,6 +3781,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       id: string;
       google_event_id: string;
       team_member_id: string | null;
+      group_meeting_id?: string | null;
       attendee_name?: string | null;
       attendee_email?: string | null;
       attendee_emails?: string[] | null;  // original array column — fallback email source
@@ -3780,6 +3793,32 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       status: 'confirmed' | 'tentative' | 'cancelled';
     }>)
       .map(e => {
+        const attendeeCount = e.attendee_emails?.length ?? 0;
+
+        // Group-meeting occurrence row: doesn't belong to a single team member,
+        // so skip the 1:1 email/category resolution below entirely — deriving
+        // "bestEmail" from attendee_emails[0] would otherwise misattribute the
+        // meeting to whichever roster member happens to be listed first.
+        if (attendeeCount > 1 && e.group_meeting_id) {
+          return {
+            id: e.id,
+            google_event_id: e.google_event_id,
+            team_member_id: null,
+            team_member: null,
+            attendee_name: null,
+            attendee_email: null,
+            inferred_category: 'stakeholder' as UpcomingOneOnOneEvent['inferred_category'],
+            title: e.title,
+            start_time: e.start_time,
+            end_time: e.end_time,
+            status: e.status,
+            prep_available: false,
+            recurring_event_id: e.recurring_event_id ?? null,
+            attendee_count: attendeeCount,
+            group_meeting_id: e.group_meeting_id,
+          };
+        }
+
         // Resolve best available email. Columns added in later migrations may not
         // exist yet if db push hasn't been run — fall through to the array column.
         const bestEmail: string | null =
@@ -3794,8 +3833,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
 
         // Category comes from the org chart first (profiles.manager_email), then fallbacks.
         const category = resolveCategory(bestEmail, member);
-
-        const attendeeCount = e.attendee_emails?.length ?? 0;
 
         return {
           id: e.id,
@@ -3812,12 +3849,13 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
           prep_available: member ? prepSet.has(member.id) : false,
           recurring_event_id: e.recurring_event_id ?? null,
           attendee_count: attendeeCount,
+          group_meeting_id: null,
         };
       })
       .filter(e => {
         if (e.attendee_count > 1) {
-          // Group meetings: only show if the user explicitly included the series.
-          return e.recurring_event_id != null && includedGroupSeries.has(e.recurring_event_id);
+          // Group meetings: only show if the user explicitly opted the series in.
+          return e.group_meeting_id != null && includedGroupMeetingIds.has(e.group_meeting_id);
         }
         // 1:1s: exclude if the email is on the exclusion list.
         return !e.attendee_email || !excludedEmails.has(e.attendee_email.toLowerCase());

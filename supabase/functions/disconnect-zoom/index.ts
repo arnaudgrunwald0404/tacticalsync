@@ -56,13 +56,23 @@ serve(async (req) => {
 
       if (creds?.access_token) {
         const basicAuth = btoa(`${zoomClientId}:${zoomClientSecret}`)
-        await retryWithBackoff(
-          () => fetch(`https://zoom.us/oauth/revoke?token=${encodeURIComponent(creds.access_token)}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Basic ${basicAuth}` },
-          }),
-          { integration: 'zoom', label: 'revoke token', maxAttempts: 2 },
-        ).catch(() => { /* best-effort */ })
+        try {
+          const revokeRes = await retryWithBackoff(
+            () => fetch(`https://zoom.us/oauth/revoke?token=${encodeURIComponent(creds.access_token)}`, {
+              method: 'POST',
+              headers: { 'Authorization': `Basic ${basicAuth}` },
+            }),
+            { integration: 'zoom', label: 'revoke token', maxAttempts: 2 },
+          )
+          if (!revokeRes.ok) {
+            const bodyText = await revokeRes.text().catch(() => '')
+            console.error(`[disconnect-zoom] revoke token failed for user ${userId}: HTTP ${revokeRes.status} ${bodyText}`)
+          }
+        } catch (err) {
+          // Best-effort: local disconnect must still proceed even if Zoom's
+          // side is unreachable, but the failure is no longer discarded silently.
+          console.error(`[disconnect-zoom] revoke token threw for user ${userId}: ${(err as Error).message}`)
+        }
       }
     }
 

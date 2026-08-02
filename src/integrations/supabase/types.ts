@@ -2173,57 +2173,6 @@ export type Database = {
           },
         ]
       }
-      email_dismissal_log: {
-        Row: {
-          dismissed_at: string
-          id: string
-          inbox_item_id: string | null
-          intent_type: string | null
-          sender_domain: string | null
-          sender_email: string | null
-          sender_tier: string | null
-          thread_age_hours: number | null
-          user_id: string
-        }
-        Insert: {
-          dismissed_at?: string
-          id?: string
-          inbox_item_id?: string | null
-          intent_type?: string | null
-          sender_domain?: string | null
-          sender_email?: string | null
-          sender_tier?: string | null
-          thread_age_hours?: number | null
-          user_id: string
-        }
-        Update: {
-          dismissed_at?: string
-          id?: string
-          inbox_item_id?: string | null
-          intent_type?: string | null
-          sender_domain?: string | null
-          sender_email?: string | null
-          sender_tier?: string | null
-          thread_age_hours?: number | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
-            columns: ["inbox_item_id"]
-            isOneToOne: false
-            referencedRelation: "cos_manager_signal_aging_items"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
-            columns: ["inbox_item_id"]
-            isOneToOne: false
-            referencedRelation: "inbox_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       feature_permissions: {
         Row: {
           created_at: string | null
@@ -2399,6 +2348,66 @@ export type Database = {
           {
             foreignKeyName: "inbox_delegations_item_id_fkey"
             columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_dismissal_log: {
+        Row: {
+          dismissed_at: string
+          id: string
+          inbox_item_id: string | null
+          intent_type: string | null
+          sender_domain: string | null
+          sender_email: string | null
+          sender_tier: string | null
+          slack_channel_id: string | null
+          slack_sender_id: string | null
+          source: string
+          thread_age_hours: number | null
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string
+          id?: string
+          inbox_item_id?: string | null
+          intent_type?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_tier?: string | null
+          slack_channel_id?: string | null
+          slack_sender_id?: string | null
+          source?: string
+          thread_age_hours?: number | null
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string
+          id?: string
+          inbox_item_id?: string | null
+          intent_type?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_tier?: string | null
+          slack_channel_id?: string | null
+          slack_sender_id?: string | null
+          source?: string
+          thread_age_hours?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
+            isOneToOne: false
+            referencedRelation: "cos_manager_signal_aging_items"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "email_dismissal_log_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
             isOneToOne: false
             referencedRelation: "inbox_items"
             referencedColumns: ["id"]

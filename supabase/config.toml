@@ -1,3 +1,9 @@
+# Non-default db port: this repo is run alongside other local Supabase
+# projects (e.g. cleargo binds the default 54322), so `supabase start`
+# fails with "port is already allocated" unless we pick our own.
+[db]
+port = 54422
+
 [auth]
 site_url = "http://localhost:8089"
 additional_redirect_urls = ["http://localhost:8089", "http://localhost:8080"]

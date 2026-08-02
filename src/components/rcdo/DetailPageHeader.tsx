@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, TrendingDown, Table2, BarChart3, Pencil, Calendar } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -41,6 +41,8 @@ export interface DetailPageHeaderProps {
   doId?: string;
   metrics?: Array<{ id: string; type: string; name?: string }>;
   status?: string;
+  primarySuccessMetric?: string;
+  onPrimarySuccessMetricChange?: (value: string) => Promise<void>;
 
   // Actions
   onLock?: () => void;
@@ -79,6 +81,10 @@ export interface DetailPageHeaderProps {
 
   // SI kebab actions
   onBreakIntoSubSIs?: () => void;
+
+  // Delete
+  onDelete?: () => void;
+  canDelete?: boolean;
 }
 
 export function DetailPageHeader({
@@ -93,6 +99,8 @@ export function DetailPageHeader({
   doId,
   metrics = [],
   status,
+  primarySuccessMetric,
+  onPrimarySuccessMetricChange,
   onLock,
   onUnlock,
   onCheckIn,
@@ -119,6 +127,8 @@ export function DetailPageHeader({
   onEndDateChange,
   dateError,
   onBreakIntoSubSIs,
+  onDelete,
+  canDelete = false,
 }: DetailPageHeaderProps) {
   const ownerName = getFullNameForAvatar(
     owner?.first_name,
@@ -132,9 +142,19 @@ export function DetailPageHeader({
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState(description ?? '');
   const [editingOwner, setEditingOwner] = useState(false);
+  const [editingMetric, setEditingMetric] = useState(false);
+  const [metricDraft, setMetricDraft] = useState(primarySuccessMetric ?? '');
 
   useEffect(() => { setTitleDraft(editableTitle ?? title); }, [editableTitle, title]);
   useEffect(() => { setDescDraft(description ?? ''); }, [description]);
+  useEffect(() => { setMetricDraft(primarySuccessMetric ?? ''); }, [primarySuccessMetric]);
+
+  // DO's "description" is really its Definition & Hypothesis — same field/wording as the canvas panel.
+  const descriptionLabel = type === 'do' ? 'Definition & Hypothesis' : null;
+  const descriptionPlaceholder = type === 'do'
+    ? 'If we do X, then Y will happen because Z...'
+    : 'Add a description...';
+  const strippedDescription = description ? description.replace(/<[^>]*>/g, '').trim() : '';
 
   // Non-editable prefix shown before the title input (e.g. "3.0 ")
   const editableStart = editableTitle != null ? title.indexOf(editableTitle) : -1;
@@ -225,6 +245,22 @@ export function DetailPageHeader({
 
       {/* Description */}
       <div className="group/desc mb-3">
+        {descriptionLabel && (
+          <div className="flex items-center gap-1 mb-1">
+            <label className={`text-sm font-medium ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              {descriptionLabel}
+            </label>
+            {!editingDesc && !isLocked && canEdit && onDescriptionChange && (
+              <button
+                type="button"
+                onClick={() => setEditingDesc(true)}
+                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         {editingDesc ? (
           <textarea
             value={descDraft}
@@ -243,31 +279,69 @@ export function DetailPageHeader({
             }}
             autoFocus
             rows={3}
+            placeholder={descriptionPlaceholder}
             className="w-full text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
           />
         ) : (
-          <div className="flex items-start gap-2">
-            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1">
-              {(() => {
-                const text = description ? description.replace(/<[^>]*>/g, '').trim() : '';
-                if (text) return text;
-                return onDescriptionChange
-                  ? <span className="text-gray-400 italic text-sm">Add a description...</span>
-                  : null;
-              })()}
-            </p>
-            {!isLocked && canEdit && onDescriptionChange && (
+          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+            {strippedDescription
+              ? strippedDescription
+              : onDescriptionChange
+                ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
+                : null}
+          </p>
+        )}
+      </div>
+
+      {/* Primary Success Metric — DO only */}
+      {type === 'do' && (primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
+        <div className="group/metric mb-3">
+          <div className="flex items-center gap-1 mb-1">
+            <label className={`text-sm font-medium ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              Primary Success Metric
+            </label>
+            {!editingMetric && !isLocked && canEdit && onPrimarySuccessMetricChange && (
               <button
                 type="button"
-                onClick={() => setEditingDesc(true)}
-                className="opacity-0 group-hover/desc:opacity-100 mt-0.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+                onClick={() => setEditingMetric(true)}
+                className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-        )}
-      </div>
+          {editingMetric ? (
+            <textarea
+              value={metricDraft}
+              onChange={(e) => setMetricDraft(e.target.value)}
+              onBlur={async () => {
+                if (metricDraft !== (primarySuccessMetric ?? '')) {
+                  await onPrimarySuccessMetricChange?.(metricDraft);
+                }
+                setEditingMetric(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setMetricDraft(primarySuccessMetric ?? '');
+                  setEditingMetric(false);
+                }
+              }}
+              autoFocus
+              rows={2}
+              placeholder="e.g., OpEx management and achievement of SI-level metrics"
+              className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
+            />
+          ) : (
+            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {primarySuccessMetric?.trim()
+                ? primarySuccessMetric
+                : onPrimarySuccessMetricChange
+                  ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
+                  : null}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Owner + Dates row */}
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -397,7 +471,7 @@ export function DetailPageHeader({
         {type === 'do' && (
           <Badge
             className={
-              isDefaultState
+              isLocked || isDefaultState
                 ? 'bg-[#5B6E7A]'
                 : healthResult.health === 'on_track'
                 ? 'bg-[#6B9A8F]'
@@ -408,8 +482,19 @@ export function DetailPageHeader({
                 : 'bg-[#6B9A8F]'
             }
           >
-            <HealthIcon className="h-3 w-3 mr-1" />
-            {healthResult.health.replace('_', ' ').toUpperCase()}
+            {isLocked ? (
+              <>
+                <Lock className="h-3 w-3 mr-1" />
+                LOCKED
+              </>
+            ) : isDefaultState ? (
+              'DRAFT'
+            ) : (
+              <>
+                <HealthIcon className="h-3 w-3 mr-1" />
+                {healthResult.health.replace('_', ' ').toUpperCase()}
+              </>
+            )}
           </Badge>
         )}
         {type === 'si' && status && (
@@ -424,7 +509,9 @@ export function DetailPageHeader({
             {status.replace('_', ' ').toUpperCase()}
           </Badge>
         )}
-        {isLocked && canLock && onUnlock && (
+        {((isLocked && canLock && onUnlock) ||
+          (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||
+          (onDelete && canDelete)) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -432,24 +519,27 @@ export function DetailPageHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onUnlock}>
-                <Unlock className="h-4 w-4 mr-2" />
-                Unlock
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
-              </DropdownMenuItem>
+              {isLocked && canLock && onUnlock && (
+                <DropdownMenuItem onClick={onUnlock}>
+                  <Unlock className="h-4 w-4 mr-2" />
+                  Unlock
+                </DropdownMenuItem>
+              )}
+              {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
+                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
+                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                </DropdownMenuItem>
+              )}
+              {onDelete && canDelete && (
+                <>
+                  {((isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
+                    <DropdownMenuSeparator />
+                  )}
+                  <DropdownMenuItem className="text-red-600" onClick={onDelete}>
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}

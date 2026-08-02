@@ -381,11 +381,19 @@ serve(async (req) => {
     let calendarDiscovered = 0
 
     // Find calendar events in the date window that have a Zoom meeting ID.
+    // Excludes group-meeting occurrence rows (group_meeting_id set) — those
+    // are handled below via groupDiscoveryTargets instead, which anchors on
+    // cos_group_meetings and tags the correct group_meeting_id; letting them
+    // in here too would double-list the same zoom_meeting_id with
+    // group_meeting_id hardcoded to null (see discoveryTargets below), and
+    // since this branch runs first, it would win the alreadySynced dedupe and
+    // silently drop the correct tagging.
     const { data: calendarEvents } = await supabase
       .from('cos_one_on_one_events')
       .select('zoom_meeting_id, team_member_id, title, start_time')
       .eq('user_id', userId)
       .not('zoom_meeting_id', 'is', null)
+      .is('group_meeting_id', null)
       .gte('start_time', from.toISOString())
       .lte('start_time', to.toISOString())
 

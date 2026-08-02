@@ -5,12 +5,12 @@ import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 import {
   classifySenderTier,
   shouldSuppressMessage,
+  shouldSuppressSlackMessage,
   shouldSuppressIntent,
   shouldIncludeSlackMessage,
   normalizeChannelName,
   parseSenderEmail,
   inferSuppressionRules,
-  SUPPRESSED_BY_DEFAULT,
   type SenderTier,
   type IntentType,
   type SuppressionRules,
@@ -45,6 +45,26 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
+// Durable failure log — mirrors slack-inbox-sync's markBatchFailed. A run
+// that only console.error's a failed write is invisible outside a manual
+// function-log check; cos_agent_log makes it queryable and alertable, the
+// same gap that let the daily_digest_sent CHECK-constraint failure go
+// unnoticed for weeks (SPECIFICATION.md §13.16 item 16).
+async function logAgentError(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  handler: string,
+  error: unknown,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  console.error(`extract-inbox-action-items: ${handler} failed:`, error)
+  await supabase.from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'error',
+    payload: { handler, error: error instanceof Error ? error.message : String(error), ...extra },
+  })
+}
+
 const MAX_ITEMS_PER_RUN = 60
 const MAX_TEXT_LEN = 300
 
@@ -64,7 +84,7 @@ function isSimilarText(a: string, b: string, threshold = 0.45): boolean {
   return union > 0 && intersection / union >= threshold
 }
 
-// SenderTier, IntentType, SUPPRESSED_BY_DEFAULT, SuppressionRules imported from inboxTriageUtils
+// SenderTier, IntentType, SuppressionRules imported from inboxTriageUtils
 
 interface ScanItem {
   id: string                    // synthetic id referenced by the model, e.g. "s3"
@@ -76,6 +96,8 @@ interface ScanItem {
   senderTier?: SenderTier       // gmail only
   gmailUrl?: string             // gmail only — direct link to thread
   slackUrl?: string             // slack only — direct link to the message
+  senderId?: string             // slack only — sender_slack_id, for dismissal-based suppression
+  channelId?: string            // slack only — channel_id, for dismissal-based suppression
 }
 
 // Slack deep link: works across workspaces (redirects when logged in).
@@ -85,7 +107,7 @@ function slackPermalink(channelId: string, ts: string): string {
   return `https://slack.com/archives/${channelId}/p${ts.replace('.', '')}`
 }
 
-// IntentType, SUPPRESSED_BY_DEFAULT imported from inboxTriageUtils
+// IntentType imported from inboxTriageUtils
 
 interface Finding {
   item_id: string
@@ -98,7 +120,11 @@ interface Finding {
 
 const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
 
-async function extractFindings(items: ScanItem[]): Promise<Finding[]> {
+async function extractFindings(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  items: ScanItem[],
+): Promise<Finding[]> {
   const numbered = items.map(i => `${i.id}) [${i.label}] ${i.text}`).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
@@ -116,10 +142,13 @@ fill out a form, approve a request, respond by a deadline.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
 
+These summaries are shown directly to the reader, so always refer to them as
+"you"/"your" — never by their own name, even if it appears in the text.
+
 Respond ONLY with valid JSON: an array of
 {"item_id": "<id from the list>",
  "intent_type": "question"|"request"|"introduction"|"decision_needed"|"fyi",
- "summary": "<one-line paraphrase, imperative or question form, under 140 chars>",
+ "summary": "<one-line paraphrase, imperative or question form, under 140 chars, addressed to the reader as \"you\">",
  "rationale": "<one short clause on why this needs attention>",
  "owed_by": "me"|"them"|null,
  "due_date": "<YYYY-MM-DD>"|null}.
@@ -157,8 +186,74 @@ Return [] if nothing qualifies.`,
       owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
       due_date: typeof f.due_date === 'string' && isoDateRe.test(f.due_date) ? f.due_date : null,
     }))
-  } catch {
-    console.warn('extract-inbox-action-items: failed to parse Claude response:', text.slice(0, 200))
+  } catch (err) {
+    // Not just a console.warn: an entire batch's worth of Slack/Gmail
+    // candidates is discarded here with no items created, indistinguishable
+    // from "Claude legitimately found nothing" unless this is logged.
+    await logAgentError(supabase, userId, 'extractFindings_parse', err, { raw_preview: text.slice(0, 200) })
+    return []
+  }
+}
+
+interface InboxTagRow { id: string; name: string; type: string; color: string }
+interface TagSuggestion { tag_id: string; tag_name: string; color: string; reason: string }
+
+// Content-based tag recommendation for a newly extracted Slack/Gmail action
+// item, run at creation time so it gets the same one-click "Add to <Project>"
+// destination as manually-added items (suggest-inbox-tags) and meeting
+// suggestions (generate-meeting-suggestions) — without this, agent_payload
+// never carries tag_suggestions and the suggestions panel always falls back
+// to the generic "Add to inbox" button.
+async function suggestTagsForItem(
+  tags: InboxTagRow[],
+  opts: { text: string; label: string },
+): Promise<TagSuggestion[]> {
+  if (tags.length === 0) return []
+
+  const tagList = tags.map(t => `- ${t.name} (type: ${t.type}, id: ${t.id})`).join('\n')
+
+  const prompt = `You are a tagging assistant for a team productivity tool. Your job is to suggest which tags from the user's library best match an inbox item extracted from Slack or email.
+
+INBOX ITEM
+Origin: ${opts.label}
+Text: "${opts.text}"
+
+AVAILABLE TAGS
+${tagList}
+
+INSTRUCTIONS
+- Return at most 2 tags, ranked by confidence (most confident first).
+- Only suggest a tag if you are reasonably sure it matches.
+- If no tag fits, return an empty array.
+- Do NOT invent tags — only use IDs from the list above.
+- A project tag fits if the item is clearly about that initiative, based on its name.
+- A folder tag fits if the item's urgency or context matches the folder's purpose.
+- A person tag fits ONLY if that person is explicitly the sender, subject, or a named party to the action — never just because the item mentions a channel or thread they're active in.
+
+Respond with valid JSON only — no prose, no markdown fences.
+Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
+
+  try {
+    const message = await ai.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const raw = (message.content[0] as { text: string }).text.trim()
+    const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+    const parsed = JSON.parse(jsonStr)
+    if (!Array.isArray(parsed)) return []
+
+    const tagMap = new Map(tags.map(t => [t.id, t]))
+    return (parsed as Array<{ tag_id?: string; reason?: string }>)
+      .filter(s => s.tag_id && tagMap.has(s.tag_id))
+      .slice(0, 2)
+      .map(s => {
+        const tag = tagMap.get(s.tag_id!)!
+        return { tag_id: tag.id, tag_name: tag.name, color: tag.color, reason: String(s.reason ?? '').slice(0, 120) }
+      })
+  } catch (err) {
+    console.warn('extract-inbox-action-items: suggestTagsForItem failed:', String(err))
     return []
   }
 }
@@ -223,6 +318,10 @@ serve(async (req) => {
         const items: ScanItem[] = []
         let scannedSlack = false
         let scannedGmail = false
+        // Set only on a real fetch failure — gates cursor advancement below
+        // so a Gmail API error doesn't get treated as "scanned clean" and
+        // permanently skip the messages that were never actually read.
+        let gmailFetchFailed = false
 
         // ── Triage preferences: per-source opt-in/out + Gmail suppression ──
         const { data: triagePref } = await supabase
@@ -236,6 +335,15 @@ serve(async (req) => {
         const suppressedDomains = new Set<string>((triagePref?.suppressed_domains ?? []) as string[])
         const suppressedIntents = new Set<string>((triagePref?.suppressed_intents ?? []) as string[])
         const maxThreadAgeHours: number | null = (triagePref?.max_thread_age_hours as number | null) ?? null
+
+        // Inbox tag library for content-aware suggestion tagging (see suggestTagsForItem).
+        const { data: inboxTagRows } = await supabase
+          .from('inbox_tags')
+          .select('id, name, type, color')
+          .eq('user_id', userId)
+          .in('type', ['project', 'folder', 'person'])
+          .is('parent_id', null)
+        const inboxTags = (inboxTagRows ?? []) as InboxTagRow[]
 
         // ── Slack: refresh the cache, then read only what's new ────────────
         const { data: slackCreds } = await supabase
@@ -293,17 +401,26 @@ serve(async (req) => {
           const normalizedChannels = syncChannels.map(normalizeChannelName)
           const { data: slackMsgs } = await supabase
             .from('cos_slack_messages')
-            .select('channel_id, channel_name, sender_name, content, message_date, message_ts, is_dm')
+            .select('channel_id, channel_name, sender_name, sender_slack_id, content, message_date, message_ts, is_dm')
             .eq('user_id', userId)
             .gt('message_date', since)
             .order('message_date', { ascending: true })
             .limit(MAX_ITEMS_PER_RUN)
 
+          const slackSuppressionRules: SuppressionRules = {
+            suppressedSenders,
+            suppressedDomains,
+            suppressedIntents,
+            maxThreadAgeHours,
+          }
+
           for (const m of (slackMsgs ?? []) as Array<{
             channel_id: string; channel_name: string | null; sender_name: string | null
+            sender_slack_id: string | null
             content: string; message_date: string; message_ts: string; is_dm: boolean
           }>) {
             if (!shouldIncludeSlackMessage(m.is_dm, m.channel_name, normalizedChannels)) continue
+            if (shouldSuppressSlackMessage(m.sender_slack_id, m.channel_id, slackSuppressionRules)) continue
             items.push({
               id: `s${items.length}`,
               source: 'slack',
@@ -311,6 +428,8 @@ serve(async (req) => {
               label: m.is_dm ? `DM from ${m.sender_name ?? 'unknown'}` : `#${m.channel_name} — ${m.sender_name ?? 'unknown'}`,
               text: m.content.slice(0, MAX_TEXT_LEN),
               slackUrl: slackPermalink(m.channel_id, m.message_ts),
+              senderId: m.sender_slack_id ?? undefined,
+              channelId: m.channel_id,
             })
           }
         }
@@ -375,7 +494,16 @@ serve(async (req) => {
               () => fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${accessToken}` } }),
               { integration: 'gmail', label: 'list messages' },
             )
-            if (listRes.ok) {
+            if (!listRes.ok) {
+              // No `else` previously — a failed list call (expired token,
+              // 403, quota) fell straight through with zero logging, and
+              // the cursor still advanced below as if the scan succeeded,
+              // permanently skipping this window of messages.
+              gmailFetchFailed = true
+              await logAgentError(supabase, userId, 'gmail_list_messages', new Error(`HTTP ${listRes.status}`), {
+                status: listRes.status,
+              })
+            } else {
               const listData = await listRes.json() as { messages?: Array<{ id: string }> }
 
               // Build a sent-mail lookup for sender tier classification.
@@ -467,7 +595,8 @@ serve(async (req) => {
               }
             }
           } catch (err) {
-            console.warn(`extract-inbox-action-items: gmail fetch failed for ${userId}:`, (err as Error).message)
+            gmailFetchFailed = true
+            await logAgentError(supabase, userId, 'gmail_fetch', err)
           }
         }
 
@@ -483,17 +612,17 @@ serve(async (req) => {
 
         let itemsCreated = 0
         if (items.length > 0) {
-          const findings = await extractFindings(items)
+          const findings = await extractFindings(supabase, userId, items)
           const byId = new Map(items.map(i => [i.id, i]))
 
           for (const finding of findings) {
             const source = byId.get(finding.item_id)
             if (!source) continue
 
-            const intentSuppressed = source.source === 'gmail'
-              ? shouldSuppressIntent(finding.intent_type, suppressedIntents)
-              : SUPPRESSED_BY_DEFAULT.includes(finding.intent_type)
-            if (intentSuppressed) continue
+            // shouldSuppressIntent already ORs in SUPPRESSED_BY_DEFAULT, so this
+            // applies the learned per-user suppressions to Slack findings too,
+            // not just Gmail's.
+            if (shouldSuppressIntent(finding.intent_type, suppressedIntents)) continue
 
             const sourceRefType = source.source === 'slack' ? 'slack_message' : 'gmail_message'
             const { data: existing } = await supabase
@@ -510,10 +639,16 @@ serve(async (req) => {
             const summary = finding.summary.slice(0, 2000)
             if (existingTexts.some(t => isSimilarText(summary, t))) continue
 
+            // Recommend an inbox tag destination from the item's content — this
+            // is what lets the suggestions panel render "Add to <Project>"
+            // instead of always falling back to the generic "Add to inbox".
+            const tagSuggestions = await suggestTagsForItem(inboxTags, { text: summary, label: source.label })
+
             const { error: insertErr } = await supabase.from('inbox_items').insert({
               user_id: userId,
               type: 'agent_question',
               text: summary,
+              tag_suggestions: tagSuggestions,
               agent_payload: {
                 source: source.source,
                 label: source.label,
@@ -523,6 +658,8 @@ serve(async (req) => {
                 ...(source.senderTier ? { sender_tier: source.senderTier } : {}),
                 ...(source.gmailUrl ? { gmail_url: source.gmailUrl } : {}),
                 ...(source.slackUrl ? { slack_url: source.slackUrl } : {}),
+                ...(source.senderId ? { slack_sender_id: source.senderId } : {}),
+                ...(source.channelId ? { slack_channel_id: source.channelId } : {}),
                 action_required: true,
                 cta_label: source.source === 'gmail' ? 'Reply in Gmail' : 'Add to inbox',
                 cta_action: 'approve_suggestion',
@@ -536,6 +673,15 @@ serve(async (req) => {
             if (!insertErr) {
               itemsCreated++
               existingTexts.push(summary) // prevent within-batch dupes
+            } else {
+              // A failed insert here silently drops a real finding — the
+              // scan looks like it ran clean (items_created just stays
+              // lower) with no trace of why this particular item never
+              // landed.
+              await logAgentError(supabase, userId, 'inbox_items_insert', insertErr, {
+                source: source.source,
+                source_ref: { type: sourceRefType, id: source.sourceId },
+              })
             }
           }
         }
@@ -545,7 +691,7 @@ serve(async (req) => {
         // same growing window on every future run.
         const nowIso = new Date().toISOString()
         for (const source of (['slack', 'gmail'] as const)) {
-          if ((source === 'slack' && scannedSlack) || (source === 'gmail' && scannedGmail)) {
+          if ((source === 'slack' && scannedSlack) || (source === 'gmail' && scannedGmail && !gmailFetchFailed)) {
             await supabase.from('cos_action_item_scan_state').upsert({
               user_id: userId,
               source,
@@ -556,44 +702,57 @@ serve(async (req) => {
         }
 
         // ── Suppression inference ───────────────────────────────────────────
-        // After each scan, check dismissal patterns and update per-user
-        // suppression rules. Runs only when inbox triage is enabled and
-        // Gmail was scanned this run (no point inferring if there's no signal).
-        if (inboxTriageEnabled && scannedGmail) {
+        // After each scan, check dismissal patterns for each source that was
+        // actually scanned this run and update the shared per-user
+        // suppression lists. A Slack channel/sender id and a Gmail
+        // domain/address land in the same suppressed_domains/suppressed_senders
+        // arrays — the two id spaces never collide (Slack ids never contain
+        // '@', which is required for a Gmail suppressedSenders/domains match).
+        const inferAndMergeSuppressions = async (source: 'gmail' | 'slack') => {
           try {
             const { data: dismissals } = await supabase
-              .from('email_dismissal_log')
-              .select('sender_email, sender_domain, intent_type')
+              .from('inbox_dismissal_log')
+              .select('sender_email, sender_domain, intent_type, slack_sender_id, slack_channel_id')
               .eq('user_id', userId)
+              .eq('source', source)
 
-            if (dismissals && dismissals.length >= 3) {
-              const { newSenders, newDomains, newIntents } = inferSuppressionRules(
-                dismissals as Array<{ sender_email: string | null; sender_domain: string | null; intent_type: string | null }>,
-              )
+            if (!dismissals || dismissals.length < 3) return
 
-              const merged = (existing: string[], additions: string[]) =>
-                Array.from(new Set([...existing, ...additions]))
+            const records = (dismissals as Array<{
+              sender_email: string | null; sender_domain: string | null; intent_type: string | null
+              slack_sender_id: string | null; slack_channel_id: string | null
+            }>).map(d => ({
+              sender_email: source === 'gmail' ? d.sender_email : d.slack_sender_id,
+              sender_domain: source === 'gmail' ? d.sender_domain : d.slack_channel_id,
+              intent_type: d.intent_type,
+            }))
 
-              if (newSenders.length || newDomains.length || newIntents.length) {
-                const { data: cur } = await supabase
-                  .from('sources_triage_preferences')
-                  .select('suppressed_senders, suppressed_domains, suppressed_intents')
-                  .eq('user_id', userId)
-                  .maybeSingle()
+            const { newSenders, newDomains, newIntents } = inferSuppressionRules(records)
+            if (!newSenders.length && !newDomains.length && !newIntents.length) return
 
-                await supabase.from('sources_triage_preferences').upsert({
-                  user_id: userId,
-                  suppressed_senders: merged(cur?.suppressed_senders ?? [], newSenders),
-                  suppressed_domains: merged(cur?.suppressed_domains ?? [], newDomains),
-                  suppressed_intents: merged(cur?.suppressed_intents ?? [], newIntents),
-                  updated_at: new Date().toISOString(),
-                }, { onConflict: 'user_id' })
-              }
-            }
+            const merged = (existing: string[], additions: string[]) =>
+              Array.from(new Set([...existing, ...additions]))
+
+            const { data: cur } = await supabase
+              .from('sources_triage_preferences')
+              .select('suppressed_senders, suppressed_domains, suppressed_intents')
+              .eq('user_id', userId)
+              .maybeSingle()
+
+            await supabase.from('sources_triage_preferences').upsert({
+              user_id: userId,
+              suppressed_senders: merged(cur?.suppressed_senders ?? [], newSenders),
+              suppressed_domains: merged(cur?.suppressed_domains ?? [], newDomains),
+              suppressed_intents: merged(cur?.suppressed_intents ?? [], newIntents),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' })
           } catch (err) {
-            console.warn(`extract-inbox-action-items: suppression inference failed for ${userId}:`, (err as Error).message)
+            console.warn(`extract-inbox-action-items: suppression inference (${source}) failed for ${userId}:`, (err as Error).message)
           }
         }
+
+        if (inboxTriageEnabled && scannedGmail) await inferAndMergeSuppressions('gmail')
+        if (slackTriageEnabled && scannedSlack) await inferAndMergeSuppressions('slack')
 
         results.push({ user_id: userId, items_created: itemsCreated })
       } catch (err) {

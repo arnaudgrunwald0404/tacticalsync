@@ -102,22 +102,45 @@ function log(entry: string): { timestamp: string; text: string } {
   return { timestamp: new Date().toISOString(), text: entry }
 }
 
+// Logs a write failure to cos_agent_log (event_type 'error') so it's
+// discoverable outside a manual function-log check — this file previously
+// discarded every patch()/writeAudit() error, so a CHECK-constraint or RLS
+// failure on either table would leave a delegation stuck forever with no
+// trace, the same class of bug as the daily_digest_sent incident
+// (SPECIFICATION.md §13.16 item 16).
+async function logAgentError(
+  db: ReturnType<typeof createClient>,
+  userId: string,
+  handler: string,
+  error: unknown,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  console.error(`delegate-inbox-task: ${handler} failed:`, error)
+  await (db as any).from('cos_agent_log').insert({
+    user_id: userId,
+    event_type: 'error',
+    payload: { handler, error: (error as { message?: string })?.message ?? String(error), ...extra },
+  })
+}
+
 async function patch(
   db: ReturnType<typeof createClient>,
   id: string,
+  userId: string,
   fields: Record<string, unknown>,
 ) {
-  await (db as any)
+  const { error } = await (db as any)
     .from('inbox_delegations')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
+  if (error) await logAgentError(db, userId, 'inbox_delegations_patch', error, { delegation_id: id, fields: Object.keys(fields) })
 }
 
 async function writeAudit(
   db: ReturnType<typeof createClient>,
   params: { delegationId: string; userId: string; stepId: string; action: 'approved' | 'rejected' | 'executed' | 'failed'; actorUserId: string; metadata?: Record<string, unknown> },
 ) {
-  await (db as any).from('inbox_delegation_audit_log').insert({
+  const { error } = await (db as any).from('inbox_delegation_audit_log').insert({
     delegation_id: params.delegationId,
     user_id: params.userId,
     step_id: params.stepId,
@@ -125,6 +148,11 @@ async function writeAudit(
     actor_user_id: params.actorUserId,
     metadata: params.metadata ?? {},
   })
+  if (error) {
+    await logAgentError(db, params.userId, 'inbox_delegation_audit_log_insert', error, {
+      delegation_id: params.delegationId, step_id: params.stepId, action: params.action,
+    })
+  }
 }
 
 /** Verifies the caller's JWT and returns their user id, or null if missing/invalid. Used to gate the approval actions — 'start'/'answer' keep v1's existing (looser) trust model to avoid changing behavior outside this feature's scope. */
@@ -148,17 +176,22 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   })
-  return (msg.content[0] as { text: string }).text
+  // claude-sonnet-5 returns an extended-thinking block before the text block,
+  // so content[0] is not reliably the text — find it by type instead (same
+  // guard agent-command/index.ts already uses for this).
+  const textBlock = msg.content.find((b): b is { type: 'text'; text: string } => b.type === 'text')
+  return textBlock?.text ?? ''
 }
 
 // ── Phase: Ramping up → decide clarity ───────────────────────────────────────
 
 async function rampUp(db: ReturnType<typeof createClient>, delegation: Record<string, unknown>, item: Record<string, unknown>) {
   const id = delegation.id as string
+  const userId = delegation.user_id as string
   const agentLog = (delegation.agent_log as object[]) ?? []
 
   agentLog.push(log('Reading the task and gathering context…'))
-  await patch(db, id, { agent_log: agentLog })
+  await patch(db, id, userId, { agent_log: agentLog })
 
   const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
   const taskText = item.text as string
@@ -185,10 +218,10 @@ Return: { "clear": true/false, "questions": [{ "question": "...", "choices": ["A
   agentLog.push(log(parsed.clear ? 'Task is clear — moving to planning.' : `${parsed.questions.length} clarifying question(s) needed.`))
 
   if (parsed.clear || parsed.questions.length === 0) {
-    await patch(db, id, { status: 'planning', agent_log: agentLog })
+    await patch(db, id, userId, { status: 'planning', agent_log: agentLog })
     await planPhase(db, id, delegation.user_id as string, item.id as string, taskText, tagNames, {}, agentLog, instructions)
   } else {
-    await patch(db, id, {
+    await patch(db, id, userId, {
       status: 'clarifying',
       agent_log: agentLog,
       current_question: { ...parsed.questions[0], _all: parsed.questions, _idx: 0 },
@@ -205,6 +238,7 @@ async function receiveAnswer(
   answer: string,
 ) {
   const id = delegation.id as string
+  const userId = delegation.user_id as string
   const agentLog = (delegation.agent_log as object[]) ?? []
   const cq = delegation.current_question as Record<string, unknown>
   const answers = (delegation.answers as Record<string, string>) ?? {}
@@ -216,14 +250,14 @@ async function receiveAnswer(
   const nextIdx = (cq._idx as number) + 1
 
   if (nextIdx < all.length) {
-    await patch(db, id, {
+    await patch(db, id, userId, {
       answers,
       agent_log: agentLog,
       current_question: { ...all[nextIdx], _all: all, _idx: nextIdx },
     })
   } else {
     agentLog.push(log('All questions answered — moving to planning.'))
-    await patch(db, id, { status: 'planning', answers, agent_log: agentLog, current_question: null })
+    await patch(db, id, userId, { status: 'planning', answers, agent_log: agentLog, current_question: null })
     const tagNames: string = ((item as any).tags ?? []).map((t: any) => t.name).join(', ') || 'none'
     await planPhase(db, id, delegation.user_id as string, delegation.item_id as string, item.text as string, tagNames, answers, agentLog, delegation.instructions as string | null)
   }
@@ -261,9 +295,20 @@ async function planPhase(
     ? seriesOptions.map(s => `- ${s.id} (${s.name})`).join('\n')
     : 'none available'
 
+  // Grounds propose_meeting_time's team_member_id — Claude can't invent a
+  // valid id, and needs real names to match against the task text (e.g. "Melissa").
+  const { data: memberRows } = await (db as any).from('cos_team_members').select('id, name').eq('user_id', userId)
+  const memberOptions = ((memberRows ?? []) as { id: string; name: string }[])
+  const membersBlock = memberOptions.length
+    ? memberOptions.map(m => `- ${m.id} (${m.name})`).join('\n')
+    : 'none available'
+
+  const nowIso = new Date().toISOString()
+
   const toolDefs = `
 - create_meeting_topic: params { series_id: one of the ids below, title: string, notes?: string }. Available series:\n${seriesBlock}
-- post_slack_update: params { message: string, and EITHER channel: string (a Slack channel name without '#') OR dm_user_email: string }`
+- post_slack_update: params { message: string, and EITHER channel: string (a Slack channel name without '#') OR dm_user_email: string }
+- propose_meeting_time: params { team_member_id: one of the ids below, window_start_utc: ISO datetime, window_end_utc: ISO datetime, duration_minutes: number }. Reads the user's own calendar for open slots in that window and Slack-DMs up to 3 options to the team member — it does NOT check the other person's calendar or book anything. The current time is ${nowIso}; resolve relative dates (e.g. "this Friday") against it and convert any stated time/timezone into UTC. Available team members:\n${membersBlock}`
 
   const planningResponse = await callClaude(
     `You are a delegation agent. Given a task, decide which of the available tools (if any) would concretely move it forward, and produce a JSON array of steps: [{ "tool": "...", "params": {...} }]. Only use the tools listed below, with valid params. If nothing concrete can be done with these tools, return an empty array []. Respond with ONLY the JSON array, no other text.
@@ -303,6 +348,11 @@ Available tools:${toolDefs}`,
         step.params.resolved_date = resolved.instance.start_date
       }
     }
+    if (step.tool === 'propose_meeting_time') {
+      const memberId = (step.params as any).team_member_id as string
+      const member = memberOptions.find(m => m.id === memberId)
+      if (member) step.params.resolved_member_name = member.name
+    }
     step.description = getTool(step.tool)!.describe(step.params)
   }
 
@@ -310,12 +360,12 @@ Available tools:${toolDefs}`,
 
   if (steps.length === 0) {
     agentLog.push(log('No concrete actions identified for this task — nothing to approve.'))
-    await patch(db, id, { status: 'done', plan: plan || null, plan_steps: [], agent_log: agentLog })
+    await patch(db, id, userId, { status: 'done', plan: plan || null, plan_steps: [], agent_log: agentLog })
     return
   }
 
   agentLog.push(log(`Plan drafted — ${steps.length} step(s) awaiting your approval.`))
-  await patch(db, id, {
+  await patch(db, id, userId, {
     status: computeAggregateStatus(steps as PlanStep[]),
     plan,
     plan_steps: steps,
@@ -380,7 +430,7 @@ async function executeStep(
   const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegationId).maybeSingle()
   const steps = ((after?.plan_steps ?? []) as PlanStep[])
   const aggregate = computeAggregateStatus(steps)
-  if (aggregate) await patch(db, delegationId, { status: aggregate })
+  if (aggregate) await patch(db, delegationId, userId, { status: aggregate })
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -430,7 +480,7 @@ Deno.serve(async (req) => {
 
     // Run async — don't block the response
     rampUp(db, delegation, item).catch(err =>
-      patch(db, delegation.id, {
+      patch(db, delegation.id, user_id, {
         agent_log: [...(delegation.agent_log ?? []), log(`Error: ${err.message}`)],
       })
     )
@@ -458,7 +508,7 @@ Deno.serve(async (req) => {
     if (item) item.tags = (item.tags ?? []).map((t: any) => t.tag)
 
     receiveAnswer(db, delegation, item ?? {}, answer).catch(err =>
-      patch(db, delegation_id, {
+      patch(db, delegation_id, delegation.user_id, {
         agent_log: [...(delegation.agent_log ?? []), log(`Error: ${err.message}`)],
       })
     )
@@ -497,12 +547,12 @@ Deno.serve(async (req) => {
     const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegation_id).maybeSingle()
     const steps = ((after?.plan_steps ?? []) as PlanStep[])
     const aggregate = computeAggregateStatus(steps)
-    if (aggregate) await patch(db, delegation_id, { status: aggregate })
+    if (aggregate) await patch(db, delegation_id, authedUserId, { status: aggregate })
 
     if (toStatus === 'approved') {
       const step = steps.find(s => s.id === step_id)
       if (step) executeStep(db, delegation_id, authedUserId, step).catch(err =>
-        patch(db, delegation_id, { agent_log: [log(`Error executing step: ${err.message}`)] }),
+        patch(db, delegation_id, authedUserId, { agent_log: [log(`Error executing step: ${err.message}`)] }),
       )
     }
 
@@ -529,11 +579,11 @@ Deno.serve(async (req) => {
     const { data: after } = await (db as any).from('inbox_delegations').select('plan_steps').eq('id', delegation_id).maybeSingle()
     const steps = ((after?.plan_steps ?? []) as PlanStep[])
     const aggregate = computeAggregateStatus(steps)
-    if (aggregate) await patch(db, delegation_id, { status: aggregate })
+    if (aggregate) await patch(db, delegation_id, authedUserId, { status: aggregate })
 
     for (const step of steps.filter(s => s.status === 'approved')) {
       executeStep(db, delegation_id, authedUserId, step).catch(err =>
-        patch(db, delegation_id, { agent_log: [log(`Error executing step: ${err.message}`)] }),
+        patch(db, delegation_id, authedUserId, { agent_log: [log(`Error executing step: ${err.message}`)] }),
       )
     }
 
@@ -546,7 +596,7 @@ Deno.serve(async (req) => {
     if (!delegation) return json({ error: 'Delegation not found' }, 404)
     if (delegation.user_id !== authedUserId) return json({ error: 'not_authorized' }, 403)
 
-    await patch(db, delegation_id, { status: 'cancelled' })
+    await patch(db, delegation_id, authedUserId, { status: 'cancelled' })
     return json({ status: 'ok' })
   }
 

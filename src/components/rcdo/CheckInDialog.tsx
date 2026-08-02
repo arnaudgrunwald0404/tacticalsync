@@ -22,6 +22,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CheckinParentType } from '@/types/rcdo';
+import { ensureCurrentUserProfile } from '@/lib/reporterDefaulting';
 import { format } from 'date-fns';
 import FancyAvatar from '@/components/ui/fancy-avatar';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -92,10 +93,6 @@ export function CheckInDialog({
       setProfilesLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setCurrentUserId(user.id);
-          setFormData(prev => ({ ...prev, reporterId: user.id }));
-        }
 
         const { data: profilesData, error } = await supabase
           .from('profiles')
@@ -103,7 +100,20 @@ export function CheckInDialog({
           .order('full_name', { ascending: true });
 
         if (error) throw error;
-        setProfiles(profilesData || []);
+
+        let allProfiles = profilesData || [];
+
+        if (user) {
+          setCurrentUserId(user.id);
+          setFormData(prev => ({ ...prev, reporterId: user.id }));
+
+          // Ensure the current user always appears as a selectable, default
+          // reporter even if their profiles row hasn't been created yet or
+          // was excluded by RLS (e.g. brand-new accounts).
+          allProfiles = ensureCurrentUserProfile(allProfiles, user);
+        }
+
+        setProfiles(allProfiles);
       } catch (err: unknown) {
         toast({
           title: 'Error',

@@ -1911,21 +1911,27 @@ async function postMeetingCheck(
   const windowStart = new Date(now.getTime() - 24 * 60 * 60 * 1000) // 24 h ago
   const windowEnd   = new Date(now.getTime() -  15 * 60 * 1000)     // 15 min ago
 
-  // Find calendar events with a Zoom link that recently ended.
+  // Find calendar events with a Zoom link that recently ended. Excludes
+  // group-meeting occurrence rows (group_meeting_id set) — those are handled
+  // entirely through the unprocessed-transcript path below, per the comment
+  // beneath this query; letting them into dci_meeting_schedule here would
+  // duplicate that handling with a team_member_id-less row.
   const { data: calEvents } = await supabase
     .from('cos_one_on_one_events')
     .select('id, team_member_id, title, start_time, zoom_meeting_id')
     .eq('user_id', userId)
     .not('zoom_meeting_id', 'is', null)
+    .is('group_meeting_id', null)
     .gte('start_time', windowStart.toISOString())
     .lte('start_time', windowEnd.toISOString())
     .neq('status', 'cancelled')
 
   // Ensure each 1:1 event has a dci_meeting_schedule row (insert-only; never
   // overwrite an existing row so transcript_checked state is preserved).
-  // Group meetings (committees, team syncs) don't create cos_one_on_one_events,
-  // so calEvents may be empty — that's fine; we still process their transcripts
-  // below via the unprocessed-transcript path.
+  // Group meetings (committees, team syncs) now do have cos_one_on_one_events
+  // occurrence rows (tagged with group_meeting_id), but the query above
+  // excludes them — we still process their transcripts below via the
+  // unprocessed-transcript path instead.
   for (const event of (calEvents ?? []) as Array<{
     id: string; team_member_id: string | null; title: string | null
     start_time: string; zoom_meeting_id: string

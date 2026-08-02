@@ -279,7 +279,9 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
     setConnectingSlack(true);
     const clientId = import.meta.env.VITE_SLACK_CLIENT_ID;
     const redirectUri = `${window.location.origin}/chief-of-staff?slack=connected`;
-    const scopes = 'chat:write,users:read,users:read.email,channels:read,channels:history,groups:read,groups:history,im:read,im:history,im:write';
+    // `commands` keeps the slash command registration (/add-to-my-lists, /add-to-1on1)
+    // alive on reinstall — see CosSlackSyncPanel.tsx and INTEGRATIONS.md.
+    const scopes = 'chat:write,commands,users:read,users:read.email,channels:read,channels:history,groups:read,groups:history,im:read,im:history,im:write';
     // User scopes grant the authorizing user's own token (xoxp-) so slack-messages-sync
     // can read their personal DMs and channels directly, without the bot needing to be
     // invited everywhere. Without this, Slack never returns authed_user.access_token and

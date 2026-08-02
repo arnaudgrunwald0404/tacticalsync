@@ -32,6 +32,8 @@ Pulls a user's own Zoom meeting recordings, VTT transcripts, and AI Companion no
 - `extract-zoom-quotes` mines transcripts via Gemini to surface "featured" quotes about a team member into `cos_member_quotes`.
 - `generate-meeting-suggestions` reads transcripts to propose "Suggested from your 1:1s" action items.
 - `titleSources.ts`'s `suggestZoomMatches` matches a group meeting's title against recent recording topics to suggest relevant context sources.
+- `extract-zoom-quotes` also computes per-meeting talk-time ratios and an AI sentiment classification from the same VTT transcripts (`cos_meeting_analysis`, idea #10 Phase A, `docs/SPECIFICATION.md` §7.11) — an additional pass over data already synced, no new Zoom API calls.
+- **Soundbites** (idea #10 Phase B): featured quotes (`cos_member_quotes`) now resolve to a specific `start_seconds`/`end_seconds` window in the source recording, and a new `zoom-media-proxy` edge function streams that clip's audio to the browser for inline playback (`ClipPlayer.tsx`). The citation is fuzzy-verified against the transcript before a clip is ever offered, degrading to "no clip" rather than a wrong one; a clip can also 404 once Zoom's own recording-retention window passes.
 
 Data flows **in only** — nothing is pushed back to Zoom except a best-effort token revoke on disconnect.
 
@@ -123,7 +125,14 @@ Transcript VTT text → `cos_zoom_transcripts.content` (`content_type='vtt'`), w
 - `supabase/functions/disconnect-zoom/index.ts`
 - `supabase/functions/zoom-recordings-sync/index.ts`
 - `supabase/functions/extract-zoom-quotes/index.ts`
-- `supabase/migrations/20260612000000_zoom_credentials.sql`, `20260612000100_zoom_recordings.sql`, `20260612000200_zoom_transcripts.sql`, `20260628000000_calendar_zoom_meeting_id.sql`
+- `supabase/functions/zoom-media-proxy/index.ts` — Soundbites audio-streaming proxy (idea #10 Phase B)
+- `supabase/functions/_shared/parseVtt.ts` — shared WebVTT cue parser (idea #10 Phases A & B)
+- `supabase/functions/_shared/talkTime.ts` — talk-time ratio arithmetic (idea #10 Phase A)
+- `supabase/functions/_shared/quoteAlignment.ts` — quote-to-cue citation/verification (idea #10 Phase B)
+- `supabase/functions/_shared/zoomAuth.ts` — shared token-refresh logic (used by both `zoom-recordings-sync` and `zoom-media-proxy`)
+- `src/components/media/ClipPlayer.tsx` — Soundbites audio player
+- `src/hooks/useMeetingAnalysis.ts` — talk-time/sentiment view-consumer hook (idea #10 Phase A)
+- `supabase/migrations/20260612000000_zoom_credentials.sql`, `20260612000100_zoom_recordings.sql`, `20260612000200_zoom_transcripts.sql`, `20260628000000_calendar_zoom_meeting_id.sql`, `20260801003000_meeting_analysis.sql`, `20260802000000_soundbite_quote_timestamps.sql`
 - `src/components/cos/CosZoomSyncPanel.tsx`
 - `src/lib/calendar/matchEventToMember.ts` / `supabase/functions/_shared/matchEventToMember.ts`
 - `src/lib/calendar/titleSources.ts`
@@ -176,7 +185,7 @@ async function slackApi(method: string, params: Record<string, string> = {}) {
 - **Storage**: `user_slack_credentials` (PK `user_id`, one workspace per user) — `access_token`, `user_access_token`, `user_scope`, `scope`, `slack_team_id`, `slack_team_name`, `slack_user_id`, `slack_email`, `last_sync_at/status`, `sync_channels text[]` (legacy, see Slack §13.11 in `docs/SPECIFICATION.md`), plus `auto_sync_enabled`/`auto_sync_morning_hour_utc`/`auto_sync_midday_hour_utc` for the newer scheduled-sync feature. Client view `user_slack_credentials_public` strips the tokens.
 - **No token refresh** — intentional, per migration comment: `-- Slack bot tokens don't expire, so no refresh flow needed`. (Applies to the bot token; the user token's lifetime follows the same Slack no-expiry behavior.)
 - **Bot-vs-user ID pitfall handled explicitly in code**: `auth.test`'s `user_id` is the *bot's* id (identical across every install), so the account's `slack_user_id` must come from `tokenData.authed_user.id` instead, or the slash command lookup breaks for everyone.
-- **Slash-command / interactivity auth**: `slack-add-suggestion` verifies Slack's HMAC-SHA256 request signature (`X-Slack-Signature`/`X-Slack-Request-Timestamp`, 5-min replay window, constant-time compare). **`agent-slack-action` reads `SLACK_SIGNING_SECRET` into a variable but never calls a verify function on it** — a real gap, since that endpoint has `verify_jwt=false` and handles interactive `block_actions` payloads unauthenticated.
+- **Slash-command / interactivity auth**: both `slack-add-suggestion` and `agent-slack-action` verify Slack's HMAC-SHA256 request signature (`X-Slack-Signature`/`X-Slack-Request-Timestamp`, 5-min replay window, constant-time compare) before processing anything — `agent-slack-action` has `verify_jwt=false` (it must accept Slack's own unauthenticated interactive `block_actions` POSTs), so this is its only gate. Its `feedback:<log_id>:<type>` action additionally checks that the Slack-supplied `log_id` belongs to the resolved caller (`cos_agent_log.user_id`) before attaching feedback to it — the callback_id is otherwise just client-supplied data echoed back by Slack from the original message, so without this a forged action could attribute feedback to (or read) another user's log entry; fixed as part of the cross-user IDOR audit in `docs/SPECIFICATION.md` §13 item 24.
 
 ### Rate Limits
 
@@ -222,7 +231,6 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 - No refresh flow means a workspace-side revoke (app uninstalled, admin action) breaks sync silently — `last_sync_status` isn't updated to reflect it since the sync just returns empty results, not an auth error.
 - **Pagination: `users.list` now iterates via cursor** (fetches every page, not capped at one); **`conversations.list` is still capped at `limit=500` with no cursor follow-up** — workspaces with more channels than that have some unresolved/unmatched channels with no error surfaced.
 - **History fetch limits are small**: 20 for DMs, 50 for channels, no cursor-based follow-up — older messages in the window are silently dropped.
-- **Security gap**: `agent-slack-action` never verifies `SLACK_SIGNING_SECRET` against the incoming interactive payload, unlike its sibling `slack-add-suggestion` which does this correctly.
 - **`ts` string precision**: the *raw string* `msg.ts`, not the parsed float, is used in the DB unique key — intentional, avoids float-precision collisions.
 - **`slack-messages-sync` re-fetches `users.list` and `conversations.list` in full on every run** — no caching between invocations, compounding the "no pagination, no rate-limit handling" risk for large workspaces.
 - **A prior cron misconfiguration meant `daily-prep-batch` (and therefore this Slack sync path) silently never ran in production** — an early pg_cron job built its URL/auth from unset Postgres GUCs; fixed by hardcoding the URL in a later migration.
