@@ -312,7 +312,7 @@ export function DOPanelContent({
         <div>
           <label className={`text-sm font-medium ${!selectedNode.data.primarySuccessMetric || selectedNode.data.primarySuccessMetric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
           <textarea
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none placeholder:text-muted-foreground"
             rows={3}
             placeholder="e.g., OpEx management and achievement of SI-level metrics"
             value={selectedNode.data.primarySuccessMetric || ""}
