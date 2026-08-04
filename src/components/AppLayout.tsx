@@ -48,12 +48,19 @@ export function AppLayout() {
 
   const isInbox = location.pathname.startsWith("/inbox");
 
+  // RCDO detail pages (DO/SI/all-hands) render their own independently-scrolling
+  // sidebar tree + main content columns. That only works if this outer shell is
+  // height-bounded — otherwise the whole page scrolls as one unit and the sidebar
+  // and main content scroll together instead of separately.
+  const isRCDODetail = location.pathname.startsWith("/rcdo/detail") || location.pathname.startsWith("/rcdo/all-hands");
+  const useFullHeightShell = isInbox || isRCDODetail;
+
   return (
-    <div className={isInbox ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
+    <div className={useFullHeightShell ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
       <AppNavbar />
       {isChiefOfStaff && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
-        {isInbox ? (
+        {useFullHeightShell ? (
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
             <Outlet />
           </div>
