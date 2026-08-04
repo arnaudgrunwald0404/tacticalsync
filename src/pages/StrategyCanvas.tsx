@@ -606,8 +606,12 @@ export default function StrategyCanvasPage() {
   const collabUrl = import.meta.env.VITE_COLLAB_WS_URL || "ws://localhost:1234";
   const roomName = cycleId ? `strategy-canvas-${cycleId}` : "strategy-canvas-default";
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(makeInitialNodes());
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeInitialEdges());
+  // Gates the canvas render until the initial Supabase load (snapshot or
+  // DB-built fallback) resolves, so users never see the "DO 1"/"DO 2" template
+  // placeholders flash before real titles are known.
+  const [canvasLoading, setCanvasLoading] = useState(true);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
@@ -927,6 +931,7 @@ export default function StrategyCanvasPage() {
           setNodes(loadedNodes);
         }
         setEdges(filteredEdges);
+        setCanvasLoading(false);
         return;
       } else if (snapshotLooksLikeTemplate) {
         console.log('[Canvas] Ignoring template snapshot; rebuilding from DB…');
@@ -941,7 +946,14 @@ export default function StrategyCanvasPage() {
           .maybeSingle();
 
         if (rcErr) console.warn('[Canvas] RC query error:', rcErr);
-        if (!rc) { console.log('[Canvas] No rallying cry found for cycle', cycleId); return; }
+        if (!rc) {
+          console.log('[Canvas] No rallying cry found for cycle', cycleId);
+          // Genuinely new/empty strategy — show the editable template, but only
+          // if a collaborator hasn't already synced real content via Yjs.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
+          setCanvasLoading(false);
+          return;
+        }
 
         const { data: dos, error: dosErr } = await supabase
           .from('rc_defining_objectives')
@@ -1077,9 +1089,15 @@ export default function StrategyCanvasPage() {
             });
             setSiProgressMap(new Map(progressEntries));
           }
+        } else {
+          // Rallying cry exists but no DOs yet — genuinely empty; show the
+          // editable template unless a collaborator already synced real content.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
         }
+        setCanvasLoading(false);
       } catch (_e) {
         // ignore; leave template visible
+        setCanvasLoading(false);
       }
     })();
   }, [cycleId, roomName]);
@@ -2370,6 +2388,11 @@ const duplicateSelectedDo = useCallback(() => {
         <div className="absolute top-4 left-4 z-10 text-xs text-muted-foreground/60 pointer-events-none">
           Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.
         </div>
+        {canvasLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <Loader2 className="h-6 w-6 animate-spin text-[#4A5D5F]" />
+          </div>
+        ) : (
         <ReactFlow
           nodes={filteredNodes}
           edges={filteredEdges}
@@ -2415,6 +2438,7 @@ const duplicateSelectedDo = useCallback(() => {
           <Controls />
           <Background color="#6B9A8F" gap={10} size={1} />
         </ReactFlow>
+        )}
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
           <CheckinFeedSidebar viewAsUserId={viewAsUserId} filteredNodeIds={visibleParentIds} cycleId={cycleId} />
