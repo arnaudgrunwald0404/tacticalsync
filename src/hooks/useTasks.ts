@@ -8,6 +8,16 @@ import type {
   UpdateTaskForm,
 } from '@/types/rcdo';
 
+// Supabase's PostgrestError is a plain object, not an Error instance, so
+// `err instanceof Error` misses it and swallows the real message.
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+    return err.message;
+  }
+  return fallback;
+}
+
 // ============================================================================
 // useTasks - Fetch tasks, optionally filtered by SI
 // ============================================================================
@@ -48,7 +58,7 @@ export function useTasks(siId?: string) {
 
       setTasks((data || []) as TaskWithRelations[]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tasks';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch tasks');
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -111,7 +121,7 @@ export function useTaskDetails(taskId: string | undefined) {
 
       setTask(data as TaskWithRelations);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch task';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch task');
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -172,7 +182,7 @@ export function useMyTasks() {
 
       setTasks((data || []) as TaskWithRelations[]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch my tasks';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch my tasks');
       setError(errorMessage);
       toast({
         title: 'Error',
