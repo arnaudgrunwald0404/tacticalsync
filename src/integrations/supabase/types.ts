@@ -881,6 +881,7 @@ export type Database = {
           description: string | null
           end_time: string
           google_event_id: string
+          group_meeting_id: string | null
           id: string
           inferred_category: string
           last_synced_at: string
@@ -903,6 +904,7 @@ export type Database = {
           description?: string | null
           end_time: string
           google_event_id: string
+          group_meeting_id?: string | null
           id?: string
           inferred_category?: string
           last_synced_at?: string
@@ -925,6 +927,7 @@ export type Database = {
           description?: string | null
           end_time?: string
           google_event_id?: string
+          group_meeting_id?: string | null
           id?: string
           inferred_category?: string
           last_synced_at?: string
@@ -939,6 +942,13 @@ export type Database = {
           zoom_meeting_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_one_on_one_events_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cos_one_on_one_events_team_member_id_fkey"
             columns: ["team_member_id"]
@@ -3982,7 +3992,7 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_rc_tasks_owner_user_id_profiles"
+            foreignKeyName: "rc_tasks_owner_user_id_fkey"
             columns: ["owner_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
