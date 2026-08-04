@@ -390,7 +390,7 @@ export function SIPanelContent({
         <div>
           <label className={`text-sm font-medium ${!si.metric || si.metric.trim() === '' ? 'text-red-600 dark:text-red-400' : ''}`}>Primary Success Metric</label>
           <textarea
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none placeholder:text-muted-foreground"
             rows={3}
             placeholder="e.g., % conversion, NPS, etc."
             value={si.metric || ""}
@@ -413,7 +413,7 @@ export function SIPanelContent({
         <div>
           <label className="text-sm font-medium">Benchmark</label>
           <textarea
-            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+            className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none placeholder:text-muted-foreground"
             rows={2}
             placeholder="e.g., baseline or target comparison"
             value={si.benchmark || ""}
