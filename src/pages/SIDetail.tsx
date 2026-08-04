@@ -592,6 +592,11 @@ export default function SIDetail() {
           try { await updateInitiative(siDetails.id as string, { description: val || null }); await refetchSI(); }
           catch (e) { toast({ title: 'Update failed', description: 'Could not save description', variant: 'destructive' }); }
         }}
+        primarySuccessMetric={siDetails.primary_success_metric as string | null ?? ''}
+        onPrimarySuccessMetricChange={async (val) => {
+          try { await updateInitiative(siDetails.id as string, { primary_success_metric: val || null }); await refetchSI(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save primary success metric', variant: 'destructive' }); }
+        }}
         onOwnerChange={async (val) => {
           try { await updateInitiative(siDetails.id as string, { owner_user_id: val }); await refetchSI(); }
           catch (e) { toast({ title: 'Update failed', description: 'Could not save owner', variant: 'destructive' }); }
