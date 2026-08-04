@@ -150,7 +150,7 @@ export function DetailPageHeader({
   useEffect(() => { setMetricDraft(primarySuccessMetric ?? ''); }, [primarySuccessMetric]);
 
   // DO's "description" is really its Definition & Hypothesis — same field/wording as the canvas panel.
-  const descriptionLabel = type === 'do' ? 'Definition & Hypothesis' : null;
+  const descriptionLabel = type === 'do' ? 'Definition & Hypothesis' : 'Description';
   const descriptionPlaceholder = type === 'do'
     ? 'If we do X, then Y will happen because Z...'
     : 'Add a description...';
@@ -245,20 +245,11 @@ export function DetailPageHeader({
 
       {/* Description */}
       <div className="group/desc mb-3">
-        {descriptionLabel && (
+        {descriptionLabel && editingDesc && (
           <div className="flex items-center gap-1 mb-1">
-            <label className={`text-sm font-medium ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+            <label className={`text-sm font-bold ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
               {descriptionLabel}
             </label>
-            {!editingDesc && !isLocked && canEdit && onDescriptionChange && (
-              <button
-                type="button"
-                onClick={() => setEditingDesc(true)}
-                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         )}
         {editingDesc ? (
@@ -283,33 +274,42 @@ export function DetailPageHeader({
             className="w-full text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
           />
         ) : (
-          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-            {strippedDescription
-              ? strippedDescription
-              : onDescriptionChange
-                ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
-                : null}
-          </p>
-        )}
-      </div>
-
-      {/* Primary Success Metric — DO only */}
-      {type === 'do' && (primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
-        <div className="group/metric mb-3">
-          <div className="flex items-center gap-1 mb-1">
-            <label className={`text-sm font-medium ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-              Primary Success Metric
-            </label>
-            {!editingMetric && !isLocked && canEdit && onPrimarySuccessMetricChange && (
+          <div className="flex items-start gap-1.5 flex-wrap">
+            {descriptionLabel && (
+              <label className={`text-sm font-bold shrink-0 ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                {descriptionLabel}:
+              </label>
+            )}
+            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1 min-w-[120px]">
+              {strippedDescription
+                ? strippedDescription
+                : onDescriptionChange
+                  ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
+                  : null}
+            </p>
+            {!isLocked && canEdit && onDescriptionChange && (
               <button
                 type="button"
-                onClick={() => setEditingMetric(true)}
-                className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+                onClick={() => setEditingDesc(true)}
+                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Primary Success Metric */}
+      {(primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
+        <div className="group/metric mb-3">
+          {editingMetric && (
+            <div className="flex items-center gap-1 mb-1">
+              <label className={`text-sm font-bold ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                Primary Success Metric
+              </label>
+            </div>
+          )}
           {editingMetric ? (
             <textarea
               value={metricDraft}
@@ -332,13 +332,27 @@ export function DetailPageHeader({
               className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
             />
           ) : (
-            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-              {primarySuccessMetric?.trim()
-                ? primarySuccessMetric
-                : onPrimarySuccessMetricChange
-                  ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
-                  : null}
-            </p>
+            <div className="flex items-start gap-1.5 flex-wrap">
+              <label className={`text-sm font-bold shrink-0 ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                Primary Success Metric:
+              </label>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1 min-w-[120px]">
+                {primarySuccessMetric?.trim()
+                  ? primarySuccessMetric
+                  : onPrimarySuccessMetricChange
+                    ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
+                    : null}
+              </p>
+              {!isLocked && canEdit && onPrimarySuccessMetricChange && (
+                <button
+                  type="button"
+                  onClick={() => setEditingMetric(true)}
+                  className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
