@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus, Layers, Calendar, CheckCircle, Trash2 } from 'lucide-react';
 import { useCycles } from '@/hooks/useRCDO';
+import { supabase } from '@/integrations/supabase/client';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
