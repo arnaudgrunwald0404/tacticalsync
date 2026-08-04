@@ -508,6 +508,13 @@ function computeDOCardLayout(count: number): { w: number; gapX: number } {
   return { w, gapX: w + DO_BASE_MARGIN };
 }
 
+// The Rallying Cry card should be exactly as wide as a single DO card —
+// not the fixed 280px default — so it visually matches the cards below it.
+function computeRallyWidth(doCount: number): number {
+  if (doCount <= 0) return DEFAULT_NODE_DIMENSIONS.rally.w;
+  return computeDOCardLayout(doCount).w;
+}
+
 // Re-centers a row of DO nodes and applies computeDOCardLayout's width for
 // the current count. Used whenever DO nodes are (re)hydrated — from a fresh
 // DB build, an import, or a reconciled cached snapshot — so cards widen (or
@@ -599,8 +606,12 @@ export default function StrategyCanvasPage() {
   const collabUrl = import.meta.env.VITE_COLLAB_WS_URL || "ws://localhost:1234";
   const roomName = cycleId ? `strategy-canvas-${cycleId}` : "strategy-canvas-default";
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(makeInitialNodes());
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeInitialEdges());
+  // Gates the canvas render until the initial Supabase load (snapshot or
+  // DB-built fallback) resolves, so users never see the "DO 1"/"DO 2" template
+  // placeholders flash before real titles are known.
+  const [canvasLoading, setCanvasLoading] = useState(true);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
@@ -899,12 +910,28 @@ export default function StrategyCanvasPage() {
           const doNodesForLayout = reconciledNodes.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>;
           const laidOutDoNodes = layoutDONodesRow(doNodesForLayout, centerX);
 
-          setNodes([...nonDoNodes, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
+          // The Rallying Cry card should be exactly as wide as one DO card,
+          // centered on the same reference point the DO row is centered on.
+          const doRowCount = doNodesForLayout.length;
+          const rallyWidth = computeRallyWidth(doRowCount);
+          const nonDoNodesResized = nonDoNodes.map((n) => {
+            if (n.type !== 'rally' || doRowCount <= 0) return n;
+            const prevPos = n.position as { x: number; y: number };
+            const prevSize = (n.data as Record<string, unknown> | undefined)?.size as { w: number; h: number } | undefined;
+            return {
+              ...n,
+              position: { x: centerX, y: prevPos.y },
+              data: { ...(n.data || {}), size: { w: rallyWidth, h: prevSize?.h ?? DEFAULT_NODE_DIMENSIONS.rally.h } },
+            };
+          });
+
+          setNodes([...nonDoNodesResized, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
         }
         setEdges(filteredEdges);
+        setCanvasLoading(false);
         return;
       } else if (snapshotLooksLikeTemplate) {
         console.log('[Canvas] Ignoring template snapshot; rebuilding from DB…');
@@ -919,7 +946,14 @@ export default function StrategyCanvasPage() {
           .maybeSingle();
 
         if (rcErr) console.warn('[Canvas] RC query error:', rcErr);
-        if (!rc) { console.log('[Canvas] No rallying cry found for cycle', cycleId); return; }
+        if (!rc) {
+          console.log('[Canvas] No rallying cry found for cycle', cycleId);
+          // Genuinely new/empty strategy — show the editable template, but only
+          // if a collaborator hasn't already synced real content via Yjs.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
+          setCanvasLoading(false);
+          return;
+        }
 
         const { data: dos, error: dosErr } = await supabase
           .from('rc_defining_objectives')
@@ -961,6 +995,7 @@ export default function StrategyCanvasPage() {
         const { w: doWidth, gapX } = computeDOCardLayout(count);
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
+        const rallyWidth = computeRallyWidth(count);
 
         const builtNodes: Node<NodeData>[] = [
           {
@@ -972,7 +1007,7 @@ export default function StrategyCanvasPage() {
               rallyCandidates: [rc.title],
               rallySelectedIndex: 0,
               rallyFinalized: true,
-              size: { w: 280, h: 100 },
+              size: { w: rallyWidth, h: 100 },
             },
           },
         ];
@@ -1054,9 +1089,15 @@ export default function StrategyCanvasPage() {
             });
             setSiProgressMap(new Map(progressEntries));
           }
+        } else {
+          // Rallying cry exists but no DOs yet — genuinely empty; show the
+          // editable template unless a collaborator already synced real content.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
         }
+        setCanvasLoading(false);
       } catch (_e) {
         // ignore; leave template visible
+        setCanvasLoading(false);
       }
     })();
   }, [cycleId, roomName]);
@@ -1959,6 +2000,7 @@ const duplicateSelectedDo = useCallback(() => {
       const { w: doWidth, gapX } = computeDOCardLayout(doCount);
       const totalWidth = (doCount - 1) * gapX;
       const startX = baseX - totalWidth / 2;
+      const rallyWidth = computeRallyWidth(doCount);
 
       type ImportDORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
       type ImportSIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; primary_success_metric?: string; benchmark?: string; defining_objective_id: string; status?: string; locked_at?: string | null; start_date?: string | null; end_date?: string | null; created_at?: string };
@@ -1973,7 +2015,7 @@ const duplicateSelectedDo = useCallback(() => {
             rallyCandidates: [rcRow?.title || parsedData.rallyingCry],
             rallySelectedIndex: 0,
             rallyFinalized: true,
-            size: { w: 280, h: 100 },
+            size: { w: rallyWidth, h: 100 },
           },
         },
       ];
@@ -2346,6 +2388,11 @@ const duplicateSelectedDo = useCallback(() => {
         <div className="absolute top-4 left-4 z-10 text-xs text-muted-foreground/60 pointer-events-none">
           Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.
         </div>
+        {canvasLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <Loader2 className="h-6 w-6 animate-spin text-[#4A5D5F]" />
+          </div>
+        ) : (
         <ReactFlow
           nodes={filteredNodes}
           edges={filteredEdges}
@@ -2391,6 +2438,7 @@ const duplicateSelectedDo = useCallback(() => {
           <Controls />
           <Background color="#6B9A8F" gap={10} size={1} />
         </ReactFlow>
+        )}
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
           <CheckinFeedSidebar viewAsUserId={viewAsUserId} filteredNodeIds={visibleParentIds} cycleId={cycleId} />

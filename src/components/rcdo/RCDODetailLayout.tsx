@@ -1,4 +1,5 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LayoutGrid, Menu } from 'lucide-react';
 import GridBackground from '@/components/ui/grid-background';
@@ -8,13 +9,22 @@ import { useRCDODetail } from '@/contexts/RCDODetailContext';
 
 export function RCDODetailLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { navState, setNavState } = useRCDODetail();
   const { rallyingCryId, cycleId, currentDOId, currentSIId, currentTaskId, mobileNavOpen } = navState;
 
   const setMobileNavOpen = (open: boolean) => setNavState({ mobileNavOpen: open });
 
+  // The main content pane persists across DO/SI/task navigations (only the
+  // Outlet's children swap), so its scrollTop would otherwise carry over from
+  // whatever was previously viewed. Reset it whenever the selected item changes.
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    mainContentRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
+
   return (
-    <GridBackground inverted className="flex flex-col min-h-screen bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
+    <GridBackground inverted className="flex flex-col h-full min-h-0 bg-gradient-to-br from-[#F5F3F0] via-white to-[#F8F6F2] overscroll-none">
       {/* Mobile Navigation Menu Button */}
       {rallyingCryId && (
         <div className="md:hidden px-4 py-2 border-b bg-white">
@@ -66,7 +76,7 @@ export function RCDODetailLayout() {
             </div>
           </>
         )}
-        <div className="container mx-auto px-4 py-4 max-w-7xl flex-1 overflow-y-auto">
+        <div ref={mainContentRef} className="container mx-auto px-4 py-4 max-w-7xl flex-1 overflow-y-auto">
           <Outlet />
         </div>
       </div>
