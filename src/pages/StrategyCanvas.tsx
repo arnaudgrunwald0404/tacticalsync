@@ -508,6 +508,15 @@ function computeDOCardLayout(count: number): { w: number; gapX: number } {
   return { w, gapX: w + DO_BASE_MARGIN };
 }
 
+// The Rallying Cry card sits above the DO row and should always span exactly
+// as wide as that row (left edge of the first DO to right edge of the last),
+// however that row is centered — not the fixed 280px default.
+function computeRallyWidth(doCount: number): number {
+  if (doCount <= 0) return DEFAULT_NODE_DIMENSIONS.rally.w;
+  const { w, gapX } = computeDOCardLayout(doCount);
+  return (doCount - 1) * gapX + w;
+}
+
 // Re-centers a row of DO nodes and applies computeDOCardLayout's width for
 // the current count. Used whenever DO nodes are (re)hydrated — from a fresh
 // DB build, an import, or a reconciled cached snapshot — so cards widen (or
@@ -899,7 +908,24 @@ export default function StrategyCanvasPage() {
           const doNodesForLayout = reconciledNodes.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>;
           const laidOutDoNodes = layoutDONodesRow(doNodesForLayout, centerX);
 
-          setNodes([...nonDoNodes, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
+          // The Rallying Cry card should always span exactly as wide as the DO
+          // row beneath it, whatever that row's width/centering worked out to.
+          const doRowCount = doNodesForLayout.length;
+          const { gapX: doRowGapX } = computeDOCardLayout(doRowCount);
+          const doRowStartX = centerX - ((doRowCount - 1) * doRowGapX) / 2;
+          const rallyWidth = computeRallyWidth(doRowCount);
+          const nonDoNodesResized = nonDoNodes.map((n) => {
+            if (n.type !== 'rally' || doRowCount <= 0) return n;
+            const prevPos = n.position as { x: number; y: number };
+            const prevSize = (n.data as Record<string, unknown> | undefined)?.size as { w: number; h: number } | undefined;
+            return {
+              ...n,
+              position: { x: doRowStartX, y: prevPos.y },
+              data: { ...(n.data || {}), size: { w: rallyWidth, h: prevSize?.h ?? DEFAULT_NODE_DIMENSIONS.rally.h } },
+            };
+          });
+
+          setNodes([...nonDoNodesResized, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
@@ -961,18 +987,20 @@ export default function StrategyCanvasPage() {
         const { w: doWidth, gapX } = computeDOCardLayout(count);
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
+        const rallyWidth = computeRallyWidth(count);
+        const rallyX = count > 0 ? startX : baseX;
 
         const builtNodes: Node<NodeData>[] = [
           {
             id: ROOT_ID,
             type: 'rally',
-            position: { x: baseX, y: baseY },
+            position: { x: rallyX, y: baseY },
             data: {
               title: '',
               rallyCandidates: [rc.title],
               rallySelectedIndex: 0,
               rallyFinalized: true,
-              size: { w: 280, h: 100 },
+              size: { w: rallyWidth, h: 100 },
             },
           },
         ];
@@ -1959,6 +1987,8 @@ const duplicateSelectedDo = useCallback(() => {
       const { w: doWidth, gapX } = computeDOCardLayout(doCount);
       const totalWidth = (doCount - 1) * gapX;
       const startX = baseX - totalWidth / 2;
+      const rallyWidth = computeRallyWidth(doCount);
+      const rallyX = doCount > 0 ? startX : baseX;
 
       type ImportDORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
       type ImportSIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; primary_success_metric?: string; benchmark?: string; defining_objective_id: string; status?: string; locked_at?: string | null; start_date?: string | null; end_date?: string | null; created_at?: string };
@@ -1967,13 +1997,13 @@ const duplicateSelectedDo = useCallback(() => {
         {
           id: ROOT_ID,
           type: 'rally',
-          position: { x: baseX, y: baseY },
+          position: { x: rallyX, y: baseY },
           data: {
             title: '',
             rallyCandidates: [rcRow?.title || parsedData.rallyingCry],
             rallySelectedIndex: 0,
             rallyFinalized: true,
-            size: { w: 280, h: 100 },
+            size: { w: rallyWidth, h: 100 },
           },
         },
       ];
