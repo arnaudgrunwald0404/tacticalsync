@@ -263,7 +263,7 @@ export function SubSIPanelContent({
           <div>
             <label className="text-sm font-medium">Description</label>
             <textarea
-              className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none"
+              className="mt-1 w-full rounded border px-2 py-2 text-sm bg-background resize-none placeholder:text-muted-foreground"
               rows={4}
               placeholder="What does this sub-initiative cover?"
               value={row.description || ''}
