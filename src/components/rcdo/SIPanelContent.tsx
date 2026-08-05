@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, ChevronRight, FileText, Pencil, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import type { InitiativeStatus } from '@/types/rcdo';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { updateInitiative } from '@/hooks/useRCDOMutations';
+import { getSILockBlockers } from '@/lib/rcdoValidation';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -158,6 +159,14 @@ export function SIPanelContent({
   const isDOLocked = doStatus?.locked ?? false;
   const isSILocked = siWithProgress?.locked_at ? true : false;
   const isLocked = isDOLocked || isSILocked;
+  const siLockBlockers = useMemo(() => getSILockBlockers({
+    title: si.title,
+    description: si.description,
+    ownerId: si.ownerId,
+    metric: si.metric,
+    startDate: (siWithProgress?.start_date as string | null) ?? null,
+    endDate: (siWithProgress?.end_date as string | null) ?? null,
+  }), [si.title, si.description, si.ownerId, si.metric, siWithProgress?.start_date, siWithProgress?.end_date]);
   const showPercentToGoal = isFeatureEnabled('siProgress') && isDOLocked && isSILocked && siWithProgress?.latestPercentToGoal !== null && siWithProgress?.latestPercentToGoal !== undefined;
   
   // Status should be editable when SI is unlocked OR when user is SI owner/admin (per PRD, status updates are allowed even when locked)
@@ -211,10 +220,19 @@ export function SIPanelContent({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 {!isSILocked && onLockSI && (
-                  <DropdownMenuItem onClick={onLockSI}>
-                    <Lock className="h-3.5 w-3.5 mr-2" />
-                    Lock this SI
-                  </DropdownMenuItem>
+                  siLockBlockers.length > 0 ? (
+                    <span className="block" title={`Missing: ${siLockBlockers.join(', ')}`}>
+                      <DropdownMenuItem disabled>
+                        <Lock className="h-3.5 w-3.5 mr-2" />
+                        Lock this SI
+                      </DropdownMenuItem>
+                    </span>
+                  ) : (
+                    <DropdownMenuItem onClick={onLockSI}>
+                      <Lock className="h-3.5 w-3.5 mr-2" />
+                      Lock this SI
+                    </DropdownMenuItem>
+                  )
                 )}
                 {isSILocked && onUnlockSI && (
                   <DropdownMenuItem onClick={onUnlockSI}>
@@ -248,6 +266,27 @@ export function SIPanelContent({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+              {si.dbId && !isDOLocked && !isSILocked && onLockSI && (
+                siLockBlockers.length > 0 ? (
+                  <span className="block" title={`Missing: ${siLockBlockers.join(', ')}`}>
+                    <DropdownMenuItem disabled>
+                      <Lock className="h-3.5 w-3.5 mr-2" />
+                      Lock this SI
+                    </DropdownMenuItem>
+                  </span>
+                ) : (
+                  <DropdownMenuItem onClick={onLockSI}>
+                    <Lock className="h-3.5 w-3.5 mr-2" />
+                    Lock this SI
+                  </DropdownMenuItem>
+                )
+              )}
+              {si.dbId && !isDOLocked && isSILocked && onUnlockSI && (
+                <DropdownMenuItem onClick={onUnlockSI}>
+                  <Unlock className="h-3.5 w-3.5 mr-2" />
+                  Unlock this SI
+                </DropdownMenuItem>
+              )}
               {si.dbId && !isLocked && (() => {
                 const acceptsSubSis = siWithProgress?.accepts_sub_sis ?? false;
                 const hasSubSIs = subSIs.length > 0;

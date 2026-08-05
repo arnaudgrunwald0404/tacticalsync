@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, Plus, Lock, Unlock, Pencil } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { updateDO } from '@/hooks/useRCDOMutations';
 import { useDOMetrics } from '@/hooks/useRCDO';
+import { getDOLockBlockers } from '@/lib/rcdoValidation';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -95,6 +96,12 @@ export function DOPanelContent({
   const isLocked = doStatus?.locked ?? false;
   const dbId = doStatus?.dbId;
   const { upsertPrimaryMetric } = useDOMetrics(dbId);
+  const doLockBlockers = useMemo(() => getDOLockBlockers({
+    title: selectedNode.data.title,
+    hypothesis: selectedNode.data.hypothesis,
+    primarySuccessMetricName: selectedNode.data.primarySuccessMetric,
+    ownerId: selectedNode.data.ownerId,
+  }), [selectedNode.data.title, selectedNode.data.hypothesis, selectedNode.data.primarySuccessMetric, selectedNode.data.ownerId]);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -178,10 +185,19 @@ export function DOPanelContent({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 {!isLocked && onLockDO && (
-                  <DropdownMenuItem onClick={onLockDO}>
-                    <Lock className="h-3.5 w-3.5 mr-2" />
-                    Lock this DO
-                  </DropdownMenuItem>
+                  doLockBlockers.length > 0 ? (
+                    <span className="block" title={`Missing: ${doLockBlockers.join(', ')}`}>
+                      <DropdownMenuItem disabled>
+                        <Lock className="h-3.5 w-3.5 mr-2" />
+                        Lock this DO
+                      </DropdownMenuItem>
+                    </span>
+                  ) : (
+                    <DropdownMenuItem onClick={onLockDO}>
+                      <Lock className="h-3.5 w-3.5 mr-2" />
+                      Lock this DO
+                    </DropdownMenuItem>
+                  )
                 )}
                 {isLocked && canLock && onUnlockDO && (
                   <DropdownMenuItem onClick={onUnlockDO}>
@@ -215,6 +231,27 @@ export function DOPanelContent({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={duplicateSelectedDo}>Duplicate</DropdownMenuItem>
+              {dbId && !isLocked && onLockDO && (
+                doLockBlockers.length > 0 ? (
+                  <span className="block" title={`Missing: ${doLockBlockers.join(', ')}`}>
+                    <DropdownMenuItem disabled>
+                      <Lock className="h-3.5 w-3.5 mr-2" />
+                      Lock this DO
+                    </DropdownMenuItem>
+                  </span>
+                ) : (
+                  <DropdownMenuItem onClick={onLockDO}>
+                    <Lock className="h-3.5 w-3.5 mr-2" />
+                    Lock this DO
+                  </DropdownMenuItem>
+                )
+              )}
+              {dbId && isLocked && canLock && onUnlockDO && (
+                <DropdownMenuItem onClick={onUnlockDO}>
+                  <Unlock className="h-3.5 w-3.5 mr-2" />
+                  Unlock this DO
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="text-red-600" onClick={deleteSelectedDo}>Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
