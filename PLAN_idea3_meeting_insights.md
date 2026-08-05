@@ -1,6 +1,15 @@
 # Plan: Wire Meeting Insights into the Inbox (Idea #3)
 
-Status: DRAFT — for approval before any code is written.
+Status: SUPERSEDED. §4's inline Confirm/Save/Dismiss triage UI (meeting_insight
+rows landing directly in `inbox_items`) shipped per this plan, but was later
+replaced: standout quotes now surface as `dci_suggested_tasks(source_type=
+'meeting')` recommendations in the Inbox Suggestions panel instead — the same
+treatment Slack/Gmail action items get, accept/dismiss only, no separate
+triage buttons. See `docs/SPECIFICATION.md` §7.5 for the current design and
+`src/lib/meetingInsights.ts` for the implementation. §§1-3, 6-9 of this doc
+(extraction pipeline, source_ref shape discussion, risks, rollout/onboarding
+thinking) are still useful background; §4-5's triage-UI-in-`inbox_items`
+design is not what's live today.
 
 ## 1. Problem
 
