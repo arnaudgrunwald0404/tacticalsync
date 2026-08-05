@@ -16,8 +16,7 @@ export interface TagPickerTopOption {
 interface TagPickerDropdownProps {
   allTags: InboxTag[];
   itemTags: InboxTag[];
-  /** Called with one id for a plain click, or several once "Save" is pressed
-   *  after a multi-select (Shift/Cmd-click) session. */
+  /** Called with all ids selected once "Save" is pressed. */
   onSelectTags: (tagIds: string[]) => void | Promise<void>;
   onCreateTag?: (name: string, type: 'project' | 'folder') => Promise<InboxTag | null>;
   teamMembers?: TeamMember[];
@@ -26,10 +25,6 @@ interface TagPickerDropdownProps {
   topOptions?: TagPickerTopOption[];
   /** Custom trigger element. Defaults to the dashed "Tag" pill. */
   renderTrigger?: (state: { open: boolean; toggle: () => void }) => React.ReactNode;
-}
-
-function isMultiClick(e: React.MouseEvent): boolean {
-  return e.shiftKey || e.metaKey || e.ctrlKey;
 }
 
 function TagRow({ tag, selected, onClick }: { tag: InboxTag; selected: boolean; onClick: (e: React.MouseEvent) => void }) {
@@ -78,8 +73,6 @@ export function TagPickerDropdown({
   const ref = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const isMultiActive = selectedTagIds.size > 0 || selectedMemberIds.size > 0;
 
   const resetAndClose = () => {
     setOpen(false);
@@ -201,33 +194,20 @@ export function TagPickerDropdown({
     });
   };
 
-  const applyAndClose = (tagIds: string[]) => {
-    if (tagIds.length > 0) onSelectTags(tagIds);
-    resetAndClose();
+  const handleTagClick = (_e: React.MouseEvent, tagId: string) => {
+    toggleTag(tagId);
   };
 
-  const handleTagClick = (e: React.MouseEvent, tagId: string) => {
-    if (isMultiActive || isMultiClick(e)) toggleTag(tagId);
-    else applyAndClose([tagId]);
-  };
-
-  const handleMemberClick = async (e: React.MouseEvent, member: TeamMember) => {
-    if (isMultiActive || isMultiClick(e)) { toggleMember(member.id); return; }
-    if (!onCreatePersonTag) return;
-    const tag = await onCreatePersonTag(member);
-    if (tag) applyAndClose([tag.id]);
+  const handleMemberClick = (_e: React.MouseEvent, member: TeamMember) => {
+    toggleMember(member.id);
   };
 
   const handleCreate = async (type: 'project' | 'folder') => {
     if (!onCreateTag || !query.trim()) return;
     const tag = await onCreateTag(query.trim(), type);
     if (!tag) return;
-    if (isMultiActive) {
-      setSelectedTagIds(prev => new Set(prev).add(tag.id));
-      setQuery('');
-    } else {
-      applyAndClose([tag.id]);
-    }
+    setSelectedTagIds(prev => new Set(prev).add(tag.id));
+    setQuery('');
   };
 
   const handleSave = async () => {
@@ -391,7 +371,7 @@ export function TagPickerDropdown({
           {/* Hint for how multi-select works */}
           {selectedCount === 0 && (
             <p className="px-3 py-1.5 text-[10px] text-gray-300 border-t border-gray-100">
-              Shift or ⌘/Ctrl-click to select several, then Save
+              Select one or more, then Save
             </p>
           )}
         </div>,
