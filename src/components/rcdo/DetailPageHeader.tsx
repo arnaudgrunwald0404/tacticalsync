@@ -540,8 +540,11 @@ export function DetailPageHeader({
                 </DropdownMenuItem>
               )}
               {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                <DropdownMenuItem onClick={onBreakIntoSubSIs} className="flex-col items-start gap-0.5 py-2">
+                  <span className="text-xs text-muted-foreground">
+                    Sub-initiatives are {acceptsSubSis ? 'on' : 'off'}.
+                  </span>
+                  <span className="font-semibold">{acceptsSubSis ? 'Disable' : 'Enable'}</span>
                 </DropdownMenuItem>
               )}
               {onDelete && canDelete && (
