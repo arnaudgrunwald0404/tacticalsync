@@ -1,27 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import {
   isNoisySpeakerName,
-  meetingInsightDedupKey,
-  buildMeetingInsightSourceRef,
-  buildMeetingInsightText,
+  buildQuoteSuggestionFields,
   capMeetingInsights,
-  planTriageInsert,
-  planTriagePatch,
   MEETING_INSIGHT_CAP_PER_TRANSCRIPT,
   commitmentDedupKey,
   buildCommitmentSourceRef,
   buildCommitmentText,
   COMMITMENT_CAP_PER_TRANSCRIPT,
-  type ExtractedQuote,
-  type MeetingInsightContext,
+  type CommitmentContext,
   type ExtractedCommitment,
 } from '@/lib/meetingInsights';
-import type { InboxItem } from '@/types/inbox';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Covers the pure logic behind wiring extract-zoom-quotes -> inbox_items
-// (meeting_insight rows) and the Confirm/Save/Dismiss triage transitions.
-// See PLAN_idea3_meeting_insights.md §§3-4, 6.
+// Covers the pure logic behind wiring extract-zoom-quotes -> dci_suggested_tasks
+// (quote suggestions, source_type: 'meeting' — the same recommendation
+// surface email/Slack action items use) and the commitment ("who owes whom")
+// inbox rows.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('isNoisySpeakerName', () => {
@@ -51,90 +46,51 @@ describe('isNoisySpeakerName', () => {
   });
 });
 
-describe('meetingInsightDedupKey', () => {
-  it('trims speaker and quote for a stable key', () => {
-    const key = meetingInsightDedupKey('t1', '  Marcus  ', '  We ship Friday.  ');
-    expect(key).toEqual({ transcript_id: 't1', speaker_name: 'Marcus', quote: 'We ship Friday.' });
-  });
-
-  it('produces identical keys for the same tuple regardless of incidental whitespace', () => {
-    const a = meetingInsightDedupKey('t1', 'Marcus', 'We ship Friday.');
-    const b = meetingInsightDedupKey('t1', ' Marcus ', ' We ship Friday. ');
-    expect(a).toEqual(b);
-  });
-
-  it('produces different keys for different transcripts even with the same quote', () => {
-    const a = meetingInsightDedupKey('t1', 'Marcus', 'Same quote');
-    const b = meetingInsightDedupKey('t2', 'Marcus', 'Same quote');
-    expect(a).not.toEqual(b);
-  });
-});
-
-describe('buildMeetingInsightSourceRef', () => {
-  const ctx: MeetingInsightContext = {
-    userId: 'u1',
-    transcriptId: 'tr1',
-    recordingId: 'rec1',
-    quoteId: 'q1',
-    meetingTopic: 'Product Sync',
-    saidOn: '2026-07-03',
-  };
-  const quote: ExtractedQuote = { speaker: 'Marcus', quote: 'We ship Friday.', context: 'commitment' };
-
-  it('sets type to zoom_recording and mirrors id onto recording_id', () => {
-    const ref = buildMeetingInsightSourceRef(ctx, quote);
-    expect(ref.type).toBe('zoom_recording');
-    expect(ref.id).toBe('rec1');
-    expect(ref.recording_id).toBe('rec1');
-  });
-
-  it('carries transcript_id, quote_id, speaker_name, meeting_topic, said_on, context', () => {
-    const ref = buildMeetingInsightSourceRef(ctx, quote);
-    expect(ref.transcript_id).toBe('tr1');
-    expect(ref.quote_id).toBe('q1');
-    expect(ref.speaker_name).toBe('Marcus');
-    expect(ref.meeting_topic).toBe('Product Sync');
-    expect(ref.said_on).toBe('2026-07-03');
-    expect(ref.context).toBe('commitment');
-  });
-
-  it('omits quote_id when the speaker was unmatched', () => {
-    const unmatchedCtx: MeetingInsightContext = { ...ctx, quoteId: null };
-    const ref = buildMeetingInsightSourceRef(unmatchedCtx, quote);
-    expect(ref.quote_id).toBeUndefined();
-    // speaker_name must still be present even without a match (plan §3).
-    expect(ref.speaker_name).toBe('Marcus');
-  });
-});
-
-describe('buildMeetingInsightText', () => {
-  it('includes speaker, quote, meeting name, and short date when all present', () => {
-    const text = buildMeetingInsightText(
+describe('buildQuoteSuggestionFields', () => {
+  it('builds a title from speaker + quote only, no meeting/date suffix', () => {
+    const fields = buildQuoteSuggestionFields(
       { speaker: 'Marcus', quote: "We're not going to hit Q3 unless we cut scope now." },
       'Product Sync',
-      '2026-07-03',
     );
-    expect(text).toBe('Marcus said: "We\'re not going to hit Q3 unless we cut scope now." — from Product Sync, Jul 3');
+    expect(fields.title).toBe('Marcus said: "We\'re not going to hit Q3 unless we cut scope now."');
   });
 
-  it('falls back to omitting the date when saidOn is missing', () => {
-    const text = buildMeetingInsightText({ speaker: 'Marcus', quote: 'Ship it.' }, 'Product Sync', null);
-    expect(text).toBe('Marcus said: "Ship it." — from Product Sync');
+  it('sets source_type to meeting and carries the meeting topic as source', () => {
+    const fields = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: 'Ship it.' }, 'Product Sync');
+    expect(fields.source_type).toBe('meeting');
+    expect(fields.source).toBe('Product Sync');
   });
 
-  it('falls back to just speaker+quote when meetingTopic is missing', () => {
-    const text = buildMeetingInsightText({ speaker: 'Marcus', quote: 'Ship it.' }, null, '2026-07-03');
-    expect(text).toBe('Marcus said: "Ship it."');
+  it('falls back to a null source when meetingTopic is missing', () => {
+    const fields = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: 'Ship it.' }, null);
+    expect(fields.source).toBeNull();
+  });
+
+  it('carries context as rationale, null when absent', () => {
+    const withContext = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: 'Ship it.', context: 'commitment' }, null);
+    expect(withContext.rationale).toBe('commitment');
+    const withoutContext = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: 'Ship it.' }, null);
+    expect(withoutContext.rationale).toBeNull();
+  });
+
+  it('carries the trimmed verbatim quote as raw_context', () => {
+    const fields = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: '  Ship it.  ' }, null);
+    expect(fields.raw_context).toBe('Ship it.');
+  });
+
+  it('defaults urgency to watching (informational, no follow-through implied)', () => {
+    const fields = buildQuoteSuggestionFields({ speaker: 'Marcus', quote: 'Ship it.' }, null);
+    expect(fields.urgency).toBe('watching');
   });
 
   it('trims speaker and quote', () => {
-    const text = buildMeetingInsightText({ speaker: '  Marcus  ', quote: '  Ship it.  ' }, null, null);
-    expect(text).toBe('Marcus said: "Ship it."');
+    const fields = buildQuoteSuggestionFields({ speaker: '  Marcus  ', quote: '  Ship it.  ' }, null);
+    expect(fields.title).toBe('Marcus said: "Ship it."');
   });
 });
 
 describe('capMeetingInsights', () => {
-  it('defaults to the plan-mandated cap of 2', () => {
+  it('defaults to the mandated cap of 2', () => {
     expect(MEETING_INSIGHT_CAP_PER_TRANSCRIPT).toBe(2);
     expect(capMeetingInsights([1, 2, 3])).toEqual([1, 2]);
   });
@@ -157,54 +113,6 @@ describe('capMeetingInsights', () => {
   });
 });
 
-describe('planTriageInsert', () => {
-  const baseItem: Pick<InboxItem, 'text' | 'source_ref'> = {
-    text: 'Marcus said: "We ship Friday." — from Product Sync, Jul 3',
-    source_ref: {
-      type: 'zoom_recording',
-      id: 'rec1',
-      recording_id: 'rec1',
-      transcript_id: 'tr1',
-      speaker_name: 'Marcus',
-      context: 'commitment',
-    },
-  };
-
-  it('confirm: plans a task row seeded from the insight text, source_ref carried over', () => {
-    const plan = planTriageInsert(baseItem, 'confirm');
-    expect(plan).not.toBeNull();
-    expect(plan!.type).toBe('task');
-    expect(plan!.text).toBe('Follow up: ' + baseItem.text);
-    expect(plan!.body).toBeNull();
-    expect(plan!.source_ref).toEqual(baseItem.source_ref);
-  });
-
-  it('save: plans a note row with the context as the short label and full text as body', () => {
-    const plan = planTriageInsert(baseItem, 'save');
-    expect(plan).not.toBeNull();
-    expect(plan!.type).toBe('note');
-    expect(plan!.text).toBe('commitment');
-    expect(plan!.body).toBe(baseItem.text);
-    expect(plan!.source_ref).toEqual(baseItem.source_ref);
-  });
-
-  it('save: falls back to a truncated item text as the label when context is absent', () => {
-    const noContext = { ...baseItem, source_ref: { type: 'zoom_recording' as const, id: 'rec1' } };
-    const plan = planTriageInsert(noContext, 'save');
-    expect(plan!.text).toBe(baseItem.text.slice(0, 80));
-  });
-
-  it('dismiss: plans no new row', () => {
-    expect(planTriageInsert(baseItem, 'dismiss')).toBeNull();
-  });
-
-  it('confirm/save: default to a manual source_ref when the original item has none', () => {
-    const noRef = { text: 'Something said in a meeting', source_ref: null };
-    const plan = planTriageInsert(noRef, 'confirm');
-    expect(plan!.source_ref).toEqual({ type: 'manual' });
-  });
-});
-
 describe('commitmentDedupKey', () => {
   it('trims owner and commitment for a stable key', () => {
     const key = commitmentDedupKey('t1', '  Marcus  ', '  Send the numbers by EOD.  ');
@@ -219,7 +127,7 @@ describe('commitmentDedupKey', () => {
 });
 
 describe('buildCommitmentSourceRef', () => {
-  const ctx: MeetingInsightContext = {
+  const ctx: CommitmentContext = {
     userId: 'u1',
     transcriptId: 'tr1',
     recordingId: 'rec1',
@@ -285,30 +193,5 @@ describe('COMMITMENT_CAP_PER_TRANSCRIPT', () => {
   it('defaults to 5 and works with capMeetingInsights (shared prefix-take helper)', () => {
     expect(COMMITMENT_CAP_PER_TRANSCRIPT).toBe(5);
     expect(capMeetingInsights([1, 2, 3, 4, 5, 6], COMMITMENT_CAP_PER_TRANSCRIPT)).toEqual([1, 2, 3, 4, 5]);
-  });
-});
-
-describe('planTriagePatch', () => {
-  const now = new Date('2026-07-07T12:00:00.000Z');
-
-  it('confirm: marks the original insight done, not archived', () => {
-    const patch = planTriagePatch('confirm', now);
-    expect(patch.status).toBe('done');
-    expect(patch.done_at).toBe(now.toISOString());
-    expect(patch.archived_at).toBeNull();
-  });
-
-  it('save: archives the original insight (no follow-through expected)', () => {
-    const patch = planTriagePatch('save', now);
-    expect(patch.status).toBe('archived');
-    expect(patch.archived_at).toBe(now.toISOString());
-    expect(patch.done_at).toBeNull();
-  });
-
-  it('dismiss: archives the original insight, same as save', () => {
-    const patch = planTriagePatch('dismiss', now);
-    expect(patch.status).toBe('archived');
-    expect(patch.archived_at).toBe(now.toISOString());
-    expect(patch.done_at).toBeNull();
   });
 });

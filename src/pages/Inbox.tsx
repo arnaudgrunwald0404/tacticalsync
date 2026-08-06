@@ -10,9 +10,7 @@ import {
   Loader2, CheckSquare, Search, Keyboard, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
-import { MeetingInsightsIntroBanner } from '@/components/inbox/MeetingInsightsIntroBanner';
 import { WeekendBanner } from '@/components/WeekendBanner';
-import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
@@ -316,7 +314,6 @@ export default function InboxPage() {
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
   const { views, createView, deleteView, toggleStar, starredView } = useInboxViews(userId);
-  const { onboarding, markComplete: markOnboardingComplete } = useOnboardingState();
 
   // Debounce the search box (~250ms) into the actual filter so the query
   // isn't refired on every keystroke.
@@ -452,7 +449,7 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Gmail + Slack agent_question items live in the dark blue suggestions panel, not the main list.
   // Only items still requiring action (action_required: true) belong in the panel.
@@ -1516,14 +1513,6 @@ export default function InboxPage() {
               onApproveGmailItem={handleApproveSuggestion}
             />
           )}
-          {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
-              list, the first time this user's inbox has an open
-              meeting_insight item they haven't been introduced to yet. */}
-          {!onboarding.meetingInsightsIntro && items.some(i => i.type === 'meeting_insight' && i.status === 'open') && (
-            <div className="px-3 sm:px-4 pt-2">
-              <MeetingInsightsIntroBanner onDismiss={() => markOnboardingComplete('meetingInsightsIntro')} />
-            </div>
-          )}
           {syncing ? (
             <div className="flex flex-col items-center justify-center h-56 gap-3 px-6 text-center">
               <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
@@ -1586,7 +1575,6 @@ export default function InboxPage() {
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
               onCtaClick={handleCtaClick}
-              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
@@ -1615,7 +1603,6 @@ export default function InboxPage() {
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
               onCtaClick={handleCtaClick}
-              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               onSnooze={handleSnooze}

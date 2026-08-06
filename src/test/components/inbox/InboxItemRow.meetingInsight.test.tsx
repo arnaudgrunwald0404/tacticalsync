@@ -4,10 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { InboxItem, InboxTag } from '@/types/inbox';
 
-// Covers the meeting_insight-specific triage UI (Confirm/Save/Dismiss) added
-// per PLAN_idea3_meeting_insights.md §4/§5/§9.2: buttons render only for
-// type==='meeting_insight' && status==='open', call onTriageInsight with the
-// right action, and never appear for other item types or once triaged.
+// Covers the "View in recording" affordance still rendered for legacy
+// meeting_insight rows (archived/done rows created before quote suggestions
+// moved to dci_suggested_tasks — see src/lib/meetingInsights.ts). There is no
+// Confirm/Save/Dismiss triage UI on this row anymore: new quote suggestions
+// surface via InboxSuggestionsPanel (accept/dismiss), same as email/Slack.
 //
 // InboxItemRow pulls in useInboxDelegation, which touches the real Supabase
 // client module at import time (throws without VITE_SUPABASE_URL configured,
@@ -44,9 +45,9 @@ function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
     type: 'meeting_insight',
     text: 'Marcus said: "We ship Friday." — from Product Sync, Jul 3',
     body: null,
-    status: 'open',
+    status: 'archived',
     done_at: null,
-    archived_at: null,
+    archived_at: '2026-07-03T00:00:00.000Z',
     snoozed_until: null,
     agent_payload: null,
     source_ref: {
@@ -72,7 +73,7 @@ function noop() {}
 async function noopAsync() { return null; }
 async function noopVoid() { /* noop */ };
 
-function setup(item: InboxItem, onTriageInsight = vi.fn()) {
+function setup(item: InboxItem, onOpenDrawer = vi.fn()) {
   render(
     <TooltipProvider>
       <InboxItemRow
@@ -85,76 +86,14 @@ function setup(item: InboxItem, onTriageInsight = vi.fn()) {
         onCycleWorkflowStatus={noop}
         onCreateWorkstream={noopAsync}
         onUpdateItem={noopVoid}
-        onTriageInsight={onTriageInsight}
+        onOpenDrawer={onOpenDrawer}
       />
     </TooltipProvider>
   );
-  return { onTriageInsight };
+  return { onOpenDrawer };
 }
 
-describe('InboxItemRow — meeting_insight triage', () => {
-  it('renders Confirm/Save/Dismiss for an open meeting_insight item', () => {
-    setup(makeItem());
-    expect(screen.getByLabelText('Confirm — turn into a task')).toBeInTheDocument();
-    expect(screen.getByLabelText('Save as a note')).toBeInTheDocument();
-    expect(screen.getByLabelText('Dismiss')).toBeInTheDocument();
-  });
-
-  it('does not render triage buttons once the insight is no longer open', () => {
-    setup(makeItem({ status: 'archived' }));
-    expect(screen.queryByLabelText('Confirm — turn into a task')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Save as a note')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Dismiss')).not.toBeInTheDocument();
-  });
-
-  it('does not render triage buttons for other item types', () => {
-    setup(makeItem({ type: 'task' }));
-    expect(screen.queryByLabelText('Confirm — turn into a task')).not.toBeInTheDocument();
-  });
-
-  it('does not render triage buttons when onTriageInsight is not provided', () => {
-    render(
-      <TooltipProvider>
-        <InboxItemRow
-          item={makeItem()}
-          allTags={allTags}
-          onArchive={noop}
-          onDelete={noop}
-          onRemoveTag={noop}
-          onAddTag={noop}
-          onCycleWorkflowStatus={noop}
-          onCreateWorkstream={noopAsync}
-          onUpdateItem={noopVoid}
-        />
-      </TooltipProvider>
-    );
-    expect(screen.queryByLabelText('Confirm — turn into a task')).not.toBeInTheDocument();
-  });
-
-  it('clicking Confirm calls onTriageInsight with the item and "confirm"', async () => {
-    const item = makeItem();
-    const { onTriageInsight } = setup(item);
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText('Confirm — turn into a task'));
-    expect(onTriageInsight).toHaveBeenCalledWith(item, 'confirm');
-  });
-
-  it('clicking Save calls onTriageInsight with the item and "save"', async () => {
-    const item = makeItem();
-    const { onTriageInsight } = setup(item);
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText('Save as a note'));
-    expect(onTriageInsight).toHaveBeenCalledWith(item, 'save');
-  });
-
-  it('clicking Dismiss calls onTriageInsight with the item and "dismiss"', async () => {
-    const item = makeItem();
-    const { onTriageInsight } = setup(item);
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText('Dismiss'));
-    expect(onTriageInsight).toHaveBeenCalledWith(item, 'dismiss');
-  });
-
+describe('InboxItemRow — legacy meeting_insight display', () => {
   it('renders a "View in recording" link when source_ref has a recording_id', () => {
     setup(makeItem());
     expect(screen.getByText('View in recording')).toBeInTheDocument();
@@ -165,25 +104,14 @@ describe('InboxItemRow — meeting_insight triage', () => {
     expect(screen.queryByText('View in recording')).not.toBeInTheDocument();
   });
 
+  it('does not render "View in recording" for other item types', () => {
+    setup(makeItem({ type: 'task' }));
+    expect(screen.queryByText('View in recording')).not.toBeInTheDocument();
+  });
+
   it('clicking "View in recording" opens the drawer via onOpenDrawer', async () => {
     const item = makeItem();
-    const onOpenDrawer = vi.fn();
-    render(
-      <TooltipProvider>
-        <InboxItemRow
-          item={item}
-          allTags={allTags}
-          onArchive={noop}
-          onDelete={noop}
-          onRemoveTag={noop}
-          onAddTag={noop}
-          onCycleWorkflowStatus={noop}
-          onCreateWorkstream={noopAsync}
-          onUpdateItem={noopVoid}
-          onOpenDrawer={onOpenDrawer}
-        />
-      </TooltipProvider>
-    );
+    const { onOpenDrawer } = setup(item);
     const user = userEvent.setup();
     await user.click(screen.getByText('View in recording'));
     expect(onOpenDrawer).toHaveBeenCalledWith(item);
