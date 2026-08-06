@@ -2734,10 +2734,6 @@ const duplicateSelectedDo = useCallback(() => {
         
         return (
         <>
-          {/* Only show an overlay if the DO panel is NOT open */}
-          {selectedNode?.type !== "do" && (
-            <div className="fixed inset-0 z-[55] bg-black/30" onClick={() => setFocusedSI(null)} />
-          )}
           <SIPanelContent
             doNode={doNode}
             si={si}
