@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { useIsTouch } from '@/hooks/use-breakpoint';
 import { InboxItemRow } from './InboxItemRow';
 import { isAutoPinnedItem } from '@/lib/inboxValidation';
-import type { TriageAction } from '@/lib/meetingInsights';
 import type { InboxItem, InboxBucket, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -44,7 +43,7 @@ const BUCKETS: { id: InboxBucket; label: string; description: string; accent: st
 function SortableItem({
   item, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, isSelected, onSelect,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, isSelected, onSelect,
   prioritizeMode, isNew, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, isFocused,
 }: {
   item: InboxItem;
@@ -64,7 +63,6 @@ function SortableItem({
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   onCtaClick?: (item: InboxItem) => void;
-  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   isSelected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -121,7 +119,6 @@ function SortableItem({
           onAcceptSuggestion={onAcceptSuggestion}
           onDismissSuggestion={onDismissSuggestion}
           onCtaClick={onCtaClick}
-          onTriageInsight={onTriageInsight}
           isSelected={isSelected}
           onSelect={onSelect}
           prioritizeMode={prioritizeMode}
@@ -141,7 +138,7 @@ function SortableItem({
 function BucketSection({
   bucket, items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
+  onUpdateItem, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, selectedIds, onSelect,
   prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: {
   bucket: typeof BUCKETS[number];
@@ -162,7 +159,6 @@ function BucketSection({
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   onCtaClick?: (item: InboxItem) => void;
-  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -211,7 +207,6 @@ function BucketSection({
               onAcceptSuggestion={onAcceptSuggestion}
               onDismissSuggestion={onDismissSuggestion}
               onCtaClick={onCtaClick}
-              onTriageInsight={onTriageInsight}
               isSelected={selectedIds?.has(item.id)}
               onSelect={onSelect}
               prioritizeMode={prioritizeMode}
@@ -258,7 +253,6 @@ interface InboxGroupedViewProps {
   onAcceptSuggestion?: (item: InboxItem, s: TagSuggestion) => void;
   onDismissSuggestion?: (itemId: string, tagId: string) => void;
   onCtaClick?: (item: InboxItem) => void;
-  onTriageInsight?: (item: InboxItem, action: TriageAction) => void;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   prioritizeMode?: boolean;
@@ -272,7 +266,7 @@ interface InboxGroupedViewProps {
 export function InboxGroupedView({
   items, allTags, onArchive, onDelete, onRemoveTag, onAddTag,
   onCycleWorkflowStatus, onSetWorkflowStatus, onCreateWorkstream, onQuickCreateTag, teamMembers, onCreatePersonTag,
-  onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, onTriageInsight, selectedIds, onSelect,
+  onUpdateItem, onMoveBucket, onOpenDrawer, onAcceptSuggestion, onDismissSuggestion, onCtaClick, selectedIds, onSelect,
   prioritizeMode, newItemId, onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: InboxGroupedViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -347,7 +341,6 @@ export function InboxGroupedView({
             onAcceptSuggestion={onAcceptSuggestion}
             onDismissSuggestion={onDismissSuggestion}
             onCtaClick={onCtaClick}
-            onTriageInsight={onTriageInsight}
             selectedIds={selectedIds}
             onSelect={onSelect}
             prioritizeMode={prioritizeMode}
