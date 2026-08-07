@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CreateTaskForm, UpdateTaskForm, TaskStatus, StrategicInitiative } from '@/types/rcdo';
 import { createTask, updateTask } from '@/hooks/useTasks';
+import { getErrorMessage } from '@/lib/utils';
 
 interface UserProfile {
   id: string;
@@ -261,7 +262,7 @@ export function TaskDialog({
     } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err instanceof Error ? err.message : `Failed to ${taskId ? 'update' : 'create'} task`,
+        description: getErrorMessage(err, `Failed to ${taskId ? 'update' : 'create'} task`),
         variant: 'destructive',
       });
     } finally {
