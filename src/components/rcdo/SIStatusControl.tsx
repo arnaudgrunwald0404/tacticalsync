@@ -87,7 +87,11 @@ export function SIStatusControl({ status, canEdit, taskCount, onStatusChange, va
     void applyChange(value);
   };
 
-  if (!canEdit) {
+  // The Detail page previously showed a plain read-only Badge for viewers
+  // (no control at all); preserve that instead of a disabled dropdown there.
+  // Canvas/Sub-SI panels have always rendered an actual (possibly disabled)
+  // Select regardless of edit rights, so keep that contract intact.
+  if (!canEdit && variant === 'badge') {
     return (
       <Badge className={statusBadgeClassName(current)}>
         {current.replace('_', ' ').toUpperCase()}
@@ -97,7 +101,7 @@ export function SIStatusControl({ status, canEdit, taskCount, onStatusChange, va
 
   return (
     <>
-      <Select value={current} onValueChange={handleValueChange}>
+      <Select value={current} onValueChange={handleValueChange} disabled={!canEdit}>
         <SelectTrigger
           aria-label="Status"
           className={
