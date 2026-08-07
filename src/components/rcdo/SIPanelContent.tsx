@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, MoreVertical, ExternalLink, ChevronRight, FileText, Pencil, Lock, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +15,9 @@ import type { Tables } from '@/integrations/supabase/types';
 import type { Node } from 'reactflow';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useRoles } from '@/hooks/useRoles';
-import type { InitiativeStatus } from '@/types/rcdo';
+import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
+import { useTasksBySI } from '@/hooks/useTasks';
+import { SIStatusControl } from '@/components/rcdo/SIStatusControl';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { updateInitiative } from '@/hooks/useRCDOMutations';
@@ -97,63 +97,18 @@ export function SIPanelContent({
   const [panelSearchParams] = useSearchParams();
   const cycleParam = panelSearchParams.get('cycle');
   const { toast } = useToast();
-  const { isAdmin, isSuperAdmin, isRCDOAdmin } = useRoles();
+  const { canEditInitiative } = useRCDOPermissions();
   const isMobile = useIsMobile();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(si.title || '');
-  
+
   // Fetch SI data with progress if we have a database ID
   const siDbId = si.dbId;
   const { siData: siWithProgress, refetch: refetchSI } = useSIWithProgress(siDbId);
-  
-  // Get current status from database or default to 'not_started'
-  // Handle potential null/undefined or legacy pre-migration status values
-  const getStatusLabel = (status: string | null | undefined): string => {
-    if (!status) return 'Not Started';
-    const statusMap: Record<string, string> = {
-      'not_started': 'Not Started',
-      'on_track': 'On Track',
-      'at_risk': 'At Risk',
-      'off_track': 'Off Track',
-      'completed': 'Completed',
-      // Handle legacy values that might still exist from before the status vocabulary migration
-      'draft': 'Not Started',
-      'initialized': 'Not Started',
-      'delayed': 'At Risk',
-      'cancelled': 'Off Track',
-      'active': 'On Track',
-      'blocked': 'At Risk',
-      'done': 'Completed',
-    };
-    return statusMap[status] || 'Not Started';
-  };
-
-  // Normalize status value to ensure it matches one of the valid SelectItem values
-  const normalizeStatus = (status: string | null | undefined): InitiativeStatus => {
-    if (!status) return 'not_started';
-    const validStatuses: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
-    // If it's already a valid status, return it
-    if (validStatuses.includes(status as InitiativeStatus)) {
-      return status as InitiativeStatus;
-    }
-    // Map legacy pre-migration values to current values
-    const statusMapping: Record<string, InitiativeStatus> = {
-      'draft': 'not_started',
-      'initialized': 'not_started',
-      'delayed': 'at_risk',
-      'cancelled': 'off_track',
-      'active': 'on_track',
-      'blocked': 'at_risk',
-      'done': 'completed',
-    };
-    return statusMapping[status] || 'not_started';
-  };
+  const { tasks: siTasks } = useTasksBySI(siDbId);
 
   const rawStatus = siWithProgress?.status || 'not_started';
-  const currentStatus: InitiativeStatus = normalizeStatus(rawStatus);
-  const statusLabel = getStatusLabel(rawStatus);
-  
+
   // Check if DO is locked
   const doStatus = doLockedStatus.get(doNode.id);
   const isDOLocked = doStatus?.locked ?? false;
@@ -168,19 +123,14 @@ export function SIPanelContent({
     endDate: (siWithProgress?.end_date as string | null) ?? null,
   }), [si.title, si.description, si.ownerId, si.metric, siWithProgress?.start_date, siWithProgress?.end_date]);
   const showPercentToGoal = isFeatureEnabled('siProgress') && isDOLocked && isSILocked && siWithProgress?.latestPercentToGoal !== null && siWithProgress?.latestPercentToGoal !== undefined;
-  
-  // Status should be editable when SI is unlocked OR when user is SI owner/admin (per PRD, status updates are allowed even when locked)
-  const canEditStatus = !isLocked || isAdmin || isSuperAdmin || isRCDOAdmin || (currentUserId === si.ownerId);
-  
-  useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+
+  // Same permission gate used on the SI Detail page, so Canvas and Detail agree.
+  const canEditStatus = canEditInitiative(
+    si.ownerId || '',
+    (siWithProgress?.locked_at as string | null) ?? null,
+    doNode.data.ownerId,
+    (siWithProgress?.created_by as string | undefined) ?? undefined
+  );
 
   // Sub-SI list (rendered at the bottom when this SI has children). Kept inside
   // SIPanelContent rather than threaded through StrategyCanvas so callers don't
@@ -524,33 +474,22 @@ export function SIPanelContent({
         {/* 5. Status */}
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium shrink-0">Status</Label>
-          <Select
-            value={currentStatus}
-            disabled={!canEditStatus}
-            onValueChange={async (value: InitiativeStatus) => {
-              if (!canEditStatus) return;
+          <SIStatusControl
+            variant="select"
+            status={rawStatus}
+            canEdit={canEditStatus}
+            taskCount={siTasks.length}
+            onStatusChange={async (value) => {
+              if (!si.dbId) return;
               try {
-                if (si.dbId) {
-                  await updateInitiative(si.dbId, { status: value });
-                  await refetchSI();
-                  toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
-                }
+                await updateInitiative(si.dbId, { status: value });
+                await refetchSI();
+                toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
               } catch (e) {
                 toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
               }
             }}
-          >
-            <SelectTrigger className="h-7 text-xs" aria-label="Status">
-              <SelectValue placeholder="Select status">{statusLabel}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="not_started">Not Started</SelectItem>
-              <SelectItem value="on_track">On Track</SelectItem>
-              <SelectItem value="at_risk">At Risk</SelectItem>
-              <SelectItem value="off_track">Off Track</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
+          />
         </div>
 
         {/* % to Goal — only when DO and SI are locked */}
