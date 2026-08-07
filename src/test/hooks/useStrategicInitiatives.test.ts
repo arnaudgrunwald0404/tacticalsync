@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useStrategicInitiatives } from '@/hooks/useRCDO';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Regression coverage for 505edf9: createInitiative used to insert new
 // Strategic Initiatives with status: 'draft', a value the
@@ -18,13 +19,15 @@ vi.mock('@/hooks/use-toast', () => {
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
-    auth: { getUser: vi.fn() },
   },
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
 }));
 
 const mockedSupabase = supabase as unknown as {
   from: ReturnType<typeof vi.fn>;
-  auth: { getUser: ReturnType<typeof vi.fn> };
 };
 
 const makeFetchChain = (rows: unknown[] = [], error: Error | null = null) => {
@@ -44,6 +47,7 @@ const makeInsertChain = (row: unknown, error: Error | null = null) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useCurrentUser).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
 });
 
 describe('useStrategicInitiatives.createInitiative', () => {
@@ -56,7 +60,6 @@ describe('useStrategicInitiatives.createInitiative', () => {
       .mockReturnValueOnce({ select: initialFetch.select }) // mount fetch
       .mockReturnValueOnce({ insert: insertChain.insert }) // createInitiative
       .mockReturnValueOnce({ select: refetch.select }); // post-create refetch
-    mockedSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
 
     const { result } = renderHook(() => useStrategicInitiatives('do-1'));
     await waitFor(() => expect(result.current.loading).toBe(false));

@@ -35,12 +35,11 @@ export async function updateDO(doId: string, patch: UpdateDOPatch): Promise<void
   if (error) throw error;
 }
 
-export async function lockDO(doId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('You must be logged in.');
+export async function lockDO(doId: string, userId: string | undefined): Promise<void> {
+  if (!userId) throw new Error('You must be logged in.');
   const { error } = await supabase
     .from('rc_defining_objectives')
-    .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: user.id })
+    .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: userId })
     .eq('id', doId);
   if (error) throw error;
   // A DB trigger (20251122060500_cascade_unlock_si_on_do.sql) cascades this
@@ -99,11 +98,10 @@ export async function updateInitiative(siId: string, patch: UpdateInitiativePatc
   if (error) throw error;
 }
 
-export async function lockInitiative(siId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+export async function lockInitiative(siId: string, userId: string | undefined): Promise<void> {
   const { error } = await supabase
     .from('rc_strategic_initiatives')
-    .update({ locked_at: new Date().toISOString(), locked_by: user?.id ?? null })
+    .update({ locked_at: new Date().toISOString(), locked_by: userId ?? null })
     .eq('id', siId);
   if (error) throw error;
 }

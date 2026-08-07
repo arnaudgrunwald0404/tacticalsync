@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/utils';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type {
   Task,
   TaskWithRelations,
@@ -139,13 +140,13 @@ export function useMyTasks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchMyTasks = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setTasks([]);
         setLoading(false);
@@ -183,7 +184,7 @@ export function useMyTasks() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, user]);
 
   useEffect(() => {
     fetchMyTasks();
@@ -202,15 +203,14 @@ export function useTasksBySI(siId: string | undefined) {
 // ============================================================================
 // createTask - Create a new task
 // ============================================================================
-export async function createTask(data: CreateTaskForm): Promise<Task> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+export async function createTask(data: CreateTaskForm, userId: string | undefined): Promise<Task> {
+  if (!userId) throw new Error('Not authenticated');
 
   const { data: task, error } = await supabase
     .from('rc_tasks')
     .insert({
       ...data,
-      created_by: user.id,
+      created_by: userId,
       status: data.status || 'not_assigned',
     })
     .select()

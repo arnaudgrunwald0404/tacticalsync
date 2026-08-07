@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,7 @@ export function TaskDialog({
   onSuccess,
 }: TaskDialogProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingSIs, setLoadingSIs] = useState(false);
@@ -250,7 +252,7 @@ export function TaskDialog({
           notes: formData.notes || undefined,
           status: formData.status,
         };
-        await createTask(createData);
+        await createTask(createData, user?.id);
         toast({
           title: 'Success',
           description: 'Task created successfully',
