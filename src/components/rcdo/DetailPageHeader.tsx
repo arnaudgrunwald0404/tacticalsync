@@ -476,17 +476,6 @@ export function DetailPageHeader({
             Check-In
           </Button>
         )}
-        {canLock && !isLocked && onLock && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={onLock}
-            onKeyDown={(e) => e.key === 'Enter' && onLock()}
-            className="inline-flex items-center border border-transparent rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-[#5B6E7A] text-white cursor-pointer hover:bg-[#4A5D68] transition-colors"
-          >
-            LOCK
-          </span>
-        )}
         {type === 'do' && (
           <Badge
             className={
@@ -538,7 +527,8 @@ export function DetailPageHeader({
             </Badge>
           )
         )}
-        {((isLocked && canLock && onUnlock) ||
+        {((canLock && !isLocked && onLock) ||
+          (isLocked && canLock && onUnlock) ||
           (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||
           (onDelete && canDelete)) && (
           <DropdownMenu>
@@ -548,6 +538,12 @@ export function DetailPageHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {canLock && !isLocked && onLock && (
+                <DropdownMenuItem onClick={onLock}>
+                  <Lock className="h-4 w-4 mr-2" />
+                  Lock
+                </DropdownMenuItem>
+              )}
               {isLocked && canLock && onUnlock && (
                 <DropdownMenuItem onClick={onUnlock}>
                   <Unlock className="h-4 w-4 mr-2" />
@@ -555,13 +551,16 @@ export function DetailPageHeader({
                 </DropdownMenuItem>
               )}
               {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                <DropdownMenuItem onClick={onBreakIntoSubSIs} className="flex-col items-start gap-0.5 py-2">
+                  <span className="text-xs text-muted-foreground">
+                    Sub-initiatives are {acceptsSubSis ? 'on' : 'off'}.
+                  </span>
+                  <span className="font-semibold">{acceptsSubSis ? 'Disable' : 'Enable'}</span>
                 </DropdownMenuItem>
               )}
               {onDelete && canDelete && (
                 <>
-                  {((isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
+                  {((canLock && !isLocked && onLock) || (isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
                     <DropdownMenuSeparator />
                   )}
                   <DropdownMenuItem className="text-red-600" onClick={onDelete}>

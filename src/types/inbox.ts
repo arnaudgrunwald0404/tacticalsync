@@ -100,29 +100,32 @@ export interface SourceRef {
     | 'slack_message' | 'gmail_message' | 'pre_1on1_brief'
     | 'meeting_action_item' | 'cos_meeting_action';
   id?: string;
-  // meeting_insight-specific fields (see PLAN_idea3_meeting_insights.md §3).
+  // Zoom-recording-derived fields, used by commitment (agent_question) rows
+  // and by legacy meeting_insight rows (standout quotes now surface as
+  // dci_suggested_tasks recommendations instead — see
+  // src/lib/meetingInsights.ts — so quote_id/context/start_seconds/
+  // end_seconds only appear on meeting_insight rows created before that
+  // change; kept here so those historical/archived rows still typecheck).
   /** cos_zoom_recordings.id — click-through target for "View in recording". */
   recording_id?: string;
   /** cos_zoom_transcripts.id — for re-extraction/debugging and dedup. */
   transcript_id?: string;
   /** cos_member_quotes.id, when the speaker matched a known team member.
-   *  Null/absent for unmatched speakers. */
+   *  Legacy meeting_insight field; null/absent for unmatched speakers. */
   quote_id?: string;
-  /** Raw speaker string from the transcript — always present on a
-   *  meeting_insight row, even when quote_id is absent. */
+  /** Raw speaker string from the transcript. */
   speaker_name?: string;
   /** cos_zoom_recordings.topic, denormalized for display without a join. */
   meeting_topic?: string;
   /** YYYY-MM-DD, denormalized from the recording start time. */
   said_on?: string;
-  /** The short "context" string Gemini returns per quote. */
+  /** Legacy meeting_insight field: the short "context" string Gemini returns
+   *  per quote. */
   context?: string;
-  /** Soundbites (PLAN_idea10_meeting_intelligence_enrichment.md §B2): the
-   *  clip's verified start/end time in the Zoom recording, seconds from the
-   *  start of the meeting. Absent when the quote has no linked recording, or
-   *  when the alignment step couldn't confidently resolve a timestamp for it
-   *  (never a guessed/wrong value — see extract-zoom-quotes/index.ts and
-   *  supabase/functions/_shared/quoteAlignment.ts). */
+  /** Legacy meeting_insight field (soundbites): the clip's verified
+   *  start/end time in the Zoom recording, seconds from the start of the
+   *  meeting. Absent when the alignment step couldn't confidently resolve a
+   *  timestamp (never a guessed/wrong value). */
   start_seconds?: number;
   end_seconds?: number;
 }

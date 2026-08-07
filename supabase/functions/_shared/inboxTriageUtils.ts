@@ -126,6 +126,36 @@ export function normalizeChannelName(raw: string): string {
   return raw.toLowerCase().replace(/^#/, '')
 }
 
+// Local-part patterns used by transactional/notification systems across SaaS
+// tools (GitHub, Ramp, etc.) — these are never worth surfacing as an inbox
+// suggestion, regardless of whether the content looks actionable ("approve
+// this expense", "review this PR"). Matched against the part before '@'.
+const AUTOMATED_SENDER_LOCAL_PART = /^(no-?reply|do-?not-?reply|notifications?|alerts?|automated|mailer-daemon|postmaster|no-?response|bounces?|updates?|communications?|do-?not-?respond)$/i
+
+/**
+ * Returns true when a sender email address looks like an automated/system
+ * notification account rather than a person — e.g. no-reply@github.com,
+ * notifications@github.com, communications@ramp.com.
+ */
+export function isAutomatedSender(senderEmail: string | null): boolean {
+  if (!senderEmail) return false
+  const localPart = senderEmail.split('@')[0]
+  return AUTOMATED_SENDER_LOCAL_PART.test(localPart)
+}
+
+// Calendar invite/RSVP notifications use a small, stable set of subject
+// prefixes across Google Calendar, Outlook, etc.
+const CALENDAR_SUBJECT_PREFIX = /^(invitation|accepted|declined|tentative|updated invitation|canceled event|cancelled event|new event|updated event)[:\s]/i
+
+/**
+ * Returns true when a Gmail message looks like a calendar invite/RSVP
+ * notification rather than a real email needing a reply.
+ */
+export function isCalendarInvite(subject: string, senderEmail: string | null): boolean {
+  if (senderEmail?.toLowerCase() === 'calendar-notification@google.com') return true
+  return CALENDAR_SUBJECT_PREFIX.test(subject.trim())
+}
+
 /**
  * Parses the sender email address out of a raw "From" header value.
  * Handles plain addresses ("user@example.com") and display-name format

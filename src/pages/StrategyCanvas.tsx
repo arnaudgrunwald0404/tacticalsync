@@ -2461,52 +2461,6 @@ const duplicateSelectedDo = useCallback(() => {
             </div>
 
             <div className="mt-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm">Background</label>
-                <input
-                  type="color"
-                  value={selectedNode?.data.bgColor || "#ffffff"}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, bgColor: value } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, bgColor: value } });
-                  }}
-                />
-              </div>
-
-              {/* Size controls for Rally */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm">Size</label>
-                <input
-                  type="number"
-                  min={220}
-                  max={800}
-                  className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                  value={selectedNode?.data.size?.w || 280}
-                  onChange={(e) => {
-                    const w = Math.max(220, Math.min(800, Number(e.target.value)));
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w, h: n.data.size?.h || 100 } } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w, h: selectedNode!.data.size?.h || 100 } } });
-                  }}
-                />
-                <span className="text-xs">×</span>
-                <input
-                  type="number"
-                  min={80}
-                  max={400}
-                  className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                  value={selectedNode?.data.size?.h || 100}
-                  onChange={(e) => {
-                    const h = Math.max(80, Math.min(400, Number(e.target.value)));
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w: n.data.size?.w || 280, h } } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w: selectedNode!.data.size?.w || 280, h } } });
-                  }}
-                />
-              </div>
-
               {/* Candidates */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Candidates (top = most likely)</div>
@@ -2734,10 +2688,6 @@ const duplicateSelectedDo = useCallback(() => {
         
         return (
         <>
-          {/* Only show an overlay if the DO panel is NOT open */}
-          {selectedNode?.type !== "do" && (
-            <div className="fixed inset-0 z-[55] bg-black/30" onClick={() => setFocusedSI(null)} />
-          )}
           <SIPanelContent
             doNode={doNode}
             si={si}
