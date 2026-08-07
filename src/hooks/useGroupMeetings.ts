@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { suggestSlackChannels, suggestZoomMatches } from '@/lib/calendar/titleSources';
 
@@ -55,12 +56,12 @@ export function useGroupMeetings() {
   const [meetings, setMeetings] = useState<GroupMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchMeetings = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
+      if (!user) {
         setMeetings([]);
         return;
       }
@@ -69,7 +70,7 @@ export function useGroupMeetings() {
       const { data: rows, error } = await db
         .from('cos_group_meetings')
         .select('*')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', user.id)
         .order('next_start_at', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
@@ -96,7 +97,7 @@ export function useGroupMeetings() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
 
@@ -142,12 +143,11 @@ export function useGroupMeetings() {
   // channels and recent Zoom topics, persisting any that aren't already bound.
   const suggestSources = useCallback(async (meeting: GroupMeeting) => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
       const db = sb;
       const [schedRes, zoomRes] = await Promise.all([
-        db.from('cos_prep_schedule').select('slack_channels').eq('user_id', userData.user.id).maybeSingle(),
-        db.from('cos_zoom_recordings').select('topic').eq('user_id', userData.user.id).order('start_time', { ascending: false }).limit(100),
+        db.from('cos_prep_schedule').select('slack_channels').eq('user_id', user.id).maybeSingle(),
+        db.from('cos_zoom_recordings').select('topic').eq('user_id', user.id).order('start_time', { ascending: false }).limit(100),
       ]);
       const channels: string[] = (schedRes.data?.slack_channels ?? []) as string[];
       const zoomTopics: string[] = ((zoomRes.data ?? []) as Array<{ topic: string | null }>)
@@ -175,7 +175,7 @@ export function useGroupMeetings() {
     } catch (err) {
       console.error('Failed to suggest sources:', err);
     }
-  }, [fetchMeetings]);
+  }, [fetchMeetings, user]);
 
   const addSource = useCallback(async (
     meetingId: string,

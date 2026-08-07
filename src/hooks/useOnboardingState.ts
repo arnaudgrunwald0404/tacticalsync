@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 export interface OnboardingState {
   welcome: boolean;
@@ -14,10 +15,10 @@ export function useOnboardingState() {
   const [onboarding, setOnboarding] = useState<OnboardingState>(DEFAULT_STATE);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
@@ -34,7 +35,7 @@ export function useOnboardingState() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   const markComplete = useCallback(async (key: keyof OnboardingState) => {
     // Optimistic — the tutorial/banner should disappear immediately on dismiss.

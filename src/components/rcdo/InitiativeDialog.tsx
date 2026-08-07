@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function InitiativeDialog({
   onSuccess,
 }: InitiativeDialogProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -148,8 +150,6 @@ export function InitiativeDialog({
         end_date: formData.end_date || undefined,
       };
 
-      const { data: auth } = await supabase.auth.getUser();
-
       const { error } = await supabase
         .from('rc_strategic_initiatives')
         .insert({
@@ -162,7 +162,7 @@ export function InitiativeDialog({
           start_date: createData.start_date || null,
           end_date: createData.end_date || null,
           status: 'not_started',
-          created_by: auth?.user?.id || null,
+          created_by: user?.id || null,
         });
 
       if (error) throw error;

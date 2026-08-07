@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Re-export the pure time helpers so callers can import them alongside the hook.
 export { getBrowserTimezone, isValidTimezone, formatHourLabel } from '@/lib/prepScheduleTime';
@@ -115,6 +116,7 @@ function mapRow(data: Record<string, unknown> | null): PrepScheduleConfig {
 
 export function usePrepScheduleConfig() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [config, setConfig] = useState<PrepScheduleConfig | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +126,6 @@ export function usePrepScheduleConfig() {
     try {
       setLoading(true);
       setError(null);
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setConfig({ ...DEFAULT_PREP_SCHEDULE });
         return;
@@ -145,7 +146,7 @@ export function usePrepScheduleConfig() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchConfig();
@@ -160,7 +161,6 @@ export function usePrepScheduleConfig() {
     try {
       let uid = userId;
       if (!uid) {
-        const { data: { user } } = await supabase.auth.getUser();
         uid = user?.id ?? null;
         setUserId(uid);
       }
@@ -180,7 +180,7 @@ export function usePrepScheduleConfig() {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
       return false;
     }
-  }, [userId, toast]);
+  }, [userId, toast, user]);
 
   return { config, userId, loading, error, refetch: fetchConfig, saveConfig };
 }

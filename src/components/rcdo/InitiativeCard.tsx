@@ -8,6 +8,7 @@ import { Calendar, User, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { cn } from '@/lib/utils';
@@ -37,6 +38,7 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
   const [cardSearchParams] = useSearchParams();
   const cycleParam = cardSearchParams.get('cycle');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
   const ownerName = getFullNameForAvatar(
@@ -51,14 +53,10 @@ export function InitiativeCard({ initiative, onClick, isDragging = false }: Init
   const canCheckIn = isOwner || isParticipant;
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   const handleCheckInClick = (e: React.MouseEvent) => {
     e.stopPropagation();

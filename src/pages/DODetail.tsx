@@ -23,6 +23,7 @@ import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { isCheckinStale, isMetricStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -42,6 +43,7 @@ export default function DODetail() {
   const [showInitiativeDialog, setShowInitiativeDialog] = useState(false);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
   const { setNavState } = useRCDODetail();
   const { toast } = useToast();
@@ -219,14 +221,10 @@ export default function DODetail() {
 
   // Get current user
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   // Set selected initiative when initiativeId is in URL
   useEffect(() => {

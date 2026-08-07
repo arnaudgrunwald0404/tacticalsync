@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRoleOverride } from "@/contexts/RoleOverrideContext";
+import { useCurrentUser } from "@/contexts/AuthContext";
 
 export type RoleTag = 'admin' | 'elt' | 'xlt' | 'user' | 'test_user';
 export const ALL_ROLE_TAGS: RoleTag[] = ['admin', 'elt', 'xlt', 'user', 'test_user'];
@@ -16,14 +17,13 @@ interface RolesState {
 
 export function useRoles(): RolesState {
   const [state, setState] = useState<RolesState>({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, roleTags: [], loading: true });
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async () => {
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
         if (!user) {
           if (isMounted) setState({ isAdmin: false, isSuperAdmin: false, isRCDOAdmin: false, roleTags: [], loading: false, error: "Not authenticated" });
           return;
@@ -75,7 +75,7 @@ export function useRoles(): RolesState {
 
     load();
     return () => { isMounted = false; };
-  }, []);
+  }, [user]);
 
   const { override } = useRoleOverride();
 

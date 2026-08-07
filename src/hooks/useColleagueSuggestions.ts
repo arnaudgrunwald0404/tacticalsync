@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 export interface ColleagueSuggestion {
   id: string;
@@ -25,6 +26,7 @@ export function useColleagueSuggestions(memberId: string | null): UseColleagueSu
   const [suggestions, setSuggestions] = useState<ColleagueSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     if (!memberId) {
@@ -36,7 +38,6 @@ export function useColleagueSuggestions(memberId: string | null): UseColleagueSu
     setLoading(true);
 
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
 
       const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000)
@@ -58,7 +59,7 @@ export function useColleagueSuggestions(memberId: string | null): UseColleagueSu
     })();
 
     return () => { cancelled = true; };
-  }, [memberId, reloadKey]);
+  }, [memberId, reloadKey, user]);
 
   const accept = useCallback(async (id: string) => {
     if (!memberId) return;
@@ -66,7 +67,6 @@ export function useColleagueSuggestions(memberId: string | null): UseColleagueSu
     if (!suggestion) return;
     setSuggestions(prev => prev.filter(s => s.id !== id));
 
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,7 +79,7 @@ export function useColleagueSuggestions(memberId: string | null): UseColleagueSu
       status: 'pending',
     });
     await db.from('dci_suggested_tasks').update({ status: 'accepted' }).eq('id', id);
-  }, [suggestions, memberId]);
+  }, [suggestions, memberId, user]);
 
   const dismiss = useCallback(async (id: string) => {
     setSuggestions(prev => prev.filter(s => s.id !== id));
