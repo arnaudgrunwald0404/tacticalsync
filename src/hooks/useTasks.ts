@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 import { useCurrentUser } from '@/contexts/AuthContext';
 import type {
   Task,
@@ -49,7 +50,7 @@ export function useTasks(siId?: string) {
 
       setTasks((data || []) as TaskWithRelations[]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch tasks';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch tasks');
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -112,7 +113,7 @@ export function useTaskDetails(taskId: string | undefined) {
 
       setTask(data as TaskWithRelations);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch task';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch task');
       setError(errorMessage);
       toast({
         title: 'Error',
@@ -173,7 +174,7 @@ export function useMyTasks() {
 
       setTasks((data || []) as TaskWithRelations[]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch my tasks';
+      const errorMessage = getErrorMessage(err, 'Failed to fetch my tasks');
       setError(errorMessage);
       toast({
         title: 'Error',

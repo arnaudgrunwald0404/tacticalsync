@@ -58,6 +58,7 @@ const makeRolesReturn = (isAdmin: boolean) =>
     isAdmin,
     isSuperAdmin: false,
     isRCDOAdmin: false,
+    roleTags: [],
     loading: false,
   } as ReturnType<typeof useRolesModule.useRoles>);
 
@@ -161,15 +162,20 @@ describe('SIPanelContent - Status Field', () => {
   });
 
   describe('Status Field Permissions', () => {
-    it('should be enabled when SI is unlocked', () => {
+    it('should be enabled when SI is unlocked and user is the owner', async () => {
       vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
         makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: null })
       );
 
       render(<SIPanelContent {...defaultProps} />);
 
-      const select = screen.getByRole('combobox', { name: /status/i });
-      expect(select).not.toBeDisabled();
+      // canEditInitiative resolves the current user id asynchronously
+      // (its own supabase.auth.getUser() effect), so the disabled state
+      // isn't settled on the very first synchronous render.
+      await waitFor(() => {
+        const select = screen.getByRole('combobox', { name: /status/i });
+        expect(select).not.toBeDisabled();
+      });
     });
 
     it('should be enabled when user is admin even if locked', () => {
@@ -189,7 +195,10 @@ describe('SIPanelContent - Status Field', () => {
       expect(select).not.toBeDisabled();
     });
 
-    it('should be enabled when user is SI owner even if locked', async () => {
+    it('should be disabled when SI is locked even for the owner (admin required to edit a locked SI)', async () => {
+      // Matches the rc_strategic_initiatives RLS UPDATE policy: ownership only
+      // bypasses the lock check while unlocked — once locked, only
+      // admin/super-admin/RCDO-admin/elt/xlt-tagged users can still write.
       vi.mocked(useSIWithProgressModule.useSIWithProgress).mockReturnValue(
         makeSIWithProgressReturn({ id: 'si-db-1', status: 'not_started', locked_at: '2024-01-01T00:00:00Z' })
       );
@@ -200,12 +209,12 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
 
-      // Wait for the effect that wires the shared-context user into the lock
-      // check — checking the disabled prop directly races with React's commit
-      // phase in CI.
+      // canEditInitiative() depends on useRCDOPermissions' own internal
+      // effect resolving the current user id, so the disabled state isn't
+      // settled on the very first synchronous render.
       await waitFor(() => {
         const select = screen.getByRole('combobox', { name: /status/i });
-        expect(select).not.toBeDisabled();
+        expect(select).toBeDisabled();
       });
     });
 

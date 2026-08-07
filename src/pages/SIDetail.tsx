@@ -353,7 +353,7 @@ export default function SIDetail() {
     siDetails.defining_objective?.owner_user_id,
     siDetails.created_by
   );
-  
+
   const canEditTaskForItem = (task: TaskWithRelations) => {
     return canEditTask(task.owner_user_id, siDetails?.owner_user_id as string | undefined);
   };
@@ -606,6 +606,15 @@ export default function SIDetail() {
         onEndDateChange={async (val) => handleDateChange('end_date', val)}
         dateError={dateError}
         onBreakIntoSubSIs={!isSubSI && (!acceptsSubSis || subSIs.length === 0) ? () => handleToggleSubSiMode(!acceptsSubSis) : undefined}
+        onStatusChange={async (value) => {
+          try {
+            await updateInitiative(siDetails.id as string, { status: value });
+            await refetchSI();
+            toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
+          } catch (e) {
+            toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
+          }
+        }}
       />
 
           {/* Tabs */}

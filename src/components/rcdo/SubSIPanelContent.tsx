@@ -2,13 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, ExternalLink, Pencil, MoreVertical } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { OwnerCombobox } from '@/components/ui/owner-combobox';
@@ -16,6 +9,9 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
+import { useTasksBySI } from '@/hooks/useTasks';
+import { SIStatusControl } from '@/components/rcdo/SIStatusControl';
 import { updateInitiative, deleteInitiative } from '@/hooks/useRCDOMutations';
 import type { Tables } from '@/integrations/supabase/types';
 import type { InitiativeStatus } from '@/types/rcdo';
@@ -29,6 +25,7 @@ type SubSIRow = {
   end_date: string | null;
   owner_user_id: string | null;
   parent_si_id: string | null;
+  locked_at: string | null;
 };
 
 interface SubSIPanelContentProps {
@@ -47,32 +44,6 @@ interface SubSIPanelContentProps {
   onChanged?: () => void;
 }
 
-const STATUS_OPTIONS: { value: InitiativeStatus; label: string }[] = [
-  { value: 'not_started', label: 'Not Started' },
-  { value: 'on_track', label: 'On Track' },
-  { value: 'at_risk', label: 'At Risk' },
-  { value: 'off_track', label: 'Off Track' },
-  { value: 'completed', label: 'Completed' },
-];
-
-// Same normalization the SIPanel uses — keeps legacy pre-migration values from
-// breaking the Select trigger when older rows still carry them.
-function normalizeStatus(status: string | null | undefined): InitiativeStatus {
-  if (!status) return 'not_started';
-  const valid: InitiativeStatus[] = ['not_started', 'on_track', 'at_risk', 'off_track', 'completed'];
-  if (valid.includes(status as InitiativeStatus)) return status as InitiativeStatus;
-  const map: Record<string, InitiativeStatus> = {
-    draft: 'not_started',
-    initialized: 'not_started',
-    delayed: 'at_risk',
-    cancelled: 'off_track',
-    active: 'on_track',
-    blocked: 'at_risk',
-    done: 'completed',
-  };
-  return map[status] || 'not_started';
-}
-
 export function SubSIPanelContent({
   subSiId,
   rightOffsetPx,
@@ -86,6 +57,8 @@ export function SubSIPanelContent({
   const cycleParam = searchParams.get('cycle');
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const { canEditInitiative } = useRCDOPermissions();
+  const { tasks: subSiTasks } = useTasksBySI(subSiId);
 
   const [row, setRow] = useState<SubSIRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,7 +70,7 @@ export function SubSIPanelContent({
     setLoading(true);
     supabase
       .from('rc_strategic_initiatives')
-      .select('id, title, description, status, start_date, end_date, owner_user_id, parent_si_id')
+      .select('id, title, description, status, start_date, end_date, owner_user_id, parent_si_id, locked_at')
       .eq('id', subSiId)
       .single()
       .then(({ data }) => {
@@ -108,6 +81,8 @@ export function SubSIPanelContent({
       });
     return () => { cancelled = true; };
   }, [subSiId]);
+
+  const canEditSubSIStatus = row ? canEditInitiative(row.owner_user_id || '', row.locked_at) : false;
 
   const updateField = async (patch: Partial<Omit<SubSIRow, 'id' | 'parent_si_id' | 'status'>> & { status?: InitiativeStatus }) => {
     if (!row) return;
@@ -232,19 +207,13 @@ export function SubSIPanelContent({
           {/* Status */}
           <div className="flex items-center gap-2">
             <Label className="text-sm font-medium shrink-0">Status</Label>
-            <Select
-              value={normalizeStatus(row.status)}
-              onValueChange={(v: InitiativeStatus) => updateField({ status: v })}
-            >
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SIStatusControl
+              variant="select"
+              status={row.status}
+              canEdit={canEditSubSIStatus}
+              taskCount={subSiTasks.length}
+              onStatusChange={(v) => updateField({ status: v })}
+            />
           </div>
 
           {/* Owner — moved above Description */}
