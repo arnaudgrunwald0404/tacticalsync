@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 const SLACK_CLIENT_ID = import.meta.env.VITE_SLACK_CLIENT_ID ?? '';
 
@@ -45,6 +46,7 @@ function utcHourToLocalLabel(utcHour: number): string {
 
 export default function CosSlackSyncPanel() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<{
@@ -66,7 +68,6 @@ export default function CosSlackSyncPanel() {
   const [savingAutoSync, setSavingAutoSync] = useState(false);
 
   const loadState = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (user) setUserId(user.id);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

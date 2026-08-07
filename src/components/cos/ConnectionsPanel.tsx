@@ -16,18 +16,19 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useCosTeamMemberLinking, type OutgoingTeamMember, type IncomingLinkedMember } from '@/hooks/useCosTeamMemberLinking';
 
 // Self-contained like CosZoomSyncPanel — Settings.tsx renders this without
 // threading a userId prop, so it resolves the current user itself.
 export default function ConnectionsPanel() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
-  }, []);
+    setUserId(user?.id ?? null);
+  }, [user]);
 
   const { loading, yourTeam, linkedToYou, sendInvite, resendInvite, unlink } = useCosTeamMemberLinking(userId);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);

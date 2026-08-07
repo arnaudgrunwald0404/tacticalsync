@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ interface RelationshipTimelineProps {
 }
 
 export function RelationshipTimeline({ memberId, memberName }: RelationshipTimelineProps) {
+  const { user } = useCurrentUser();
   const [preps, setPreps] = useState<TimelinePrep[]>([]);
   const [topics, setTopics] = useState<TimelineTopic[]>([]);
   const [actions, setActions] = useState<TimelineAction[]>([]);
@@ -94,9 +96,8 @@ export function RelationshipTimeline({ memberId, memberName }: RelationshipTimel
     (async () => {
       try {
         setLoading(true);
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
-        const userId = userData.user.id;
+        if (!user) return;
+        const userId = user.id;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
@@ -134,7 +135,7 @@ export function RelationshipTimeline({ memberId, memberName }: RelationshipTimel
         setLoading(false);
       }
     })();
-  }, [memberId]);
+  }, [memberId, user]);
 
   // Build timeline entries
   const entries = useMemo<TimelineEntry[]>(() => {
