@@ -32,6 +32,7 @@ import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
 import { useInboxViews } from '@/hooks/useInboxViews';
 import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
+import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
@@ -475,6 +476,7 @@ export default function InboxPage() {
   // re-shows once dismissed.
   const { seen: introSeen, markSeen: markIntroSeen } = useFeatureAnnouncement(userId, 'unified_funnel_intro_seen');
   const { seen: announcementSeen, markSeen: markAnnouncementSeen } = useFeatureAnnouncement(userId, 'unified_funnel_announcement_seen');
+  const { prefs: notificationPrefs } = useNotificationPreferences();
   // Person delegation (Idea #8): items delegated TO this user by a colleague.
   // InboxItemRow fetches its own per-row badge data (useIncomingDelegationForItem),
   // so this batched map is used only to decide whether to show the one-time
@@ -1203,7 +1205,7 @@ export default function InboxPage() {
       {/* Main stream + drawer */}
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
-      <WeekendBanner bare />
+      {notificationPrefs.weekend_banner && <WeekendBanner bare />}
       {activePanel === 'inbox' && announcementSeen === false && (
         <UnifiedFunnelAnnouncementBanner onDismiss={markAnnouncementSeen} />
       )}
