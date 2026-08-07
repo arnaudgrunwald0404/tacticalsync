@@ -14,7 +14,16 @@ import ReactFlow, {
   Handle,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target, List } from "lucide-react";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, MoreVertical, X, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target, List, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -151,18 +160,54 @@ function StrategyNode({ data }: { data: NodeData }) {
 
 import type { NodeProps } from "reactflow";
 
-// Create a factory function that accepts profilesMap, showProgress, SI progress data, and DO locked status
+// Wraps a single SI chip with a drag handle so it can be reordered within its
+// DO. Only the handle carries dnd-kit's listeners (and the `nodrag`/`nopan`
+// classes react-flow uses to opt elements out of node-drag/pane-pan) so the
+// chip's own onClick (open SI) keeps working undisturbed, and starting a drag
+// never fights react-flow's own node-drag gesture.
+function SortableSIChip({ id, disabled, children }: { id: string; disabled: boolean; children: React.ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 30 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/chip">
+      {!disabled && (
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          className="nodrag nopan absolute -left-2 top-1/2 -translate-y-1/2 z-20 p-0.5 rounded bg-white border border-[#9FA8B3] text-[#5B6E7A] opacity-0 group-hover/chip:opacity-100 cursor-grab active:cursor-grabbing touch-none transition-opacity"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// Create a factory function that accepts profilesMap, showProgress, SI progress data, DO locked status, and
+// whether SI reordering is currently allowed (disabled while a "View As" filter is active, since that shows
+// only a subset of a DO's SIs and reordering the subset would corrupt the real display_order of hidden ones)
 const createDoNode = (
   profilesMap: Record<string, Tables<'profiles'>>,
   showProgress: boolean,
   siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>,
-  doLockedStatus: Map<string, { locked: boolean; dbId?: string }>
+  doLockedStatus: Map<string, { locked: boolean; dbId?: string }>,
+  canReorderSI: boolean
 ) => {
   return function DoNode({ id, data }: NodeProps<NodeData>) {
     const status = data.status || "draft";
     const items = data.saiItems || [];
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
+    const isDOLocked = doLockedStatus.get(id)?.locked ?? false;
 
     // Check if DO is missing required fields (same rule used for lock eligibility everywhere else)
     const hasMissingFields = getDOLockBlockers({
@@ -248,6 +293,7 @@ const createDoNode = (
       </div>
       {items.length > 0 && (
         <div className="mt-3 flex flex-col gap-2 flex-shrink-0 relative z-10 overflow-visible">
+          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
           {items.map((it) => {
             // Check if SI is missing required fields
             // Strip HTML tags from description to check if it's actually empty
@@ -257,10 +303,10 @@ const createDoNode = (
             const siHasMissingFields = !it.title || !it.title.trim() ||
                                       !metricText ||
                                       !it.ownerId;
-            
+
             return (
+            <SortableSIChip key={it.id} id={it.id} disabled={!it.dbId || isDOLocked || !canReorderSI}>
             <button
-              key={it.id}
               className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] overflow-visible
                 ${(() => {
                   const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
@@ -371,8 +417,10 @@ const createDoNode = (
                 );
               })()}
             </button>
+            </SortableSIChip>
             );
           })}
+          </SortableContext>
         </div>
       )}
     </div>
@@ -725,13 +773,67 @@ export default function StrategyCanvasPage() {
     return { doIds, siIds };
   }, [filteredNodes, viewAsUserId, doLockedStatus]);
   
-  // Create node types with access to profilesMap, showProgress, SI progress data, and DO locked status
+  // SI chip reordering is disabled while "View As" is active — it only shows
+  // a subset of a DO's SIs, and persisting the subset's order would corrupt
+  // the real display_order of the SIs it's hiding.
+  const canReorderSI = !viewAsUserId;
+
+  // Create node types with access to profilesMap, showProgress, SI progress data, DO locked status, and
+  // whether SI reordering is currently allowed
   const nodeTypes = useMemo(() => ({
     strategy: StrategyNode,
-    do: createDoNode(profilesMap, showProgress, siProgressMap, doLockedStatus),
+    do: createDoNode(profilesMap, showProgress, siProgressMap, doLockedStatus, canReorderSI),
     sai: SaiNode,
     rally: RallyNode,
-  }), [profilesMap, showProgress, siProgressMap, doLockedStatus]);
+  }), [profilesMap, showProgress, siProgressMap, doLockedStatus, canReorderSI]);
+
+  // 5px activation distance keeps the chip's onClick (open SI) responsive:
+  // nothing starts a drag until the pointer moves at least 5px.
+  const siSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Reorders SI chips within their DO after a drag, then persists the new
+  // order — same "N parallel display_order updates" shape as SISubTree's
+  // reorderSubSIs, just against rc_strategic_initiatives directly since the
+  // canvas holds its own local node state rather than a fetched list.
+  const handleSIDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setNodes((currentNodes) => {
+      const doNodeIndex = currentNodes.findIndex(
+        (n) => n.type === 'do' && (n.data.saiItems || []).some((s) => s.id === active.id)
+      );
+      if (doNodeIndex === -1) return currentNodes;
+
+      const doNode = currentNodes[doNodeIndex];
+      const items = doNode.data.saiItems || [];
+      const oldIndex = items.findIndex((s) => s.id === active.id);
+      const newIndex = items.findIndex((s) => s.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return currentNodes;
+
+      const reordered = arrayMove(items, oldIndex, newIndex);
+
+      const updates = reordered
+        .map((it, idx) => ({ dbId: it.dbId, idx }))
+        .filter((u): u is { dbId: string; idx: number } => !!u.dbId);
+      if (updates.length) {
+        Promise.all(
+          updates.map(({ dbId, idx }) =>
+            supabase.from('rc_strategic_initiatives').update({ display_order: idx }).eq('id', dbId)
+          )
+        ).then((results) => {
+          const failures = results.filter((r) => r.error);
+          if (failures.length) {
+            console.error('Failed to persist some SI display_order updates', failures.map((f) => f.error));
+          }
+        });
+      }
+
+      const nextNodes = [...currentNodes];
+      nextNodes[doNodeIndex] = { ...doNode, data: { ...doNode.data, saiItems: reordered } };
+      return nextNodes;
+    });
+  }, [setNodes]);
   
   // Import state
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -882,7 +984,8 @@ export default function StrategyCanvasPage() {
                   .from('rc_strategic_initiatives')
                   .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at, defining_objective_id')
                   .in('defining_objective_id', doIds)
-                  .is('parent_si_id', null),
+                  .is('parent_si_id', null)
+                  .order('display_order', { ascending: true }),
                 supabase
                   .from('rc_do_metrics')
                   .select('defining_objective_id, name')
@@ -973,7 +1076,8 @@ export default function StrategyCanvasPage() {
           .from('rc_strategic_initiatives')
           .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, created_at')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
-          .is('parent_si_id', null);
+          .is('parent_si_id', null)
+          .order('display_order', { ascending: true });
         if (siErr) console.warn('[Canvas] SI query error:', siErr);
         console.log('[Canvas] Fallback SI count', (sis || []).length);
 
@@ -1981,7 +2085,8 @@ const duplicateSelectedDo = useCallback(() => {
         .from('rc_strategic_initiatives')
         .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, start_date, end_date, created_at')
         .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
-        .is('parent_si_id', null);
+        .is('parent_si_id', null)
+        .order('display_order', { ascending: true });
 
       const { data: importedMetrics } = await supabase
         .from('rc_do_metrics')
@@ -2396,6 +2501,7 @@ const duplicateSelectedDo = useCallback(() => {
             <Loader2 className="h-6 w-6 animate-spin text-[#4A5D5F]" />
           </div>
         ) : (
+        <DndContext sensors={siSensors} onDragEnd={handleSIDragEnd}>
         <ReactFlow
           nodes={filteredNodes}
           edges={filteredEdges}
@@ -2441,6 +2547,7 @@ const duplicateSelectedDo = useCallback(() => {
           <Controls />
           <Background color="#6B9A8F" gap={10} size={1} />
         </ReactFlow>
+        </DndContext>
         )}
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
