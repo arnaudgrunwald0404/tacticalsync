@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { kickOffZoomSync } from "@/lib/calendarZoomConnect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +64,7 @@ interface Template {
 
 const Settings = () => {
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -186,14 +188,6 @@ const Settings = () => {
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/auth");
-        return;
-      }
-      
-      // Get user email for testing mode check
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate("/auth");
         return;
@@ -262,7 +256,6 @@ const Settings = () => {
 
   const fetchTemplates = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Fetch user's own templates AND system templates
@@ -550,7 +543,7 @@ const Settings = () => {
   const grantAdminByEmail = async (email: string) => {
     if (!email.trim()) return;
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = user;
       const { data: target, error: findErr } = await supabase
         .from("profiles")
         .select("id, email")
@@ -648,7 +641,7 @@ const Settings = () => {
     }
 
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = user;
       if (!currentUser) throw new Error("Not authenticated");
 
       // Get user's name for the email
@@ -714,7 +707,7 @@ const Settings = () => {
 
   const handleSendReminder = async (invitationId: string, teamId: string | null, email: string) => {
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = user;
       if (!currentUser) throw new Error("Not authenticated");
 
       // Get user's name for the email
@@ -1176,7 +1169,7 @@ const Settings = () => {
     if (selectedUserIds.size === 0) return;
 
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = user;
       if (!currentUser) throw new Error("Not authenticated");
 
       // Get user's name for the email
@@ -1407,7 +1400,7 @@ const Settings = () => {
 
     setBulkImportLoading(true);
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = user;
       if (!currentUser) throw new Error("Not authenticated");
 
       // Read CSV file
@@ -1896,7 +1889,6 @@ const Settings = () => {
     setSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       if (editingTemplate) {

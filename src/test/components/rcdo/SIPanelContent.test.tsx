@@ -7,15 +7,13 @@ import type { Tables } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import * as useSIWithProgressModule from '@/hooks/useSIWithProgress';
 import * as useRolesModule from '@/hooks/useRoles';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Mock dependencies. The panel does both an UPDATE (status / owner edits) and
 // a SELECT (the sub-SI list at the bottom). Both chains end on a thenable, so
 // `order()` resolves directly to {data, error} for the select path.
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    auth: {
-      getUser: vi.fn(),
-    },
     from: vi.fn(() => ({
       update: vi.fn(() => ({
         eq: vi.fn(() => Promise.resolve({ data: null, error: null })),
@@ -31,6 +29,9 @@ vi.mock('@/integrations/supabase/client', () => ({
 
 vi.mock('@/hooks/useSIWithProgress');
 vi.mock('@/hooks/useRoles');
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
+}));
 
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
@@ -117,10 +118,7 @@ describe('SIPanelContent - Status Field', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    } as unknown as Awaited<ReturnType<typeof supabase.auth.getUser>>);
+    vi.mocked(useCurrentUser).mockReturnValue({ user: mockUser as never, loading: false });
 
     vi.mocked(useRolesModule.useRoles).mockReturnValue(makeRolesReturn(false));
 
@@ -211,8 +209,10 @@ describe('SIPanelContent - Status Field', () => {
 
       render(<SIPanelContent {...defaultProps} doLockedStatus={lockedStatus} />);
 
+      // canEditInitiative() depends on useRCDOPermissions' own internal
+      // effect resolving the current user id, so the disabled state isn't
+      // settled on the very first synchronous render.
       await waitFor(() => {
-        expect(supabase.auth.getUser).toHaveBeenCalled();
         const select = screen.getByRole('combobox', { name: /status/i });
         expect(select).toBeDisabled();
       });

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { parsePrepMarkdown, type TopicSection } from '@/components/cos/OneOnOnePrepDrawer';
 import { RelationshipTimeline } from '@/components/cos/RelationshipTimeline';
 import { PrepSettingsPanel } from '@/components/inbox/PrepSettingsPanel';
@@ -128,6 +129,7 @@ function TopicCard({ section, dismissed, onRemove, onRestore }: {
 }
 
 export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeTabOverride, onTabChange }: MeetingDetailPanelProps) {
+  const { user } = useCurrentUser();
   const member = event.team_member;
   const name = member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
   const firstName = name.split(' ')[0];
@@ -167,7 +169,6 @@ export function MeetingDetailPanel({ event, onBack, hideSidebar = false, activeT
     setLoadingPrep(true);
     const db = supabase as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoadingPrep(false); return; }
 
       db.from('profiles')

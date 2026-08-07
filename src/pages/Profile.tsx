@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import GridBackground from "@/components/ui/grid-background";
 const Profile = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<unknown>(null);
@@ -32,11 +34,10 @@ const Profile = () => {
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate("/auth");
         return;
@@ -83,7 +84,6 @@ const Profile = () => {
     setSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Validate personality percentages are whole numbers between 0-100
@@ -169,7 +169,6 @@ const Profile = () => {
 
       setUploading(true);
 
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Upload to storage
@@ -225,7 +224,6 @@ const Profile = () => {
 
   const handleAvatarNameChange = async (newAvatarName: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
       const { error } = await supabase

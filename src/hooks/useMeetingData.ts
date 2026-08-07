@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRoleOverride } from '@/contexts/RoleOverrideContext';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   MeetingAgendaProps,
   MeetingDataState,
@@ -16,6 +17,7 @@ export function useMeetingData(props: MeetingAgendaProps): {
 } {
   const { teamId, onUpdate } = props;
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   // State
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -36,7 +38,7 @@ export function useMeetingData(props: MeetingAgendaProps): {
   useEffect(() => {
     fetchTeamMembers();
     checkIfAdmin();
-  }, [teamId]);
+  }, [teamId, user]);
 
   const fetchTeamMembers = async () => {
     // Fetch team members first
@@ -72,7 +74,6 @@ export function useMeetingData(props: MeetingAgendaProps): {
 
   const checkIfAdmin = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: memberData, error } = await supabase

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { RCCheckinWithRelations } from '@/types/rcdo';
 
 export interface UserCheckinWithParent extends RCCheckinWithRelations {
@@ -12,13 +13,12 @@ export function useUserCheckins() {
   const [checkins, setCheckins] = useState<UserCheckinWithParent[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchUserCheckins = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setCheckins([]);
         setLoading(false);
@@ -164,7 +164,7 @@ export function useUserCheckins() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, user]);
 
   useEffect(() => {
     fetchUserCheckins();

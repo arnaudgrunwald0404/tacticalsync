@@ -7,6 +7,7 @@ import { Calendar, User, MessageSquare, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import type { TaskWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
@@ -30,6 +31,7 @@ const statusConfig = {
 
 export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const navigate = useNavigate();
 
@@ -43,14 +45,10 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
   const isOwner = currentUserId === task.owner_user_id;
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   const handleCheckInClick = (e: React.MouseEvent) => {
     e.stopPropagation();

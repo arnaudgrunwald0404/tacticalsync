@@ -1448,7 +1448,6 @@ export default function StrategyCanvasPage() {
     }
     saveTimerRef.current = window.setTimeout(async () => {
       try {
-        const { data: auth } = await supabase.auth.getUser();
         await supabase
           .from('rc_canvas_states')
           .upsert(
@@ -1456,7 +1455,7 @@ export default function StrategyCanvasPage() {
               room: roomName,
               nodes: nodes as unknown as import('@/integrations/supabase/types').Json,
               edges: edges as unknown as import('@/integrations/supabase/types').Json,
-              updated_by: auth?.user?.id || null,
+              updated_by: user?.id || null,
             },
             { onConflict: 'room' }
           );
@@ -1470,7 +1469,7 @@ export default function StrategyCanvasPage() {
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, user]);
 
   const onConnect = useCallback((params: Edge | Connection) => {
     // Prevent connections from ROOT_ID (rallying cry) to DOs
@@ -1715,7 +1714,6 @@ const duplicateSelectedDo = useCallback(() => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast({ title: 'Lock failed', description: 'You must be logged in to lock items.', variant: 'destructive' });
         return;
@@ -1746,7 +1744,7 @@ const duplicateSelectedDo = useCallback(() => {
     } catch (_) {
       // best-effort: UI already updated
     }
-  }, [setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast]);
+  }, [setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast, user]);
 
   /** Lock a single DO (and its child SIs) — the per-DO "Finalize" action. */
   const finalizeSingleDO = useCallback(async (doNodeId: string) => {
@@ -2026,7 +2024,6 @@ const duplicateSelectedDo = useCallback(() => {
       }
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No user found');
       }
@@ -2245,7 +2242,7 @@ const duplicateSelectedDo = useCallback(() => {
       setShowOverwriteWarning(false);
       // Don't clear progress - keep it visible
     }
-  }, [cycleId, setNodes, setEdges, toast, hasCanvasContent]);
+  }, [cycleId, setNodes, setEdges, toast, hasCanvasContent, user]);
 
   // Import from file
   const handleImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {

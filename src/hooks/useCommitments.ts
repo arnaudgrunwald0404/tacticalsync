@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type {
   CommitmentQuarter,
   QuarterlyPriority,
@@ -19,6 +20,7 @@ export function useActiveQuarter() {
   const [quarters, setQuarters] = useState<CommitmentQuarter[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchQuarters = useCallback(async () => {
     try {
@@ -48,16 +50,15 @@ export function useActiveQuarter() {
   useEffect(() => { fetchQuarters(); }, [fetchQuarters]);
 
   const createQuarter = useCallback(async (form: CreateQuarterForm) => {
-    const { data: userData } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('commitment_quarters')
-      .insert({ ...form, created_by: userData.user?.id ?? null })
+      .insert({ ...form, created_by: user?.id ?? null })
       .select()
       .single();
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return null; }
     await fetchQuarters();
     return data as CommitmentQuarter;
-  }, [fetchQuarters, toast]);
+  }, [fetchQuarters, toast, user]);
 
   return { quarter, quarters, loading, setQuarter, refetch: fetchQuarters, createQuarter };
 }
