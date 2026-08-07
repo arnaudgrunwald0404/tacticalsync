@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useRelationshipTopics, useForgottenCommitments } from '@/hooks/useRelationshipTopics';
@@ -251,6 +252,7 @@ export function OneOnOnePrepDrawer({
   onClose, onRefresh, onShare, onAiGenerate,
 }: PrepDrawerProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const [activeTab, setActiveTab] = useState<TabKey>('prep');
 
@@ -447,10 +449,9 @@ export function OneOnOnePrepDrawer({
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
-        const { data: { user: me } } = await supabase.auth.getUser();
-        if (!me || cancelled) return;
+        if (!user || cancelled) return;
 
-        const { data: myProfile } = await db.from('profiles').select('full_name').eq('id', me.id).maybeSingle();
+        const { data: myProfile } = await db.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
         const myFullName: string = myProfile?.full_name ?? '';
 
         const since = member!.last_1on1_date
@@ -502,7 +503,7 @@ export function OneOnOnePrepDrawer({
     }
     loadRecognitions();
     return () => { cancelled = true; };
-  }, [open, member]);
+  }, [open, member, user]);
 
   // Auto-scroll the chat as messages arrive
   useEffect(() => {
@@ -573,7 +574,6 @@ export function OneOnOnePrepDrawer({
     if (!text || !member) return;
     setAssignInput('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).from('cos_meeting_actions')
@@ -593,7 +593,6 @@ export function OneOnOnePrepDrawer({
     if (!text || !member) return;
     setMineInput('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).from('cos_meeting_actions')
@@ -721,7 +720,6 @@ export function OneOnOnePrepDrawer({
   const saveFeedback = async () => {
     setSavingFeedback(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any)
@@ -1479,6 +1477,7 @@ function RecognitionBanner({ recognitions }: { recognitions: RecognitionItem[] }
 
 function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   // Effective per-member tool list (null = using global default)
   const [perMemberTools, setPerMemberTools] = useState<string[] | null>(null);
   // Global default tools from prep schedule
@@ -1492,9 +1491,8 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user || cancelled) return;
-        const userId = userData.user.id;
+        if (!user || cancelled) return;
+        const userId = user.id;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
 
@@ -1528,7 +1526,7 @@ function PrepToolsCard({ memberId }: { memberId: string; memberName: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [memberId]);
+  }, [memberId, user]);
 
   // The effective set shown in the UI: per-member override if set, else global default
   const effectiveTools = perMemberTools ?? globalTools;

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { formatHourLabel } from '@/hooks/usePrepScheduleConfig';
 
@@ -134,6 +135,7 @@ function SourcesAndInstructions({
 
 export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }: DciBriefSetupBannerProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [state, setState] = useState<BannerState>('loading');
   const [slackDm, setSlackDm] = useState(true);
   const [enabling, setEnabling] = useState(false);
@@ -154,7 +156,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
   useEffect(() => {
     async function check() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -199,7 +200,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
       }
     }
     check();
-  }, []);
+  }, [user]);
 
   // ── Toggle a source ─────────────────────────────────────────────────────
 
@@ -213,7 +214,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
   const saveSettings = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -230,14 +230,13 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     } catch (err) {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
     }
-  }, [sources, instructions, toast]);
+  }, [sources, instructions, toast, user]);
 
   // ── Enable DCI briefs ───────────────────────────────────────────────────
 
   const enableDci = useCallback(async () => {
     setEnabling(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -258,7 +257,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     } finally {
       setEnabling(false);
     }
-  }, [sources, instructions, toast, onStateChange]);
+  }, [sources, instructions, toast, onStateChange, user]);
 
   // ── Run now ─────────────────────────────────────────────────────────────
 
@@ -284,7 +283,6 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
 
   const disableDci = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -295,7 +293,7 @@ export default function DciBriefSetupBanner({ onStateChange, onBriefGenerated }:
     } catch (err) {
       toast({ title: 'Failed', description: String(err), variant: 'destructive' });
     }
-  }, [toast, onStateChange]);
+  }, [toast, onStateChange, user]);
 
   // ── Dismiss ─────────────────────────────────────────────────────────────
 

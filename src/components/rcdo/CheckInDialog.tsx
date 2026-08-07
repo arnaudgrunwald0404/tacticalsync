@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -65,6 +66,7 @@ export function CheckInDialog({
   onSuccess,
 }: CheckInDialogProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -92,8 +94,6 @@ export function CheckInDialog({
     const loadData = async () => {
       setProfilesLoading(true);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-
         const { data: profilesData, error } = await supabase
           .from('profiles')
           .select('id, full_name, first_name, last_name, avatar_url, avatar_name')
@@ -128,7 +128,7 @@ export function CheckInDialog({
     if (isOpen) {
       loadData();
     }
-  }, [isOpen, toast]);
+  }, [isOpen, toast, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

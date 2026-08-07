@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { TrendingUp, AlertTriangle, TrendingDown, CheckCircle2, Target, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { DefiningObjectiveWithRelations } from '@/types/rcdo';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { CheckInDialog } from './CheckInDialog';
@@ -43,6 +44,7 @@ export function DOTile({ definingObjective }: DOTileProps) {
   const healthData = healthConfig[definingObjective.health];
   const HealthIcon = healthData.icon;
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
 
   // Default/neutral styling when DO is draft or has no metrics yet
@@ -60,14 +62,10 @@ export function DOTile({ definingObjective }: DOTileProps) {
   const isOwner = currentUserId === definingObjective.owner_user_id;
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   const handleClick = () => {
     navigate(`/rcdo/detail/do/${definingObjective.id}`);

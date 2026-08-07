@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useSubSIs } from '@/hooks/useSubSIs';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Mock the toast hook. Critical: the returned `toast` must be a STABLE
 // reference across renders — useSubSIs lists `toast` as a useCallback dep,
@@ -29,14 +30,16 @@ vi.mock('@/integrations/supabase/client', () => {
   return {
     supabase: {
       from,
-      auth: { getUser: vi.fn() },
     },
   };
 });
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
+}));
+
 const mockedSupabase = supabase as unknown as {
   from: ReturnType<typeof vi.fn>;
-  auth: { getUser: ReturnType<typeof vi.fn> };
 };
 
 const makeFetchChain = (rows: unknown[], error: Error | null = null) => {
@@ -60,6 +63,7 @@ const makeInsertChain = (row: unknown, error: Error | null = null) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useCurrentUser).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
 });
 
 describe('useSubSIs', () => {
@@ -122,7 +126,7 @@ describe('useSubSIs', () => {
         .mockReturnValueOnce({ select: initialFetch.select }) // initial fetch
         .mockReturnValueOnce({ insert: insertChain.insert }) // createSubSI insert
         .mockReturnValueOnce({ select: refetch.select }); // refetch
-      mockedSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      vi.mocked(useCurrentUser).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
 
       const { result } = renderHook(() => useSubSIs('parent-1'));
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -156,7 +160,7 @@ describe('useSubSIs', () => {
         .mockReturnValueOnce({ select: initialFetch.select })
         .mockReturnValueOnce({ insert: insertChain.insert })
         .mockReturnValueOnce({ select: refetch.select });
-      mockedSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      vi.mocked(useCurrentUser).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
 
       const { result } = renderHook(() => useSubSIs('parent-1'));
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -175,7 +179,7 @@ describe('useSubSIs', () => {
       mockedSupabase.from
         .mockReturnValueOnce({ select: initialFetch.select })
         .mockReturnValueOnce({ insert: insertChain.insert });
-      mockedSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      vi.mocked(useCurrentUser).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
 
       const { result } = renderHook(() => useSubSIs('parent-1'));
       await waitFor(() => expect(result.current.loading).toBe(false));

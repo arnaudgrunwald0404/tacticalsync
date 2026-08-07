@@ -1,9 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, MessageSquare } from 'lucide-react';
+import { Plus, MessageSquare, GripVertical } from 'lucide-react';
 import { useDODetails, useDOMetrics, useStrategicInitiatives, useRCLinks, useCheckins, useActiveCycle } from '@/hooks/useRCDO';
 import { updateDO, lockDO, unlockDO, deleteDO } from '@/hooks/useRCDOMutations';
 import { getDOLockBlockers } from '@/lib/rcdoValidation';
@@ -23,6 +32,7 @@ import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { isCheckinStale, isMetricStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { DetailPageHeader } from '@/components/rcdo/DetailPageHeader';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -31,6 +41,40 @@ import { Calendar } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCycleAllSIs } from '@/hooks/useCycleAllSIs';
 import { ProgressBadge, PercentCell, DeltaCell } from '@/components/rcdo/SIProgressCells';
+
+// Drag handle: only this element listens for the gesture (via useSortable's
+// attributes/listeners), so clicking anywhere else in the row never starts a
+// drag. Disabled (hidden handle, no listeners) when the DO is locked or the
+// viewer can't edit — same gate as the "Add Initiative" button above the table.
+function SortableSIRow({ id, disabled, children }: { id: string; disabled: boolean; children: React.ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 20 : undefined,
+    position: 'relative',
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style} className="align-top">
+      <TableCell className="py-3">
+        {!disabled && (
+          <button
+            type="button"
+            aria-label="Drag to reorder"
+            className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-grab active:cursor-grabbing touch-none"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
+      </TableCell>
+      {children}
+    </TableRow>
+  );
+}
 
 export default function DODetail() {
   const { doId } = useParams<{ doId: string }>();
@@ -42,6 +86,7 @@ export default function DODetail() {
   const [showInitiativeDialog, setShowInitiativeDialog] = useState(false);
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiativeWithRelations | null>(null);
   const { setNavState } = useRCDODetail();
   const { toast } = useToast();
@@ -109,6 +154,7 @@ export default function DODetail() {
     initiatives,
     loading: initiativesLoading,
     refetch: refetchInitiatives,
+    reorderInitiatives,
   } = useStrategicInitiatives(doId);
 
   // Fetch links
@@ -134,6 +180,21 @@ export default function DODetail() {
   const handleInitiativeSuccess = () => {
     refetchInitiatives();
   };
+
+  // 5px activation distance keeps row clicks/links responsive: nothing starts
+  // a drag until the pointer moves at least 5px (same as SISubTree's sub-SI
+  // reorder sensor).
+  const siSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleSIDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = initiatives.map((i) => i.id);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    await reorderInitiatives(arrayMove(ids, oldIndex, newIndex));
+  }, [initiatives, reorderInitiatives]);
 
   const handleSIDateChange = async (field: 'start_date' | 'end_date', value: string) => {
     if (!selectedInitiative) return;
@@ -219,14 +280,10 @@ export default function DODetail() {
 
   // Get current user
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   // Set selected initiative when initiativeId is in URL
   useEffect(() => {
@@ -441,74 +498,80 @@ export default function DODetail() {
                       )}
                     </div>
                     <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-[#2C3E50] hover:bg-[#2C3E50]">
-                            <TableHead className="text-white font-semibold w-[180px]">Owner</TableHead>
-                            <TableHead className="text-white font-semibold">Strategic Initiative</TableHead>
-                            <TableHead className="text-white font-semibold w-[140px]">Progress</TableHead>
-                            <TableHead className="text-white font-semibold w-[180px]">% Complete</TableHead>
-                            <TableHead className="text-white font-semibold w-[180px]">Trend</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {siProgressLoading ? (
-                            Array.from({ length: 3 }).map((_, i) => (
-                              <TableRow key={`skeleton-${i}`}>
-                                <TableCell><Skeleton className="h-6 w-32" /></TableCell>
-                                <TableCell><Skeleton className="h-4 w-full max-w-md" /></TableCell>
-                                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                                <TableCell><Skeleton className="h-2 w-full" /></TableCell>
-                                <TableCell><Skeleton className="h-3 w-24" /></TableCell>
-                              </TableRow>
-                            ))
-                          ) : initiatives.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={5} className="text-center py-12 text-sm text-muted-foreground">
-                                No strategic initiatives yet.
-                              </TableCell>
+                      <DndContext sensors={siSensors} onDragEnd={handleSIDragEnd}>
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-[#2C3E50] hover:bg-[#2C3E50]">
+                              <TableHead className="text-white font-semibold w-[32px]" />
+                              <TableHead className="text-white font-semibold w-[180px]">Owner</TableHead>
+                              <TableHead className="text-white font-semibold">Strategic Initiative</TableHead>
+                              <TableHead className="text-white font-semibold w-[140px]">Progress</TableHead>
+                              <TableHead className="text-white font-semibold w-[180px]">% Complete</TableHead>
+                              <TableHead className="text-white font-semibold w-[180px]">Trend</TableHead>
                             </TableRow>
-                          ) : (
-                            initiatives.map((initiative) => {
-                              const progress = siProgressMap.get(initiative.id);
-                              const siOwnerName = getFullNameForAvatar(
-                                initiative.owner?.first_name,
-                                initiative.owner?.last_name,
-                                initiative.owner?.full_name
-                              );
-                              return (
-                                <TableRow key={initiative.id} className="align-top">
-                                  <TableCell className="py-3">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <FancyAvatar
-                                        name={initiative.owner?.avatar_name || siOwnerName}
-                                        displayName={siOwnerName}
-                                        avatarUrl={initiative.owner?.avatar_url}
-                                        size="sm"
-                                      />
-                                      <span className="text-sm font-medium truncate">{siOwnerName}</span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="py-3 text-sm">{initiative.title}</TableCell>
-                                  <TableCell className="py-3">
-                                    <ProgressBadge status={progress?.status ?? 'unknown'} />
-                                  </TableCell>
-                                  <TableCell className="py-3">
-                                    <PercentCell value={progress?.latestPercent ?? null} />
-                                  </TableCell>
-                                  <TableCell className="py-3">
-                                    <DeltaCell
-                                      latestPercent={progress?.latestPercent ?? null}
-                                      priorPercent={progress?.priorPercent ?? null}
-                                      priorCheckinDate={progress?.priorCheckinDate ?? null}
-                                    />
-                                  </TableCell>
+                          </TableHeader>
+                          <TableBody>
+                            {siProgressLoading ? (
+                              Array.from({ length: 3 }).map((_, i) => (
+                                <TableRow key={`skeleton-${i}`}>
+                                  <TableCell><Skeleton className="h-6 w-6" /></TableCell>
+                                  <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-full max-w-md" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                  <TableCell><Skeleton className="h-2 w-full" /></TableCell>
+                                  <TableCell><Skeleton className="h-3 w-24" /></TableCell>
                                 </TableRow>
-                              );
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
+                              ))
+                            ) : initiatives.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-12 text-sm text-muted-foreground">
+                                  No strategic initiatives yet.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              <SortableContext items={initiatives.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                                {initiatives.map((initiative) => {
+                                  const progress = siProgressMap.get(initiative.id);
+                                  const siOwnerName = getFullNameForAvatar(
+                                    initiative.owner?.first_name,
+                                    initiative.owner?.last_name,
+                                    initiative.owner?.full_name
+                                  );
+                                  return (
+                                    <SortableSIRow key={initiative.id} id={initiative.id} disabled={isLocked || !canEdit}>
+                                      <TableCell className="py-3">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <FancyAvatar
+                                            name={initiative.owner?.avatar_name || siOwnerName}
+                                            displayName={siOwnerName}
+                                            avatarUrl={initiative.owner?.avatar_url}
+                                            size="sm"
+                                          />
+                                          <span className="text-sm font-medium truncate">{siOwnerName}</span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="py-3 text-sm">{initiative.title}</TableCell>
+                                      <TableCell className="py-3">
+                                        <ProgressBadge status={progress?.status ?? 'unknown'} />
+                                      </TableCell>
+                                      <TableCell className="py-3">
+                                        <PercentCell value={progress?.latestPercent ?? null} />
+                                      </TableCell>
+                                      <TableCell className="py-3">
+                                        <DeltaCell
+                                          latestPercent={progress?.latestPercent ?? null}
+                                          priorPercent={progress?.priorPercent ?? null}
+                                          priorCheckinDate={progress?.priorCheckinDate ?? null}
+                                        />
+                                      </TableCell>
+                                    </SortableSIRow>
+                                  );
+                                })}
+                              </SortableContext>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </DndContext>
                     </div>
                   </div>
                 </div>

@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -302,6 +303,7 @@ export function OneOnOnesView({
   externalSearch,
   hideSearchSync = false,
 }: OneOnOnesViewProps) {
+  const { user } = useCurrentUser();
   const [internalSearch, setInternalSearch] = useState('');
   const search = externalSearch !== undefined ? externalSearch : internalSearch;
   const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch;
@@ -377,7 +379,6 @@ export function OneOnOnesView({
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -409,7 +410,7 @@ export function OneOnOnesView({
       setAllPendingActions(counts);
     }
     load();
-  }, [members]);
+  }, [members, user]);
 
   const markTodoDone = async (id: string) => {
     setMyTodos(prev => prev.filter(t => t.id !== id));

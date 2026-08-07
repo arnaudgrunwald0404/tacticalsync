@@ -35,6 +35,7 @@ import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { isCheckinStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
 import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
@@ -54,6 +55,7 @@ export default function SIDetail() {
   const [editingTaskId, setEditingTaskId] = useState<string | undefined>();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const { setNavState } = useRCDODetail();
@@ -216,14 +218,10 @@ export default function SIDetail() {
   }, [siId]);
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   // Real-time updates
   useRCDORealtime({
