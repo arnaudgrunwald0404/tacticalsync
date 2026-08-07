@@ -26,6 +26,7 @@ import { CycleSelector } from "@/components/rcdo/CycleSelector";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
 import * as Y from "yjs";
@@ -571,6 +572,8 @@ function findNonOverlappingPosition(existing: Node<NodeData>[], type: NodeKind, 
 }
 
 export default function StrategyCanvasPage() {
+  const { user } = useCurrentUser();
+
   // Realtime doc and provider (optional if server not running)
   const ydocRef = useRef<Y.Doc>();
   
@@ -1736,13 +1739,13 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     try {
-      await lockDO(doDbId);
+      await lockDO(doDbId, user?.id);
       toast({ title: 'Locked', description: `"${data.title}" and its SIs have been locked.` });
     } catch (e) {
       console.error('finalizeSingleDO error', e);
       toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
-  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
+  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast, user]);
 
   const unlockSingleDO = useCallback(async (doNodeId: string) => {
     const doStatus = doLockedStatus.get(doNodeId);
@@ -1806,7 +1809,7 @@ const duplicateSelectedDo = useCallback(() => {
       return;
     }
     try {
-      await lockInitiative(siDbId);
+      await lockInitiative(siDbId, user?.id);
     } catch (e) {
       toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
@@ -1818,7 +1821,7 @@ const duplicateSelectedDo = useCallback(() => {
       return next;
     });
     toast({ title: 'SI locked', description: `"${si?.title}" has been locked.` });
-  }, [toast, setSiProgressMap]);
+  }, [toast, setSiProgressMap, user]);
 
   const unlockSingleSI = useCallback(async (siId: string, siDbId: string) => {
     try {

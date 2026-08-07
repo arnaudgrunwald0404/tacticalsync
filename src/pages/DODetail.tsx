@@ -291,7 +291,7 @@ export default function DODetail() {
     }
 
     try {
-      await lockDO(doDetails.id);
+      await lockDO(doDetails.id, currentUserId ?? undefined);
       await Promise.all([refetchDO(), refetchInitiatives()]);
     } catch (e) {
       console.warn('Failed to lock DO', e);

@@ -415,7 +415,7 @@ export default function SIDetail() {
     }
 
     try {
-      await lockInitiative(siDetails.id as string);
+      await lockInitiative(siDetails.id as string, currentUserId ?? undefined);
       await refetchSI();
     } catch (e) {
       console.warn('Failed to lock SI', e);

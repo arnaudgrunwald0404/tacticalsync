@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Users, LogOut, Settings, User, Mail } from "lucide-react";
@@ -26,44 +26,47 @@ import { useRoles } from "@/hooks/useRoles";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
+  const { session, lastEvent, lastEventAt } = useAuth();
 
-  // Handle OAuth callback and redirect
-  // Keep auth state listener for multi-tab support and session management
-  useEffect(() => {
+  // Computed once from the URL at mount, mirroring the original effect's
+  // closure-captured hasCode/hasAccessToken/hasError — this component only
+  // ever mounts once per OAuth redirect, so a lazy initializer is equivalent.
+  const [oauthCallback] = useState(() => {
     const hash = window.location.hash;
     const params = new URLSearchParams(window.location.search);
-    const hasCode = params.has('code');
-    const hasAccessToken = hash.includes('access_token=');
-    const hasError = hash.includes('error=');
-    
-    // If we're in an OAuth callback, wait for Supabase to process it
-    // (Supabase auto-processes with detectSessionInUrl: true)
-    if (hasCode || hasAccessToken || hasError) {
-      console.log('[Dashboard] OAuth callback detected, waiting for Supabase to process...');
-      setIsProcessingAuth(true);
-      
-      // Listen for auth state change (important for multi-tab and session management)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log('[Dashboard] Auth state changed:', event, 'Has session:', !!session);
-        
-        if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-          console.log('[Dashboard] Session established, redirecting to dashboard/rcdo');
-          navigate('/commitments', { replace: true });
-        } else if (hasError || event === 'SIGNED_OUT') {
-          console.error('[Dashboard] Auth failed or signed out');
-          navigate('/auth', { replace: true });
-        }
-      });
-      
-      return () => subscription.unsubscribe();
-    } else {
-      // No OAuth callback, just redirect immediately
+    return {
+      isCallback: params.has('code') || hash.includes('access_token=') || hash.includes('error='),
+      hasError: hash.includes('error='),
+    };
+  });
+
+  // If we're not in an OAuth callback, just redirect immediately.
+  useEffect(() => {
+    if (!oauthCallback.isCallback) {
       navigate('/commitments', { replace: true });
     }
-  }, [navigate]);
+  }, [oauthCallback.isCallback, navigate]);
 
-  if (isProcessingAuth) {
+  // If we are, wait for the shared auth context to report the session
+  // Supabase auto-processes via detectSessionInUrl: true. AppLayout's
+  // AuthProvider already has a live onAuthStateChange subscription (this
+  // page only renders once its gate lets a session through), so we react
+  // to that instead of subscribing again ourselves.
+  useEffect(() => {
+    if (!oauthCallback.isCallback) return;
+    console.log('[Dashboard] Auth state changed:', lastEvent, 'Has session:', !!session);
+
+    if (session && (lastEvent === 'SIGNED_IN' || lastEvent === 'INITIAL_SESSION')) {
+      console.log('[Dashboard] Session established, redirecting to dashboard/rcdo');
+      navigate('/commitments', { replace: true });
+    } else if (oauthCallback.hasError || lastEvent === 'SIGNED_OUT') {
+      console.error('[Dashboard] Auth failed or signed out');
+      navigate('/auth', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lastEventAt is the change signal; lastEvent/session are read from the same context tick
+  }, [oauthCallback, lastEventAt, navigate]);
+
+  if (oauthCallback.isCallback) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg text-muted-foreground">Completing sign in...</div>

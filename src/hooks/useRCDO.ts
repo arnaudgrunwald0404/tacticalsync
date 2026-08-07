@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type {
   RCCycle,
   RCCycleWithRelations,
@@ -79,6 +80,7 @@ export function useCycles() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchCycles = useCallback(async () => {
     try {
@@ -123,9 +125,7 @@ export function useCycles() {
         throw new Error('Cycle must start on the first day of the month');
       }
 
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
+      if (!user) {
         throw new Error('You must be logged in to create a cycle');
       }
 
@@ -276,6 +276,7 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchDOs = useCallback(async () => {
     if (!rallyingCryId) {
@@ -319,7 +320,6 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
 
   const createDO = async (form: CreateDOForm) => {
     try {
-      const { data: auth } = await supabase.auth.getUser();
       const { data, error: createError } = await supabase
         .from('rc_defining_objectives')
         .insert({
@@ -332,7 +332,7 @@ export function useCycleDOs(rallyingCryId: string | undefined) {
           status: 'draft',
           health: 'on_track',
           confidence_pct: 50,
-          created_by: auth?.user?.id || null,
+          created_by: user?.id || null,
         })
         .select()
         .single();
@@ -581,6 +581,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
   const [initiatives, setInitiatives] = useState<StrategicInitiativeWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchInitiatives = useCallback(async () => {
     if (!doId) {
@@ -621,7 +622,6 @@ export function useStrategicInitiatives(doId: string | undefined) {
 
   const createInitiative = async (form: CreateInitiativeForm) => {
     try {
-      const { data: auth } = await supabase.auth.getUser();
       const { data, error: createError } = await supabase
         .from('rc_strategic_initiatives')
         .insert({
@@ -633,7 +633,7 @@ export function useStrategicInitiatives(doId: string | undefined) {
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           status: 'not_started',
-          created_by: auth?.user?.id || null,
+          created_by: user?.id || null,
         })
         .select()
         .single();
@@ -747,6 +747,7 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
   const [links, setLinks] = useState<RCLinkWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchLinks = useCallback(async () => {
     if (!parentId) {
@@ -788,8 +789,6 @@ export function useRCLinks(parentType: 'do' | 'initiative', parentId: string | u
 
   const createLink = async (form: CreateLinkForm) => {
     try {
-      // Get current user for created_by field
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       // Check if link already exists
