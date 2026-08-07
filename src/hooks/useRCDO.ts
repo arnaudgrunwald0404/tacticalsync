@@ -657,7 +657,22 @@ export function useStrategicInitiatives(doId: string | undefined) {
     }
   };
 
-  return { initiatives, loading, refetch: fetchInitiatives, createInitiative };
+  // Persist a new initiative order — same shape as SISubTree's reorderSubSIs
+  // (parallel per-row display_order updates), reused here for top-level SIs.
+  const reorderInitiatives = useCallback(async (orderedIds: string[]) => {
+    const results = await Promise.all(
+      orderedIds.map((id, idx) =>
+        supabase.from('rc_strategic_initiatives').update({ display_order: idx }).eq('id', id),
+      ),
+    );
+    const failures = results.filter((r) => r.error);
+    if (failures.length > 0) {
+      console.error('Failed to persist some initiative display_order updates', failures.map((f) => f.error));
+    }
+    await fetchInitiatives();
+  }, [fetchInitiatives]);
+
+  return { initiatives, loading, refetch: fetchInitiatives, createInitiative, reorderInitiatives };
 }
 
 // ============================================================================
