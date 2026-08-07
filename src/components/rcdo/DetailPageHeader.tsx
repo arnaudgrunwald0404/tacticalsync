@@ -7,6 +7,7 @@ import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, T
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
+import { SIStatusControl } from '@/components/rcdo/SIStatusControl';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { calculateDOHealth, getHealthColor } from '@/lib/rcdoScoring';
 import { parseLocalDate } from '@/lib/dateUtils';
@@ -82,6 +83,9 @@ export interface DetailPageHeaderProps {
   // SI kebab actions
   onBreakIntoSubSIs?: () => void;
 
+  // SI status — editable inline (gated by canEdit above) when provided
+  onStatusChange?: (status: string) => Promise<void>;
+
   // Delete
   onDelete?: () => void;
   canDelete?: boolean;
@@ -127,6 +131,7 @@ export function DetailPageHeader({
   onEndDateChange,
   dateError,
   onBreakIntoSubSIs,
+  onStatusChange,
   onDelete,
   canDelete = false,
 }: DetailPageHeaderProps) {
@@ -512,16 +517,26 @@ export function DetailPageHeader({
           </Badge>
         )}
         {type === 'si' && status && (
-          <Badge className={
-            status === 'not_started' ? 'bg-[#5B6E7A]' :
-            status === 'on_track' ? 'bg-green-500' :
-            status === 'at_risk' ? 'bg-yellow-500' :
-            status === 'off_track' ? 'bg-yellow-500' :
-            status === 'completed' ? 'bg-green-500' :
-            'bg-gray-500'
-          }>
-            {status.replace('_', ' ').toUpperCase()}
-          </Badge>
+          canEdit && onStatusChange ? (
+            <SIStatusControl
+              variant="badge"
+              status={status}
+              canEdit
+              taskCount={tasksCount}
+              onStatusChange={onStatusChange}
+            />
+          ) : (
+            <Badge className={
+              status === 'not_started' ? 'bg-[#5B6E7A]' :
+              status === 'on_track' ? 'bg-green-500' :
+              status === 'at_risk' ? 'bg-yellow-500' :
+              status === 'off_track' ? 'bg-yellow-500' :
+              status === 'completed' ? 'bg-green-500' :
+              'bg-gray-500'
+            }>
+              {status.replace('_', ' ').toUpperCase()}
+            </Badge>
+          )
         )}
         {((isLocked && canLock && onUnlock) ||
           (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||

@@ -87,6 +87,9 @@ export function useRoles(): RolesState {
       isAdmin,
       isSuperAdmin: isAdmin && state.isSuperAdmin,
       isRCDOAdmin: isAdmin && state.isRCDOAdmin,
+      // Simulating 'member' should also suppress role-tag-derived capability,
+      // otherwise a real admin/elt/xlt tag would leak through the override.
+      roleTags: override === 'member' ? [] : state.roleTags,
     };
   }, [state, override]);
 }
