@@ -8,6 +8,8 @@ import {
   normalizeChannelName,
   parseSenderEmail,
   inferSuppressionRules,
+  isAutomatedSender,
+  isCalendarInvite,
   SUPPRESSED_BY_DEFAULT,
   type SuppressionRules,
   type DismissalRecord,
@@ -470,4 +472,85 @@ Deno.test("inferSuppressionRules: empty dismissal list returns empty results", (
   assertEquals(result.newSenders, [])
   assertEquals(result.newDomains, [])
   assertEquals(result.newIntents, [])
+})
+
+// ─── isAutomatedSender ────────────────────────────────────────────────────────
+
+Deno.test("isAutomatedSender: flags no-reply@ addresses", () => {
+  assert(isAutomatedSender("no-reply@github.com"))
+})
+
+Deno.test("isAutomatedSender: flags noreply@ (no hyphen)", () => {
+  assert(isAutomatedSender("noreply@example.com"))
+})
+
+Deno.test("isAutomatedSender: flags notifications@ addresses", () => {
+  assert(isAutomatedSender("notifications@github.com"))
+})
+
+Deno.test("isAutomatedSender: flags communications@ addresses", () => {
+  assert(isAutomatedSender("communications@ramp.com"))
+})
+
+Deno.test("isAutomatedSender: flags do-not-reply@ addresses", () => {
+  assert(isAutomatedSender("do-not-reply@service.com"))
+})
+
+Deno.test("isAutomatedSender: flags mailer-daemon@ and postmaster@", () => {
+  assert(isAutomatedSender("mailer-daemon@example.com"))
+  assert(isAutomatedSender("postmaster@example.com"))
+})
+
+Deno.test("isAutomatedSender: is case-insensitive", () => {
+  assert(isAutomatedSender("No-Reply@GitHub.com"))
+})
+
+Deno.test("isAutomatedSender: does not flag a real person's address", () => {
+  assertFalse(isAutomatedSender("jane@example.com"))
+})
+
+Deno.test("isAutomatedSender: does not flag a local part that merely contains 'alert'", () => {
+  assertFalse(isAutomatedSender("albert@example.com"))
+})
+
+Deno.test("isAutomatedSender: returns false for null", () => {
+  assertFalse(isAutomatedSender(null))
+})
+
+// ─── isCalendarInvite ─────────────────────────────────────────────────────────
+
+Deno.test("isCalendarInvite: flags 'Invitation:' subjects", () => {
+  assert(isCalendarInvite("Invitation: 1:1 sync @ Thu 2pm", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags 'Accepted:' subjects", () => {
+  assert(isCalendarInvite("Accepted: 1:1 sync @ Thu 2pm", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags 'Declined:' subjects", () => {
+  assert(isCalendarInvite("Declined: Board review", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags 'Updated invitation:' subjects", () => {
+  assert(isCalendarInvite("Updated invitation: Board review", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags 'Canceled event:' subjects", () => {
+  assert(isCalendarInvite("Canceled event: Board review", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags calendar-notification@google.com regardless of subject", () => {
+  assert(isCalendarInvite("Some unrelated subject", "calendar-notification@google.com"))
+})
+
+Deno.test("isCalendarInvite: is case-insensitive on subject prefix", () => {
+  assert(isCalendarInvite("invitation: standup", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: does not flag a normal subject", () => {
+  assertFalse(isCalendarInvite("Can you review this PR?", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: does not flag a subject that merely contains 'accepted' mid-sentence", () => {
+  assertFalse(isCalendarInvite("Your offer was accepted", "colleague@example.com"))
 })
