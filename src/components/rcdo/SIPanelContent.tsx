@@ -15,6 +15,7 @@ import { isFeatureEnabled } from '@/lib/featureFlags';
 import type { Tables } from '@/integrations/supabase/types';
 import type { Node } from 'reactflow';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useRoles } from '@/hooks/useRoles';
 import type { InitiativeStatus } from '@/types/rcdo';
@@ -100,6 +101,7 @@ export function SIPanelContent({
   const { isAdmin, isSuperAdmin, isRCDOAdmin } = useRoles();
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(si.title || '');
   
@@ -173,14 +175,10 @@ export function SIPanelContent({
   const canEditStatus = !isLocked || isAdmin || isSuperAdmin || isRCDOAdmin || (currentUserId === si.ownerId);
   
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   // Sub-SI list (rendered at the bottom when this SI has children). Kept inside
   // SIPanelContent rather than threaded through StrategyCanvas so callers don't
