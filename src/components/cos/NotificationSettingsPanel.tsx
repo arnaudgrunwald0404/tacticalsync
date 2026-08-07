@@ -159,6 +159,20 @@ export function NotificationSettingsPanel({ className, onNavigateToSection }: No
           onChange={rcdo_stale_alerts => update({ rcdo_stale_alerts })}
         />
       </SettingsGroup>
+
+      {/* ── In-app extras (not Slack DMs, so not gated on slackConnected) ──── */}
+      <SettingsGroup
+        title="In-app banners"
+        description="Optional extras shown on your Check-Ins and Inbox pages."
+      >
+        <NotificationToggle
+          icon={Sun}
+          label="Weekend banner"
+          description="A Friday/weekend/Monday banner on Check-Ins and Inbox for sharing weekend plans and reflecting after"
+          checked={prefs.weekend_banner}
+          onChange={weekend_banner => update({ weekend_banner })}
+        />
+      </SettingsGroup>
     </div>
   );
 }

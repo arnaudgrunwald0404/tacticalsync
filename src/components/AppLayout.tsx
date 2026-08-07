@@ -5,6 +5,7 @@ import { WeekendBanner } from "@/components/WeekendBanner";
 import { ContentSkeleton } from "@/components/ui/content-skeleton";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { useSessionManager } from "@/hooks/useSessionManager";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
 import { AuthProvider, useCurrentUser } from "@/contexts/AuthContext";
 
 export function AppLayout() {
@@ -19,6 +20,7 @@ function AppLayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading } = useCurrentUser();
+  const { prefs: notificationPrefs } = useNotificationPreferences();
 
   useSessionManager();
 
@@ -52,7 +54,7 @@ function AppLayoutInner() {
   return (
     <div className={useFullHeightShell ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
       <AppNavbar />
-      {isChiefOfStaff && <WeekendBanner />}
+      {isChiefOfStaff && notificationPrefs.weekend_banner && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
         {useFullHeightShell ? (
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
