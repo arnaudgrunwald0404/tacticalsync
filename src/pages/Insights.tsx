@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useActiveQuarter, useTeamCommitments } from '@/hooks/useCommitments';
 import { usePriorityAnalysis, type PriorityCategory } from '@/hooks/usePriorityAnalysis';
 import { useRoles } from '@/hooks/useRoles';
@@ -93,6 +94,7 @@ export default function Insights() {
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [bootstrapLoading, setBootstrapLoading] = useState(true);
+  const { user } = useCurrentUser();
 
   // Manager-signals access gate (PLAN_idea9_manager_signals.md §6/§8): this
   // section is for the direct manager, not gated on admin status. `useTeamMembers`
@@ -106,8 +108,7 @@ export default function Insights() {
 
   useEffect(() => {
     async function load() {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id;
+      const uid = user?.id;
       if (!uid) { setBootstrapLoading(false); return; }
       setCurrentUserId(uid);
 
@@ -137,7 +138,7 @@ export default function Insights() {
       setBootstrapLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   const { quarter, quarters, loading: quarterLoading, setQuarter } = useActiveQuarter();
 

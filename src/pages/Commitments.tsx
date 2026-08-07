@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useActiveQuarter, useMyCommitments, useTeamCommitments, useReportingLines } from '@/hooks/useCommitments';
 import { useRoleOverride } from '@/contexts/RoleOverrideContext';
 import { QuarterSelector } from '@/components/commitments/QuarterSelector';
@@ -19,6 +20,7 @@ interface Profile {
 }
 
 export default function Commitments() {
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
@@ -30,8 +32,7 @@ export default function Commitments() {
   // Bootstrap: get current user + their first team
   useEffect(() => {
     async function load() {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id;
+      const uid = user?.id;
       if (!uid) return;
       setUserId(uid);
 
@@ -54,7 +55,7 @@ export default function Commitments() {
       setProfilesLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   const { quarter, quarters, loading: quarterLoading, setQuarter, createQuarter } = useActiveQuarter();
   const { priorities, commitments, loading: myLoading, upsertPriority, deletePriority, upsertCommitment, deleteCommitment, updateCommitmentStatus, updatePriorityStatus, toggleCommitmentFlagged, togglePriorityFlagged } = useMyCommitments(quarter?.id ?? null, userId);

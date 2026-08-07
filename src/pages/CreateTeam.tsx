@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ const CreateTeam = () => {
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
   const { isAdmin, isSuperAdmin, loading: rolesLoading } = useRoles();
+  const { user } = useCurrentUser();
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +39,6 @@ const CreateTeam = () => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast({
           title: "Not authenticated",
