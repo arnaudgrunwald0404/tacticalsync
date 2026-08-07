@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 function utcHourToLocalLabel(utcHour: number): string {
   const d = new Date();
@@ -16,6 +17,7 @@ function utcHourToLocalLabel(utcHour: number): string {
 
 export default function CosCalendarSyncPanel() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<{
@@ -38,7 +40,6 @@ export default function CosCalendarSyncPanel() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,7 +71,7 @@ export default function CosCalendarSyncPanel() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   const connect = async () => {
     const origin = window.location.origin;
