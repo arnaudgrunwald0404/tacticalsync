@@ -1205,7 +1205,7 @@ export default function InboxPage() {
       {/* Main stream + drawer */}
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
-      <WeekendBanner bare />
+      {false && <WeekendBanner bare />}
       {activePanel === 'inbox' && announcementSeen === false && (
         <UnifiedFunnelAnnouncementBanner onDismiss={markAnnouncementSeen} />
       )}

@@ -52,7 +52,7 @@ function AppLayoutInner() {
   return (
     <div className={useFullHeightShell ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
       <AppNavbar />
-      {isChiefOfStaff && <WeekendBanner />}
+      {false && isChiefOfStaff && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
         {useFullHeightShell ? (
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
