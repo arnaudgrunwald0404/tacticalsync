@@ -36,16 +36,11 @@ function makeMockSupabase(error: { message: string } | null = null) {
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
-    auth: { getUser: vi.fn() },
   },
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(supabase.auth.getUser).mockResolvedValue({
-    data: { user: { id: 'user-1' } },
-    error: null,
-  } as unknown as Awaited<ReturnType<typeof supabase.auth.getUser>>);
 });
 
 describe('deleteDO', () => {
@@ -116,13 +111,19 @@ describe('lockDO / unlockDO', () => {
   it('locks a DO with status "locked" and stamps locked_at/locked_by, never the invalid "final" status', async () => {
     const calls = makeMockSupabase();
 
-    await lockDO('do-1');
+    await lockDO('do-1', 'user-1');
 
     const update = calls.find((c) => c.table === 'rc_defining_objectives' && c.op === 'update');
     const patch = update?.args[0] as { status: string; locked_by: string };
     expect(patch.status).toBe('locked');
     expect(patch.status).not.toBe('final');
     expect(patch.locked_by).toBe('user-1');
+  });
+
+  it('throws instead of writing when no user id is available', async () => {
+    makeMockSupabase();
+
+    await expect(lockDO('do-1', undefined)).rejects.toMatchObject({ message: 'You must be logged in.' });
   });
 
   it('unlocks a DO back to draft and clears locked_at/locked_by', async () => {
@@ -142,7 +143,7 @@ describe('lockInitiative / unlockInitiative', () => {
   it('locks an SI via locked_at/locked_by only, never writing a status field', async () => {
     const calls = makeMockSupabase();
 
-    await lockInitiative('si-1');
+    await lockInitiative('si-1', 'user-1');
 
     const update = calls.find((c) => c.table === 'rc_strategic_initiatives' && c.op === 'update');
     const patch = update?.args[0] as Record<string, unknown>;
