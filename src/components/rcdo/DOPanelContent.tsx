@@ -8,6 +8,7 @@ import RichTextEditor from '@/components/ui/rich-text-editor-lazy';
 import type { Tables } from '@/integrations/supabase/types';
 import type { Node } from 'reactflow';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { updateDO } from '@/hooks/useRCDOMutations';
 import { useDOMetrics } from '@/hooks/useRCDO';
@@ -87,6 +88,7 @@ export function DOPanelContent({
   const cycleParam = panelSearchParams.get('cycle');
   const isMobile = useIsMobile();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(selectedNode.data.title || '');
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -104,14 +106,10 @@ export function DOPanelContent({
   }), [selectedNode.data.title, selectedNode.data.hypothesis, selectedNode.data.primarySuccessMetric, selectedNode.data.ownerId]);
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   const owner = selectedNode.data.ownerId ? profilesMap[selectedNode.data.ownerId] : undefined;
   const ownerDisplayName = owner?.full_name || 'Unknown';

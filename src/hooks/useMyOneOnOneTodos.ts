@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { parseLocalDate } from '@/lib/dateUtils';
 
 // ── Central aggregation of "to-dos for me" across ALL one-on-ones ──────────
@@ -66,19 +67,19 @@ export function sortMyTodos(todos: MyOneOnOneTodo[]): MyOneOnOneTodo[] {
 export function useMyOneOnOneTodos() {
   const [todos, setTodos] = useState<MyOneOnOneTodo[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useCurrentUser();
 
   const fetchTodos = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { setTodos([]); return; }
+      if (!user) { setTodos([]); return; }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const { data: actionRows, error } = await db
         .from('cos_meeting_actions')
         .select('id, text, due_date, created_at, member_id')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', user.id)
         .eq('owner', 'me')
         .eq('status', 'pending')
         .not('member_id', 'is', null)
@@ -123,7 +124,7 @@ export function useMyOneOnOneTodos() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { fetchTodos(); }, [fetchTodos]);
 

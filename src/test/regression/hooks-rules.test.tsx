@@ -42,13 +42,14 @@ vi.mock('@/integrations/supabase/client', () => {
   };
   return {
     supabase: {
-      auth: {
-        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-1' } }, error: null }),
-      },
       from: vi.fn(() => makeBuilder()),
     },
   };
 });
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(() => ({ user: { id: 'u-1' }, loading: false })),
+}));
 
 // ─── Hook mocks (all return stable data) ─────────────────────────
 vi.mock('@/hooks/useCommitments', () => ({

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,7 @@ interface CommentsDialogProps {
 
 const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialogProps) => {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   interface Comment {
     id: string;
     content: string;
@@ -84,8 +86,6 @@ const CommentsDialog = ({ itemId, itemTitle, open, onOpenChange }: CommentsDialo
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
       if (!user) {
         toast({
           title: "Error",

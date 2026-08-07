@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useOrgTalkingPoints, isWithinActiveWindow } from '@/hooks/useOrgTalkingPoints';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Coverage for PLAN_idea11_org_wide_talking_points.md §9 ("Unit (Vitest):
 // useOrgTalkingPoints: correct active-window filtering ... correct exclusion
@@ -22,13 +23,15 @@ let mutationError: Error | null = null;
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
-    auth: { getUser: vi.fn() },
   },
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
 }));
 
 const mockedSupabase = supabase as unknown as {
   from: ReturnType<typeof vi.fn>;
-  auth: { getUser: ReturnType<typeof vi.fn> };
 };
 
 function buildSelectBuilder(resolveWith: unknown[]) {
@@ -61,8 +64,7 @@ beforeEach(() => {
   dismissedIdsData = [];
   mutationError = null;
   mockedSupabase.from.mockReset();
-  mockedSupabase.auth.getUser.mockReset();
-  mockedSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: USER_ID } } });
+  vi.mocked(useCurrentUser).mockReturnValue({ user: { id: USER_ID } as never, loading: false });
 
   mockedSupabase.from.mockImplementation((table: string) => {
     if (table === 'cos_org_talking_points') return buildSelectBuilder(activePointsData);

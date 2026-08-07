@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { categorizeMeeting } from '@/lib/prepTools';
 
 /**
@@ -49,11 +50,11 @@ export function useUpcomingMeetingGroups() {
   const [oneOffOneOnOnes, setOneOffOneOnOnes] = useState<MeetingGroup[]>([]);
   const [recurringGroups, setRecurringGroups] = useState<MeetingGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useCurrentUser();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
       const now = new Date();
@@ -121,7 +122,7 @@ export function useUpcomingMeetingGroups() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { load(); }, [load]);
 

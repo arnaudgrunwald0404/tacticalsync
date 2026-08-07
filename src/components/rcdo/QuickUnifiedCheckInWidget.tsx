@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +21,7 @@ interface LatestMap {
 }
 
 export function QuickUnifiedCheckInWidget() {
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
   const [latestById, setLatestById] = useState<LatestMap>({});
@@ -42,8 +44,7 @@ export function QuickUnifiedCheckInWidget() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
+      const userId = user?.id;
       if (!userId) {
         setItems([]);
         setLatestById({});
@@ -125,7 +126,7 @@ export function QuickUnifiedCheckInWidget() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
