@@ -98,6 +98,47 @@ export async function updateInitiative(siId: string, patch: UpdateInitiativePatc
   if (error) throw error;
 }
 
+export interface CreateInitiativePayload {
+  defining_objective_id: string;
+  title: string;
+  owner_user_id: string;
+  description?: string | null;
+  primary_success_metric?: string | null;
+  benchmark?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  participant_user_ids?: string[];
+  created_by?: string | null;
+}
+
+/**
+ * Inserts a new top-level SI (parent_si_id null). Used to lazily persist a
+ * canvas-created SI the first time it has both NOT NULL-required fields
+ * (title, owner_user_id) — see SIPanelContent's ensureSIPersisted.
+ */
+export async function createInitiative(payload: CreateInitiativePayload): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('rc_strategic_initiatives')
+    .insert({
+      defining_objective_id: payload.defining_objective_id,
+      parent_si_id: null,
+      title: payload.title,
+      description: payload.description ?? null,
+      owner_user_id: payload.owner_user_id,
+      primary_success_metric: payload.primary_success_metric ?? null,
+      benchmark: payload.benchmark ?? null,
+      start_date: payload.start_date ?? null,
+      end_date: payload.end_date ?? null,
+      participant_user_ids: payload.participant_user_ids ?? [],
+      status: 'not_started',
+      created_by: payload.created_by ?? null,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data as { id: string };
+}
+
 export async function lockInitiative(siId: string, userId: string | undefined): Promise<void> {
   const { error } = await supabase
     .from('rc_strategic_initiatives')
