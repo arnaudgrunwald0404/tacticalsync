@@ -373,7 +373,7 @@ export default function DODetail() {
       return;
     }
     try {
-      await deleteDO(doDetails.id, initiatives.map((i) => i.id));
+      await deleteDO(doDetails.id);
       toast({ title: 'Deleted', description: `"${doDetails.title}" was deleted.` });
       navigate(`/rcdo/canvas${cycleId ? `?cycle=${cycleId}` : ''}`);
     } catch (e) {

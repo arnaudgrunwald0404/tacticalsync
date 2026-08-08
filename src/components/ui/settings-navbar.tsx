@@ -13,6 +13,10 @@ interface SettingsNavbarProps {
   // Domains / Permissions), while this feature is open to any is_admin (or
   // is_super_admin) user. See PLAN_idea11_org_wide_talking_points.md §2.4.
   showOrgTalkingPoints?: boolean;
+  // Admin-only "Recently Deleted" RCDO trash/restore panel. Same gate as
+  // showOrgTalkingPoints (is_admin or is_super_admin), separate prop so each
+  // panel's visibility can be tuned independently later.
+  showRecentlyDeleted?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -21,6 +25,7 @@ const NAV_ITEMS = [
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
   { id: "org-talking-points",          label: "Talking Points",    group: "User Management" },
   { id: "strategy-cycles",             label: "Strategy Cycles",   group: "RCDO" },
+  { id: "recently-deleted",            label: "Recently Deleted",  group: "RCDO" },
   { id: "configure-my-lists",          label: "My Lists",          group: "Check-Ins" },
   { id: "prep-schedule",               label: "Daily Brief",       group: "Check-Ins" },
   { id: "meetings-prep",               label: "Meetings",          group: "Check-Ins" },
@@ -36,7 +41,7 @@ const NAV_ITEMS = [
   { id: "testing-mode",                label: "Role Preview",      group: null },
 ];
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions, showOrgTalkingPoints }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions, showOrgTalkingPoints, showRecentlyDeleted }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   const visibleItems = NAV_ITEMS.filter(item => {
@@ -44,6 +49,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
     // discoverability but has its own, less restrictive gate — see the
     // showOrgTalkingPoints prop doc above.
     if (item.id === "org-talking-points") return !!showOrgTalkingPoints;
+    if (item.id === "recently-deleted") return !!showRecentlyDeleted;
     if (item.group === "User Management" && !showAdminManagement) return false;
     if (item.id === "user-management-permissions" && !canManagePermissions) return false;
     if (item.id === "testing-mode" && !isTestUser) return false;
