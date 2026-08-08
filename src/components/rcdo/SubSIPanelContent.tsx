@@ -251,7 +251,10 @@ export function SubSIPanelContent({
                 value={row.start_date || ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  if (value && row.end_date && row.end_date < value) return;
+                  if (value && row.end_date && row.end_date < value) {
+                    toast({ title: 'Invalid date', description: 'Start date must be on or before the target delivery date.', variant: 'destructive' });
+                    return;
+                  }
                   void updateField({ start_date: value || null });
                 }}
               />
@@ -265,7 +268,10 @@ export function SubSIPanelContent({
                 value={row.end_date || ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  if (value && row.start_date && value < row.start_date) return;
+                  if (value && row.start_date && value < row.start_date) {
+                    toast({ title: 'Invalid date', description: 'Target delivery date must be on or after the start date.', variant: 'destructive' });
+                    return;
+                  }
                   void updateField({ end_date: value || null });
                 }}
               />
