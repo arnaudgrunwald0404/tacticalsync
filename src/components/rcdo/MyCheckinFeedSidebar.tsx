@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,6 +30,7 @@ interface CheckinRow {
 }
 
 export function MyCheckinFeedSidebar() {
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<CheckinRow[]>([]);
   const [titlesById, setTitlesById] = useState<Record<string, string>>({});
@@ -37,8 +39,7 @@ export function MyCheckinFeedSidebar() {
     (async () => {
       try {
         setLoading(true);
-        const { data: auth } = await supabase.auth.getUser();
-        const userId = auth.user?.id;
+        const userId = user?.id;
         if (!userId) { setRows([]); setTitlesById({}); return; }
 
         // My DOs
@@ -127,7 +128,7 @@ export function MyCheckinFeedSidebar() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

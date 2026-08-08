@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { parsePrepMarkdown } from '@/components/cos/OneOnOnePrepDrawer';
@@ -69,6 +70,7 @@ export function GroupMeetingPrepDrawer({
   onClose, onRefresh, onMeetingChanged,
 }: GroupPrepDrawerProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const [actions, setActions] = useState<GroupAction[]>([]);
   const [actionText, setActionText] = useState('');
@@ -118,7 +120,6 @@ export function GroupMeetingPrepDrawer({
     if (!text) return;
     setAdding(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not signed in');
       const owner = assignee === 'me' ? 'me' : 'them';
       const member_id = assignee === 'me' ? null : assignee;
@@ -154,7 +155,6 @@ export function GroupMeetingPrepDrawer({
   const promoteParticipant = async (participantId: string, name: string | null, email: string | null) => {
     setPromotingId(participantId);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not signed in');
       const memberName = (name && !name.includes('@'))
         ? name

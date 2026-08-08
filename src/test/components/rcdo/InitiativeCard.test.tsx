@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@/test/test-utils';
 import { InitiativeCard } from '@/components/rcdo/InitiativeCard';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
-import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types for mock query builder ────────────────────────────────────
 interface MockFilter {
@@ -184,9 +184,6 @@ const mockTables: Record<string, ReturnType<typeof createMockQueryBuilder>> = {}
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    auth: {
-      getUser: vi.fn(),
-    },
     from: vi.fn((tableName: string) => {
       if (!mockTables[tableName]) {
         mockTables[tableName] = createMockQueryBuilder(tableName);
@@ -194,6 +191,10 @@ vi.mock('@/integrations/supabase/client', () => ({
       return mockTables[tableName];
     }),
   },
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
 }));
 
 // Mock useNavigate
@@ -211,10 +212,7 @@ describe('InitiativeCard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    } as unknown as Awaited<ReturnType<typeof supabase.auth.getUser>>);
+    vi.mocked(useCurrentUser).mockReturnValue({ user: mockUser as never, loading: false });
   });
 
   const createMockInitiative = (

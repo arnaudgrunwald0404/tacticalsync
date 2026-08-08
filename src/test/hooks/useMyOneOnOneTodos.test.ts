@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useMyOneOnOneTodos, sortMyTodos, type MyOneOnOneTodo } from '@/hooks/useMyOneOnOneTodos';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Coverage for TODO.md item 7 (flagged critical): a central aggregation of
 // "to-dos for me" across every 1:1, sourced directly from cos_meeting_actions
@@ -18,12 +19,14 @@ let updateError: unknown = null;
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    auth: { getUser: vi.fn() },
     from: vi.fn(),
   },
 }));
 
-const mockedAuth = supabase.auth as unknown as { getUser: ReturnType<typeof vi.fn> };
+vi.mock('@/contexts/AuthContext', () => ({
+  useCurrentUser: vi.fn(),
+}));
+
 const mockedFrom = supabase.from as unknown as ReturnType<typeof vi.fn>;
 
 function buildSelectBuilder(resolveWith: unknown[]) {
@@ -48,8 +51,7 @@ beforeEach(() => {
   actionRows = [];
   memberRows = [];
   updateError = null;
-  mockedAuth.getUser.mockReset();
-  mockedAuth.getUser.mockResolvedValue({ data: { user: { id: USER_ID } } });
+  vi.mocked(useCurrentUser).mockReturnValue({ user: { id: USER_ID } as never, loading: false });
   mockedFrom.mockReset();
   mockedFrom.mockImplementation((table: string) => {
     if (table === 'cos_meeting_actions') {
@@ -107,7 +109,7 @@ describe('sortMyTodos', () => {
 
 describe('useMyOneOnOneTodos', () => {
   it('returns an empty list when there is no authenticated user', async () => {
-    mockedAuth.getUser.mockResolvedValue({ data: { user: null } });
+    vi.mocked(useCurrentUser).mockReturnValue({ user: null, loading: false });
     const { result } = renderHook(() => useMyOneOnOneTodos());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.todos).toEqual([]);

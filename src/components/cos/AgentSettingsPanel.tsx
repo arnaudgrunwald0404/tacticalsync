@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cn } from '@/lib/utils';
 import { AgentActivityFeed } from './AgentActivityFeed';
@@ -88,6 +89,7 @@ interface AgentSettingsPanelProps {
 
 export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSettingsPanelProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [config, setConfig] = useState<AgentConfig>(DEFAULT_AGENT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,13 +105,12 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
   useEffect(() => {
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
+        if (!user) return;
 
         const { data: settings } = await (supabase as unknown as SupabaseClient)
           .from('cos_settings')
           .select('agent_config')
-          .eq('user_id', userData.user.id)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (settings?.agent_config) {
@@ -162,18 +163,17 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
         setLoading(false);
       }
     })();
-  }, []);
+  }, [user]);
 
   const save = useCallback(async (newConfig: AgentConfig) => {
     setSaving(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       await (supabase as unknown as SupabaseClient)
         .from('cos_settings')
         .upsert({
-          user_id: userData.user.id,
+          user_id: user.id,
           agent_config: newConfig,
         }, { onConflict: 'user_id' });
 
@@ -187,7 +187,7 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
     } finally {
       setSaving(false);
     }
-  }, [toast]);
+  }, [toast, user]);
 
   const update = useCallback((patch: Partial<AgentConfig>) => {
     setConfig(prev => {

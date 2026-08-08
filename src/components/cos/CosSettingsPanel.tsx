@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   CosLayoutConfig, CosColumn, CosColumnSection, CosSectionType,
@@ -167,6 +168,7 @@ function SortableColumnCard({
 
 export default function CosSettingsPanel({ onSaved }: { onSaved?: () => void } = {}) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -180,7 +182,6 @@ export default function CosSettingsPanel({ onSaved }: { onSaved?: () => void } =
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,7 +196,7 @@ export default function CosSettingsPanel({ onSaved }: { onSaved?: () => void } =
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   // ── Status helpers ──────────────────────────────────────────────────────────
   const update = (idx: number, val: string) => setDraft(prev => prev.map((s, i) => (i === idx ? val : s)));

@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { OneOnOneMember, UpcomingOneOnOneEvent, MemberRelationshipType } from './OneOnOnesView';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ function generateInsights(cadences: MemberCadence[]): CadenceInsight[] {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function CoverageMap({ members, upcomingEvents, onViewPrep }: CoverageMapProps) {
+  const { user } = useCurrentUser();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -263,7 +265,6 @@ export function CoverageMap({ members, upcomingEvents, onViewPrep }: CoverageMap
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -372,7 +373,7 @@ export function CoverageMap({ members, upcomingEvents, onViewPrep }: CoverageMap
     }
     load();
     return () => { cancelled = true; };
-  }, [members]);
+  }, [members, user]);
 
   // ── Merge team members + org-chart-discovered people ──────────────────────
   const allPeople = useMemo(() => [...members, ...orgChartPeers], [members, orgChartPeers]);

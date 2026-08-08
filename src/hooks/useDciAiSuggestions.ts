@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { format, startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -154,11 +155,11 @@ export function useDciBrief(): UseDciBriefReturn {
   const [brief, setBrief] = useState<DciBriefData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useCurrentUser();
 
   // ── Load from Supabase (cos_dci_logs.brief_markdown) ──────────────────
   const loadFromSupabase = useCallback(async (): Promise<DciBriefData | null> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
       const today = format(new Date(), 'yyyy-MM-dd');
@@ -206,7 +207,7 @@ export function useDciBrief(): UseDciBriefReturn {
     } catch {
       return null;
     }
-  }, []);
+  }, [user]);
 
   // Auto-load from Supabase on mount
   useEffect(() => {

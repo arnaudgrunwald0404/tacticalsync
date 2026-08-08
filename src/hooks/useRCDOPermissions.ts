@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useRoles } from './useRoles';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 interface RCDOPermissionsState {
   canCreateCycle: boolean;
@@ -27,6 +27,7 @@ interface RCDOPermissionsState {
  */
 export function useRCDOPermissions(): RCDOPermissionsState {
   const { isAdmin, isSuperAdmin, isRCDOAdmin, roleTags, loading: rolesLoading } = useRoles();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,23 +39,13 @@ export function useRCDOPermissions(): RCDOPermissionsState {
   const canManageSIByTag = roleTags.some((t) => t === 'admin' || t === 'elt' || t === 'xlt');
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setUserId(user.id);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (!rolesLoading) {
-      fetchUserData();
+      if (user) {
+        setUserId(user.id);
+      }
+      setLoading(false);
     }
-  }, [rolesLoading]);
+  }, [rolesLoading, user]);
 
   // RCDO Admins can create cycles and lock/finalize RCDOs
   const canCreateCycle = isAdmin || isSuperAdmin || isRCDOAdmin;

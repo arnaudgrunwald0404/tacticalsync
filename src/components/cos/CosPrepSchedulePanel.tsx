@@ -16,6 +16,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   usePrepScheduleConfig,
@@ -1270,6 +1271,7 @@ function BriefSourcesCard({ draft, update }: { draft: PrepScheduleConfig; update
 
 function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCalendar?: () => void }) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [draftRules, setDraftRules] = useState<CalendarSyncRules>(DEFAULT_SYNC_RULES);
@@ -1278,7 +1280,6 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1294,7 +1295,7 @@ function MeetingsInclusionRulesCard({ onNavigateToCalendar }: { onNavigateToCale
         setSavedRules(loaded);
       }
     })();
-  }, []);
+  }, [user]);
 
   const saveRules = async () => {
     if (!userId) return;

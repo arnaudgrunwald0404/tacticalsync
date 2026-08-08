@@ -3,6 +3,7 @@ import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { PersonPage } from '@/components/inbox/PersonPage';
 import {
   Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
@@ -248,6 +249,7 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const { memberId: routeMemberId } = useParams<{ memberId?: string }>();
   // Derived from the URL so navigating between /inbox, /inbox/meetings, and
   // /inbox/person/:memberId always switches the middle view — InboxPage stays
@@ -291,14 +293,12 @@ export default function InboxPage() {
   const isMobile = useIsMobile();
   const isTouch = useIsTouch();
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
-        setUserName(data.user.user_metadata?.full_name ?? data.user.email?.split('@')[0]);
-        setUserCreatedAt(data.user.created_at ?? null);
-      }
-    });
-  }, []);
+    if (user) {
+      setUserId(user.id);
+      setUserName(user.user_metadata?.full_name ?? user.email?.split('@')[0]);
+      setUserCreatedAt(user.created_at ?? null);
+    }
+  }, [user]);
 
   // "What's new" banner (Section 5.3/5.4) shows to *existing* users on their
   // first load after this release, not to a brand-new user who signs up
@@ -660,32 +660,31 @@ export default function InboxPage() {
   // before agent-tick will ever send a real nudge — see
   // maybeNudgeInboxItems()/decideOptInAction() in supabase/functions/agent-tick.
   const handleEnableInboxNudges = useCallback(async (item: InboxItem) => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     const { data: settings } = await supabase
       .from('cos_settings')
       .select('agent_config')
-      .eq('user_id', userData.user.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     const currentConfig = (settings?.agent_config as Record<string, unknown> | null) ?? {};
     await supabase
       .from('cos_settings')
       .upsert(
-        { user_id: userData.user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
+        { user_id: user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
         { onConflict: 'user_id' },
       );
 
     await supabase.from('cos_agent_log').insert({
-      user_id: userData.user.id,
+      user_id: user.id,
       event_type: 'inbox_optin_accepted',
       item_id: item.id,
       payload: {},
     });
 
     await archive(item.id);
-  }, [archive]);
+  }, [archive, user]);
 
   // "Not now" on the opt-in prompt is just the item's normal archive action —
   // but agent-tick's decideOptInAction() (Section 5.1) needs to know a
@@ -699,10 +698,9 @@ export default function InboxPage() {
       && item.agent_payload?.source === 'inbox_agent_optin_prompt';
 
     if (isOptInDecline) {
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData.user) {
+      if (user) {
         await supabase.from('cos_agent_log').insert({
-          user_id: userData.user.id,
+          user_id: user.id,
           event_type: 'inbox_optin_declined',
           item_id: id,
           payload: {},
@@ -711,7 +709,7 @@ export default function InboxPage() {
     }
 
     await archive(id);
-  }, [allItems, archive]);
+  }, [allItems, archive, user]);
 
   // "Add to inbox" on an AI-extracted suggestion (Slack DM/channel, Gmail,
   // Zoom commitment — see extract-inbox-action-items/index.ts and

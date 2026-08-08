@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,7 @@ export function DODialog({
   onSuccess,
 }: DODialogProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -145,8 +147,6 @@ const fetchUsers = async () => {
         end_date: formData.end_date || undefined,
       };
 
-      const { data: auth } = await supabase.auth.getUser();
-
       const { error } = await supabase
         .from('rc_defining_objectives')
         .insert({
@@ -159,7 +159,7 @@ const fetchUsers = async () => {
           status: 'draft',
           health: 'on_track',
           confidence_pct: 50,
-          created_by: auth?.user?.id || null,
+          created_by: user?.id || null,
         });
 
       if (error) throw error;
