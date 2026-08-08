@@ -34,6 +34,7 @@ import { NotificationSettingsPanel } from "@/components/cos/NotificationSettings
 import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
 import OrgTalkingPointsPanel from "@/components/settings/OrgTalkingPointsPanel";
+import RecentlyDeletedPanel from "@/components/settings/RecentlyDeletedPanel";
 import IntegrationExplainer from "@/components/cos/IntegrationExplainer";
 import { INTEGRATION_COPY } from "@/lib/integrationCopy";
 import { getPreset } from "@/types/mcp-integration";
@@ -2106,6 +2107,7 @@ const Settings = () => {
           showAdminManagement={dbVerifiedSuperAdmin || isSuperAdmin}
           canManagePermissions={canManagePermissions}
           showOrgTalkingPoints={isAdmin || isSuperAdmin}
+          showRecentlyDeleted={isAdmin || isSuperAdmin}
         />
 
         <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
@@ -2518,6 +2520,16 @@ const Settings = () => {
               </p>
             </div>
             <OrgTalkingPointsPanel />
+          </div>
+        ) : activeSection === "recently-deleted" && (isAdmin || isSuperAdmin) ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">Recently Deleted</h2>
+              <p className="text-muted-foreground text-sm">
+                Restore RCDO objectives, initiatives, and tasks that were deleted by mistake.
+              </p>
+            </div>
+            <RecentlyDeletedPanel />
           </div>
         ) : activeSection === "strategy-cycles" ? (
           <div className="mb-8">
