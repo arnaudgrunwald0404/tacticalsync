@@ -435,7 +435,10 @@ export function SIPanelContent({
                 if (isLocked || !si.dbId) return;
                 const value = e.target.value;
                 const currentEnd = (siWithProgress?.end_date as string) || '';
-                if (value && currentEnd && currentEnd < value) return;
+                if (value && currentEnd && currentEnd < value) {
+                  toast({ title: 'Invalid date', description: 'Start date must be on or before the target delivery date.', variant: 'destructive' });
+                  return;
+                }
                 try {
                   await updateInitiative(si.dbId, { start_date: value || null });
                   await refetchSI();
@@ -458,7 +461,10 @@ export function SIPanelContent({
                 if (isLocked || !si.dbId) return;
                 const value = e.target.value;
                 const currentStart = (siWithProgress?.start_date as string) || '';
-                if (value && currentStart && value < currentStart) return;
+                if (value && currentStart && value < currentStart) {
+                  toast({ title: 'Invalid date', description: 'Target delivery date must be on or after the start date.', variant: 'destructive' });
+                  return;
+                }
                 try {
                   await updateInitiative(si.dbId, { end_date: value || null });
                   await refetchSI();
