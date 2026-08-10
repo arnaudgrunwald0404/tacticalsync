@@ -1569,9 +1569,8 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     if (dbId) {
-      const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
       try {
-        await deleteDO(dbId, siDbIds);
+        await deleteDO(dbId);
       } catch (e) {
         console.error('deleteSelectedDo error', e);
         toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Defining Objective.', variant: 'destructive' });

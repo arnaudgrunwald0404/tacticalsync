@@ -48,6 +48,28 @@ You can grant multiple admin roles to the same user. For example:
 
 ---
 
+## 🧪 Dedicated Admin Testing Account
+
+For testing admin-gated UI and RLS behavior without touching a real team member's
+privileges, use the standing Super Admin testing account instead of granting admin
+to your own account:
+
+```bash
+node scripts/provision-admin-test-user.mjs
+```
+
+- **Email:** `admin-test-2026@tactical-sync.dev`
+- **Password:** `AdminTest!2026`
+- Grants `is_admin`, `is_super_admin`, and `is_rcdo_admin` — full admin access.
+- Idempotent: safe to re-run; it re-asserts the flags if they were ever changed.
+- Reads `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, so it
+  targets whichever Supabase project your local checkout is wired up to.
+- Companion to `scripts/provision-claude-test-user.mjs` (a non-admin account used for
+  browser automation) — keep the two separate so admin-only regressions don't leak
+  into ordinary member-flow testing.
+
+---
+
 ## 🔧 Methods to Grant Admin Privileges
 
 ### Method 1: Using the Script (Recommended)

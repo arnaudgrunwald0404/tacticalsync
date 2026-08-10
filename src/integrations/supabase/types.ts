@@ -3671,6 +3671,36 @@ export type Database = {
           },
         ]
       }
+      rc_deleted_items: {
+        Row: {
+          batch_id: string
+          deleted_at: string
+          deleted_by: string | null
+          id: string
+          restored_at: string | null
+          row_data: Json
+          table_name: string
+        }
+        Insert: {
+          batch_id: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          restored_at?: string | null
+          row_data: Json
+          table_name: string
+        }
+        Update: {
+          batch_id?: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          restored_at?: string | null
+          row_data?: Json
+          table_name?: string
+        }
+        Relationships: []
+      }
       rc_do_metrics: {
         Row: {
           created_at: string | null
@@ -4824,6 +4854,8 @@ export type Database = {
         Args: { p_invite_code: string }
         Returns: Json
       }
+      delete_rc_do: { Args: { p_do_id: string }; Returns: undefined }
+      delete_rc_initiative: { Args: { p_si_id: string }; Returns: undefined }
       get_cos_team_member_invite_preview: {
         Args: { p_invite_code: string }
         Returns: {
@@ -4883,6 +4915,14 @@ export type Database = {
       rcdo_promote_task_to_sub_si: {
         Args: { p_task_id: string }
         Returns: string
+      }
+      restore_deleted_rc_batch: {
+        Args: { p_batch_id: string }
+        Returns: {
+          restored_count: number
+          skipped_count: number
+          source_table: string
+        }[]
       }
       set_feature_announcement_flag: {
         Args: { p_key: string; p_value?: boolean }

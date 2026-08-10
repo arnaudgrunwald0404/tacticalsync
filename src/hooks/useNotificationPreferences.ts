@@ -14,6 +14,8 @@ export interface NotificationPreferences {
   inbox_item_nudges: boolean;
   /** RCDO stale check-in / metric alerts — see supabase/functions/rcdo-stale-check/index.ts. */
   rcdo_stale_alerts: boolean;
+  /** In-app Friday/weekend/Monday banner on Check-Ins and Inbox — not a Slack DM. */
+  weekend_banner: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -25,6 +27,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   daily_brief: true,
   inbox_item_nudges: true,
   rcdo_stale_alerts: true,
+  weekend_banner: false,
 };
 
 export function useNotificationPreferences() {

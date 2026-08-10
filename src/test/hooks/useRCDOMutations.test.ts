@@ -36,6 +36,7 @@ function makeMockSupabase(error: { message: string } | null = null) {
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
   },
 }));
 
@@ -43,65 +44,43 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// deleteDO/deleteInitiative moved to single-transaction RPCs (delete_rc_do /
+// delete_rc_initiative, added in
+// 20260808000434_add_delete_rc_do_and_initiative_rpcs.sql) so that a whole
+// DO/SI delete — main row plus its rc_links/rc_checkins cleanup — lands in
+// one Postgres transaction/batch_id for the rc_deleted_items trash-capture
+// trigger, instead of being split across the separate transactions that
+// separate .from(...).delete() calls each get. The RPC body now owns the
+// rc_links/rc_checkins cleanup and the child-SI lookup, so these tests only
+// need to verify the RPC is called with the right name/args and that errors
+// propagate — the cleanup-logic coverage moved to the migration itself.
 describe('deleteDO', () => {
-  it('deletes rc_links, rc_checkins, and the DO row itself — not just local state', async () => {
-    const calls = makeMockSupabase();
+  it('calls the delete_rc_do RPC with the DO id', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null } as unknown as ReturnType<typeof supabase.rpc>);
 
-    await deleteDO('do-1', []);
+    await deleteDO('do-1');
 
-    const tables = calls.map((c) => c.table);
-    expect(tables).toContain('rc_links');
-    expect(tables).toContain('rc_checkins');
-    expect(tables).toContain('rc_defining_objectives');
-
-    const doDelete = calls.find((c) => c.table === 'rc_defining_objectives' && c.op === 'eq');
-    expect(doDelete?.args).toEqual(['id', 'do-1']);
+    expect(supabase.rpc).toHaveBeenCalledWith('delete_rc_do', { p_do_id: 'do-1' });
   });
 
-  it('also cleans up rc_links/rc_checkins for nested SIs by parent_id', async () => {
-    const calls = makeMockSupabase();
+  it('throws instead of silently succeeding when the RPC errors', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: { message: 'permission denied' } } as unknown as ReturnType<typeof supabase.rpc>);
 
-    await deleteDO('do-1', ['si-1', 'si-2']);
-
-    const siLinkCleanup = calls.find((c) => c.table === 'rc_links' && c.op === 'in' && c.args[0] === 'parent_id');
-    expect(siLinkCleanup?.args).toEqual(['parent_id', ['si-1', 'si-2']]);
-
-    const siCheckinCleanup = calls.find((c) => c.table === 'rc_checkins' && c.op === 'in' && c.args[0] === 'parent_id');
-    expect(siCheckinCleanup?.args).toEqual(['parent_id', ['si-1', 'si-2']]);
-  });
-
-  it('skips the SI in()-cleanup calls when the DO has no nested SIs', async () => {
-    const calls = makeMockSupabase();
-
-    await deleteDO('do-1', []);
-
-    expect(calls.filter((c) => c.op === 'in')).toHaveLength(0);
-  });
-
-  it('throws instead of silently succeeding when the delete errors', async () => {
-    makeMockSupabase({ message: 'permission denied' });
-
-    await expect(deleteDO('do-1', [])).rejects.toMatchObject({ message: 'permission denied' });
+    await expect(deleteDO('do-1')).rejects.toMatchObject({ message: 'permission denied' });
   });
 });
 
 describe('deleteInitiative', () => {
-  it('deletes rc_links, rc_checkins, and the SI row itself — not just local state', async () => {
-    const calls = makeMockSupabase();
+  it('calls the delete_rc_initiative RPC with the SI id', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null } as unknown as ReturnType<typeof supabase.rpc>);
 
     await deleteInitiative('si-1');
 
-    const tables = calls.map((c) => c.table);
-    expect(tables).toContain('rc_links');
-    expect(tables).toContain('rc_checkins');
-    expect(tables).toContain('rc_strategic_initiatives');
-
-    const siDelete = calls.find((c) => c.table === 'rc_strategic_initiatives' && c.op === 'eq');
-    expect(siDelete?.args).toEqual(['id', 'si-1']);
+    expect(supabase.rpc).toHaveBeenCalledWith('delete_rc_initiative', { p_si_id: 'si-1' });
   });
 
-  it('throws instead of silently succeeding when the delete errors', async () => {
-    makeMockSupabase({ message: 'row is referenced elsewhere' });
+  it('throws instead of silently succeeding when the RPC errors', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: { message: 'row is referenced elsewhere' } } as unknown as ReturnType<typeof supabase.rpc>);
 
     await expect(deleteInitiative('si-1')).rejects.toMatchObject({ message: 'row is referenced elsewhere' });
   });
