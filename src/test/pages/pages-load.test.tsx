@@ -133,15 +133,6 @@ vi.mock('reactflow', () => ({
   Panel: () => <div>Panel</div>,
 }));
 
-// Mock Yjs for StrategyCanvas
-vi.mock('yjs', () => ({
-  Doc: vi.fn(),
-}));
-
-vi.mock('y-websocket', () => ({
-  WebsocketProvider: vi.fn(),
-}));
-
 // Import pages statically
 import Index from '@/pages/Index';
 import Auth from '@/pages/Auth';
