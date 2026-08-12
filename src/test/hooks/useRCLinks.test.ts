@@ -15,7 +15,7 @@ vi.mock('@/hooks/use-toast', () => {
 
 vi.mock('@/integrations/supabase/client', () => {
   const from = vi.fn();
-  return { supabase: { from, auth: { getUser: vi.fn() } } };
+  return { supabase: { from } };
 });
 
 const mockedSupabase = supabase as unknown as { from: ReturnType<typeof vi.fn> };

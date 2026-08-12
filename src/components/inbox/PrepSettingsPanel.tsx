@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Check, Bot, Brain, Sparkles, Wrench } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -99,6 +100,7 @@ function AgentToggles({ memberId, memberName }: { memberId: string; memberName: 
 
 function PrepToolsCard({ memberId }: { memberId: string }) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [perMemberTools, setPerMemberTools] = useState<string[] | null>(null);
   const [globalTools, setGlobalTools] = useState<string[]>([]);
   const [availableTools, setAvailableTools] = useState<PrepToolDef[]>(STATIC_TOOLS);
@@ -109,9 +111,8 @@ function PrepToolsCard({ memberId }: { memberId: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user || cancelled) return;
-        const userId = userData.user.id;
+        if (!user || cancelled) return;
+        const userId = user.id;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const db = supabase as any;
 
@@ -145,7 +146,7 @@ function PrepToolsCard({ memberId }: { memberId: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [memberId]);
+  }, [memberId, user]);
 
   const effectiveTools = perMemberTools ?? globalTools;
   const isUsingGlobalDefault = perMemberTools === null;
@@ -291,6 +292,7 @@ function ContextCard({ memberId, memberName, initialValue }: { memberId: string;
 
 function PrepInstructionsCard() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [draft, setDraft] = useState('');
   const [baseline, setBaseline] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -316,7 +318,6 @@ function PrepInstructionsCard() {
   const save = async () => {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any)

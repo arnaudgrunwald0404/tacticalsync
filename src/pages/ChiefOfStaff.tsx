@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   CosLayoutConfig, CosColumn, CosColumnSection, CosSectionType,
@@ -142,6 +143,7 @@ type CategoryKey = string;
 
 export default function ChiefOfStaff() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const location = useLocation();
   const [userId, setUserId] = useState<string | null>(null);
   const [priorities, setPriorities] = useState<CosPriority[]>([]);
@@ -165,7 +167,6 @@ export default function ChiefOfStaff() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
 
@@ -197,7 +198,7 @@ export default function ChiefOfStaff() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   // ── Welcome carousel trigger ──
   useEffect(() => {
@@ -869,6 +870,7 @@ function DciTabContent({
   onBriefGenerated?: () => void;
 }) {
   const { brief, isLoading, error, refreshBrief } = useDciBrief();
+  const { user } = useCurrentUser();
 
   const handleBriefGenerated = useCallback(async () => {
     await refreshBrief();
@@ -885,7 +887,6 @@ function DciTabContent({
 
   useEffect(() => {
     async function loadCommitments() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -918,7 +919,7 @@ function DciTabContent({
       setMonthlyCommitments(comRes.data ?? []);
     }
     loadCommitments();
-  }, []);
+  }, [user]);
 
   // Compute Monday–Friday dates for this week
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -3598,6 +3599,7 @@ function formatGeneratedAt(iso: string): string {
 
 export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/meetings', hideViewToggle = false, onSelectEvent, externalSearch, onSyncInfoChange }: { members: CosTeamMember[]; toolbarPortalId?: string; basePath?: string; hideViewToggle?: boolean; onSelectEvent?: (ev: UpcomingOneOnOneEvent) => void; externalSearch?: string; onSyncInfoChange?: (info: { lastSyncAt: string | null; syncing: boolean; calendarConnected: boolean; onSync: () => void }) => void }) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const { onboarding: teamOnboarding, markComplete: teamMarkComplete } = useOnboardingState();
   const [calendarJustConnected, setCalendarJustConnected] = useState(false);
   const [prepSheet, setPrepSheet] = useState<{
@@ -3648,7 +3650,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
   const [showSetupWizard, setShowSetupWizard] = useState(false);
 
   const loadCalendarState = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -3868,7 +3869,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
     setZoomConnected(Boolean(zoomCredsRes?.data?.connected));
     setSlackConnected(Boolean(slackCredsRes?.data?.connected));
     setLastSyncAt((credsRes.data?.last_sync_at as string | null) ?? null);
-  }, [members]);
+  }, [members, user]);
 
   useEffect(() => { loadCalendarState().finally(() => setLoadingInitial(false)); }, [loadCalendarState]);
 
@@ -4022,7 +4023,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
   const openPrep = async (member: CosTeamMember) => {
     setLoadingPrep(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       let existing: { content: string; generated_at: string | null } | null = null;
@@ -4114,7 +4114,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
   // open empty and kick off generation.
   const openGroupPrep = useCallback(async (meeting: GroupMeeting) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       let existing: { content: string; generated_at: string | null } | null = null;
@@ -4140,10 +4139,9 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
     } catch (err) {
       toast({ title: 'Could not open prep', description: String(err), variant: 'destructive' });
     }
-  }, [generateGroupBrief, toast]);
+  }, [generateGroupBrief, toast, user]);
 
   const handleIncludeInPrep = useCallback(async (event: UpcomingOneOnOneEvent) => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -4163,9 +4161,9 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       toast({ title: `${name} added to your relationships` });
       loadCalendarState();
     }
-  }, [toast, loadCalendarState]);
+  }, [toast, loadCalendarState, user]);
 
-  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {    const { data: { user } } = await supabase.auth.getUser();
+  const handleRunPrep = async (event: UpcomingOneOnOneEvent) => {
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -4209,7 +4207,6 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
   const handleExcludeFromCalendar = useCallback(async (event: UpcomingOneOnOneEvent) => {
     const email = event.attendee_email;
     if (!email) return;
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -4230,7 +4227,7 @@ export function TeamSection({ members, toolbarPortalId, basePath = '/check-ins/m
       ? (event.attendee_email?.split('@')[0] ?? event.attendee_name)
       : (event.attendee_name ?? event.attendee_email ?? 'Unknown');
     toast({ title: `${name} excluded from calendar` });
-  }, [toast]);
+  }, [toast, user]);
 
   const showOneOnOneOnboarding = !loadingInitial
     && !calendarConnected

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useRoles } from './useRoles';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 interface RCDOPermissionsState {
   canCreateCycle: boolean;
@@ -14,7 +14,7 @@ interface RCDOPermissionsState {
   canLockDO: boolean;
   canEditMetric: (doOwnerId: string, doLockedAt: string | null) => boolean;
   canCreateInitiative: (doOwnerId: string) => boolean;
-  canEditInitiative: (initiativeOwnerId: string, initiativeLockedAt: string | null) => boolean;
+  canEditInitiative: (initiativeOwnerId: string, initiativeLockedAt: string | null, doOwnerId?: string, initiativeCreatorId?: string) => boolean;
   canCreateTask: (siId: string) => boolean;
   canEditTask: (taskOwnerId: string, siOwnerId?: string) => boolean;
   canDeleteTask: (taskOwnerId: string, siOwnerId?: string) => boolean;
@@ -26,28 +26,26 @@ interface RCDOPermissionsState {
  * Based on admin/super admin/RCDO admin status and ownership
  */
 export function useRCDOPermissions(): RCDOPermissionsState {
-  const { isAdmin, isSuperAdmin, isRCDOAdmin, loading: rolesLoading } = useRoles();
+  const { isAdmin, isSuperAdmin, isRCDOAdmin, roleTags, loading: rolesLoading } = useRoles();
+  const { user } = useCurrentUser();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setUserId(user.id);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Settings' Permissions Matrix documents "Manage SIs" (create/edit Strategic
+  // Initiatives) as granted to the admin/elt/xlt role tags, independent of the
+  // legacy is_admin/is_super_admin/is_rcdo_admin booleans. canEditInitiative is
+  // the single gate used by both Canvas and Detail views, so this is the one
+  // place that needs to honor role_tags for that capability to actually work.
+  const canManageSIByTag = roleTags.some((t) => t === 'admin' || t === 'elt' || t === 'xlt');
 
+  useEffect(() => {
     if (!rolesLoading) {
-      fetchUserData();
+      if (user) {
+        setUserId(user.id);
+      }
+      setLoading(false);
     }
-  }, [rolesLoading]);
+  }, [rolesLoading, user]);
 
   // RCDO Admins can create cycles and lock/finalize RCDOs
   const canCreateCycle = isAdmin || isSuperAdmin || isRCDOAdmin;
@@ -145,13 +143,14 @@ export function useRCDOPermissions(): RCDOPermissionsState {
       if (isSuperAdmin) return true;
       if (isRCDOAdmin) return true;
       if (isAdmin) return true;
-      if (initiativeLockedAt && !isAdmin && !isSuperAdmin && !isRCDOAdmin) return false;
+      if (canManageSIByTag) return true;
+      if (initiativeLockedAt && !isAdmin && !isSuperAdmin && !isRCDOAdmin && !canManageSIByTag) return false;
       if (userId === initiativeOwnerId && !initiativeLockedAt) return true; // SI owner (unlocked)
       if (doOwnerId && userId === doOwnerId) return true; // DO owner
       if (initiativeCreatorId && userId === initiativeCreatorId) return true; // SI creator
       return false;
     },
-    [userId, isAdmin, isSuperAdmin, isRCDOAdmin]
+    [userId, isAdmin, isSuperAdmin, isRCDOAdmin, canManageSIByTag]
   );
 
   const canCreateTask = useCallback(

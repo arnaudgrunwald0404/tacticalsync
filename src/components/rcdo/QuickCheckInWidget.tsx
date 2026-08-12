@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,6 +23,7 @@ interface LatestCheckinMap {
 type Filter = 'owner' | 'participant';
 
 export function QuickCheckInWidget() {
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [ownedSIs, setOwnedSIs] = useState<SIListItem[]>([]);
   const [participantSIs, setParticipantSIs] = useState<SIListItem[]>([]);
@@ -49,8 +51,7 @@ export function QuickCheckInWidget() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
+      const userId = user?.id;
       if (!userId) {
         setOwnedSIs([]);
         setParticipantSIs([]);
@@ -116,7 +117,7 @@ export function QuickCheckInWidget() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     void fetchData();

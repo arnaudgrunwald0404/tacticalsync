@@ -5,10 +5,10 @@ import { TagPickerDropdown } from '@/components/inbox/TagPickerDropdown';
 import type { InboxTag } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
-// TagPickerDropdown drives all tag assignment in the inbox: a plain click applies a
-// single tag immediately, while Shift/Cmd-click enters a multi-select session that
-// only commits once "Save" is pressed. These tests pin down that contract across
-// the three columns (Projects / Folders / People).
+// TagPickerDropdown drives all tag assignment in the inbox: any click (on a
+// project, folder, or person) just toggles it into a pending selection —
+// nothing is applied until "Save" is pressed. This lets a user pick several
+// tags across columns before committing in a single onSelectTags call.
 
 const projectA: InboxTag = { id: 'p1', name: 'Chrysalis', type: 'project', color: '#3b82f6', user_id: 'u', sort_order: 0, parent_id: null, member_id: null, settings: null };
 const projectB: InboxTag = { id: 'p2', name: 'Rook', type: 'project', color: '#ec4899', user_id: 'u', sort_order: 1, parent_id: null, member_id: null, settings: null };
@@ -48,22 +48,10 @@ describe('TagPickerDropdown', () => {
     expect(screen.getByText('People')).toBeInTheDocument();
   });
 
-  it('a plain click applies immediately and closes the dropdown', async () => {
+  it('a click toggles selection instead of applying immediately, and shows a Save button', async () => {
     const { onSelectTags } = setup();
     const user = await openPicker();
     await user.click(screen.getByText('Chrysalis'));
-
-    expect(onSelectTags).toHaveBeenCalledWith(['p1']);
-    // Dropdown closed — its contents are gone.
-    expect(screen.queryByText('Projects')).not.toBeInTheDocument();
-  });
-
-  it('shift-click does not apply immediately and shows a Save button instead', async () => {
-    const { onSelectTags } = setup();
-    const user = await openPicker();
-    await user.keyboard('{Shift>}');
-    await user.click(screen.getByText('Chrysalis'));
-    await user.keyboard('{/Shift}');
 
     expect(onSelectTags).not.toHaveBeenCalled();
     expect(screen.getByText('1 selected')).toBeInTheDocument();
@@ -72,26 +60,33 @@ describe('TagPickerDropdown', () => {
     expect(screen.getByText('Projects')).toBeInTheDocument();
   });
 
-  it('after a shift-click, subsequent plain clicks keep toggling instead of applying', async () => {
+  it('clicking a second item keeps toggling into the same pending selection', async () => {
     const { onSelectTags } = setup();
     const user = await openPicker();
-    await user.keyboard('{Shift>}');
     await user.click(screen.getByText('Chrysalis'));
-    await user.keyboard('{/Shift}');
-
-    // Plain click on a second project — still just toggles selection.
     await user.click(screen.getByText('Rook'));
+
     expect(onSelectTags).not.toHaveBeenCalled();
     expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('clicking an already-selected item deselects it', async () => {
+    const { onSelectTags } = setup();
+    const user = await openPicker();
+    await user.click(screen.getByText('Chrysalis'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Chrysalis'));
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+    expect(screen.queryByText('Save')).not.toBeInTheDocument();
+    expect(onSelectTags).not.toHaveBeenCalled();
   });
 
   it('Save commits every selected tag (across columns) in one call', async () => {
     const { onSelectTags } = setup();
     const user = await openPicker();
-    await user.keyboard('{Shift>}');
     await user.click(screen.getByText('Chrysalis'));
     await user.click(screen.getByText('This week'));
-    await user.keyboard('{/Shift}');
 
     await user.click(screen.getByText('Save'));
 
@@ -102,9 +97,7 @@ describe('TagPickerDropdown', () => {
   it('Clear discards the pending selection without applying', async () => {
     const { onSelectTags } = setup();
     const user = await openPicker();
-    await user.keyboard('{Shift>}');
     await user.click(screen.getByText('Chrysalis'));
-    await user.keyboard('{/Shift}');
 
     await user.click(screen.getByText('Clear'));
 
@@ -112,21 +105,10 @@ describe('TagPickerDropdown', () => {
     expect(screen.queryByText('Save')).not.toBeInTheDocument();
   });
 
-  it('selecting an unlinked relationship (no tag yet) creates the tag then applies it', async () => {
+  it('selecting an unlinked relationship defers tag creation until Save', async () => {
     const { onSelectTags, onCreatePersonTag } = setup();
     const user = await openPicker();
     await user.click(screen.getByText('Dan Pope'));
-
-    expect(onCreatePersonTag).toHaveBeenCalledWith(dan);
-    expect(onSelectTags).toHaveBeenCalledWith(['new-person-tag']);
-  });
-
-  it('multi-selecting an unlinked relationship defers tag creation until Save', async () => {
-    const { onSelectTags, onCreatePersonTag } = setup();
-    const user = await openPicker();
-    await user.keyboard('{Shift>}');
-    await user.click(screen.getByText('Dan Pope'));
-    await user.keyboard('{/Shift}');
 
     expect(onCreatePersonTag).not.toHaveBeenCalled();
     expect(screen.getByText('1 selected')).toBeInTheDocument();
@@ -136,7 +118,7 @@ describe('TagPickerDropdown', () => {
     expect(onSelectTags).toHaveBeenCalledWith(['new-person-tag']);
   });
 
-  it('offers to create a new project or folder when the query has no match', async () => {
+  it('offers to create a new project or folder, adding it to the pending selection', async () => {
     const onCreateTag = vi.fn().mockResolvedValue({ id: 'new-proj', name: 'Atlas', type: 'project', color: '#000', user_id: 'u', sort_order: 2, parent_id: null, member_id: null, settings: null } satisfies InboxTag);
     const { onSelectTags } = setup({ onCreateTag });
     const user = await openPicker();
@@ -146,6 +128,10 @@ describe('TagPickerDropdown', () => {
     await user.click(within(projectsColumn).getByText('Create "Atlas"'));
 
     expect(onCreateTag).toHaveBeenCalledWith('Atlas', 'project');
+    expect(onSelectTags).not.toHaveBeenCalled();
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Save'));
     expect(onSelectTags).toHaveBeenCalledWith(['new-proj']);
   });
 

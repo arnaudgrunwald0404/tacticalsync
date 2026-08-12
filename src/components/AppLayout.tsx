@@ -1,46 +1,42 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AppNavbar } from "@/components/ui/app-navbar";
 import { WeekendBanner } from "@/components/WeekendBanner";
 import { ContentSkeleton } from "@/components/ui/content-skeleton";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
-import { supabase } from "@/integrations/supabase/client";
 import { useSessionManager } from "@/hooks/useSessionManager";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
+import { AuthProvider, useCurrentUser } from "@/contexts/AuthContext";
 
 export function AppLayout() {
+  return (
+    <AuthProvider>
+      <AppLayoutInner />
+    </AuthProvider>
+  );
+}
+
+function AppLayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { user, loading } = useCurrentUser();
+  const { prefs: notificationPrefs } = useNotificationPreferences();
 
   useSessionManager();
 
   useEffect(() => {
+    if (loading || user) return;
+
     // Build a returnTo param so the user lands back here after login
     const returnTo = location.pathname + location.search;
     const authUrl = returnTo && returnTo !== '/'
       ? `/auth?returnTo=${encodeURIComponent(returnTo)}`
       : '/auth';
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate(authUrl, { replace: true });
-      } else {
-        setIsAuthenticated(true);
-      }
-    });
+    navigate(authUrl, { replace: true });
+  }, [loading, user, navigate, location.pathname, location.search]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        navigate(authUrl, { replace: true });
-      } else {
-        setIsAuthenticated(true);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate, location.pathname, location.search]);
-
-  if (!isAuthenticated) {
+  if (loading || !user) {
     return <PageSkeleton />;
   }
 
@@ -48,12 +44,19 @@ export function AppLayout() {
 
   const isInbox = location.pathname.startsWith("/inbox");
 
+  // RCDO detail pages (DO/SI/all-hands) render their own independently-scrolling
+  // sidebar tree + main content columns. That only works if this outer shell is
+  // height-bounded — otherwise the whole page scrolls as one unit and the sidebar
+  // and main content scroll together instead of separately.
+  const isRCDODetail = location.pathname.startsWith("/rcdo/detail") || location.pathname.startsWith("/rcdo/all-hands");
+  const useFullHeightShell = isInbox || isRCDODetail;
+
   return (
-    <div className={isInbox ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
+    <div className={useFullHeightShell ? "h-screen flex flex-col overflow-hidden" : "min-h-screen flex flex-col"}>
       <AppNavbar />
-      {isChiefOfStaff && <WeekendBanner />}
+      {isChiefOfStaff && notificationPrefs.weekend_banner && <WeekendBanner />}
       <Suspense fallback={<ContentSkeleton />}>
-        {isInbox ? (
+        {useFullHeightShell ? (
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
             <Outlet />
           </div>

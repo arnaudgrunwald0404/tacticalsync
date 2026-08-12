@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 // Idea #11: org-wide (leadership-authored) recurring talking points. See
@@ -44,6 +45,7 @@ export function isWithinActiveWindow(
 export function useOrgTalkingPoints(teamMemberId: string | null) {
   const [points, setPoints] = useState<OrgTalkingPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useCurrentUser();
 
   const load = useCallback(async () => {
     if (!teamMemberId) {
@@ -52,8 +54,7 @@ export function useOrgTalkingPoints(teamMemberId: string | null) {
     }
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
       const todayDate = new Date().toISOString().slice(0, 10);
 
       const [activeRes, dismissedRes] = await Promise.all([
@@ -67,7 +68,7 @@ export function useOrgTalkingPoints(teamMemberId: string | null) {
         supabase
           .from('cos_org_talking_point_dismissals' as never)
           .select('talking_point_id')
-          .eq('user_id', userData.user.id)
+          .eq('user_id', user.id)
           .eq('team_member_id', teamMemberId),
       ]);
 
@@ -86,7 +87,7 @@ export function useOrgTalkingPoints(teamMemberId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [teamMemberId]);
+  }, [teamMemberId, user]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -95,9 +96,8 @@ export function useOrgTalkingPoints(teamMemberId: string | null) {
   // togglePoint()/toggleCustomPoint() already use in OneOnOnePrepDrawer.tsx.
   const dismiss = useCallback(async (id: string) => {
     if (!teamMemberId) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const userId = userData.user.id;
+    if (!user) return;
+    const userId = user.id;
 
     let nowDismissed = true;
     setPoints(prev => prev.map(p => {
@@ -129,7 +129,7 @@ export function useOrgTalkingPoints(teamMemberId: string | null) {
       // Revert the optimistic update on failure.
       setPoints(prev => prev.map(p => (p.id === id ? { ...p, dismissed: !nowDismissed } : p)));
     }
-  }, [teamMemberId]);
+  }, [teamMemberId, user]);
 
   return { points, loading, dismiss, reload: load };
 }

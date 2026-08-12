@@ -3,6 +3,7 @@ import { addDays, format, startOfDay } from 'date-fns';
 import { Loader2, Sun, PartyPopper, Send, ImageIcon, X, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 const ART_STYLES = [
@@ -51,6 +52,7 @@ function getWeekendContext(): { mode: BannerMode; weekOf: string } {
 }
 
 export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
+  const { user } = useCurrentUser();
   const forceDay = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('banner_day') as BannerMode | null;
@@ -84,7 +86,6 @@ export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
   useEffect(() => {
     if (!isWeekendish && !isMonday) { setLoaded(true); return; }
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
@@ -100,7 +101,7 @@ export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
       setLoaded(true);
     }
     load();
-  }, [isWeekendish, isMonday, weekOf]);
+  }, [isWeekendish, isMonday, weekOf, user]);
 
   const [genError, setGenError] = useState<string | null>(null);
 
@@ -158,7 +159,6 @@ export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
     if (!input.trim() || saving) return;
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
@@ -293,7 +293,6 @@ export function WeekendBanner({ bare = false }: { bare?: boolean } = {}) {
     setSaving(true);
     setDismissed(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any)

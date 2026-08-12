@@ -475,8 +475,8 @@ export function DetailPageNavigation({
           <div className="flex-1 min-w-0">
             <span
               className={cn(
-                'break-words',
-                isItemActive ? 'text-white font-semibold' : isRC ? 'text-base font-bold' : isDO ? 'text-base font-bold' : 'text-sm'
+                'break-words text-base',
+                isItemActive ? 'text-white font-semibold' : (isRC || isDO) && 'font-bold'
               )}
             >
               {item.title}

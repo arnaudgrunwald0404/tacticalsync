@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export function useRelationshipTopics(teamMemberId: string | null) {
   const [topics, setTopics] = useState<RelationshipTopic[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchTopics = useCallback(async () => {
     if (!teamMemberId) {
@@ -56,13 +58,12 @@ export function useRelationshipTopics(teamMemberId: string | null) {
     }
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       const { data, error } = await supabase
         .from('cos_relationship_topics')
         .select('*')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', user.id)
         .eq('team_member_id', teamMemberId)
         .order('last_mentioned_at', { ascending: false });
 
@@ -73,7 +74,7 @@ export function useRelationshipTopics(teamMemberId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [teamMemberId]);
+  }, [teamMemberId, user]);
 
   useEffect(() => { fetchTopics(); }, [fetchTopics]);
 
@@ -117,6 +118,7 @@ export function useRelationshipTopics(teamMemberId: string | null) {
 export function useForgottenCommitments(teamMemberId: string | null) {
   const [commitments, setCommitments] = useState<ForgottenCommitment[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useCurrentUser();
 
   const fetchCommitments = useCallback(async () => {
     if (!teamMemberId) {
@@ -125,13 +127,12 @@ export function useForgottenCommitments(teamMemberId: string | null) {
     }
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       const { data, error } = await supabase
         .from('cos_forgotten_commitments')
         .select('*')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', user.id)
         .eq('member_id', teamMemberId)
         .order('days_pending', { ascending: false });
 
@@ -142,7 +143,7 @@ export function useForgottenCommitments(teamMemberId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [teamMemberId]);
+  }, [teamMemberId, user]);
 
   useEffect(() => { fetchCommitments(); }, [fetchCommitments]);
 

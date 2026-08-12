@@ -7,6 +7,7 @@ import { Lock, Unlock, MessageSquare, MoreVertical, TrendingUp, AlertTriangle, T
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import FancyAvatar from '@/components/ui/fancy-avatar';
+import { SIStatusControl } from '@/components/rcdo/SIStatusControl';
 import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { calculateDOHealth, getHealthColor } from '@/lib/rcdoScoring';
 import { parseLocalDate } from '@/lib/dateUtils';
@@ -82,6 +83,9 @@ export interface DetailPageHeaderProps {
   // SI kebab actions
   onBreakIntoSubSIs?: () => void;
 
+  // SI status — editable inline (gated by canEdit above) when provided
+  onStatusChange?: (status: string) => Promise<void>;
+
   // Delete
   onDelete?: () => void;
   canDelete?: boolean;
@@ -127,6 +131,7 @@ export function DetailPageHeader({
   onEndDateChange,
   dateError,
   onBreakIntoSubSIs,
+  onStatusChange,
   onDelete,
   canDelete = false,
 }: DetailPageHeaderProps) {
@@ -150,7 +155,7 @@ export function DetailPageHeader({
   useEffect(() => { setMetricDraft(primarySuccessMetric ?? ''); }, [primarySuccessMetric]);
 
   // DO's "description" is really its Definition & Hypothesis — same field/wording as the canvas panel.
-  const descriptionLabel = type === 'do' ? 'Definition & Hypothesis' : null;
+  const descriptionLabel = type === 'do' ? 'Definition & Hypothesis' : 'Description';
   const descriptionPlaceholder = type === 'do'
     ? 'If we do X, then Y will happen because Z...'
     : 'Add a description...';
@@ -245,20 +250,11 @@ export function DetailPageHeader({
 
       {/* Description */}
       <div className="group/desc mb-3">
-        {descriptionLabel && (
+        {descriptionLabel && editingDesc && (
           <div className="flex items-center gap-1 mb-1">
-            <label className={`text-sm font-medium ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+            <label className={`text-sm font-bold ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
               {descriptionLabel}
             </label>
-            {!editingDesc && !isLocked && canEdit && onDescriptionChange && (
-              <button
-                type="button"
-                onClick={() => setEditingDesc(true)}
-                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         )}
         {editingDesc ? (
@@ -283,33 +279,42 @@ export function DetailPageHeader({
             className="w-full text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
           />
         ) : (
-          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-            {strippedDescription
-              ? strippedDescription
-              : onDescriptionChange
-                ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
-                : null}
-          </p>
-        )}
-      </div>
-
-      {/* Primary Success Metric — DO only */}
-      {type === 'do' && (primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
-        <div className="group/metric mb-3">
-          <div className="flex items-center gap-1 mb-1">
-            <label className={`text-sm font-medium ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-              Primary Success Metric
-            </label>
-            {!editingMetric && !isLocked && canEdit && onPrimarySuccessMetricChange && (
+          <div className="flex items-start gap-1.5 flex-wrap">
+            {descriptionLabel && (
+              <label className={`text-sm font-bold shrink-0 ${!strippedDescription ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                {descriptionLabel}:
+              </label>
+            )}
+            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1 min-w-[120px]">
+              {strippedDescription
+                ? strippedDescription
+                : onDescriptionChange
+                  ? <span className="text-gray-400 italic text-sm">{descriptionPlaceholder}</span>
+                  : null}
+            </p>
+            {!isLocked && canEdit && onDescriptionChange && (
               <button
                 type="button"
-                onClick={() => setEditingMetric(true)}
-                className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+                onClick={() => setEditingDesc(true)}
+                className="opacity-0 group-hover/desc:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Primary Success Metric */}
+      {(primarySuccessMetric !== undefined || onPrimarySuccessMetricChange) && (
+        <div className="group/metric mb-3">
+          {editingMetric && (
+            <div className="flex items-center gap-1 mb-1">
+              <label className={`text-sm font-bold ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                Primary Success Metric
+              </label>
+            </div>
+          )}
           {editingMetric ? (
             <textarea
               value={metricDraft}
@@ -332,13 +337,27 @@ export function DetailPageHeader({
               className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent border-b-2 border-blue-500 focus:outline-none resize-none"
             />
           ) : (
-            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-              {primarySuccessMetric?.trim()
-                ? primarySuccessMetric
-                : onPrimarySuccessMetricChange
-                  ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
-                  : null}
-            </p>
+            <div className="flex items-start gap-1.5 flex-wrap">
+              <label className={`text-sm font-bold shrink-0 ${!primarySuccessMetric?.trim() ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                Primary Success Metric:
+              </label>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap flex-1 min-w-[120px]">
+                {primarySuccessMetric?.trim()
+                  ? primarySuccessMetric
+                  : onPrimarySuccessMetricChange
+                    ? <span className="text-gray-400 italic">e.g., OpEx management and achievement of SI-level metrics</span>
+                    : null}
+              </p>
+              {!isLocked && canEdit && onPrimarySuccessMetricChange && (
+                <button
+                  type="button"
+                  onClick={() => setEditingMetric(true)}
+                  className="opacity-0 group-hover/metric:opacity-100 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -457,17 +476,6 @@ export function DetailPageHeader({
             Check-In
           </Button>
         )}
-        {canLock && !isLocked && onLock && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={onLock}
-            onKeyDown={(e) => e.key === 'Enter' && onLock()}
-            className="inline-flex items-center border border-transparent rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-[#5B6E7A] text-white cursor-pointer hover:bg-[#4A5D68] transition-colors"
-          >
-            LOCK
-          </span>
-        )}
         {type === 'do' && (
           <Badge
             className={
@@ -498,18 +506,29 @@ export function DetailPageHeader({
           </Badge>
         )}
         {type === 'si' && status && (
-          <Badge className={
-            status === 'not_started' ? 'bg-[#5B6E7A]' :
-            status === 'on_track' ? 'bg-green-500' :
-            status === 'at_risk' ? 'bg-yellow-500' :
-            status === 'off_track' ? 'bg-yellow-500' :
-            status === 'completed' ? 'bg-green-500' :
-            'bg-gray-500'
-          }>
-            {status.replace('_', ' ').toUpperCase()}
-          </Badge>
+          canEdit && onStatusChange ? (
+            <SIStatusControl
+              variant="badge"
+              status={status}
+              canEdit
+              taskCount={tasksCount}
+              onStatusChange={onStatusChange}
+            />
+          ) : (
+            <Badge className={
+              status === 'not_started' ? 'bg-[#5B6E7A]' :
+              status === 'on_track' ? 'bg-green-500' :
+              status === 'at_risk' ? 'bg-yellow-500' :
+              status === 'off_track' ? 'bg-yellow-500' :
+              status === 'completed' ? 'bg-green-500' :
+              'bg-gray-500'
+            }>
+              {status.replace('_', ' ').toUpperCase()}
+            </Badge>
+          )
         )}
-        {((isLocked && canLock && onUnlock) ||
+        {((canLock && !isLocked && onLock) ||
+          (isLocked && canLock && onUnlock) ||
           (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs) ||
           (onDelete && canDelete)) && (
           <DropdownMenu>
@@ -519,6 +538,12 @@ export function DetailPageHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {canLock && !isLocked && onLock && (
+                <DropdownMenuItem onClick={onLock}>
+                  <Lock className="h-4 w-4 mr-2" />
+                  Lock
+                </DropdownMenuItem>
+              )}
               {isLocked && canLock && onUnlock && (
                 <DropdownMenuItem onClick={onUnlock}>
                   <Unlock className="h-4 w-4 mr-2" />
@@ -526,13 +551,16 @@ export function DetailPageHeader({
                 </DropdownMenuItem>
               )}
               {type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs && (
-                <DropdownMenuItem onClick={onBreakIntoSubSIs}>
-                  Sub-initiatives: {acceptsSubSis ? 'ON' : 'OFF'}
+                <DropdownMenuItem onClick={onBreakIntoSubSIs} className="flex-col items-start gap-0.5 py-2">
+                  <span className="text-xs text-muted-foreground">
+                    Sub-initiatives are {acceptsSubSis ? 'on' : 'off'}.
+                  </span>
+                  <span className="font-semibold">{acceptsSubSis ? 'Disable' : 'Enable'}</span>
                 </DropdownMenuItem>
               )}
               {onDelete && canDelete && (
                 <>
-                  {((isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
+                  {((canLock && !isLocked && onLock) || (isLocked && canLock) || (type === 'si' && !isLocked && canEdit && onBreakIntoSubSIs)) && (
                     <DropdownMenuSeparator />
                   )}
                   <DropdownMenuItem className="text-red-600" onClick={onDelete}>

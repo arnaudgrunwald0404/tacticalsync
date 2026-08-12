@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 export interface NotificationPreferences {
   overdue_action_nudges: boolean;
@@ -13,6 +14,8 @@ export interface NotificationPreferences {
   inbox_item_nudges: boolean;
   /** RCDO stale check-in / metric alerts — see supabase/functions/rcdo-stale-check/index.ts. */
   rcdo_stale_alerts: boolean;
+  /** In-app Friday/weekend/Monday banner on Check-Ins and Inbox — not a Slack DM. */
+  weekend_banner: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -24,10 +27,12 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   daily_brief: true,
   inbox_item_nudges: true,
   rcdo_stale_alerts: true,
+  weekend_banner: false,
 };
 
 export function useNotificationPreferences() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [loading, setLoading] = useState(true);
   const [slackConnected, setSlackConnected] = useState(false);
@@ -36,13 +41,12 @@ export function useNotificationPreferences() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
+        if (!user) return;
 
         const { data: settings } = await (supabase as unknown as SupabaseClient)
           .from('cos_settings')
           .select('notification_preferences')
-          .eq('user_id', userData.user.id)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (settings?.notification_preferences) {
@@ -62,17 +66,16 @@ export function useNotificationPreferences() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [user]);
 
   const save = useCallback(async (next: NotificationPreferences) => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       await (supabase as unknown as SupabaseClient)
         .from('cos_settings')
         .upsert({
-          user_id: userData.user.id,
+          user_id: user.id,
           notification_preferences: next,
         }, { onConflict: 'user_id' });
 
@@ -84,7 +87,7 @@ export function useNotificationPreferences() {
         variant: 'destructive',
       });
     }
-  }, [toast]);
+  }, [toast, user]);
 
   const update = useCallback((patch: Partial<NotificationPreferences>) => {
     setPrefs(prev => {

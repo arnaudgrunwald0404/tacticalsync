@@ -7,6 +7,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -68,12 +69,12 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
   const [memberMap, setMemberMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
+  const { user } = useCurrentUser();
 
   const fetch = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
@@ -81,7 +82,7 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
       let query = db
         .from('cos_agent_log')
         .select('id, event_type, member_id, event_id, action_id, payload, created_at')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -117,7 +118,7 @@ export function AgentActivityFeed({ className, limit = 50 }: AgentActivityFeedPr
     } finally {
       setLoading(false);
     }
-  }, [limit, filter]);
+  }, [limit, filter, user]);
 
   useEffect(() => { fetch(); }, [fetch]);
 

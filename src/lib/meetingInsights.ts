@@ -1,21 +1,25 @@
-import type { InboxItem, SourceRef } from '@/types/inbox';
-import { validateItemText } from './inboxValidation';
+import type { SourceRef } from '@/types/inbox';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Meeting insights — pure logic shared conceptually between the React app and
 // the extract-zoom-quotes / agent-tick edge functions (mirrored, not imported,
 // under supabase/functions/**, same convention as delegationRequestSchema in
-// inboxValidation.ts — Deno can't import from src/). See
-// PLAN_idea3_meeting_insights.md for the full design.
+// inboxValidation.ts — Deno can't import from src/).
 //
-// Everything here is pure and dependency-free (aside from validateItemText)
-// so it can be unit-tested directly.
+// Standout quotes surface as `dci_suggested_tasks` rows (source_type:
+// 'meeting') — the same recommendation surface email and Slack action items
+// use (InboxSuggestionsPanel / useMeetingSuggestions), rather than as their
+// own inbox_items row: accept -> a real task, dismiss -> hidden, no separate
+// triage affordance needed since that panel already provides one.
+//
+// Everything here is pure and dependency-free so it can be unit-tested
+// directly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Max meeting_insight rows created per transcript, independent of how many
- *  quotes are extracted for cos_member_quotes (up to 3) — see plan §6.3.
- *  inbox_items is a triage stream, not a permanent dump, so its volume
- *  tolerance is capped below the extraction surface's. */
+/** Max quote suggestions created per transcript, independent of how many
+ *  quotes are extracted for cos_member_quotes (up to 3). The suggestions
+ *  panel is a triage stream, not a permanent dump, so its volume tolerance is
+ *  capped below the extraction surface's. */
 export const MEETING_INSIGHT_CAP_PER_TRANSCRIPT = 2;
 
 /** Raw transcript speaker labels that carry no useful identity — anonymous
@@ -37,77 +41,40 @@ export interface ExtractedQuote {
   context?: string;
 }
 
-/** Everything needed to build a meeting_insight row's text/source_ref for one
- *  extracted quote. */
-export interface MeetingInsightContext {
-  userId: string;
-  transcriptId: string;
-  recordingId: string;
-  /** cos_member_quotes.id if the speaker matched a known team member. */
-  quoteId?: string | null;
-  meetingTopic?: string | null;
-  saidOn: string; // YYYY-MM-DD
+/** The `dci_suggested_tasks` fields a quote suggestion inserts — same table
+ *  and shape email/Slack-derived recommendations use (source_type
+ *  distinguishes provenance), surfaced via InboxSuggestionsPanel /
+ *  useMeetingSuggestions. Accepting creates a real task from `title`;
+ *  dismissing just hides it — no separate triage UI needed. */
+export interface QuoteSuggestionFields {
+  title: string;
+  source_type: 'meeting';
+  source: string | null;
+  rationale: string | null;
+  raw_context: string;
+  urgency: 'watching';
 }
 
 /**
- * Build the dedup key for a candidate meeting_insight insert: one row per
- * (transcript, speaker, quote) tuple. Used both for the pre-insert existence
- * check and for the DB expression index (see the meeting_insight_dedup
- * migration) — must stay in sync with that index's expression.
+ * Shape a `dci_suggested_tasks` row for one extracted quote. `title` carries
+ * just the speaker + quote (no meeting/date suffix) since `source` already
+ * supplies the meeting name for the panel's own provenance line — embedding
+ * both would duplicate on the card.
  */
-export function meetingInsightDedupKey(
-  transcriptId: string,
-  speaker: string,
-  quote: string,
-): { transcript_id: string; speaker_name: string; quote: string } {
-  return {
-    transcript_id: transcriptId,
-    speaker_name: speaker.trim(),
-    quote: quote.trim(),
-  };
-}
-
-/**
- * Build the source_ref for a meeting_insight row (plan §3). `type` is always
- * 'zoom_recording' and `id` mirrors `recording_id` so existing single-id
- * consumers keep working.
- */
-export function buildMeetingInsightSourceRef(
-  ctx: MeetingInsightContext,
-  q: ExtractedQuote,
-): SourceRef {
-  return {
-    type: 'zoom_recording',
-    id: ctx.recordingId,
-    recording_id: ctx.recordingId,
-    transcript_id: ctx.transcriptId,
-    quote_id: ctx.quoteId ?? undefined,
-    speaker_name: q.speaker.trim(),
-    meeting_topic: ctx.meetingTopic ?? undefined,
-    said_on: ctx.saidOn,
-    context: q.context,
-  };
-}
-
-/**
- * Shape the meeting_insight row's own headline text so a user scanning the
- * list never has to open the row to know where it came from (plan §9.1
- * "per-card origin clarity"): "<Speaker> said: '<quote>' — from <meeting>, <date>".
- * Falls back gracefully when topic/date are unavailable.
- */
-export function buildMeetingInsightText(
-  q: ExtractedQuote,
+export function buildQuoteSuggestionFields(
+  q: Pick<ExtractedQuote, 'speaker' | 'quote' | 'context'>,
   meetingTopic: string | null | undefined,
-  saidOn: string | null | undefined,
-): string {
+): QuoteSuggestionFields {
   const speaker = q.speaker.trim();
   const quote = q.quote.trim();
-  const base = `${speaker} said: "${quote}"`;
-  const meetingLabel = meetingTopic?.trim();
-  if (!meetingLabel) return base;
-
-  const dateLabel = formatShortDate(saidOn);
-  return dateLabel ? `${base} — from ${meetingLabel}, ${dateLabel}` : `${base} — from ${meetingLabel}`;
+  return {
+    title: `${speaker} said: "${quote}"`,
+    source_type: 'meeting',
+    source: meetingTopic?.trim() || null,
+    rationale: q.context?.trim() || null,
+    raw_context: quote,
+    urgency: 'watching',
+  };
 }
 
 /** Format a YYYY-MM-DD string as "Jul 3" without pulling in date-fns (this
@@ -143,10 +110,19 @@ export function capMeetingInsights<T>(
 // `owed_by` column added in 20260728000001_inbox_items_owed_by.sql, which
 // powers the daily digest's "you're blocking these people" section.
 
-/** Max commitment rows created per transcript, independent of the quote/
- *  meeting_insight cap above — kept modest since commitments are a coarser,
+/** Max commitment rows created per transcript, independent of the quote
+ *  suggestion cap above — kept modest since commitments are a coarser,
  *  higher-signal-per-row surface than quotes. */
 export const COMMITMENT_CAP_PER_TRANSCRIPT = 5;
+
+/** Everything needed to build a commitment inbox row's text/source_ref. */
+export interface CommitmentContext {
+  userId: string;
+  transcriptId: string;
+  recordingId: string;
+  meetingTopic?: string | null;
+  saidOn: string; // YYYY-MM-DD
+}
 
 /** A single explicit commitment as extracted by the Gemini prompt in
  *  extract-zoom-quotes. */
@@ -167,8 +143,8 @@ export interface ExtractedCommitment {
 
 /**
  * Build the dedup key for a candidate commitment insert: one row per
- * (transcript, owner, commitment) tuple — same shape/spirit as
- * {@link meetingInsightDedupKey}, so a manual re-extract stays idempotent.
+ * (transcript, owner, commitment) tuple, so a manual re-extract stays
+ * idempotent instead of duplicating rows.
  */
 export function commitmentDedupKey(
   transcriptId: string,
@@ -183,14 +159,12 @@ export function commitmentDedupKey(
 }
 
 /**
- * Build the source_ref for a commitment inbox row. Reuses the
- * 'zoom_recording' shape (transcript_id/recording_id/speaker_name/
- * meeting_topic/said_on) established for meeting_insight rows so both kinds
- * of Zoom-derived inbox rows click through the same way; `speaker_name`
- * carries the commitment's owner_name here rather than a quote's speaker.
+ * Build the source_ref for a commitment inbox row. Uses the 'zoom_recording'
+ * shape (transcript_id/recording_id/speaker_name/meeting_topic/said_on);
+ * `speaker_name` carries the commitment's owner_name here.
  */
 export function buildCommitmentSourceRef(
-  ctx: MeetingInsightContext,
+  ctx: CommitmentContext,
   c: Pick<ExtractedCommitment, 'owner_name'>,
 ): SourceRef {
   return {
@@ -205,9 +179,8 @@ export function buildCommitmentSourceRef(
 }
 
 /**
- * Shape the commitment inbox row's own headline text, mirroring
- * {@link buildMeetingInsightText}'s "per-card origin clarity" goal: a user
- * scanning the list should know who owes what without opening the row.
+ * Shape the commitment inbox row's own headline text, so a user scanning the
+ * list knows who owes what without opening the row.
  */
 export function buildCommitmentText(
   c: Pick<ExtractedCommitment, 'owner_name' | 'owed_by' | 'commitment'>,
@@ -223,70 +196,4 @@ export function buildCommitmentText(
 
   const dateLabel = formatShortDate(saidOn);
   return dateLabel ? `${base} — from ${meetingLabel}, ${dateLabel}` : `${base} — from ${meetingLabel}`;
-}
-
-// ── Triage actions (plan §4) ────────────────────────────────────────────────
-
-export type TriageAction = 'confirm' | 'save' | 'dismiss';
-
-/** Fields to insert for the new row created by Confirm/Save; null for Dismiss
- *  (no new row). */
-export interface TriageInsertPlan {
-  type: 'task' | 'note';
-  text: string;
-  body: string | null;
-  source_ref: SourceRef;
-}
-
-/** Fields to patch onto the *original* meeting_insight row for a given
- *  triage action (plan §4's "What happens to status/type"). */
-export interface TriagePatchPlan {
-  status: 'done' | 'archived';
-  done_at: string | null;
-  archived_at: string | null;
-}
-
-/**
- * Plan the new row (if any) to insert for a triage action. Returns null for
- * 'dismiss', which creates no new row. Pure — callers are responsible for
- * actually performing the insert/update via useInboxItems.
- */
-export function planTriageInsert(
-  item: Pick<InboxItem, 'text' | 'source_ref'>,
-  action: TriageAction,
-): TriageInsertPlan | null {
-  if (action === 'dismiss') return null;
-
-  const sourceRef = item.source_ref ?? { type: 'manual' as const };
-
-  if (action === 'confirm') {
-    const seeded = `Follow up: ${item.text}`;
-    const textResult = validateItemText(seeded);
-    return {
-      type: 'task',
-      text: textResult.ok ? textResult.value : seeded.slice(0, 2000),
-      body: null,
-      source_ref: sourceRef,
-    };
-  }
-
-  // action === 'save'
-  const label = sourceRef.context?.trim() || item.text.slice(0, 80);
-  const labelResult = validateItemText(label);
-  return {
-    type: 'note',
-    text: labelResult.ok ? labelResult.value : label.slice(0, 2000) || 'Meeting note',
-    body: item.text,
-    source_ref: sourceRef,
-  };
-}
-
-/** Plan the status patch to apply to the original insight row (plan §4). */
-export function planTriagePatch(action: TriageAction, now: Date = new Date()): TriagePatchPlan {
-  const nowIso = now.toISOString();
-  if (action === 'confirm') {
-    return { status: 'done', done_at: nowIso, archived_at: null };
-  }
-  // 'save' and 'dismiss' both archive the original insight.
-  return { status: 'archived', done_at: null, archived_at: nowIso };
 }

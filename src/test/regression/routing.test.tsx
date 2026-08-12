@@ -61,9 +61,9 @@ describe('Regression: Application routing', () => {
     });
 
     // Longer timeout: StrategyCanvas is the heaviest page bundle in the app
-    // (ReactFlow, Yjs, y-websocket, lazy rich-text editor) — a cold transform
-    // can miss the default 5000ms under load, causing intermittent pre-push
-    // failures unrelated to the route itself.
+    // (ReactFlow, lazy rich-text editor) — a cold transform can miss the
+    // default 5000ms under load, causing intermittent pre-push failures
+    // unrelated to the route itself.
     it('should import StrategyCanvas page', async () => {
       const module = await import('@/pages/StrategyCanvas');
       expect(module.default).toBeDefined();

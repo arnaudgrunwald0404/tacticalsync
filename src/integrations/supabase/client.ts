@@ -29,4 +29,12 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       eventsPerSecond: 10,
     },
   },
+  global: {
+    // Some statuses PostgREST can return (e.g. 300 for an ambiguous embed) are
+    // heuristically cacheable per the HTTP spec even without a Cache-Control
+    // header. Without this, a transient API error (fixed server-side minutes
+    // later, e.g. by a migration) can get stuck in the browser's disk cache
+    // and keep replaying indefinitely, surviving normal reloads.
+    fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+  },
 });

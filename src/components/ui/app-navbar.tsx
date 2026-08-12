@@ -28,8 +28,7 @@ export function AppNavbar() {
       : "main";
 
   const handleTabChange = (value: string) => {
-    if (value === "main") navigate("/my-meetings");
-    else if (value === "rcdo") navigate("/dashboard/rcdo");
+    if (value === "rcdo") navigate("/dashboard/rcdo");
     else if (value === "commitments") navigate("/commitments");
     else if (value === "insights") navigate("/insights");
     else if (value === "cos") navigate("/check-ins");

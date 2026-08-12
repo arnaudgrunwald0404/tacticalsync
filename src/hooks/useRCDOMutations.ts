@@ -35,12 +35,11 @@ export async function updateDO(doId: string, patch: UpdateDOPatch): Promise<void
   if (error) throw error;
 }
 
-export async function lockDO(doId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('You must be logged in.');
+export async function lockDO(doId: string, userId: string | undefined): Promise<void> {
+  if (!userId) throw new Error('You must be logged in.');
   const { error } = await supabase
     .from('rc_defining_objectives')
-    .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: user.id })
+    .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: userId })
     .eq('id', doId);
   if (error) throw error;
   // A DB trigger (20251122060500_cascade_unlock_si_on_do.sql) cascades this
@@ -60,20 +59,17 @@ export async function unlockDO(doId: string): Promise<void> {
  * rc_links/rc_checkins reference DOs/SIs by parent_type+parent_id with no
  * FK, so they must be cleaned up explicitly. Deleting the DO row cascades
  * to rc_do_metrics, rc_strategic_initiatives, and their rc_tasks via FK.
+ *
+ * Runs as a single-transaction RPC (delete_rc_do, added in
+ * 20260808000434_add_delete_rc_do_and_initiative_rpcs.sql) rather than
+ * separate .delete() calls, so every row this action touches lands in one
+ * Postgres transaction — and therefore one batch_id for the rc_deleted_items
+ * trash-capture trigger, letting a "restore what I just deleted" action
+ * restore the whole thing instead of only part of it. The RPC looks up
+ * child SI ids server-side, so callers no longer need to pass them.
  */
-export async function deleteDO(doId: string, siDbIds: string[]): Promise<void> {
-  await Promise.all([
-    supabase.from('rc_links').delete().eq('parent_type', 'do').eq('parent_id', doId),
-    siDbIds.length > 0
-      ? supabase.from('rc_links').delete().eq('parent_type', 'si').in('parent_id', siDbIds)
-      : Promise.resolve(),
-    supabase.from('rc_checkins').delete().eq('parent_type', 'do').eq('parent_id', doId),
-    siDbIds.length > 0
-      ? supabase.from('rc_checkins').delete().eq('parent_type', 'si').in('parent_id', siDbIds)
-      : Promise.resolve(),
-  ]);
-
-  const { error } = await supabase.from('rc_defining_objectives').delete().eq('id', doId);
+export async function deleteDO(doId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_rc_do', { p_do_id: doId });
   if (error) throw error;
 }
 
@@ -99,11 +95,51 @@ export async function updateInitiative(siId: string, patch: UpdateInitiativePatc
   if (error) throw error;
 }
 
-export async function lockInitiative(siId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+export interface CreateInitiativePayload {
+  defining_objective_id: string;
+  title: string;
+  owner_user_id: string;
+  description?: string | null;
+  primary_success_metric?: string | null;
+  benchmark?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  participant_user_ids?: string[];
+  created_by?: string | null;
+}
+
+/**
+ * Inserts a new top-level SI (parent_si_id null). Used to lazily persist a
+ * canvas-created SI the first time it has both NOT NULL-required fields
+ * (title, owner_user_id) — see SIPanelContent's ensureSIPersisted.
+ */
+export async function createInitiative(payload: CreateInitiativePayload): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('rc_strategic_initiatives')
+    .insert({
+      defining_objective_id: payload.defining_objective_id,
+      parent_si_id: null,
+      title: payload.title,
+      description: payload.description ?? null,
+      owner_user_id: payload.owner_user_id,
+      primary_success_metric: payload.primary_success_metric ?? null,
+      benchmark: payload.benchmark ?? null,
+      start_date: payload.start_date ?? null,
+      end_date: payload.end_date ?? null,
+      participant_user_ids: payload.participant_user_ids ?? [],
+      status: 'not_started',
+      created_by: payload.created_by ?? null,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data as { id: string };
+}
+
+export async function lockInitiative(siId: string, userId: string | undefined): Promise<void> {
   const { error } = await supabase
     .from('rc_strategic_initiatives')
-    .update({ locked_at: new Date().toISOString(), locked_by: user?.id ?? null })
+    .update({ locked_at: new Date().toISOString(), locked_by: userId ?? null })
     .eq('id', siId);
   if (error) throw error;
 }
@@ -116,13 +152,14 @@ export async function unlockInitiative(siId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** rc_tasks.strategic_initiative_id cascades via FK; rc_links/rc_checkins need explicit cleanup (no FK). */
+/**
+ * rc_tasks.strategic_initiative_id cascades via FK; rc_links/rc_checkins need
+ * explicit cleanup (no FK). Runs as a single-transaction RPC
+ * (delete_rc_initiative, added in
+ * 20260808000434_add_delete_rc_do_and_initiative_rpcs.sql) for the same
+ * batch_id reason as deleteDO above.
+ */
 export async function deleteInitiative(siId: string): Promise<void> {
-  await Promise.all([
-    supabase.from('rc_links').delete().eq('parent_type', 'si').eq('parent_id', siId),
-    supabase.from('rc_checkins').delete().eq('parent_type', 'si').eq('parent_id', siId),
-  ]);
-
-  const { error } = await supabase.from('rc_strategic_initiatives').delete().eq('id', siId);
+  const { error } = await supabase.rpc('delete_rc_initiative', { p_si_id: siId });
   if (error) throw error;
 }

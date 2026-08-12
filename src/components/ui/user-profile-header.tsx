@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import FancyAvatar from "@/components/ui/fancy-avatar";
 import {
   DropdownMenu,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 export function UserProfileHeader() {
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const { isAdmin, isSuperAdmin } = useRoles();
   const isMobile = useIsMobile();
   const [profile, setProfile] = useState<{
@@ -32,11 +34,10 @@ export function UserProfileHeader() {
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profileData } = await supabase
           .from("profiles")

@@ -1,27 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 export interface OnboardingState {
   welcome: boolean;
   lists: boolean;
   oneOnOnes: boolean;
-  // Has the user seen the meeting-insights first-run intro banner? See
-  // PLAN_idea3_meeting_insights.md §9.1 and the
-  // 20260724000000_meeting_insight_dedup_and_intro_flag migration.
-  meetingInsightsIntro: boolean;
 }
 
-const DEFAULT_STATE: OnboardingState = { welcome: false, lists: false, oneOnOnes: false, meetingInsightsIntro: false };
+const DEFAULT_STATE: OnboardingState = { welcome: false, lists: false, oneOnOnes: false };
 
 export function useOnboardingState() {
   const [onboarding, setOnboarding] = useState<OnboardingState>(DEFAULT_STATE);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
@@ -38,7 +35,7 @@ export function useOnboardingState() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   const markComplete = useCallback(async (key: keyof OnboardingState) => {
     // Optimistic — the tutorial/banner should disappear immediately on dismiss.

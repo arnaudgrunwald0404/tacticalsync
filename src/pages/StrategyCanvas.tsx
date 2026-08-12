@@ -14,7 +14,16 @@ import ReactFlow, {
   Handle,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Plus, MoreVertical, X, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target, List } from "lucide-react";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, MoreVertical, X, ChevronDown, ChevronUp, ChevronRight, Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info, FileText, Lock, AlertTriangle, Zap, Layers, ExternalLink, Target, List, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -26,10 +35,9 @@ import { CycleSelector } from "@/components/rcdo/CycleSelector";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
-import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
 import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParser";
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +50,7 @@ import { DOPanelContent } from "@/components/rcdo/DOPanelContent";
 import { CheckinFeedSidebar } from "@/components/rcdo/CheckinFeedSidebar";
 import { isFeatureEnabled } from "@/lib/featureFlags";
 import { useRCDOPermissions } from "@/hooks/useRCDOPermissions";
+import { reconcileCanvasSnapshot, type RawCanvasNode, type ReconcileCanvasSnapshotParams } from "@/lib/canvasSnapshotReconciliation";
 import { deleteDO, deleteInitiative, lockDO, unlockDO, lockInitiative, unlockInitiative } from "@/hooks/useRCDOMutations";
 import { getDOLockBlockers, getSILockBlockers } from "@/lib/rcdoValidation";
 import { Card } from "@/components/ui/card";
@@ -149,18 +158,54 @@ function StrategyNode({ data }: { data: NodeData }) {
 
 import type { NodeProps } from "reactflow";
 
-// Create a factory function that accepts profilesMap, showProgress, SI progress data, and DO locked status
+// Wraps a single SI chip with a drag handle so it can be reordered within its
+// DO. Only the handle carries dnd-kit's listeners (and the `nodrag`/`nopan`
+// classes react-flow uses to opt elements out of node-drag/pane-pan) so the
+// chip's own onClick (open SI) keeps working undisturbed, and starting a drag
+// never fights react-flow's own node-drag gesture.
+function SortableSIChip({ id, disabled, children }: { id: string; disabled: boolean; children: React.ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 30 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/chip">
+      {!disabled && (
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          className="nodrag nopan absolute -left-2 top-1/2 -translate-y-1/2 z-20 p-0.5 rounded bg-white border border-[#9FA8B3] text-[#5B6E7A] opacity-0 group-hover/chip:opacity-100 cursor-grab active:cursor-grabbing touch-none transition-opacity"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// Create a factory function that accepts profilesMap, showProgress, SI progress data, DO locked status, and
+// whether SI reordering is currently allowed (disabled while a "View As" filter is active, since that shows
+// only a subset of a DO's SIs and reordering the subset would corrupt the real display_order of hidden ones)
 const createDoNode = (
   profilesMap: Record<string, Tables<'profiles'>>,
   showProgress: boolean,
   siProgressMap: Map<string, { percentToGoal: number | null; isLocked: boolean; sentiment: number | null; latestDate: string | null; createdAt: string | null }>,
-  doLockedStatus: Map<string, { locked: boolean; dbId?: string }>
+  doLockedStatus: Map<string, { locked: boolean; dbId?: string }>,
+  canReorderSI: boolean
 ) => {
   return function DoNode({ id, data }: NodeProps<NodeData>) {
     const status = data.status || "draft";
     const items = data.saiItems || [];
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const owner = data.ownerId ? profilesMap[data.ownerId] : undefined;
+    const isDOLocked = doLockedStatus.get(id)?.locked ?? false;
 
     // Check if DO is missing required fields (same rule used for lock eligibility everywhere else)
     const hasMissingFields = getDOLockBlockers({
@@ -246,6 +291,7 @@ const createDoNode = (
       </div>
       {items.length > 0 && (
         <div className="mt-3 flex flex-col gap-2 flex-shrink-0 relative z-10 overflow-visible">
+          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
           {items.map((it) => {
             // Check if SI is missing required fields
             // Strip HTML tags from description to check if it's actually empty
@@ -255,10 +301,10 @@ const createDoNode = (
             const siHasMissingFields = !it.title || !it.title.trim() ||
                                       !metricText ||
                                       !it.ownerId;
-            
+
             return (
+            <SortableSIChip key={it.id} id={it.id} disabled={!it.dbId || isDOLocked || !canReorderSI}>
             <button
-              key={it.id}
               className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium w-full transition-all hover:scale-[1.02] overflow-visible
                 ${(() => {
                   const siProg = it.dbId ? siProgressMap.get(it.dbId) : undefined;
@@ -369,8 +415,10 @@ const createDoNode = (
                 );
               })()}
             </button>
+            </SortableSIChip>
             );
           })}
+          </SortableContext>
         </div>
       )}
     </div>
@@ -507,6 +555,13 @@ function computeDOCardLayout(count: number): { w: number; gapX: number } {
   return { w, gapX: w + DO_BASE_MARGIN };
 }
 
+// The Rallying Cry card should be exactly as wide as a single DO card —
+// not the fixed 280px default — so it visually matches the cards below it.
+function computeRallyWidth(doCount: number): number {
+  if (doCount <= 0) return DEFAULT_NODE_DIMENSIONS.rally.w;
+  return computeDOCardLayout(doCount).w;
+}
+
 // Re-centers a row of DO nodes and applies computeDOCardLayout's width for
 // the current count. Used whenever DO nodes are (re)hydrated — from a fresh
 // DB build, an import, or a reconciled cached snapshot — so cards widen (or
@@ -563,14 +618,10 @@ function findNonOverlappingPosition(existing: Node<NodeData>[], type: NodeKind, 
 }
 
 export default function StrategyCanvasPage() {
-  // Realtime doc and provider (optional if server not running)
-  const ydocRef = useRef<Y.Doc>();
-  
+  const { user } = useCurrentUser();
+
   // Guard to avoid repeated hydration requests
   const hydrationGuardRef = useRef<{ inFlight: boolean; cycle: string | null; sig: string | null }>({ inFlight: false, cycle: null, sig: null });
-  const providerRef = useRef<WebsocketProvider | null>(null);
-  const updatingFromRemoteNodes = useRef(false);
-  const updatingFromRemoteEdges = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
 
   // React Flow instance to control viewport
@@ -595,11 +646,14 @@ export default function StrategyCanvasPage() {
     }
   }, [cycleId, navigate]);
 
-  const collabUrl = import.meta.env.VITE_COLLAB_WS_URL || "ws://localhost:1234";
   const roomName = cycleId ? `strategy-canvas-${cycleId}` : "strategy-canvas-default";
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(makeInitialNodes());
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(makeInitialEdges());
+  // Gates the canvas render until the initial Supabase load (snapshot or
+  // DB-built fallback) resolves, so users never see the "DO 1"/"DO 2" template
+  // placeholders flash before real titles are known.
+  const [canvasLoading, setCanvasLoading] = useState(true);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
@@ -710,13 +764,67 @@ export default function StrategyCanvasPage() {
     return { doIds, siIds };
   }, [filteredNodes, viewAsUserId, doLockedStatus]);
   
-  // Create node types with access to profilesMap, showProgress, SI progress data, and DO locked status
+  // SI chip reordering is disabled while "View As" is active — it only shows
+  // a subset of a DO's SIs, and persisting the subset's order would corrupt
+  // the real display_order of the SIs it's hiding.
+  const canReorderSI = !viewAsUserId;
+
+  // Create node types with access to profilesMap, showProgress, SI progress data, DO locked status, and
+  // whether SI reordering is currently allowed
   const nodeTypes = useMemo(() => ({
     strategy: StrategyNode,
-    do: createDoNode(profilesMap, showProgress, siProgressMap, doLockedStatus),
+    do: createDoNode(profilesMap, showProgress, siProgressMap, doLockedStatus, canReorderSI),
     sai: SaiNode,
     rally: RallyNode,
-  }), [profilesMap, showProgress, siProgressMap, doLockedStatus]);
+  }), [profilesMap, showProgress, siProgressMap, doLockedStatus, canReorderSI]);
+
+  // 5px activation distance keeps the chip's onClick (open SI) responsive:
+  // nothing starts a drag until the pointer moves at least 5px.
+  const siSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Reorders SI chips within their DO after a drag, then persists the new
+  // order — same "N parallel display_order updates" shape as SISubTree's
+  // reorderSubSIs, just against rc_strategic_initiatives directly since the
+  // canvas holds its own local node state rather than a fetched list.
+  const handleSIDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setNodes((currentNodes) => {
+      const doNodeIndex = currentNodes.findIndex(
+        (n) => n.type === 'do' && (n.data.saiItems || []).some((s) => s.id === active.id)
+      );
+      if (doNodeIndex === -1) return currentNodes;
+
+      const doNode = currentNodes[doNodeIndex];
+      const items = doNode.data.saiItems || [];
+      const oldIndex = items.findIndex((s) => s.id === active.id);
+      const newIndex = items.findIndex((s) => s.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return currentNodes;
+
+      const reordered = arrayMove(items, oldIndex, newIndex);
+
+      const updates = reordered
+        .map((it, idx) => ({ dbId: it.dbId, idx }))
+        .filter((u): u is { dbId: string; idx: number } => !!u.dbId);
+      if (updates.length) {
+        Promise.all(
+          updates.map(({ dbId, idx }) =>
+            supabase.from('rc_strategic_initiatives').update({ display_order: idx }).eq('id', dbId)
+          )
+        ).then((results) => {
+          const failures = results.filter((r) => r.error);
+          if (failures.length) {
+            console.error('Failed to persist some SI display_order updates', failures.map((f) => f.error));
+          }
+        });
+      }
+
+      const nextNodes = [...currentNodes];
+      nextNodes[doNodeIndex] = { ...doNode, data: { ...doNode.data, saiItems: reordered } };
+      return nextNodes;
+    });
+  }, [setNodes]);
   
   // Import state
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -751,53 +859,6 @@ export default function StrategyCanvasPage() {
     if (changed) setNodes(laidOut);
     didAutoLayoutRef.current = true;
   }, [nodes, setNodes]);
-
-  // Init Yjs and bind basic sync for nodes/edges
-  useEffect(() => {
-    if (!cycleId) return;
-    
-    const doc = new Y.Doc();
-    ydocRef.current = doc;
-    let provider: WebsocketProvider | null = null;
-    try {
-      provider = new WebsocketProvider(collabUrl, roomName, doc);
-      providerRef.current = provider;
-    } catch (_) {
-      // no-op (offline/local only)
-    }
-
-    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
-    const yEdges = doc.getArray<Edge[]>("edges");
-
-    // First client seeds the arrays
-    if (yNodes.length === 0) yNodes.push(makeInitialNodes());
-    if (yEdges.length === 0) yEdges.push(makeInitialEdges());
-
-    const nodesObserver = () => {
-      updatingFromRemoteNodes.current = true;
-      setNodes(yNodes.toArray().flat());
-    };
-    const edgesObserver = () => {
-      updatingFromRemoteEdges.current = true;
-      setEdges(yEdges.toArray().flat());
-    };
-
-    yNodes.observe(nodesObserver);
-    yEdges.observe(edgesObserver);
-
-    // Seed local from Yjs
-    updatingFromRemoteNodes.current = true;
-    updatingFromRemoteEdges.current = true;
-    setNodes(yNodes.toArray().flat());
-    setEdges(yEdges.toArray().flat());
-
-    return () => {
-      yNodes.unobserve(nodesObserver);
-      yEdges.unobserve(edgesObserver);
-      provider?.destroy();
-      doc.destroy();
-    };
-  }, [collabUrl, roomName, cycleId]);
 
   // Load initial canvas from Supabase (if present). If missing, fall back to building from DB RCDO tables.
   useEffect(() => {
@@ -858,6 +919,7 @@ export default function StrategyCanvasPage() {
                 .eq('rallying_cry_id', rc.id)
                 .order('display_order', { ascending: true })
             : { data: [] as DOReconcileRow[] };
+
           const doIds = (doRows || []).map((d: DOReconcileRow) => d.id);
 
           const [siRowsRes, doMetricsRes] = doIds.length
@@ -866,7 +928,8 @@ export default function StrategyCanvasPage() {
                   .from('rc_strategic_initiatives')
                   .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, status, locked_at, defining_objective_id')
                   .in('defining_objective_id', doIds)
-                  .is('parent_si_id', null),
+                  .is('parent_si_id', null)
+                  .order('display_order', { ascending: true }),
                 supabase
                   .from('rc_do_metrics')
                   .select('defining_objective_id, name')
@@ -875,150 +938,50 @@ export default function StrategyCanvasPage() {
               ])
             : [{ data: [] as SIReconcileRow[] }, { data: [] as Array<{ defining_objective_id: string; name: string }> }];
 
-          const doRowById = new Map((doRows || []).map((d: DOReconcileRow) => [d.id, d]));
-          const sisByDoId = new Map<string, SIReconcileRow[]>();
-          for (const s of siRowsRes.data || []) {
-            const list = sisByDoId.get(s.defining_objective_id) || [];
-            list.push(s as SIReconcileRow);
-            sisByDoId.set(s.defining_objective_id, list);
-          }
-          const metricByDoId = new Map<string, string>();
-          for (const m of doMetricsRes.data || []) {
-            if (!metricByDoId.has(m.defining_objective_id)) metricByDoId.set(m.defining_objective_id, m.name);
-          }
-
-          const matchedDoIds = new Set<string>();
-
-          const reconciledExisting: RawNode[] = loadedNodes.map((n) => {
-            if (n.type === 'rally' && rc?.title) {
-              const rallyData = (n.data || {}) as NodeData;
-              if (!rallyData.rallyFinalized) return n;
-              const candidates = [rc.title, ...((rallyData.rallyCandidates || []).slice(1))];
-              return { ...n, data: { ...rallyData, rallyCandidates: candidates } };
-            }
-            if (n.type === 'do' && n.data?.dbId) {
-              const doDbId = String(n.data.dbId);
-              const row = doRowById.get(doDbId);
-              if (!row) return n; // DO no longer exists in DB — leave the cached card rather than guess
-              matchedDoIds.add(doDbId);
-
-              const canonicalSIs = sisByDoId.get(doDbId) || [];
-              const siRowById = new Map(canonicalSIs.map((s) => [s.id, s]));
-
-              const items = (n.data.saiItems as Array<Record<string, unknown>> | undefined) || [];
-              const seenSiIds = new Set<string>();
-              const reconciledItems: Array<Record<string, unknown>> = [];
-              for (const it of items) {
-                const siId = it.dbId ? String(it.dbId) : undefined;
-                // Drop duplicate cards that point at an SI dbId already kept — a
-                // real initiative shouldn't render twice just because the canvas
-                // ended up with two node entries sharing one database row.
-                if (siId && seenSiIds.has(siId)) continue;
-                if (siId) seenSiIds.add(siId);
-                const siRow = siId ? siRowById.get(siId) : undefined;
-                if (!siRow) { reconciledItems.push(it); continue; }
-                reconciledItems.push({
-                  ...it,
-                  title: siRow.title,
-                  ownerId: siRow.owner_user_id || undefined,
-                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
-                  description: siRow.description || '',
-                  metric: siRow.primary_success_metric || '',
-                  benchmark: siRow.benchmark || '',
-                });
-              }
-              // Append canonical SIs with no matching card at all — created from
-              // a Detail page after this snapshot was last saved.
-              for (const siRow of canonicalSIs) {
-                if (seenSiIds.has(siRow.id)) continue;
-                reconciledItems.push({
-                  id: `si-${n.id}-${siRow.id.slice(0, 6)}`,
-                  dbId: siRow.id,
-                  title: siRow.title,
-                  ownerId: siRow.owner_user_id || undefined,
-                  participantIds: Array.isArray(siRow.participant_user_ids) ? siRow.participant_user_ids : undefined,
-                  description: siRow.description || '',
-                  metric: siRow.primary_success_metric || '',
-                  benchmark: siRow.benchmark || '',
-                });
-              }
-
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  title: row.title,
-                  hypothesis: row.hypothesis || '',
-                  ownerId: row.owner_user_id || undefined,
-                  status: row.status === 'locked' ? 'locked' : 'draft',
-                  primarySuccessMetric: metricByDoId.get(doDbId) || '',
-                  saiItems: reconciledItems,
-                },
-              };
-            }
-            return n;
+          const { nodes: reconciledNodes, appendedDoCount } = reconcileCanvasSnapshot({
+            loadedNodes: loadedNodes as unknown as RawCanvasNode[],
+            rallyingCry: rc,
+            doRows: (doRows || []) as DOReconcileRow[],
+            siRows: (siRowsRes.data || []) as SIReconcileRow[],
+            doMetrics: (doMetricsRes.data || []) as Array<{ defining_objective_id: string; name: string }>,
+            findNonOverlappingPosition: findNonOverlappingPosition as unknown as ReconcileCanvasSnapshotParams['findNonOverlappingPosition'],
           });
 
-          // Append DOs that exist in the database but have no card on this
-          // canvas at all — e.g. added via the Detail page's "Add DO" flow
-          // after the snapshot was last saved, so nothing ever pushed them here.
-          const missingDos = (doRows || []).filter((d: DOReconcileRow) => !matchedDoIds.has(d.id));
-          const appendedDoNodes: Node<NodeData>[] = [];
-          let layoutCursor = reconciledExisting.filter((n) => n.type === 'do') as unknown as Node<NodeData>[];
-          missingDos.forEach((d: DOReconcileRow, idx: number) => {
-            const pos = findNonOverlappingPosition(layoutCursor, 'do', 200 + idx * 320, 700);
-            const canonicalSIs = sisByDoId.get(d.id) || [];
-            const saiItems = canonicalSIs.map((si) => ({
-              id: `si-do-${d.id.slice(0, 6)}-${si.id.slice(0, 6)}`,
-              dbId: si.id,
-              title: si.title,
-              ownerId: si.owner_user_id || undefined,
-              participantIds: Array.isArray(si.participant_user_ids) ? si.participant_user_ids : undefined,
-              description: si.description || '',
-              metric: si.primary_success_metric || '',
-              benchmark: si.benchmark || '',
-            }));
-            const newNode: Node<NodeData> = {
-              id: `do-db-${d.id.slice(0, 8)}`,
-              type: 'do',
-              position: pos,
-              data: {
-                title: d.title,
-                status: d.status === 'locked' ? 'locked' : 'draft',
-                ownerId: d.owner_user_id || undefined,
-                hypothesis: d.hypothesis || '',
-                primarySuccessMetric: metricByDoId.get(d.id) || '',
-                saiItems,
-                size: { w: 260, h: 110 },
-                dbId: d.id,
-              } as NodeData,
-            };
-            appendedDoNodes.push(newNode);
-            layoutCursor = [...layoutCursor, newNode];
-          });
-
-          if (appendedDoNodes.length) {
-            console.log('[Canvas] Added', appendedDoNodes.length, 'DO(s) found in the database but missing from the cached canvas snapshot');
+          if (appendedDoCount) {
+            console.log('[Canvas] Added', appendedDoCount, 'DO(s) found in the database but missing from the cached canvas snapshot');
           }
 
           // Re-derive DO widths/positions from the current DO count instead of
           // trusting whatever was cached — a snapshot saved with 4 DOs still had
           // 260px-wide cards baked in even after one was deleted down to 3.
-          const nonDoNodes = reconciledExisting.filter((n) => n.type !== 'do');
-          const rallyNode = reconciledExisting.find((n) => n.type === 'rally');
-          const centerX = rallyNode?.position?.x ?? 400;
-          const doNodesForLayout = [
-            ...(reconciledExisting.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>),
-            ...(appendedDoNodes as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>),
-          ];
+          const nonDoNodes = reconciledNodes.filter((n) => n.type !== 'do');
+          const rallyNode = reconciledNodes.find((n) => n.type === 'rally');
+          const centerX = (rallyNode?.position as { x?: number } | undefined)?.x ?? 400;
+          const doNodesForLayout = reconciledNodes.filter((n) => n.type === 'do') as unknown as Array<{ position: { x: number; y: number }; data?: Record<string, unknown> }>;
           const laidOutDoNodes = layoutDONodesRow(doNodesForLayout, centerX);
 
-          setNodes([...nonDoNodes, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
+          // The Rallying Cry card should be exactly as wide as one DO card,
+          // centered on the same reference point the DO row is centered on.
+          const doRowCount = doNodesForLayout.length;
+          const rallyWidth = computeRallyWidth(doRowCount);
+          const nonDoNodesResized = nonDoNodes.map((n) => {
+            if (n.type !== 'rally' || doRowCount <= 0) return n;
+            const prevPos = n.position as { x: number; y: number };
+            const prevSize = (n.data as Record<string, unknown> | undefined)?.size as { w: number; h: number } | undefined;
+            return {
+              ...n,
+              position: { x: centerX, y: prevPos.y },
+              data: { ...(n.data || {}), size: { w: rallyWidth, h: prevSize?.h ?? DEFAULT_NODE_DIMENSIONS.rally.h } },
+            };
+          });
+
+          setNodes([...nonDoNodesResized, ...laidOutDoNodes] as unknown as Node<NodeData>[]);
         } catch (reconcileErr) {
           console.warn('[Canvas] Failed to reconcile snapshot with live data, showing cached snapshot as-is:', reconcileErr);
           setNodes(loadedNodes);
         }
         setEdges(filteredEdges);
+        setCanvasLoading(false);
         return;
       } else if (snapshotLooksLikeTemplate) {
         console.log('[Canvas] Ignoring template snapshot; rebuilding from DB…');
@@ -1033,7 +996,13 @@ export default function StrategyCanvasPage() {
           .maybeSingle();
 
         if (rcErr) console.warn('[Canvas] RC query error:', rcErr);
-        if (!rc) { console.log('[Canvas] No rallying cry found for cycle', cycleId); return; }
+        if (!rc) {
+          console.log('[Canvas] No rallying cry found for cycle', cycleId);
+          // Genuinely new/empty strategy — show the editable template.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
+          setCanvasLoading(false);
+          return;
+        }
 
         const { data: dos, error: dosErr } = await supabase
           .from('rc_defining_objectives')
@@ -1050,7 +1019,8 @@ export default function StrategyCanvasPage() {
           .from('rc_strategic_initiatives')
           .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, created_at')
           .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
-          .is('parent_si_id', null);
+          .is('parent_si_id', null)
+          .order('display_order', { ascending: true });
         if (siErr) console.warn('[Canvas] SI query error:', siErr);
         console.log('[Canvas] Fallback SI count', (sis || []).length);
 
@@ -1075,6 +1045,7 @@ export default function StrategyCanvasPage() {
         const { w: doWidth, gapX } = computeDOCardLayout(count);
         const totalWidth = (count - 1) * gapX;
         const startX = baseX - totalWidth / 2;
+        const rallyWidth = computeRallyWidth(count);
 
         const builtNodes: Node<NodeData>[] = [
           {
@@ -1086,7 +1057,7 @@ export default function StrategyCanvasPage() {
               rallyCandidates: [rc.title],
               rallySelectedIndex: 0,
               rallyFinalized: true,
-              size: { w: 280, h: 100 },
+              size: { w: rallyWidth, h: 100 },
             },
           },
         ];
@@ -1168,9 +1139,15 @@ export default function StrategyCanvasPage() {
             });
             setSiProgressMap(new Map(progressEntries));
           }
+        } else {
+          // Rallying cry exists but no DOs yet — genuinely empty; show the
+          // editable template.
+          setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
         }
+        setCanvasLoading(false);
       } catch (_e) {
         // ignore; leave template visible
+        setCanvasLoading(false);
       }
     })();
   }, [cycleId, roomName]);
@@ -1382,31 +1359,6 @@ export default function StrategyCanvasPage() {
     return () => window.removeEventListener("rcdo:update-node", handler);
   }, [setNodes]);
 
-  // Push local changes to Yjs, but avoid echoing remote updates back
-  useEffect(() => {
-    const doc = ydocRef.current;
-    if (!doc) return;
-    if (updatingFromRemoteNodes.current) {
-      updatingFromRemoteNodes.current = false;
-      return;
-    }
-    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
-    yNodes.delete(0, yNodes.length);
-    yNodes.insert(0, [nodes]);
-  }, [nodes]);
-
-  useEffect(() => {
-    const doc = ydocRef.current;
-    if (!doc) return;
-    if (updatingFromRemoteEdges.current) {
-      updatingFromRemoteEdges.current = false;
-      return;
-    }
-    const yEdges = doc.getArray<Edge[]>("edges");
-    yEdges.delete(0, yEdges.length);
-    yEdges.insert(0, [edges]);
-  }, [edges]);
-
   // Debounced save of canvas state to Supabase
   useEffect(() => {
     if (saveTimerRef.current) {
@@ -1414,7 +1366,6 @@ export default function StrategyCanvasPage() {
     }
     saveTimerRef.current = window.setTimeout(async () => {
       try {
-        const { data: auth } = await supabase.auth.getUser();
         await supabase
           .from('rc_canvas_states')
           .upsert(
@@ -1422,7 +1373,7 @@ export default function StrategyCanvasPage() {
               room: roomName,
               nodes: nodes as unknown as import('@/integrations/supabase/types').Json,
               edges: edges as unknown as import('@/integrations/supabase/types').Json,
-              updated_by: auth?.user?.id || null,
+              updated_by: user?.id || null,
             },
             { onConflict: 'room' }
           );
@@ -1436,7 +1387,7 @@ export default function StrategyCanvasPage() {
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, user]);
 
   const onConnect = useCallback((params: Edge | Connection) => {
     // Prevent connections from ROOT_ID (rallying cry) to DOs
@@ -1536,9 +1487,8 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     if (dbId) {
-      const siDbIds = (selectedNode.data.saiItems || []).map((si) => si.dbId).filter(Boolean) as string[];
       try {
-        await deleteDO(dbId, siDbIds);
+        await deleteDO(dbId);
       } catch (e) {
         console.error('deleteSelectedDo error', e);
         toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Defining Objective.', variant: 'destructive' });
@@ -1681,7 +1631,6 @@ const duplicateSelectedDo = useCallback(() => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast({ title: 'Lock failed', description: 'You must be logged in to lock items.', variant: 'destructive' });
         return;
@@ -1712,7 +1661,7 @@ const duplicateSelectedDo = useCallback(() => {
     } catch (_) {
       // best-effort: UI already updated
     }
-  }, [setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast]);
+  }, [setNodes, setDoLockedStatus, setSiProgressMap, doLockedStatus, toast, user]);
 
   /** Lock a single DO (and its child SIs) — the per-DO "Finalize" action. */
   const finalizeSingleDO = useCallback(async (doNodeId: string) => {
@@ -1809,13 +1758,13 @@ const duplicateSelectedDo = useCallback(() => {
     }
 
     try {
-      await lockDO(doDbId);
+      await lockDO(doDbId, user?.id);
       toast({ title: 'Locked', description: `"${data.title}" and its SIs have been locked.` });
     } catch (e) {
       console.error('finalizeSingleDO error', e);
       toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
     }
-  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast]);
+  }, [setNodes, doLockedStatus, setDoLockedStatus, setSiProgressMap, toast, user]);
 
   const unlockSingleDO = useCallback(async (doNodeId: string) => {
     const doStatus = doLockedStatus.get(doNodeId);
@@ -1879,7 +1828,7 @@ const duplicateSelectedDo = useCallback(() => {
       return;
     }
     try {
-      await lockInitiative(siDbId);
+      await lockInitiative(siDbId, user?.id);
     } catch (e) {
       toast({ title: 'Lock failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
@@ -1891,7 +1840,7 @@ const duplicateSelectedDo = useCallback(() => {
       return next;
     });
     toast({ title: 'SI locked', description: `"${si?.title}" has been locked.` });
-  }, [toast, setSiProgressMap]);
+  }, [toast, setSiProgressMap, user]);
 
   const unlockSingleSI = useCallback(async (siId: string, siDbId: string) => {
     try {
@@ -1992,7 +1941,6 @@ const duplicateSelectedDo = useCallback(() => {
       }
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('No user found');
       }
@@ -2051,7 +1999,8 @@ const duplicateSelectedDo = useCallback(() => {
         .from('rc_strategic_initiatives')
         .select('id, title, owner_user_id, participant_user_ids, description, primary_success_metric, benchmark, defining_objective_id, status, locked_at, start_date, end_date, created_at')
         .in('defining_objective_id', doDbIds.length ? doDbIds : ['00000000-0000-0000-0000-000000000000'])
-        .is('parent_si_id', null);
+        .is('parent_si_id', null)
+        .order('display_order', { ascending: true });
 
       const { data: importedMetrics } = await supabase
         .from('rc_do_metrics')
@@ -2073,6 +2022,7 @@ const duplicateSelectedDo = useCallback(() => {
       const { w: doWidth, gapX } = computeDOCardLayout(doCount);
       const totalWidth = (doCount - 1) * gapX;
       const startX = baseX - totalWidth / 2;
+      const rallyWidth = computeRallyWidth(doCount);
 
       type ImportDORow = { id: string; title: string; owner_user_id?: string; status?: string; locked_at?: string | null; display_order?: number; hypothesis?: string };
       type ImportSIRow = { id: string; title: string; owner_user_id?: string; participant_user_ids?: string[]; description?: string; primary_success_metric?: string; benchmark?: string; defining_objective_id: string; status?: string; locked_at?: string | null; start_date?: string | null; end_date?: string | null; created_at?: string };
@@ -2087,7 +2037,7 @@ const duplicateSelectedDo = useCallback(() => {
             rallyCandidates: [rcRow?.title || parsedData.rallyingCry],
             rallySelectedIndex: 0,
             rallyFinalized: true,
-            size: { w: 280, h: 100 },
+            size: { w: rallyWidth, h: 100 },
           },
         },
       ];
@@ -2209,7 +2159,7 @@ const duplicateSelectedDo = useCallback(() => {
       setShowOverwriteWarning(false);
       // Don't clear progress - keep it visible
     }
-  }, [cycleId, setNodes, setEdges, toast, hasCanvasContent]);
+  }, [cycleId, setNodes, setEdges, toast, hasCanvasContent, user]);
 
   // Import from file
   const handleImportFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2460,6 +2410,12 @@ const duplicateSelectedDo = useCallback(() => {
         <div className="absolute top-4 left-4 z-10 text-xs text-muted-foreground/60 pointer-events-none">
           Top box is the Rallying Cry. Start with 4 DOs; SIs support only one DO.
         </div>
+        {canvasLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <Loader2 className="h-6 w-6 animate-spin text-[#4A5D5F]" />
+          </div>
+        ) : (
+        <DndContext sensors={siSensors} onDragEnd={handleSIDragEnd}>
         <ReactFlow
           nodes={filteredNodes}
           edges={filteredEdges}
@@ -2505,6 +2461,8 @@ const duplicateSelectedDo = useCallback(() => {
           <Controls />
           <Background color="#6B9A8F" gap={10} size={1} />
         </ReactFlow>
+        </DndContext>
+        )}
         </div>
         <aside className="hidden lg:block h-full my-4 mr-4 rounded-lg border border-sidebar-border bg-background shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.1),_0_2px_4px_-2px_rgb(0_0_0_/_0.1)] overflow-y-auto p-3">
           <CheckinFeedSidebar viewAsUserId={viewAsUserId} filteredNodeIds={visibleParentIds} cycleId={cycleId} />
@@ -2527,52 +2485,6 @@ const duplicateSelectedDo = useCallback(() => {
             </div>
 
             <div className="mt-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm">Background</label>
-                <input
-                  type="color"
-                  value={selectedNode?.data.bgColor || "#ffffff"}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, bgColor: value } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, bgColor: value } });
-                  }}
-                />
-              </div>
-
-              {/* Size controls for Rally */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm">Size</label>
-                <input
-                  type="number"
-                  min={220}
-                  max={800}
-                  className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                  value={selectedNode?.data.size?.w || 280}
-                  onChange={(e) => {
-                    const w = Math.max(220, Math.min(800, Number(e.target.value)));
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w, h: n.data.size?.h || 100 } } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w, h: selectedNode!.data.size?.h || 100 } } });
-                  }}
-                />
-                <span className="text-xs">×</span>
-                <input
-                  type="number"
-                  min={80}
-                  max={400}
-                  className="w-20 rounded border px-2 py-1 text-sm bg-background"
-                  value={selectedNode?.data.size?.h || 100}
-                  onChange={(e) => {
-                    const h = Math.max(80, Math.min(400, Number(e.target.value)));
-                    const next = nodes.map((n) => n.id === selectedNode!.id ? { ...n, data: { ...n.data, size: { w: n.data.size?.w || 280, h } } } : n);
-                    setNodes(next);
-                    setSelectedNode({ ...selectedNode!, data: { ...selectedNode!.data, size: { w: selectedNode!.data.size?.w || 280, h } } });
-                  }}
-                />
-              </div>
-
               {/* Candidates */}
               <div className="space-y-2">
                 <div className="text-sm font-medium">Candidates (top = most likely)</div>
@@ -2800,10 +2712,6 @@ const duplicateSelectedDo = useCallback(() => {
         
         return (
         <>
-          {/* Only show an overlay if the DO panel is NOT open */}
-          {selectedNode?.type !== "do" && (
-            <div className="fixed inset-0 z-[55] bg-black/30" onClick={() => setFocusedSI(null)} />
-          )}
           <SIPanelContent
             doNode={doNode}
             si={si}
