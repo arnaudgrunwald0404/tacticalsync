@@ -20,7 +20,7 @@ import { formatHourLabel } from '@/hooks/usePrepScheduleConfig';
 // ---------------------------------------------------------------------------
 
 const ALL_SOURCES = [
-  { key: 'my_lists', label: 'My Lists', description: 'Your active priorities and flagged items', icon: ListChecks, alwaysOn: true },
+  { key: 'my_lists', label: 'My Inbox', description: 'Your active priorities and flagged items', icon: ListChecks, alwaysOn: true },
   { key: 'calendar', label: 'Calendar', description: "Today's meetings and attendees", icon: Calendar },
   { key: 'commitments', label: 'Commitments', description: 'Quarterly priorities and monthly goals', icon: TrendingUp },
   { key: 'slack', label: 'Slack', description: 'Recent DMs and channel messages', icon: MessageSquare },

@@ -29,7 +29,7 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
   view_chief_of_staff: "Check-Ins",
-  view_my_lists: "My Lists",
+  view_my_lists: "My Inbox",
   view_daily_checkin: "Daily Check-in",
   view_my_team: "My Team",
   view_rcdo: "RCDO",
@@ -42,7 +42,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 
 export const FEATURE_DESCRIPTIONS: Record<FeatureKey, string> = {
   view_chief_of_staff: "Access the Check-Ins section",
-  view_my_lists: "View my list within Check-Ins",
+  view_my_lists: "View My Inbox within Check-Ins",
   view_daily_checkin: "View daily check-in within Check-Ins",
   view_my_team: "View my teams",
   view_rcdo: "Access the RCDO strategy section",

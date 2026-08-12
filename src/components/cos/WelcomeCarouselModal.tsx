@@ -90,7 +90,7 @@ function WelcomeCarouselInner({ onClose }: { onClose: () => void }) {
               className="bg-copper hover:bg-copper-hover text-white font-body h-9 px-5"
             >
               {current === STEP_COUNT - 1 ? (
-                <>Go to My Lists</>
+                <>Go to My Inbox</>
               ) : (
                 <>Next <ArrowRight className="h-3.5 w-3.5 ml-1.5" /></>
               )}
@@ -113,14 +113,14 @@ function StepWelcome() {
       body="TacticalSync helps you manage your week across three time horizons — from daily tasks to long-term strategy. Here's how the pieces fit together:"
     >
       <div className="mt-4 flex items-center gap-2 sm:gap-3 justify-center">
-        <HorizonCard label="My Lists" timeframe="Day – Week" description="Track daily priorities" active />
+        <HorizonCard label="My Inbox" timeframe="Day – Week" description="AI-powered priority list" active />
         <ArrowRight className="h-3.5 w-3.5 text-titanium/40 shrink-0" />
         <HorizonCard label="Commitments" timeframe="Month – Quarter" description="Monthly goals" />
         <ArrowRight className="h-3.5 w-3.5 text-titanium/40 shrink-0" />
         <HorizonCard label="Strategy" timeframe="Six months" description="Team objectives" />
       </div>
       <p className="mt-3 text-[11px] text-titanium/70 max-w-sm text-center leading-snug">
-        Plus: AI-powered daily check-ins and 1:1 meeting prep that pull from your calendar, email, and Slack.
+        Plus: AI-powered meeting prep and follow-through, plus daily check-ins — pulling from your calendar, email, and Slack.
       </p>
     </StepLayout>
   );
@@ -130,7 +130,7 @@ function StepMyLists() {
   return (
     <StepLayout
       icon={<LayoutGrid className="h-8 w-8 text-copper" />}
-      badge="My Lists"
+      badge="My Inbox"
       heading="Organize what matters"
       body="Your board has 2–4 columns, each with sections. Here's an example of what a configured board looks like:"
     >

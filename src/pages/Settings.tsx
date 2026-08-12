@@ -2671,9 +2671,9 @@ const Settings = () => {
         ) : activeSection === "configure-my-lists" ? (
           <div className="mb-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1">Configure My Lists</h2>
+              <h2 className="text-2xl font-bold mb-1">Configure My Inbox</h2>
               <p className="text-muted-foreground text-sm">
-                Customize column labels, sections, and priority card statuses for your My Lists workspace.
+                Customize column labels, sections, and priority card statuses for your My Inbox workspace.
               </p>
             </div>
             <CosSettingsPanel />

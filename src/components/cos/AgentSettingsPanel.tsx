@@ -466,7 +466,7 @@ export function AgentSettingsPanel({ className, onNavigateToSection }: AgentSett
                     <Badge variant="outline" className="text-[9px] h-4 px-1.5">Active</Badge>
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Run this command from Slack to capture a thought, link, or note and send it directly to your <span className="font-medium text-foreground">My Lists</span> inbox — without leaving the conversation.
+                    Run this command from Slack to capture a thought, link, or note and send it directly to your <span className="font-medium text-foreground">My Inbox</span> — without leaving the conversation.
                   </p>
                 </div>
               </div>

@@ -82,7 +82,7 @@ export function sectionToCategoryKey(section: CosColumnSection): string {
 export const DEFAULT_LAYOUT_CONFIG: CosLayoutConfig = {
   columnCount: 3,
   columns: [
-    { id: 'col1', headerLabel: 'My Lists', widthPct: 33, sections: [
+    { id: 'col1', headerLabel: 'My Inbox', widthPct: 33, sections: [
       { id: 'now',          type: 'now',              label: 'Now',       enabled: true  },
       { id: 'this_week',    type: 'this_week',         label: 'This Week', enabled: true  },
       { id: 'next_week',    type: 'next_week',         label: 'Next Week', enabled: false },
@@ -142,7 +142,7 @@ export function migrateOldSettings(raw: Record<string, unknown>): CosLayoutConfi
   return {
     columnCount: 3,
     columns: [
-      { id: 'col1', headerLabel: tabLabels.priorities ?? 'My Lists', widthPct: 33, sections: col1Sections },
+      { id: 'col1', headerLabel: tabLabels.priorities ?? 'My Inbox', widthPct: 33, sections: col1Sections },
       { id: 'col2', headerLabel: 'Strategic',                          widthPct: 33, sections: col2Sections },
       { id: 'col3', headerLabel: col3Label,                            widthPct: 34, sections: [
         { id: 'direct_reports', type: 'direct_reports', label: null, enabled: true },

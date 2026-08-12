@@ -42,7 +42,7 @@ const DCI_SOURCES = [
   { id: 'zoom',        label: 'Zoom calls' },
   { id: 'slack',       label: 'Slack' },
   { id: 'email',       label: 'Email' },
-  { id: 'my_lists',    label: 'My Lists' },
+  { id: 'my_lists',    label: 'My Inbox' },
   { id: 'rcdo',        label: 'Strategy (RCDO)' },
   { id: 'commitments', label: 'Commitments' },
 ];
