@@ -811,6 +811,18 @@ function FlatTaskTable({
           onRefetch={onRefetch}
           draggableContainerId={siId}
           onReorderTasks={reorderTasks}
+          onDeleteTasks={async (taskIds) => {
+            // Single batched DELETE — same shape as SISubTree's bulk delete.
+            const { error } = await supabase
+              .from('rc_tasks')
+              .delete()
+              .in('id', taskIds);
+            if (error) {
+              console.error('Failed to bulk-delete tasks', error);
+              return;
+            }
+            await onRefetch();
+          }}
         />
       </DndContext>
     </>
