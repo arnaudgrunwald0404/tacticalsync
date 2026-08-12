@@ -280,3 +280,53 @@ export function suggestCycleDates(): { start_date: string; end_date: string } {
   }
 }
 
+// ============================================================================
+// Lock-eligibility rules — canonical replacement for the several divergent
+// "missing fields" checks that used to be duplicated across the canvas and
+// detail views for locking a DO/SI, each with different required fields.
+// Both getDOLockBlockers/getSILockBlockers apply the strictest union of every
+// rule set that existed before this consolidation.
+// ============================================================================
+
+export function stripHtml(html: string | null | undefined): string {
+  return (html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+}
+
+export interface DOLockValidationInput {
+  title?: string | null;
+  hypothesis?: string | null;
+  primarySuccessMetricName?: string | null;
+  ownerId?: string | null;
+}
+
+/** Empty array = eligible to lock. */
+export function getDOLockBlockers(input: DOLockValidationInput): string[] {
+  const missing: string[] = [];
+  if (!input.title?.trim()) missing.push('Name');
+  if (!stripHtml(input.hypothesis)) missing.push('Definition & Hypothesis');
+  if (!input.primarySuccessMetricName?.trim()) missing.push('Primary Success Metric');
+  if (!input.ownerId) missing.push('Owner');
+  return missing;
+}
+
+export interface SILockValidationInput {
+  title?: string | null;
+  description?: string | null;
+  ownerId?: string | null;
+  metric?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+/** Empty array = eligible to lock. */
+export function getSILockBlockers(input: SILockValidationInput): string[] {
+  const missing: string[] = [];
+  if (!input.title?.trim()) missing.push('Name');
+  if (!stripHtml(input.description)) missing.push('Description');
+  if (!input.ownerId) missing.push('Owner');
+  if (!input.metric?.trim()) missing.push('Primary Success Metric');
+  if (!input.startDate) missing.push('Start date');
+  if (!input.endDate) missing.push('Target delivery date');
+  return missing;
+}
+

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, ExternalLink, Pencil } from 'lucide-react';
+import { X, ExternalLink, Pencil, MoreVertical } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { updateInitiative, deleteInitiative } from '@/hooks/useRCDOMutations';
 import type { Tables } from '@/integrations/supabase/types';
 import type { InitiativeStatus } from '@/types/rcdo';
 
@@ -107,21 +109,33 @@ export function SubSIPanelContent({
     return () => { cancelled = true; };
   }, [subSiId]);
 
-  const updateField = async (patch: Partial<SubSIRow>) => {
+  const updateField = async (patch: Partial<Omit<SubSIRow, 'id' | 'parent_si_id' | 'status'>> & { status?: InitiativeStatus }) => {
     if (!row) return;
     // Optimistic so the field doesn't visually snap back while the request
     // is in flight. The toast handles the failure path and the parent
     // refresh keeps the list view in sync.
     setRow({ ...row, ...patch });
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update(patch)
-      .eq('id', row.id);
-    if (error) {
-      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+    try {
+      await updateInitiative(row.id, patch);
+    } catch (e) {
+      toast({ title: 'Update failed', description: e instanceof Error ? e.message : 'Something went wrong.', variant: 'destructive' });
       return;
     }
     onChanged?.();
+  };
+
+  const handleDelete = async () => {
+    if (!row) return;
+    if (!window.confirm(`Delete "${row.title || 'this sub-initiative'}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteInitiative(row.id);
+      onChanged?.();
+      onClose();
+    } catch (e) {
+      toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this sub-initiative.', variant: 'destructive' });
+    }
   };
 
   const content = (
@@ -151,6 +165,18 @@ export function SubSIPanelContent({
             >
               <ExternalLink className="h-4 w-4" />
             </button>
+          )}
+          {row && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent" aria-label="More actions">
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="text-red-600" onClick={handleDelete}>Delete</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           <button
             className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-accent"

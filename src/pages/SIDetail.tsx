@@ -39,6 +39,8 @@ import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
 import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
 import { useRCDODetail } from '@/contexts/RCDODetailContext';
+import { updateInitiative, lockInitiative, unlockInitiative, deleteInitiative } from '@/hooks/useRCDOMutations';
+import { getSILockBlockers } from '@/lib/rcdoValidation';
 
 
 export default function SIDetail() {
@@ -383,31 +385,25 @@ export default function SIDetail() {
   const handleUnlock = async () => {
     if (!siDetails) return;
     try {
-      const updates: Record<string, unknown> = {
-        locked_at: null,
-        locked_by: null,
-      };
-      const { error } = await supabase
-        .from('rc_strategic_initiatives')
-        .update(updates)
-        .eq('id', siDetails.id);
-      if (error) throw error;
+      await unlockInitiative(siDetails.id as string);
       await refetchSI();
     } catch (e) {
       console.warn('Failed to unlock SI', e);
+      toast({ title: 'Failed to unlock', description: 'Something went wrong. Please try again.', variant: 'destructive' });
     }
   };
 
   const handleLock = async () => {
     if (!siDetails) return;
 
-    const missing: string[] = [];
-    const descText = siDetails.description
-      ? String(siDetails.description).replace(/<[^>]*>/g, '').trim()
-      : '';
-    if (!descText) missing.push('Description');
-    if (!siDetails.start_date) missing.push('Start date');
-    if (!siDetails.end_date) missing.push('End date');
+    const missing = getSILockBlockers({
+      title: siDetails.title as string | null,
+      description: siDetails.description as string | null,
+      ownerId: siDetails.owner_user_id as string | null,
+      metric: siDetails.primary_success_metric as string | null,
+      startDate: siDetails.start_date as string | null,
+      endDate: siDetails.end_date as string | null,
+    });
 
     if (missing.length > 0) {
       toast({
@@ -419,16 +415,7 @@ export default function SIDetail() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const updates: Record<string, unknown> = {
-        locked_at: new Date().toISOString(),
-        locked_by: user?.id || null,
-      };
-      const { error } = await supabase
-        .from('rc_strategic_initiatives')
-        .update(updates)
-        .eq('id', siDetails.id);
-      if (error) throw error;
+      await lockInitiative(siDetails.id as string);
       await refetchSI();
     } catch (e) {
       console.warn('Failed to lock SI', e);
@@ -437,6 +424,22 @@ export default function SIDetail() {
         description: 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!siDetails) return;
+    const siTitle = (siDetails.title as string) || 'this Strategic Initiative';
+    if (!window.confirm(`Delete "${siTitle}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteInitiative(siDetails.id as string);
+      toast({ title: 'Deleted', description: `"${siTitle}" was deleted.` });
+      navigate(`/rcdo/canvas${cycleId ? `?cycle=${cycleId}` : ''}`);
+    } catch (e) {
+      console.error('Failed to delete SI', e);
+      toast({ title: 'Delete failed', description: e instanceof Error ? e.message : 'Could not delete this Strategic Initiative.', variant: 'destructive' });
     }
   };
 
@@ -450,10 +453,7 @@ export default function SIDetail() {
         setShowSubSIConvertDialog(true);
         return;
       }
-      await supabase
-        .from('rc_strategic_initiatives')
-        .update({ accepts_sub_sis: true })
-        .eq('id', siDetails.id);
+      await updateInitiative(siDetails.id as string, { accepts_sub_sis: true });
       await refetchSI();
       await refetchSubSIs();
     } else {
@@ -461,10 +461,7 @@ export default function SIDetail() {
         // Toggle is disabled in this case at the UI layer; defensive no-op here.
         return;
       }
-      await supabase
-        .from('rc_strategic_initiatives')
-        .update({ accepts_sub_sis: false })
-        .eq('id', siDetails.id);
+      await updateInitiative(siDetails.id as string, { accepts_sub_sis: false });
       await refetchSI();
     }
   };
@@ -501,12 +498,12 @@ export default function SIDetail() {
     }
     setDateError(null);
 
-    const { error } = await supabase
-      .from('rc_strategic_initiatives')
-      .update({ [field]: value || null })
-      .eq('id', siDetails.id);
-    if (!error) {
+    try {
+      await updateInitiative(siDetails.id as string, { [field]: value || null });
       await refetchSI();
+    } catch (e) {
+      console.warn('Failed to persist date change', e);
+      toast({ title: 'Update failed', description: 'Could not save date change', variant: 'destructive' });
     }
   };
 
@@ -572,6 +569,8 @@ export default function SIDetail() {
         status={siDetails.status as string}
         onLock={handleLock}
         onUnlock={handleUnlock}
+        onDelete={handleDelete}
+        canDelete={canEdit}
         onCheckIn={() => setShowCheckInDialog(true)}
         canLock={canLockDO}
         canEdit={canEdit}
@@ -586,16 +585,16 @@ export default function SIDetail() {
         subSiCount={subSIs.length}
         additionalContent={additionalContent}
         onTitleChange={async (val) => {
-          await supabase.from('rc_strategic_initiatives').update({ title: val }).eq('id', siDetails.id);
-          await refetchSI();
+          try { await updateInitiative(siDetails.id as string, { title: val }); await refetchSI(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save title', variant: 'destructive' }); }
         }}
         onDescriptionChange={async (val) => {
-          await supabase.from('rc_strategic_initiatives').update({ description: val || null }).eq('id', siDetails.id);
-          await refetchSI();
+          try { await updateInitiative(siDetails.id as string, { description: val || null }); await refetchSI(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save description', variant: 'destructive' }); }
         }}
         onOwnerChange={async (val) => {
-          await supabase.from('rc_strategic_initiatives').update({ owner_user_id: val }).eq('id', siDetails.id);
-          await refetchSI();
+          try { await updateInitiative(siDetails.id as string, { owner_user_id: val }); await refetchSI(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save owner', variant: 'destructive' }); }
         }}
         profiles={profiles}
         startDate={siDetails.start_date as string | null}
