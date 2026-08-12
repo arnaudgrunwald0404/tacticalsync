@@ -38,8 +38,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import RichTextEditor from "@/components/ui/rich-text-editor-lazy";
-import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
 import { parseMarkdownRCDO, validateParsedRCDO } from "@/utils/markdownRCDOParser";
 import { importRCDOToDatabase } from "@/utils/importRCDOToDatabase";
 import { useToast } from "@/hooks/use-toast";
@@ -622,14 +620,8 @@ function findNonOverlappingPosition(existing: Node<NodeData>[], type: NodeKind, 
 export default function StrategyCanvasPage() {
   const { user } = useCurrentUser();
 
-  // Realtime doc and provider (optional if server not running)
-  const ydocRef = useRef<Y.Doc>();
-  
   // Guard to avoid repeated hydration requests
   const hydrationGuardRef = useRef<{ inFlight: boolean; cycle: string | null; sig: string | null }>({ inFlight: false, cycle: null, sig: null });
-  const providerRef = useRef<WebsocketProvider | null>(null);
-  const updatingFromRemoteNodes = useRef(false);
-  const updatingFromRemoteEdges = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
 
   // React Flow instance to control viewport
@@ -654,7 +646,6 @@ export default function StrategyCanvasPage() {
     }
   }, [cycleId, navigate]);
 
-  const collabUrl = import.meta.env.VITE_COLLAB_WS_URL || "ws://localhost:1234";
   const roomName = cycleId ? `strategy-canvas-${cycleId}` : "strategy-canvas-default";
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -869,53 +860,6 @@ export default function StrategyCanvasPage() {
     didAutoLayoutRef.current = true;
   }, [nodes, setNodes]);
 
-  // Init Yjs and bind basic sync for nodes/edges
-  useEffect(() => {
-    if (!cycleId) return;
-    
-    const doc = new Y.Doc();
-    ydocRef.current = doc;
-    let provider: WebsocketProvider | null = null;
-    try {
-      provider = new WebsocketProvider(collabUrl, roomName, doc);
-      providerRef.current = provider;
-    } catch (_) {
-      // no-op (offline/local only)
-    }
-
-    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
-    const yEdges = doc.getArray<Edge[]>("edges");
-
-    // First client seeds the arrays
-    if (yNodes.length === 0) yNodes.push(makeInitialNodes());
-    if (yEdges.length === 0) yEdges.push(makeInitialEdges());
-
-    const nodesObserver = () => {
-      updatingFromRemoteNodes.current = true;
-      setNodes(yNodes.toArray().flat());
-    };
-    const edgesObserver = () => {
-      updatingFromRemoteEdges.current = true;
-      setEdges(yEdges.toArray().flat());
-    };
-
-    yNodes.observe(nodesObserver);
-    yEdges.observe(edgesObserver);
-
-    // Seed local from Yjs
-    updatingFromRemoteNodes.current = true;
-    updatingFromRemoteEdges.current = true;
-    setNodes(yNodes.toArray().flat());
-    setEdges(yEdges.toArray().flat());
-
-    return () => {
-      yNodes.unobserve(nodesObserver);
-      yEdges.unobserve(edgesObserver);
-      provider?.destroy();
-      doc.destroy();
-    };
-  }, [collabUrl, roomName, cycleId]);
-
   // Load initial canvas from Supabase (if present). If missing, fall back to building from DB RCDO tables.
   useEffect(() => {
     if (!cycleId) return;
@@ -1054,8 +998,7 @@ export default function StrategyCanvasPage() {
         if (rcErr) console.warn('[Canvas] RC query error:', rcErr);
         if (!rc) {
           console.log('[Canvas] No rallying cry found for cycle', cycleId);
-          // Genuinely new/empty strategy — show the editable template, but only
-          // if a collaborator hasn't already synced real content via Yjs.
+          // Genuinely new/empty strategy — show the editable template.
           setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
           setCanvasLoading(false);
           return;
@@ -1198,7 +1141,7 @@ export default function StrategyCanvasPage() {
           }
         } else {
           // Rallying cry exists but no DOs yet — genuinely empty; show the
-          // editable template unless a collaborator already synced real content.
+          // editable template.
           setNodes((prev) => (prev.length === 0 ? makeInitialNodes() : prev));
         }
         setCanvasLoading(false);
@@ -1415,31 +1358,6 @@ export default function StrategyCanvasPage() {
     window.addEventListener("rcdo:update-node", handler);
     return () => window.removeEventListener("rcdo:update-node", handler);
   }, [setNodes]);
-
-  // Push local changes to Yjs, but avoid echoing remote updates back
-  useEffect(() => {
-    const doc = ydocRef.current;
-    if (!doc) return;
-    if (updatingFromRemoteNodes.current) {
-      updatingFromRemoteNodes.current = false;
-      return;
-    }
-    const yNodes = doc.getArray<Node<NodeData>[]>("nodes");
-    yNodes.delete(0, yNodes.length);
-    yNodes.insert(0, [nodes]);
-  }, [nodes]);
-
-  useEffect(() => {
-    const doc = ydocRef.current;
-    if (!doc) return;
-    if (updatingFromRemoteEdges.current) {
-      updatingFromRemoteEdges.current = false;
-      return;
-    }
-    const yEdges = doc.getArray<Edge[]>("edges");
-    yEdges.delete(0, yEdges.length);
-    yEdges.insert(0, [edges]);
-  }, [edges]);
 
   // Debounced save of canvas state to Supabase
   useEffect(() => {
