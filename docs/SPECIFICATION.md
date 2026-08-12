@@ -66,7 +66,7 @@ Document metadata (not git history, which only goes back to 2026-06-23) indicate
 - **Backend:** Supabase (PostgreSQL + RLS + Realtime + Edge Functions), 242 migrations in `supabase/migrations/`
 - **Forms:** React Hook Form 7.61 + Zod 3.25
 - **Rich text:** TipTap 3.6 (plain, no collaboration extension in the shared editor)
-- **Realtime collaboration:** Yjs + `y-websocket` — used **only** in the Strategy Canvas (`StrategyCanvas.tsx`); everywhere else, "real-time" means Supabase Postgres-changes broadcast + full refetch (last-write-wins, no CRDT)
+- **Realtime:** Supabase Postgres-changes broadcast + full refetch (last-write-wins, no CRDT) — the Strategy Canvas's Yjs/`y-websocket` live-multiplayer sync was removed as dead code (no collaboration server was ever deployed); canvas state now persists solely via debounced snapshots to `rc_canvas_states`
 - **Other notable deps:** `reactflow` (Strategy Canvas), `recharts` (Insights), `xlsx` (import/export), `@dnd-kit` + `@hello-pangea/dnd` (two separate drag-and-drop libraries, used in different modules), `@stackone/hub` (third-party integrations), Anthropic SDK (Claude Haiku 4.5 used server-side for extraction/summarization in edge functions)
 - **Origin note:** `lovable-tagger`'s `componentTagger()` Vite plugin is active in dev mode — the project originated on / is synced with the Lovable.dev platform.
 
@@ -159,7 +159,7 @@ Two generations coexist:
 An SI can be flagged `accepts_sub_sis` and gain child SIs one level deep (`parent_si_id`, `no_nested_sub_sis` CHECK prevents further nesting). Converting an existing SI (with tasks) into this mode is atomic via the `rcdo_convert_si_to_sub_si_mode()` SQL function, which auto-creates a default sub-initiative and reparents existing tasks onto it.
 
 ### Key Pages
-- **Strategy Canvas** (`/rcdo/canvas?cycle=<id>`) — ReactFlow graph (RC → DO nodes → embedded SI pills with progress/staleness indicators), real-time multiplayer via Yjs/`y-websocket`, debounced snapshot persistence to `rc_canvas_states`, DB-rebuild fallback, markdown import (bulk-creates an RC/DO/SI tree from pasted text — this is how `h1-2026-rcdo.md` seed content was loaded), "View As" ownership filter.
+- **Strategy Canvas** (`/rcdo/canvas?cycle=<id>`) — ReactFlow graph (RC → DO nodes → embedded SI pills with progress/staleness indicators), debounced snapshot persistence to `rc_canvas_states`, DB-rebuild fallback, markdown import (bulk-creates an RC/DO/SI tree from pasted text — this is how `h1-2026-rcdo.md` seed content was loaded), "View As" ownership filter.
 - **DO Detail** (`/rcdo/detail/do/:doId`) — Tracking tab (child SI table with computed progress) + Check-ins tab.
 - **SI Detail** (`/rcdo/detail/si/:siId`) — Task table (drag-reorderable) or nested sub-initiative tree if `accepts_sub_sis`; Check-ins tab; Gantt/Table view toggle.
 - **RCDO All-Hands** (`/rcdo/all-hands`) — read-only, DO-grouped rollup of every top-level SI with latest check-in and month-over-month trend.
@@ -405,7 +405,7 @@ Canonical source: `src/design-system/tokens.ts` (root `DESIGN_SYSTEM.md` has dri
 
 - **Commands**: `npm run dev` (Vite, port 8080, `predev` runs a DB health check), `npm run build`, `npm run lint`, `npm run test` / `test:coverage` (Vitest), `npm run test:e2e` (Playwright), `npm run db:validate` / `db:health` / `db:reset` (destructive).
 - **Deploy**: Netlify (`netlify.toml`) — `/assets/*` explicitly 404s on miss (avoids silently masking missing hashed assets behind the SPA fallback), catch-all SPA redirect, security headers (`X-Frame-Options: DENY`, `nosniff`, restrictive `Permissions-Policy`) on all routes, 1-year immutable cache on `/assets/*`.
-- **Env**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` required; e2e also needs `SUPABASE_SERVICE_ROLE_KEY`, `PLAYWRIGHT_BASE_URL`; Strategy Canvas collaboration needs `VITE_COLLAB_WS_URL` (defaults to `ws://localhost:1234`).
+- **Env**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` required; e2e also needs `SUPABASE_SERVICE_ROLE_KEY`, `PLAYWRIGHT_BASE_URL`.
 
 ---
 

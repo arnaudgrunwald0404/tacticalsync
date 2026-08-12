@@ -20,8 +20,9 @@ import { useTasksBySI } from '@/hooks/useTasks';
 import { SIStatusControl } from '@/components/rcdo/SIStatusControl';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { updateInitiative } from '@/hooks/useRCDOMutations';
+import { updateInitiative, createInitiative } from '@/hooks/useRCDOMutations';
 import { getSILockBlockers } from '@/lib/rcdoValidation';
+import { useCurrentUser } from '@/contexts/AuthContext';
 
 // Import NodeData type from StrategyCanvas
 type NodeData = {
@@ -98,9 +99,46 @@ export function SIPanelContent({
   const cycleParam = panelSearchParams.get('cycle');
   const { toast } = useToast();
   const { canEditInitiative } = useRCDOPermissions();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(si.title || '');
+
+  // Canvas-created SIs start out local-only (no dbId) — nothing inserts them
+  // into rc_strategic_initiatives until both NOT NULL columns (title, owner)
+  // are known. Every field handler below calls this first: once title+owner
+  // are present it inserts the row (carrying along whatever else was already
+  // filled in locally), attaches the new id via onUpdate, and the caller's
+  // own updateInitiative call then persists its specific edit as a normal
+  // follow-up update. Returns undefined (silent no-op, matching prior
+  // behavior) when title or owner still isn't known.
+  const ensureSIPersisted = async (
+    overrides: Partial<NonNullable<NodeData['saiItems']>[0]> = {}
+  ): Promise<string | undefined> => {
+    if (si.dbId) return si.dbId;
+    const doDbId = doLockedStatus.get(doNode.id)?.dbId;
+    const title = (overrides.title ?? si.title ?? '').trim();
+    const ownerId = overrides.ownerId ?? si.ownerId;
+    if (!doDbId || !title || !ownerId) return undefined;
+    try {
+      const created = await createInitiative({
+        defining_objective_id: doDbId,
+        title,
+        owner_user_id: ownerId,
+        description: overrides.description ?? si.description ?? null,
+        primary_success_metric: overrides.metric ?? si.metric ?? null,
+        benchmark: overrides.benchmark ?? si.benchmark ?? null,
+        participant_user_ids: overrides.participantIds ?? si.participantIds ?? [],
+        created_by: user?.id ?? null,
+      });
+      onUpdate({ dbId: created.id });
+      return created.id;
+    } catch (e) {
+      console.warn('[SIPanel] Failed to create initiative', e);
+      toast({ title: 'Save failed', description: 'Could not save this initiative', variant: 'destructive' });
+      return undefined;
+    }
+  };
 
   // Fetch SI data with progress if we have a database ID
   const siDbId = si.dbId;
@@ -283,8 +321,11 @@ export function SIPanelContent({
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => {
               if (titleDraft.trim() && titleDraft !== si.title) {
-                onUpdate({ title: titleDraft.trim() });
-                if (si.dbId) updateInitiative(si.dbId, { title: titleDraft.trim() }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+                const nextTitle = titleDraft.trim();
+                onUpdate({ title: nextTitle });
+                ensureSIPersisted({ title: nextTitle }).then((dbId) => {
+                  if (dbId) updateInitiative(dbId, { title: nextTitle }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+                });
               } else {
                 setTitleDraft(si.title || '');
               }
@@ -293,8 +334,11 @@ export function SIPanelContent({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 if (titleDraft.trim() && titleDraft !== si.title) {
-                  onUpdate({ title: titleDraft.trim() });
-                  if (si.dbId) updateInitiative(si.dbId, { title: titleDraft.trim() }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+                  const nextTitle = titleDraft.trim();
+                  onUpdate({ title: nextTitle });
+                  ensureSIPersisted({ title: nextTitle }).then((dbId) => {
+                    if (dbId) updateInitiative(dbId, { title: nextTitle }).catch((e) => console.warn('[SIPanel] Failed to persist title change', e));
+                  });
                 }
                 setEditingTitle(false);
               }
@@ -338,15 +382,15 @@ export function SIPanelContent({
               disabled={isLocked}
               placeholder="Select owner"
               onSelectionChange={async (val) => {
-                if (isLocked) return;
+                if (isLocked || !val) return;
                 onUpdate({ ownerId: val });
-                if (si.dbId && val) {
-                  try {
-                    await updateInitiative(si.dbId, { owner_user_id: val });
-                  } catch (e) {
-                    console.warn('[SIPanel] Error updating SI owner in DB', e);
-                    toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
-                  }
+                const dbId = await ensureSIPersisted({ ownerId: val });
+                if (!dbId) return;
+                try {
+                  await updateInitiative(dbId, { owner_user_id: val });
+                } catch (e) {
+                  console.warn('[SIPanel] Error updating SI owner in DB', e);
+                  toast({ title: 'Update failed', description: 'Could not save owner change', variant: 'destructive' });
                 }
               }}
             />
@@ -361,9 +405,11 @@ export function SIPanelContent({
               content={si.description || ""}
               onChange={(content) => { if (isLocked) return; onUpdate({ description: content }); }}
               onBlur={async (content) => {
-                if (isLocked || !si.dbId) return;
+                if (isLocked) return;
+                const dbId = await ensureSIPersisted({ description: content });
+                if (!dbId) return;
                 try {
-                  await updateInitiative(si.dbId, { description: content });
+                  await updateInitiative(dbId, { description: content });
                 } catch (e) {
                   console.warn('[SIPanel] Failed to persist description change', e);
                   toast({ title: 'Update failed', description: 'Could not save description', variant: 'destructive' });
@@ -385,9 +431,11 @@ export function SIPanelContent({
             value={si.metric || ""}
             onChange={(e) => { if (isLocked) return; onUpdate({ metric: e.target.value }); }}
             onBlur={async () => {
-              if (!si.dbId || isLocked) return;
+              if (isLocked) return;
+              const dbId = await ensureSIPersisted();
+              if (!dbId) return;
               try {
-                await updateInitiative(si.dbId, { primary_success_metric: si.metric || null });
+                await updateInitiative(dbId, { primary_success_metric: si.metric || null });
               } catch (e) {
                 console.warn('[SIPanel] Failed to persist metric change', e);
                 toast({ title: 'Update failed', description: 'Could not save Primary Success Metric', variant: 'destructive' });
@@ -408,9 +456,11 @@ export function SIPanelContent({
             value={si.benchmark || ""}
             onChange={(e) => { if (isLocked) return; onUpdate({ benchmark: e.target.value }); }}
             onBlur={async () => {
-              if (!si.dbId || isLocked) return;
+              if (isLocked) return;
+              const dbId = await ensureSIPersisted();
+              if (!dbId) return;
               try {
-                await updateInitiative(si.dbId, { benchmark: si.benchmark || null });
+                await updateInitiative(dbId, { benchmark: si.benchmark || null });
               } catch (e) {
                 console.warn('[SIPanel] Failed to persist benchmark change', e);
                 toast({ title: 'Update failed', description: 'Could not save benchmark', variant: 'destructive' });
@@ -432,12 +482,17 @@ export function SIPanelContent({
               disabled={isLocked}
               className="h-9 text-sm"
               onChange={async (e) => {
-                if (isLocked || !si.dbId) return;
+                if (isLocked) return;
                 const value = e.target.value;
                 const currentEnd = (siWithProgress?.end_date as string) || '';
-                if (value && currentEnd && currentEnd < value) return;
+                if (value && currentEnd && currentEnd < value) {
+                  toast({ title: 'Invalid date', description: 'Start date must be on or before the target delivery date.', variant: 'destructive' });
+                  return;
+                }
+                const dbId = await ensureSIPersisted();
+                if (!dbId) return;
                 try {
-                  await updateInitiative(si.dbId, { start_date: value || null });
+                  await updateInitiative(dbId, { start_date: value || null });
                   await refetchSI();
                 } catch (e) {
                   console.warn('[SIPanel] Failed to persist start date change', e);
@@ -455,12 +510,17 @@ export function SIPanelContent({
               disabled={isLocked}
               className="h-9 text-sm"
               onChange={async (e) => {
-                if (isLocked || !si.dbId) return;
+                if (isLocked) return;
                 const value = e.target.value;
                 const currentStart = (siWithProgress?.start_date as string) || '';
-                if (value && currentStart && value < currentStart) return;
+                if (value && currentStart && value < currentStart) {
+                  toast({ title: 'Invalid date', description: 'Target delivery date must be on or after the start date.', variant: 'destructive' });
+                  return;
+                }
+                const dbId = await ensureSIPersisted();
+                if (!dbId) return;
                 try {
-                  await updateInitiative(si.dbId, { end_date: value || null });
+                  await updateInitiative(dbId, { end_date: value || null });
                   await refetchSI();
                 } catch (e) {
                   console.warn('[SIPanel] Failed to persist end date change', e);
@@ -480,9 +540,10 @@ export function SIPanelContent({
             canEdit={canEditStatus}
             taskCount={siTasks.length}
             onStatusChange={async (value) => {
-              if (!si.dbId) return;
+              const dbId = await ensureSIPersisted();
+              if (!dbId) return;
               try {
-                await updateInitiative(si.dbId, { status: value });
+                await updateInitiative(dbId, { status: value });
                 await refetchSI();
                 toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
               } catch (e) {
@@ -518,14 +579,13 @@ export function SIPanelContent({
                   // Update local UI
                   onUpdate({ participantIds: ids });
 
-                  // Persist to DB if SI is linked
-                  if (si.dbId) {
-                    try {
-                      await updateInitiative(si.dbId, { participant_user_ids: ids });
-                    } catch (e) {
-                      console.warn('[SIPanel] Error updating SI participants in DB', e);
-                      toast({ title: 'Update failed', description: 'Could not save participants', variant: 'destructive' });
-                    }
+                  const dbId = await ensureSIPersisted({ participantIds: ids });
+                  if (!dbId) return;
+                  try {
+                    await updateInitiative(dbId, { participant_user_ids: ids });
+                  } catch (e) {
+                    console.warn('[SIPanel] Error updating SI participants in DB', e);
+                    toast({ title: 'Update failed', description: 'Could not save participants', variant: 'destructive' });
                   }
                 }}
                 placeholder="Select participants to help accomplish this goal..."
