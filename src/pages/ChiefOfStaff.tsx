@@ -543,7 +543,7 @@ export default function ChiefOfStaff() {
       <Sheet open={configDrawerOpen} onOpenChange={setConfigDrawerOpen}>
         <SheetContent side="right" className="sm:max-w-2xl w-full overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Configure My Lists</SheetTitle>
+            <SheetTitle>Configure My Inbox</SheetTitle>
             <SheetDescription>
               Set up your columns and sections before adding items.
             </SheetDescription>
@@ -1485,7 +1485,7 @@ const SOURCE_ICONS: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  priorities: 'My Lists',
+  priorities: 'My Inbox',
   email: 'Email',
   calendar: 'Calendar',
   slack: 'Slack',
@@ -1493,7 +1493,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
-  cos: { label: 'My Lists', className: 'bg-primary/10 text-primary' },
+  cos: { label: 'My Inbox', className: 'bg-primary/10 text-primary' },
   brief: { label: 'New signal', className: 'bg-copper/10 text-copper' },
   'cos+brief': { label: 'Boosted', className: 'bg-emerald-500/10 text-emerald-600' },
 };
@@ -1648,7 +1648,7 @@ function ReorderablePriorityList({
   };
 
   if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground">No priorities yet. Add some in the My Lists tab.</p>;
+    return <p className="text-sm text-muted-foreground">No priorities yet. Add some in the My Inbox tab.</p>;
   }
 
   return (
@@ -1857,9 +1857,9 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
               </p>
             </div>
             <div className="space-y-2 rounded-lg border border-border/50 p-3">
-              <p className="font-semibold text-foreground">Step 2: Merge with My Lists</p>
+              <p className="font-semibold text-foreground">Step 2: Merge with My Inbox</p>
               <p>
-                Your manually curated priorities from <strong>My Lists</strong> are always the foundation.
+                Your manually curated priorities from <strong>My Inbox</strong> are always the foundation.
                 AI signals annotate and reorder them:
               </p>
               <ul className="space-y-1.5 pl-1">
@@ -1872,7 +1872,7 @@ function DciBriefMethodology({ hasBrief }: { hasBrief: boolean }) {
                   <span>Net-new item surfaced from email/calendar/Slack not on your lists</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">My Lists</Badge>
+                  <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 py-0 h-4 font-normal flex-shrink-0 mt-0.5">My Inbox</Badge>
                   <span>Your existing priority — no external signal matched it today</span>
                 </li>
               </ul>

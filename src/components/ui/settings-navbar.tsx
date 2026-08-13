@@ -26,7 +26,7 @@ const NAV_ITEMS = [
   { id: "org-talking-points",          label: "Talking Points",    group: "User Management" },
   { id: "strategy-cycles",             label: "Strategy Cycles",   group: "RCDO" },
   { id: "recently-deleted",            label: "Recently Deleted",  group: "RCDO" },
-  { id: "configure-my-lists",          label: "My Lists",          group: "Check-Ins" },
+  { id: "configure-my-lists",          label: "My Inbox",          group: "Check-Ins" },
   { id: "prep-schedule",               label: "Daily Brief",       group: "Check-Ins" },
   { id: "meetings-prep",               label: "Meetings",          group: "Check-Ins" },
   { id: "agent-settings",              label: "Agent",             group: "Check-Ins" },

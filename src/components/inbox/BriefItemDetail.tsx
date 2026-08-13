@@ -22,7 +22,7 @@ function formatBriefDate(briefDate: string, isWeekly: boolean): string {
 }
 
 const ORIGIN_BADGE: Record<string, { label: string; className: string }> = {
-  cos:       { label: 'My Lists',    className: 'bg-indigo-100 text-indigo-600' },
+  cos:       { label: 'My Inbox',    className: 'bg-indigo-100 text-indigo-600' },
   brief:     { label: 'New signal',  className: 'bg-amber-100 text-amber-600' },
   'cos+brief': { label: 'Boosted',   className: 'bg-emerald-100 text-emerald-600' },
 };
