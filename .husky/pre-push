@@ -2,9 +2,21 @@ echo "🧪 Running tests before push..."
 
 # Run unit tests (fast)
 npm run test -- --run < /dev/null
+test_exit=$?
+
+if [ "$test_exit" -ne 0 ]; then
+  echo ""
+  echo "❌ Tests failed (exit code $test_exit) — push aborted."
+  echo "   Fix the failing tests, or push with --no-verify to bypass (not recommended)."
+  main_root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+  echo "   Hint: in a fresh worktree, missing .env.local/.env.test causes widespread"
+  echo "   failures ('Missing VITE_SUPABASE_URL'). Copy them from the main checkout:"
+  echo "     cp \"$main_root/.env.local\" ."
+  echo "     cp \"$main_root/.env.test\" ."
+  exit "$test_exit"
+fi
 
 # Optionally run E2E tests (slower - comment out if too slow)
 # npm run test:e2e
 
 echo "✅ Tests passed! Proceeding with push..."
-
