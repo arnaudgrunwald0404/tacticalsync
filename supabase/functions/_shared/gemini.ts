@@ -15,7 +15,10 @@ import { retryWithBackoff } from './retryWithBackoff.ts'
 export const GEMINI_MODEL = 'gemini-2.5-flash'
 // For call sites that ran Claude Sonnet before the provider port — the
 // quality-sensitive long-form work (briefs, chat, delegation drafts).
-export const GEMINI_PRO_MODEL = 'gemini-2.5-pro'
+// The alias tracks Google's current stable pro model: this project's API
+// key can no longer call gemini-2.5-pro directly (404 "no longer available
+// to new users"), and the alias avoids pinning a preview that will churn.
+export const GEMINI_PRO_MODEL = 'gemini-pro-latest'
 
 /**
  * Sends one prompt to Gemini and returns the response text (all parts
@@ -89,6 +92,13 @@ export async function geminiChat(
   },
 ): Promise<GeminiChatResult> {
   const model = opts.model ?? GEMINI_MODEL
+  const tools = opts.tools ?? []
+  // Mixing a built-in tool (e.g. { google_search: {} }) with function
+  // declarations is rejected unless this flag is set — verified against the
+  // live API ("Please enable tool_config.include_server_side_tool_invocations
+  // to use Built-in tools with Function calling").
+  const isFnDecl = (t: unknown) => typeof t === 'object' && t !== null && 'functionDeclarations' in t
+  const mixesBuiltInAndFunctions = tools.some(isFnDecl) && tools.some(t => !isFnDecl(t))
   const res = await retryWithBackoff(
     () => fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -98,7 +108,8 @@ export async function geminiChat(
         body: JSON.stringify({
           contents: opts.contents,
           ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-          ...(opts.tools && opts.tools.length > 0 ? { tools: opts.tools } : {}),
+          ...(tools.length > 0 ? { tools } : {}),
+          ...(mixesBuiltInAndFunctions ? { toolConfig: { includeServerSideToolInvocations: true } } : {}),
         }),
       },
     ),
