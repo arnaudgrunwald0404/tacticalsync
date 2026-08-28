@@ -21,7 +21,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import Anthropic from 'npm:@anthropic-ai/sdk'
+import { geminiGenerateText, GEMINI_PRO_MODEL } from '../_shared/gemini.ts'
 import { TOOL_REGISTRY, TOOL_NAMES, getTool } from './tools/index.ts'
 import { resolveNextInstance } from './tools/createMeetingTopic.ts'
 import { buildPlanSteps, buildMarkdownFromSteps, computeAggregateStatus, type PlanStep, type ToolName } from './planSteps.ts'
@@ -167,20 +167,15 @@ async function getAuthenticatedUserId(req: Request, db: ReturnType<typeof create
 
 // ── Claude call ───────────────────────────────────────────────────────────────
 
-const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
+const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
 async function callClaude(systemPrompt: string, userMessage: string): Promise<string> {
-  const msg = await ai.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
+  const text = await geminiGenerateText(googleApiKey, `${systemPrompt}\n\n${userMessage}`, {
+    model: GEMINI_PRO_MODEL,
+    label: 'delegate inbox task',
   })
-  // claude-sonnet-5 returns an extended-thinking block before the text block,
-  // so content[0] is not reliably the text — find it by type instead (same
-  // guard agent-command/index.ts already uses for this).
-  const textBlock = msg.content.find((b): b is { type: 'text'; text: string } => b.type === 'text')
-  return textBlock?.text ?? ''
+  // Both call sites JSON.parse the result, so strip any markdown fences here.
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
 }
 
 // ── Phase: Ramping up → decide clarity ───────────────────────────────────────
