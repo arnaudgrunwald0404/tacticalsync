@@ -15,6 +15,15 @@ import { supabase } from '@/integrations/supabase/client';
 const USER_ID = 'u1111111-1111-1111-1111-111111111111';
 const MEMBER_ID = 'm1111111-1111-1111-1111-111111111111';
 
+// The hook filters against the real current date (isWithinActiveWindow uses
+// `new Date()`), so fixture windows must be relative to today — hardcoded
+// dates silently expire and start failing once the calendar passes them.
+function daysFromNow(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 let activePointsData: unknown[] = [];
 let dismissedIdsData: unknown[] = [];
 let mutationError: Error | null = null;
@@ -104,8 +113,8 @@ describe('useOrgTalkingPoints', () => {
 
   it('returns active points not yet dismissed by this (user, team_member) pair', async () => {
     activePointsData = [
-      { id: 'tp-1', title: 'Engagement survey', body: 'Ask about it', starts_on: '2026-07-01', ends_on: '2026-08-01' },
-      { id: 'tp-2', title: 'Open enrollment', body: 'Remind them', starts_on: '2026-07-01', ends_on: '2026-08-01' },
+      { id: 'tp-1', title: 'Engagement survey', body: 'Ask about it', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) },
+      { id: 'tp-2', title: 'Open enrollment', body: 'Remind them', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) },
     ];
     dismissedIdsData = [{ talking_point_id: 'tp-2' }];
 
@@ -120,9 +129,9 @@ describe('useOrgTalkingPoints', () => {
 
   it('filters out points outside the active window even if the query returns them', async () => {
     activePointsData = [
-      { id: 'tp-in', title: 'In window', body: 'x', starts_on: '2026-07-01', ends_on: '2026-08-01' },
-      { id: 'tp-future', title: 'Not started yet', body: 'x', starts_on: '2026-08-01', ends_on: '2026-09-01' },
-      { id: 'tp-past', title: 'Already ended', body: 'x', starts_on: '2026-06-01', ends_on: '2026-06-30' },
+      { id: 'tp-in', title: 'In window', body: 'x', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) },
+      { id: 'tp-future', title: 'Not started yet', body: 'x', starts_on: daysFromNow(2), ends_on: daysFromNow(30) },
+      { id: 'tp-past', title: 'Already ended', body: 'x', starts_on: daysFromNow(-30), ends_on: daysFromNow(-2) },
     ];
     dismissedIdsData = [];
 
@@ -133,13 +142,13 @@ describe('useOrgTalkingPoints', () => {
   });
 
   it('scopes the dismissal lookup to the given user and team member', async () => {
-    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: '2026-07-01', ends_on: '2026-08-01' }];
+    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) }];
     renderHook(() => useOrgTalkingPoints(MEMBER_ID));
     await waitFor(() => expect(mockedSupabase.from).toHaveBeenCalledWith('cos_org_talking_point_dismissals'));
   });
 
   it('dismiss() flips a point to dismissed and does not affect other reports (no cross-member leakage in the returned set)', async () => {
-    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: '2026-07-01', ends_on: '2026-08-01' }];
+    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) }];
     dismissedIdsData = [];
 
     const { result } = renderHook(() => useOrgTalkingPoints(MEMBER_ID));
@@ -154,7 +163,7 @@ describe('useOrgTalkingPoints', () => {
   });
 
   it('dismiss() reverts the optimistic update if the write fails', async () => {
-    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: '2026-07-01', ends_on: '2026-08-01' }];
+    activePointsData = [{ id: 'tp-1', title: 'T', body: 'B', starts_on: daysFromNow(-7), ends_on: daysFromNow(7) }];
     dismissedIdsData = [];
     mutationError = new Error('write failed');
 
