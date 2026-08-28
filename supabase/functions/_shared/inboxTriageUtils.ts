@@ -209,3 +209,45 @@ export function inferSuppressionRules(dismissals: DismissalRecord[]): InferredSu
 
   return { newSenders, newDomains, newIntents }
 }
+
+/**
+ * Metadata subset of a Gmail thread message (threads.get format=minimal):
+ * internalDate is epoch milliseconds serialized as a string.
+ */
+export interface GmailThreadMessageMeta {
+  id: string
+  labelIds?: string[]
+  internalDate?: string
+}
+
+/**
+ * Extract the Gmail threadId from the deep link stored on agent_payload.gmail_url
+ * (`https://mail.google.com/mail/u/0/#inbox/<threadId>`). Returns null for the
+ * bare `https://mail.google.com` fallback used when a message had no threadId.
+ */
+export function parseGmailThreadIdFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  return /#inbox\/([A-Za-z0-9_-]+)/.exec(url)?.[1] ?? null
+}
+
+/**
+ * True when the thread contains a message the user sent (SENT label) after the
+ * flagged source message — i.e. the user has already replied, so the suggestion
+ * built from that source message is handled.
+ *
+ * If the source message is no longer in the thread (deleted), any SENT message
+ * with a valid date counts: the user participated and the trigger is gone.
+ * Earlier SENT messages (e.g. the user started the thread) never count.
+ */
+export function hasUserReplyAfter(
+  messages: GmailThreadMessageMeta[],
+  sourceMessageId: string,
+): boolean {
+  const source = messages.find(m => m.id === sourceMessageId)
+  const sourceDate = source?.internalDate ? parseInt(source.internalDate, 10) : 0
+  return messages.some(m =>
+    m.id !== sourceMessageId &&
+    (m.labelIds ?? []).includes('SENT') &&
+    (m.internalDate ? parseInt(m.internalDate, 10) : Number.NaN) > sourceDate
+  )
+}
