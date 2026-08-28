@@ -13,6 +13,9 @@ import {
   inferSuppressionRules,
   isAutomatedSender,
   isCalendarInvite,
+  parseGmailThreadIdFromUrl,
+  hasUserReplyAfter,
+  type GmailThreadMessageMeta,
   type SenderTier,
   type IntentType,
   type SuppressionRules,
@@ -329,6 +332,78 @@ async function reconcileAnsweredSlackItems(
   }
 }
 
+// Gmail counterpart of reconcileAnsweredSlackItems: auto-archives open Gmail
+// agent_question items once the user has sent a reply in the source thread
+// after the flagged message. Deliberately does NOT write to
+// inbox_dismissal_log — dismissal entries train sender suppression
+// (inferSuppressionRules), and "I handled this" is the opposite signal from
+// "stop showing me this sender".
+async function reconcileAnsweredGmailItems(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  accessToken: string,
+): Promise<void> {
+  const { data: openItems } = await supabase
+    .from('inbox_items')
+    .select('id, source_ref, agent_payload')
+    .eq('user_id', userId)
+    .eq('type', 'agent_question')
+    .eq('status', 'open')
+    .contains('source_ref', { type: 'gmail_message' })
+
+  for (const item of (openItems ?? []) as unknown as Array<{
+    id: string
+    source_ref: { id?: string } | null
+    agent_payload: { gmail_url?: string } | null
+  }>) {
+    const messageId = item.source_ref?.id
+    if (!messageId) continue
+
+    try {
+      // Prefer the threadId embedded in the deep link captured at creation;
+      // fall back to one messages.get when the item predates gmail_url or
+      // the message had no threadId at scan time.
+      let threadId = parseGmailThreadIdFromUrl(item.agent_payload?.gmail_url)
+      if (!threadId) {
+        const msgRes = await retryWithBackoff(
+          () => fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=minimal`,
+            { headers: { Authorization: `Bearer ${accessToken}` } },
+          ),
+          { integration: 'gmail', label: 'reconcile get message' },
+        )
+        if (!msgRes.ok) continue
+        threadId = ((await msgRes.json()) as { threadId?: string }).threadId ?? null
+      }
+      if (!threadId) continue
+
+      const threadRes = await retryWithBackoff(
+        () => fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=minimal`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        ),
+        { integration: 'gmail', label: 'reconcile get thread' },
+      )
+      if (!threadRes.ok) continue
+      const thread = await threadRes.json() as { messages?: GmailThreadMessageMeta[] }
+
+      if (hasUserReplyAfter(thread.messages ?? [], messageId)) {
+        const { error: updateErr } = await supabase.from('inbox_items').update({
+          status: 'archived',
+          archived_at: new Date().toISOString(),
+        }).eq('id', item.id)
+        if (updateErr) {
+          await logAgentError(supabase, userId, 'reconcile_gmail_archive', updateErr, { item_id: item.id })
+        }
+      }
+    } catch (err) {
+      // One bad item (thread deleted, transient API error) shouldn't stop the
+      // sweep — the item just stays open until a later run rechecks it.
+      console.warn(`extract-inbox-action-items: gmail reconcile failed for item ${item.id}:`, (err as Error).message)
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -523,10 +598,9 @@ serve(async (req) => {
 
         const hasGmailScope = calCreds?.scope?.includes('gmail') || calCreds?.scope?.includes('mail.google.com')
 
-        // Inbox triage is opt-in — skip Gmail scan if user hasn't enabled it.
-        if (calCreds?.access_token && hasGmailScope && inboxTriageEnabled) {
-          scannedGmail = true
-          let accessToken = calCreds.access_token as string
+        let gmailAccessToken: string | null = null
+        if (calCreds?.access_token && hasGmailScope) {
+          gmailAccessToken = calCreds.access_token as string
 
           const needsRefresh = !calCreds.expires_at
             || (new Date(calCreds.expires_at).getTime() - Date.now() < 30_000)
@@ -547,14 +621,26 @@ serve(async (req) => {
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json() as { access_token?: string; expires_in?: number }
               if (refreshData.access_token && typeof refreshData.expires_in === 'number') {
-                accessToken = refreshData.access_token
+                gmailAccessToken = refreshData.access_token
                 await supabase.from('user_calendar_credentials').update({
-                  access_token: accessToken,
+                  access_token: gmailAccessToken,
                   expires_at: new Date(Date.now() + refreshData.expires_in * 1000).toISOString(),
                 }).eq('user_id', userId)
               }
             }
           }
+
+          // Close out previously-surfaced Gmail suggestions the user has since
+          // answered directly in Gmail — mirrors the Slack reconcile above:
+          // runs whenever Gmail is connected (not gated on inboxTriageEnabled),
+          // so already-answered items clear even on runs with no fresh scan.
+          await reconcileAnsweredGmailItems(supabase, userId, gmailAccessToken)
+        }
+
+        // Inbox triage is opt-in — skip Gmail scan if user hasn't enabled it.
+        if (gmailAccessToken && inboxTriageEnabled) {
+          scannedGmail = true
+          const accessToken = gmailAccessToken
 
           const { data: gmailCursorRow } = await supabase
             .from('cos_action_item_scan_state')

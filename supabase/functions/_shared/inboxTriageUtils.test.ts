@@ -10,6 +10,9 @@ import {
   inferSuppressionRules,
   isAutomatedSender,
   isCalendarInvite,
+  parseGmailThreadIdFromUrl,
+  hasUserReplyAfter,
+  type GmailThreadMessageMeta,
   SUPPRESSED_BY_DEFAULT,
   type SuppressionRules,
   type DismissalRecord,
@@ -553,4 +556,69 @@ Deno.test("isCalendarInvite: does not flag a normal subject", () => {
 
 Deno.test("isCalendarInvite: does not flag a subject that merely contains 'accepted' mid-sentence", () => {
   assertFalse(isCalendarInvite("Your offer was accepted", "colleague@example.com"))
+})
+
+// ─── parseGmailThreadIdFromUrl ────────────────────────────────────────────────
+
+Deno.test("parseGmailThreadIdFromUrl: extracts threadId from the deep link", () => {
+  assertEquals(
+    parseGmailThreadIdFromUrl("https://mail.google.com/mail/u/0/#inbox/18f2a9c0d1e2b3f4"),
+    "18f2a9c0d1e2b3f4",
+  )
+})
+
+Deno.test("parseGmailThreadIdFromUrl: returns null for the bare fallback URL", () => {
+  assertEquals(parseGmailThreadIdFromUrl("https://mail.google.com"), null)
+})
+
+Deno.test("parseGmailThreadIdFromUrl: returns null for null/undefined", () => {
+  assertEquals(parseGmailThreadIdFromUrl(null), null)
+  assertEquals(parseGmailThreadIdFromUrl(undefined), null)
+})
+
+// ─── hasUserReplyAfter ────────────────────────────────────────────────────────
+
+function threadMsg(id: string, internalDate: number, sent = false): GmailThreadMessageMeta {
+  return { id, internalDate: String(internalDate), labelIds: sent ? ["SENT"] : ["INBOX"] }
+}
+
+Deno.test("hasUserReplyAfter: true when a SENT message follows the source message", () => {
+  assert(hasUserReplyAfter(
+    [threadMsg("src", 1000), threadMsg("reply", 2000, true)],
+    "src",
+  ))
+})
+
+Deno.test("hasUserReplyAfter: false when the only SENT message predates the source", () => {
+  // e.g. the user started the thread, then received the flagged reply
+  assertFalse(hasUserReplyAfter(
+    [threadMsg("mine", 500, true), threadMsg("src", 1000)],
+    "src",
+  ))
+})
+
+Deno.test("hasUserReplyAfter: false when nothing in the thread is SENT", () => {
+  assertFalse(hasUserReplyAfter(
+    [threadMsg("src", 1000), threadMsg("other", 2000)],
+    "src",
+  ))
+})
+
+Deno.test("hasUserReplyAfter: false for an empty thread", () => {
+  assertFalse(hasUserReplyAfter([], "src"))
+})
+
+Deno.test("hasUserReplyAfter: source message deleted — any dated SENT message counts", () => {
+  assert(hasUserReplyAfter([threadMsg("reply", 2000, true)], "src"))
+})
+
+Deno.test("hasUserReplyAfter: the source message itself being SENT does not count", () => {
+  assertFalse(hasUserReplyAfter([threadMsg("src", 1000, true)], "src"))
+})
+
+Deno.test("hasUserReplyAfter: SENT message without internalDate does not count", () => {
+  assertFalse(hasUserReplyAfter(
+    [threadMsg("src", 1000), { id: "reply", labelIds: ["SENT"] }],
+    "src",
+  ))
 })
