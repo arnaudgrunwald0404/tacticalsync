@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { CreateTaskForm, UpdateTaskForm, TaskStatus, StrategicInitiative } from '@/types/rcdo';
 import { createTask, updateTask } from '@/hooks/useTasks';
+import { getErrorMessage } from '@/lib/utils';
 
 interface UserProfile {
   id: string;
@@ -48,6 +50,7 @@ export function TaskDialog({
   onSuccess,
 }: TaskDialogProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingSIs, setLoadingSIs] = useState(false);
@@ -249,7 +252,7 @@ export function TaskDialog({
           notes: formData.notes || undefined,
           status: formData.status,
         };
-        await createTask(createData);
+        await createTask(createData, user?.id);
         toast({
           title: 'Success',
           description: 'Task created successfully',
@@ -261,7 +264,7 @@ export function TaskDialog({
     } catch (err: unknown) {
       toast({
         title: 'Error',
-        description: err instanceof Error ? err.message : `Failed to ${taskId ? 'update' : 'create'} task`,
+        description: getErrorMessage(err, `Failed to ${taskId ? 'update' : 'create'} task`),
         variant: 'destructive',
       });
     } finally {

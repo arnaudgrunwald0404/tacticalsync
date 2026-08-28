@@ -881,6 +881,7 @@ export type Database = {
           description: string | null
           end_time: string
           google_event_id: string
+          group_meeting_id: string | null
           id: string
           inferred_category: string
           last_synced_at: string
@@ -903,6 +904,7 @@ export type Database = {
           description?: string | null
           end_time: string
           google_event_id: string
+          group_meeting_id?: string | null
           id?: string
           inferred_category?: string
           last_synced_at?: string
@@ -925,6 +927,7 @@ export type Database = {
           description?: string | null
           end_time?: string
           google_event_id?: string
+          group_meeting_id?: string | null
           id?: string
           inferred_category?: string
           last_synced_at?: string
@@ -939,6 +942,13 @@ export type Database = {
           zoom_meeting_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cos_one_on_one_events_group_meeting_id_fkey"
+            columns: ["group_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "cos_group_meetings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cos_one_on_one_events_team_member_id_fkey"
             columns: ["team_member_id"]
@@ -3661,6 +3671,36 @@ export type Database = {
           },
         ]
       }
+      rc_deleted_items: {
+        Row: {
+          batch_id: string
+          deleted_at: string
+          deleted_by: string | null
+          id: string
+          restored_at: string | null
+          row_data: Json
+          table_name: string
+        }
+        Insert: {
+          batch_id: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          restored_at?: string | null
+          row_data: Json
+          table_name: string
+        }
+        Update: {
+          batch_id?: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          restored_at?: string | null
+          row_data?: Json
+          table_name?: string
+        }
+        Relationships: []
+      }
       rc_do_metrics: {
         Row: {
           created_at: string | null
@@ -3982,7 +4022,7 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_rc_tasks_owner_user_id_profiles"
+            foreignKeyName: "rc_tasks_owner_user_id_fkey"
             columns: ["owner_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -4814,6 +4854,8 @@ export type Database = {
         Args: { p_invite_code: string }
         Returns: Json
       }
+      delete_rc_do: { Args: { p_do_id: string }; Returns: undefined }
+      delete_rc_initiative: { Args: { p_si_id: string }; Returns: undefined }
       get_cos_team_member_invite_preview: {
         Args: { p_invite_code: string }
         Returns: {
@@ -4873,6 +4915,14 @@ export type Database = {
       rcdo_promote_task_to_sub_si: {
         Args: { p_task_id: string }
         Returns: string
+      }
+      restore_deleted_rc_batch: {
+        Args: { p_batch_id: string }
+        Returns: {
+          restored_count: number
+          skipped_count: number
+          source_table: string
+        }[]
       }
       set_feature_announcement_flag: {
         Args: { p_key: string; p_value?: boolean }

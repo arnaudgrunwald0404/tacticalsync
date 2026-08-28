@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus, Layers, Calendar, CheckCircle, Trash2 } from 'lucide-react';
 import { useCycles } from '@/hooks/useRCDO';
+import { supabase } from '@/integrations/supabase/client';
 import { useRCDOPermissions } from '@/hooks/useRCDOPermissions';
 import GridBackground from '@/components/ui/grid-background';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { suggestCycleDates } from '@/lib/rcdoValidation';
+import { activateRcdoCycle } from '@/lib/rcdoCycleActivation';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -116,9 +117,7 @@ export default function StrategyHome() {
       // this one via the rcdo_activate_cycle() DB function, so a race
       // between two concurrent activations can no longer leave zero or two
       // active cycles (see rc_cycles_single_active_idx).
-      const { error: activateError } = await supabase.rpc('rcdo_activate_cycle', {
-        p_cycle_id: cycleId,
-      });
+      const { error: activateError } = await activateRcdoCycle(cycleId);
 
       if (activateError) throw activateError;
 

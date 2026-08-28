@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 
@@ -36,6 +37,7 @@ const emptyForm = () => ({
 
 export default function OrgTalkingPointsPanel() {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [points, setPoints] = useState<OrgTalkingPointRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,8 +104,7 @@ export default function OrgTalkingPointsPanel() {
         if (error) throw error;
         toast({ title: 'Talking point updated' });
       } else {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) throw new Error('Not authenticated');
+        if (!user) throw new Error('Not authenticated');
         const { error } = await supabase
           .from('cos_org_talking_points' as never)
           .insert({
@@ -111,7 +112,7 @@ export default function OrgTalkingPointsPanel() {
             body,
             starts_on: form.startsOn,
             ends_on: form.endsOn,
-            created_by: userData.user.id,
+            created_by: user.id,
           } as never);
         if (error) throw error;
         toast({ title: 'Talking point created' });

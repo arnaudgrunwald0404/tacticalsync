@@ -18,16 +18,21 @@ function jsonResponse(body: unknown, status: number): Response {
   })
 }
 
-// ── Meeting-insight helpers (mirror of src/lib/meetingInsights.ts — Deno can't
-// import from src/, see the delegationRequestSchema convention in
+// ── Quote-suggestion helpers (mirror of src/lib/meetingInsights.ts — Deno
+// can't import from src/, see the delegationRequestSchema convention in
 // inboxValidation.ts. Keep these two files in sync.) ──────────────────────────
+//
+// Standout quotes surface as dci_suggested_tasks rows (source_type:
+// 'meeting') — the same recommendation surface email/Slack action items use
+// (InboxSuggestionsPanel / useMeetingSuggestions) — rather than as their own
+// inbox_items row.
 
-// Max meeting_insight rows created per transcript, independent of how many
-// quotes are extracted for cos_member_quotes (up to 3) — plan §6.3.
+// Max quote suggestions created per transcript, independent of how many
+// quotes are extracted for cos_member_quotes (up to 3).
 const MEETING_INSIGHT_CAP_PER_TRANSCRIPT = 2
 
 // Raw transcript speaker labels that carry no useful identity — anonymous
-// dial-ins, placeholder labels — never produce an inbox row (plan §6.4).
+// dial-ins, placeholder labels — never produce a suggestion.
 const NOISY_SPEAKER_RE = /^(unknown|guest\s*\d*|\+?\d{7,})$/i
 
 function isNoisySpeakerName(speaker: string): boolean {
@@ -60,61 +65,33 @@ interface ExtractedQuote {
   end_cue?: number
 }
 
-// Shape the meeting_insight row's own headline text so a user scanning the
-// list never has to open it to know where it came from (plan §9.1).
-function buildMeetingInsightText(
-  q: ExtractedQuote,
+// Shape a dci_suggested_tasks row's `title` for a quote suggestion: just the
+// speaker + quote, no meeting/date suffix — `source`/`rationale`/`date` carry
+// that separately, and InboxSuggestionsPanel already renders a provenance
+// line ("From <source>") under the title, so embedding both would duplicate
+// on the card.
+interface QuoteSuggestionFields {
+  title: string
+  source_type: 'meeting'
+  source: string | null
+  rationale: string | null
+  raw_context: string
+  urgency: 'watching'
+}
+
+function buildQuoteSuggestionFields(
+  q: Pick<ExtractedQuote, 'speaker' | 'quote' | 'context'>,
   meetingTopic: string | null | undefined,
-  saidOn: string | null | undefined,
-): string {
+): QuoteSuggestionFields {
   const speaker = q.speaker.trim()
   const quote = q.quote.trim()
-  const base = `${speaker} said: "${quote}"`
-  const meetingLabel = meetingTopic?.trim()
-  if (!meetingLabel) return base
-  const dateLabel = formatShortDate(saidOn)
-  return dateLabel ? `${base} — from ${meetingLabel}, ${dateLabel}` : `${base} — from ${meetingLabel}`
-}
-
-interface MeetingInsightSourceRef {
-  type: 'zoom_recording'
-  id: string
-  recording_id: string
-  transcript_id: string
-  quote_id?: string
-  speaker_name: string
-  meeting_topic?: string
-  said_on: string
-  context?: string
-  // Soundbites (PLAN_idea10 §B2): additive to the jsonb source_ref, mirrors
-  // cos_member_quotes.start_seconds/end_seconds so the inbox "View in
-  // recording" affordance can eventually seek/play too. Absent when
-  // alignment didn't resolve (no quote_id match, or verification failed).
-  start_seconds?: number
-  end_seconds?: number
-}
-
-function buildMeetingInsightSourceRef(opts: {
-  recordingId: string
-  transcriptId: string
-  quoteId?: string | null
-  meetingTopic?: string | null
-  saidOn: string
-  startSeconds?: number | null
-  endSeconds?: number | null
-}, q: ExtractedQuote): MeetingInsightSourceRef {
   return {
-    type: 'zoom_recording',
-    id: opts.recordingId,
-    recording_id: opts.recordingId,
-    transcript_id: opts.transcriptId,
-    quote_id: opts.quoteId ?? undefined,
-    speaker_name: q.speaker.trim(),
-    meeting_topic: opts.meetingTopic ?? undefined,
-    said_on: opts.saidOn,
-    context: q.context,
-    start_seconds: opts.startSeconds ?? undefined,
-    end_seconds: opts.endSeconds ?? undefined,
+    title: `${speaker} said: "${quote}"`,
+    source_type: 'meeting',
+    source: meetingTopic?.trim() || null,
+    rationale: q.context?.trim() || null,
+    raw_context: quote,
+    urgency: 'watching',
   }
 }
 
@@ -366,11 +343,12 @@ serve(async (req) => {
       .eq('user_id', userId)
     const members = (membersRows ?? []) as Array<{ id: string; name: string; email: string | null }>
 
-    // Load recording metadata for dates
+    // Load recording metadata for dates. share_url feeds the suggestion's
+    // source_url (deep link, same convention as generate-meeting-suggestions).
     const recordingIds = transcripts.map(t => t.recording_id)
     const { data: recordings } = await supabase
       .from('cos_zoom_recordings')
-      .select('id, start_time, topic')
+      .select('id, start_time, topic, share_url')
       .in('id', recordingIds)
     const recordingById = new Map((recordings ?? []).map(r => [r.id, r]))
 
@@ -399,7 +377,7 @@ serve(async (req) => {
 
       console.log(`Processing transcript ${transcript.id}, ${words.length} words`)
 
-      // Per-transcript meeting_insight cap (plan §6.3) — reset for each transcript.
+      // Per-transcript quote-suggestion cap — reset for each transcript.
       let insightsAddedForTranscript = 0
 
       // Call Gemini
@@ -486,12 +464,9 @@ serve(async (req) => {
           return false
         })
 
-        // Unmatched speakers no longer short-circuit here (plan §2/§6.4): they
-        // still get a meeting_insight row further below (with quote_id left
-        // unset), they just skip the cos_member_quotes insert since that table
-        // requires a team_member_id.
-        let quoteId: string | null = null
-
+        // Unmatched speakers don't short-circuit here: they still get a
+        // quote suggestion further below, they just skip the
+        // cos_member_quotes insert since that table requires a team_member_id.
         if (matched) {
           // Check for duplicate quotes
           const { data: existing } = await supabase
@@ -502,10 +477,8 @@ serve(async (req) => {
             .eq('quote', q.quote)
             .maybeSingle()
 
-          if (existing) {
-            quoteId = existing.id
-          } else {
-            const { data: inserted, error: insertErr } = await supabase
+          if (!existing) {
+            const { error: insertErr } = await supabase
               .from('cos_member_quotes')
               .insert({
                 user_id: userId,
@@ -519,65 +492,63 @@ serve(async (req) => {
                 start_seconds: resolvedTimestamp?.start_seconds ?? null,
                 end_seconds: resolvedTimestamp?.end_seconds ?? null,
               })
-              .select('id')
-              .single()
 
-            if (!insertErr) {
-              totalQuotesAdded++
-              quoteId = inserted?.id ?? null
-            }
+            if (!insertErr) totalQuotesAdded++
           }
         } else {
-          console.log(`No member match for speaker "${q.speaker}" — will still surface as a meeting insight`)
+          console.log(`No member match for speaker "${q.speaker}" — will still surface as a quote suggestion`)
         }
 
-        // ── Meeting insight (plan §2-§6): surface the quote in the inbox ──────
+        // ── Quote suggestion: surface the quote as a dci_suggested_tasks
+        // recommendation (source_type: 'meeting') — the same recommendation
+        // surface email/Slack action items use, rather than its own
+        // inbox_items row. Accept -> a real task; dismiss -> hidden.
         if (isNoisySpeakerName(q.speaker)) {
-          console.log(`Speaker "${q.speaker}" looks like a placeholder/dial-in — skipping inbox insight`)
+          console.log(`Speaker "${q.speaker}" looks like a placeholder/dial-in — skipping suggestion`)
         } else if (insightsAddedForTranscript >= MEETING_INSIGHT_CAP_PER_TRANSCRIPT) {
-          console.log(`Meeting insight cap (${MEETING_INSIGHT_CAP_PER_TRANSCRIPT}) reached for transcript ${transcript.id} — skipping remaining quotes`)
+          console.log(`Quote suggestion cap (${MEETING_INSIGHT_CAP_PER_TRANSCRIPT}) reached for transcript ${transcript.id} — skipping remaining quotes`)
         } else {
-          const sourceRef = buildMeetingInsightSourceRef({
-            recordingId: transcript.recording_id,
-            transcriptId: transcript.id,
-            quoteId,
-            meetingTopic: recording?.topic ?? null,
-            saidOn,
-            startSeconds: resolvedTimestamp?.start_seconds,
-            endSeconds: resolvedTimestamp?.end_seconds,
-          }, q)
+          const fields = buildQuoteSuggestionFields(q, recording?.topic)
 
-          // Dedup on (transcript, speaker, quote) — not just transcript — so a
-          // manual re-extract (via the transcript_id param) stays idempotent
-          // instead of being blocked outright or duplicating rows (plan §6.1).
-          // The quote itself isn't in source_ref, so it's matched via `text`
-          // (which always embeds the verbatim quote — see buildMeetingInsightText)
-          // alongside the jsonb containment check on transcript_id/speaker_name.
-          const insightText = buildMeetingInsightText(q, recording?.topic, saidOn)
-          const { data: existingInsight } = await supabase
-            .from('inbox_items')
+          // Build a deep link into the Zoom recording at the moment of the
+          // quote, reusing the already-verified cue timestamp (resolvedTimestamp)
+          // instead of re-deriving an offset — same source_url convention as
+          // generate-meeting-suggestions.
+          let sourceUrl: string | null = null
+          const shareUrl = recording?.share_url ?? null
+          if (shareUrl && resolvedTimestamp?.start_seconds != null && recording?.start_time) {
+            const startTimeMs = new Date(recording.start_time).getTime() + resolvedTimestamp.start_seconds * 1000
+            sourceUrl = `${shareUrl}?startTime=${startTimeMs}`
+          } else if (shareUrl) {
+            sourceUrl = shareUrl
+          }
+
+          // Dedupe against pending suggestions (exact title match) — same
+          // convention generate-meeting-suggestions uses for dci_suggested_tasks.
+          const { data: existing } = await supabase
+            .from('dci_suggested_tasks')
             .select('id')
             .eq('user_id', userId)
-            .eq('type', 'meeting_insight')
-            .eq('text', insightText)
-            .contains('source_ref', { transcript_id: transcript.id, speaker_name: q.speaker.trim() })
+            .eq('title', fields.title)
+            .eq('status', 'pending')
             .maybeSingle()
 
-          if (existingInsight) {
-            console.log(`Meeting insight already exists for transcript ${transcript.id} / speaker "${q.speaker}" — skipping`)
+          if (existing) {
+            console.log(`Quote suggestion already exists for transcript ${transcript.id} / speaker "${q.speaker}" — skipping`)
           } else {
             const { error: insightErr } = await supabase
-              .from('inbox_items')
+              .from('dci_suggested_tasks')
               .insert({
                 user_id: userId,
-                type: 'meeting_insight',
-                text: insightText,
-                status: 'open',
-                source_ref: sourceRef,
+                date: saidOn,
+                ...fields,
+                member_id: matched?.id ?? null,
+                recording_id: transcript.recording_id,
+                source_url: sourceUrl,
               })
 
             if (insightErr) {
-              console.error(`Failed to insert meeting_insight for transcript ${transcript.id}:`, insightErr.message)
+              console.error(`Failed to insert quote suggestion for transcript ${transcript.id}:`, insightErr.message)
             } else {
               insightsAddedForTranscript++
               totalInsightsAdded++
@@ -587,7 +558,7 @@ serve(async (req) => {
       }
 
       // ── Commitments: surface directional "who owes whom" rows in the inbox ──
-      // Additive to the quote/meeting_insight pass above — same transcript,
+      // Additive to the quote suggestion pass above — same transcript,
       // same Gemini call, independent insert target (type: agent_question,
       // matching the convention in extract-inbox-action-items/index.ts for
       // actionable Slack/Gmail findings) so this reuses the exact same
@@ -612,8 +583,8 @@ serve(async (req) => {
           saidOn,
         }, c)
 
-        // Dedup on (transcript, owner, commitment) — same idempotency pattern
-        // as the meeting_insight check above — so a manual re-extract (via
+        // Dedup on (transcript, owner, commitment) — same idempotency intent
+        // as the quote suggestion check above — so a manual re-extract (via
         // transcript_id) never duplicates rows.
         const commitmentText = buildCommitmentText(c, recording?.topic, saidOn)
         const { data: existingCommitment } = await supabase

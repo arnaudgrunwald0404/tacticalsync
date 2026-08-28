@@ -4,6 +4,7 @@ import { getTzAbbr } from '@/lib/prepScheduleTime';
 import { ArrowLeft, CalendarDays, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
@@ -24,6 +25,7 @@ function initials(name: string) {
 }
 
 export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack }: Props) {
+  const { user } = useCurrentUser();
   const member = event.team_member;
   const name = member?.name ?? event.attendee_name ?? event.attendee_email ?? 'Unknown';
   const role = member?.role ?? 'Team member';
@@ -39,7 +41,6 @@ export function MeetingDetailSidebarNav({ event, activeTab, onTabChange, onBack 
     if (!member?.id) return;
     const db = supabase as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data } = await db
         .from('cos_one_on_one_prep')

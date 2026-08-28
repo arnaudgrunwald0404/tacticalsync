@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ type MeetingSeriesRow = {
 
 const TeamInvite = () => {
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const { teamId } = useParams();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -74,11 +76,10 @@ const TeamInvite = () => {
 
   useEffect(() => {
     fetchTeam();
-  }, [teamId]);
+  }, [teamId, user]);
 
   const fetchTeam = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate("/auth");
         return;
@@ -99,15 +100,14 @@ const TeamInvite = () => {
       setInviteCode(team.invite_code);
 
       // Fetch current user's role
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
+      if (user) {
         // Check if user is super admin
         const { data: profileData } = await supabase
           .from("profiles")
           .select("is_super_admin")
-          .eq("id", currentUser.id)
+          .eq("id", user.id)
           .single();
-        
+
         setIsSuperAdmin((profileData as { is_super_admin?: boolean } | null)?.is_super_admin === true);
 
         // Get user's role in the team
@@ -115,7 +115,7 @@ const TeamInvite = () => {
           .from("team_members")
           .select("role")
           .eq("team_id", teamId)
-          .eq("user_id", currentUser.id)
+          .eq("user_id", user.id)
           .single();
         
         setUserRole(memberData?.role || "");
@@ -167,7 +167,6 @@ const TeamInvite = () => {
     setUpdatingName(true);
     try {
       // Check current user and their role
-      const { data: { user } } = await supabase.auth.getUser();
       console.log("Current user:", user?.id);
       
       // Check user's role in this team
@@ -320,7 +319,6 @@ const TeamInvite = () => {
 
     setSending(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       // Get user's name for the email
@@ -419,7 +417,6 @@ const TeamInvite = () => {
 
   const handleResendInvitation = async (email: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       // Get user's name for the email
@@ -527,7 +524,6 @@ const TeamInvite = () => {
 
   const handleLeaveTeam = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       const { error } = await supabase

@@ -11,6 +11,7 @@ import { Input } from "./input";
 import { Label } from "./label";
 import AvatarSelector from "@/components/AvatarSelector";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,7 @@ export function ProfileCompletionModal({
   initialData = { firstName: "", lastName: "", avatarName: "" }
 }: ProfileCompletionModalProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [firstName, setFirstName] = useState(initialData.firstName);
@@ -46,7 +48,6 @@ export function ProfileCompletionModal({
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
       console.log("Updating profile with:", {

@@ -15,7 +15,6 @@ import {
   type WorkflowStatus,
 } from '@/lib/inboxValidation';
 import { resolveNextOneOnOne } from '@/lib/oneOnOneResolution';
-import { planTriageInsert, planTriagePatch, type TriageAction } from '@/lib/meetingInsights';
 import { useToast } from '@/hooks/use-toast';
 
 // "Open the source" affordance for the DB-trigger-synced source_ref kinds
@@ -491,25 +490,6 @@ export function useInboxItems(
     ));
   }, [items, applyPatch]);
 
-  // Confirm/Save/Dismiss a meeting_insight row (PLAN_idea3_meeting_insights.md
-  // §4): plans the new task/note row (if any) and the patch to the original
-  // insight row via the pure planners in lib/meetingInsights.ts, then performs
-  // both writes through the existing addItem/updateItem primitives — no new
-  // mutation primitives needed, mirroring the syncBriefItem composite-mutation
-  // pattern above.
-  const triageInsight = useCallback(async (item: InboxItem, action: TriageAction) => {
-    const insertPlan = planTriageInsert(item, action);
-    if (insertPlan) {
-      await addItem(insertPlan.text, insertPlan.type, [], {
-        body: insertPlan.body ?? undefined,
-        source_ref: insertPlan.source_ref,
-      });
-    }
-    const patch = planTriagePatch(action);
-    await updateItem(item.id, patch as Partial<InboxItem>);
-    applyPatch(prev => prev.filter(i => i.id !== item.id));
-  }, [addItem, updateItem, applyPatch]);
-
   return {
     items,
     loading,
@@ -533,6 +513,5 @@ export function useInboxItems(
     snoozeItem,
     snoozeUntilNext1on1,
     unsnoozeItem,
-    triageInsight,
   };
 }

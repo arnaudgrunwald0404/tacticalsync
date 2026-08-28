@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useStrategicInitiatives } from '@/hooks/useRCDO';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function InitiativeDialog({
   onSuccess,
 }: InitiativeDialogProps) {
   const { toast } = useToast();
+  const { createInitiative } = useStrategicInitiatives(definingObjectiveId);
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -148,38 +150,12 @@ export function InitiativeDialog({
         end_date: formData.end_date || undefined,
       };
 
-      const { data: auth } = await supabase.auth.getUser();
-
-      const { error } = await supabase
-        .from('rc_strategic_initiatives')
-        .insert({
-          defining_objective_id: createData.defining_objective_id,
-          parent_si_id: null,
-          title: createData.title,
-          description: createData.description || null,
-          owner_user_id: createData.owner_user_id,
-          participant_user_ids: createData.participant_user_ids || [],
-          start_date: createData.start_date || null,
-          end_date: createData.end_date || null,
-          status: 'not_started',
-          created_by: auth?.user?.id || null,
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Strategic initiative created successfully',
-      });
+      await createInitiative(createData);
 
       handleClose();
       onSuccess?.();
-    } catch (err: unknown) {
-      toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to create initiative',
-        variant: 'destructive',
-      });
+    } catch {
+      // createInitiative already surfaces a toast on failure
     } finally {
       setLoading(false);
     }

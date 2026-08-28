@@ -3,6 +3,7 @@ import { format, addDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { PersonPage } from '@/components/inbox/PersonPage';
 import {
   Settings, AlignJustify, Layers, LayoutList, Bot, Trash2, X, Pin, Menu, Flame,
@@ -10,9 +11,7 @@ import {
   Loader2, CheckSquare, Search, Keyboard, type LucideIcon,
 } from 'lucide-react';
 import { InboxMeetingsView } from '@/components/inbox/InboxMeetingsView';
-import { MeetingInsightsIntroBanner } from '@/components/inbox/MeetingInsightsIntroBanner';
 import { WeekendBanner } from '@/components/WeekendBanner';
-import { useOnboardingState } from '@/hooks/useOnboardingState';
 import { MeetingDetailSidebarNav, type MeetingDetailTab } from '@/components/inbox/MeetingDetailSidebarNav';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 import { cn } from '@/lib/utils';
@@ -33,6 +32,7 @@ import { useInboxItems } from '@/hooks/useInboxItems';
 import { useInboxTags } from '@/hooks/useInboxTags';
 import { useInboxViews } from '@/hooks/useInboxViews';
 import { useFeatureAnnouncement } from '@/hooks/useFeatureAnnouncement';
+import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useSlackChannelOptions } from '@/hooks/useSlackChannelOptions';
 import { useMeetingTitleOptions } from '@/hooks/useMeetingTitleOptions';
@@ -250,6 +250,7 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const { memberId: routeMemberId } = useParams<{ memberId?: string }>();
   // Derived from the URL so navigating between /inbox, /inbox/meetings, and
   // /inbox/person/:memberId always switches the middle view — InboxPage stays
@@ -293,14 +294,12 @@ export default function InboxPage() {
   const isMobile = useIsMobile();
   const isTouch = useIsTouch();
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
-        setUserName(data.user.user_metadata?.full_name ?? data.user.email?.split('@')[0]);
-        setUserCreatedAt(data.user.created_at ?? null);
-      }
-    });
-  }, []);
+    if (user) {
+      setUserId(user.id);
+      setUserName(user.user_metadata?.full_name ?? user.email?.split('@')[0]);
+      setUserCreatedAt(user.created_at ?? null);
+    }
+  }, [user]);
 
   // "What's new" banner (Section 5.3/5.4) shows to *existing* users on their
   // first load after this release, not to a brand-new user who signs up
@@ -316,7 +315,6 @@ export default function InboxPage() {
   const { tags, loading: tagsLoading, createTag, createWorkstream, renameTag, updateTag, saveTagSettings, deleteTag, getOrCreate, reload: reloadTags } = useInboxTags(userId);
   const teamMembers = useTeamMembers(userId);
   const { views, createView, deleteView, toggleStar, starredView } = useInboxViews(userId);
-  const { onboarding, markComplete: markOnboardingComplete } = useOnboardingState();
 
   // Debounce the search box (~250ms) into the actual filter so the query
   // isn't refired on every keystroke.
@@ -452,7 +450,7 @@ export default function InboxPage() {
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
 
-  const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, triageInsight, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
+  const { items: rawItems, loading: itemsLoading, addItem, updateItem, markDone, archive, deleteItem, addTagToItem, removeTagFromItem, cycleWorkflowStatus, setWorkflowStatus, syncBriefItem, pinItem, acceptSuggestion, dismissSuggestion, snoozeItem, snoozeUntilNext1on1, unsnoozeItem, reload: reloadItems } = useInboxItems(userId, filter, mirrorToAllItems);
 
   // Gmail + Slack agent_question items live in the dark blue suggestions panel, not the main list.
   // Only items still requiring action (action_required: true) belong in the panel.
@@ -478,6 +476,7 @@ export default function InboxPage() {
   // re-shows once dismissed.
   const { seen: introSeen, markSeen: markIntroSeen } = useFeatureAnnouncement(userId, 'unified_funnel_intro_seen');
   const { seen: announcementSeen, markSeen: markAnnouncementSeen } = useFeatureAnnouncement(userId, 'unified_funnel_announcement_seen');
+  const { prefs: notificationPrefs } = useNotificationPreferences();
   // Person delegation (Idea #8): items delegated TO this user by a colleague.
   // InboxItemRow fetches its own per-row badge data (useIncomingDelegationForItem),
   // so this batched map is used only to decide whether to show the one-time
@@ -663,32 +662,31 @@ export default function InboxPage() {
   // before agent-tick will ever send a real nudge — see
   // maybeNudgeInboxItems()/decideOptInAction() in supabase/functions/agent-tick.
   const handleEnableInboxNudges = useCallback(async (item: InboxItem) => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     const { data: settings } = await supabase
       .from('cos_settings')
       .select('agent_config')
-      .eq('user_id', userData.user.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     const currentConfig = (settings?.agent_config as Record<string, unknown> | null) ?? {};
     await supabase
       .from('cos_settings')
       .upsert(
-        { user_id: userData.user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
+        { user_id: user.id, agent_config: { ...currentConfig, nudge_inbox_items: true } },
         { onConflict: 'user_id' },
       );
 
     await supabase.from('cos_agent_log').insert({
-      user_id: userData.user.id,
+      user_id: user.id,
       event_type: 'inbox_optin_accepted',
       item_id: item.id,
       payload: {},
     });
 
     await archive(item.id);
-  }, [archive]);
+  }, [archive, user]);
 
   // "Not now" on the opt-in prompt is just the item's normal archive action —
   // but agent-tick's decideOptInAction() (Section 5.1) needs to know a
@@ -702,10 +700,9 @@ export default function InboxPage() {
       && item.agent_payload?.source === 'inbox_agent_optin_prompt';
 
     if (isOptInDecline) {
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData.user) {
+      if (user) {
         await supabase.from('cos_agent_log').insert({
-          user_id: userData.user.id,
+          user_id: user.id,
           event_type: 'inbox_optin_declined',
           item_id: id,
           payload: {},
@@ -714,7 +711,7 @@ export default function InboxPage() {
     }
 
     await archive(id);
-  }, [allItems, archive]);
+  }, [allItems, archive, user]);
 
   // "Add to inbox" on an AI-extracted suggestion (Slack DM/channel, Gmail,
   // Zoom commitment — see extract-inbox-action-items/index.ts and
@@ -1208,7 +1205,7 @@ export default function InboxPage() {
       {/* Main stream + drawer */}
       <div className="flex-1 flex min-w-0 overflow-hidden gap-3">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden gap-2">
-      <WeekendBanner bare />
+      {notificationPrefs.weekend_banner && <WeekendBanner bare />}
       {activePanel === 'inbox' && announcementSeen === false && (
         <UnifiedFunnelAnnouncementBanner onDismiss={markAnnouncementSeen} />
       )}
@@ -1516,14 +1513,6 @@ export default function InboxPage() {
               onApproveGmailItem={handleApproveSuggestion}
             />
           )}
-          {/* First-run intro banner (plan §9.1/§9.4) — shown once, above the
-              list, the first time this user's inbox has an open
-              meeting_insight item they haven't been introduced to yet. */}
-          {!onboarding.meetingInsightsIntro && items.some(i => i.type === 'meeting_insight' && i.status === 'open') && (
-            <div className="px-3 sm:px-4 pt-2">
-              <MeetingInsightsIntroBanner onDismiss={() => markOnboardingComplete('meetingInsightsIntro')} />
-            </div>
-          )}
           {syncing ? (
             <div className="flex flex-col items-center justify-center h-56 gap-3 px-6 text-center">
               <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
@@ -1586,7 +1575,6 @@ export default function InboxPage() {
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
               onCtaClick={handleCtaClick}
-              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               prioritizeMode={prioritizeMode}
@@ -1615,7 +1603,6 @@ export default function InboxPage() {
               onAcceptSuggestion={(it, s) => acceptSuggestion(it.id, s)}
               onDismissSuggestion={dismissSuggestion}
               onCtaClick={handleCtaClick}
-              onTriageInsight={triageInsight}
               selectedIds={selected}
               onSelect={handleSelect}
               onSnooze={handleSnooze}

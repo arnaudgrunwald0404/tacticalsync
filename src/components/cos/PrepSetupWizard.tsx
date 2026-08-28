@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { formatHourLabel, getBrowserTimezone } from '@/hooks/usePrepScheduleConfig';
 import IntegrationInfoPopover from '@/components/cos/IntegrationInfoPopover';
@@ -61,6 +62,7 @@ interface PrepSetupWizardProps {
 
 export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }: PrepSetupWizardProps) {
   const { toast } = useToast();
+  const { user } = useCurrentUser();
   const [step, setStep] = useState(calendarAlreadyConnected ? 1 : 0);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -95,7 +97,6 @@ export default function PrepSetupWizard({ onComplete, calendarAlreadyConnected }
 
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
 

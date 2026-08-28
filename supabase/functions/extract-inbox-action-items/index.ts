@@ -11,6 +11,8 @@ import {
   normalizeChannelName,
   parseSenderEmail,
   inferSuppressionRules,
+  isAutomatedSender,
+  isCalendarInvite,
   type SenderTier,
   type IntentType,
   type SuppressionRules,
@@ -136,9 +138,9 @@ emails for things the reader should not miss: direct questions aimed at them,
 requests for action or decisions, introductions to new people, threads where
 a decision is stalled waiting on them, commitments that need follow-up, and
 deadline or training reminders that require the reader to complete something.
-Automated emails (from no-reply or system addresses) still qualify if they
-contain a concrete action the reader must take — e.g. complete a training,
-fill out a form, approve a request, respond by a deadline.
+Automated/system notification emails (no-reply, alerts) and calendar invites
+have already been filtered out of this batch — everything below is from a
+real person.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
 
@@ -258,6 +260,48 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
   }
 }
 
+// Auto-closes open Slack agent_question items once the user has replied in
+// the same channel/DM after the flagged message — otherwise a question
+// answered live in Slack (rather than via the inbox's dismiss button) keeps
+// resurfacing forever, since the dedup in the main loop only prevents
+// re-inserting the same item, it never re-checks ones already created.
+async function reconcileAnsweredSlackItems(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  mySlackId: string,
+): Promise<void> {
+  const { data: openItems } = await supabase
+    .from('inbox_items')
+    .select('id, source_ref')
+    .eq('user_id', userId)
+    .eq('type', 'agent_question')
+    .eq('status', 'open')
+    .contains('source_ref', { type: 'slack_message' })
+
+  for (const item of (openItems ?? []) as unknown as Array<{ id: string; source_ref: { id?: string } | null }>) {
+    const sourceId = item.source_ref?.id
+    if (!sourceId || !sourceId.includes(':')) continue
+    const [channelId, ts] = sourceId.split(':')
+    if (!channelId || !ts) continue
+
+    const { data: laterOwnMessages } = await supabase
+      .from('cos_slack_messages')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('channel_id', channelId)
+      .eq('sender_slack_id', mySlackId)
+      .gt('message_ts', ts)
+      .limit(1)
+
+    if (laterOwnMessages && laterOwnMessages.length > 0) {
+      await supabase.from('inbox_items').update({
+        status: 'archived',
+        archived_at: new Date().toISOString(),
+      }).eq('id', item.id)
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -348,9 +392,18 @@ serve(async (req) => {
         // ── Slack: refresh the cache, then read only what's new ────────────
         const { data: slackCreds } = await supabase
           .from('user_slack_credentials')
-          .select('access_token, sync_channels')
+          .select('access_token, sync_channels, slack_user_id')
           .eq('user_id', userId)
           .maybeSingle()
+
+        // Close out previously-surfaced Slack suggestions the user has since
+        // answered directly in Slack (a reply in the same channel/DM after
+        // the flagged message), rather than only through the inbox UI's
+        // dismiss button — this runs regardless of whether a fresh scan
+        // happens below, so a quiet run still clears stale items.
+        if (slackCreds?.access_token && slackCreds.slack_user_id) {
+          await reconcileAnsweredSlackItems(supabase, userId, slackCreds.slack_user_id as string)
+        }
 
         // The channel allowlist a user configures in Settings → Briefs &
         // Schedule → Tools is stored on cos_prep_schedule.slack_channels —
@@ -563,6 +616,7 @@ serve(async (req) => {
                 const subject = headers.find(h => h.name.toLowerCase() === 'subject')?.value ?? '(no subject)'
 
                 const senderEmail = parseSenderEmail(from)
+                if (isAutomatedSender(senderEmail) || isCalendarInvite(subject, senderEmail)) continue
                 const tier = classifySenderTier(senderEmail, sentAddresses)
                 if (tier === null) continue
                 const senderTier: SenderTier = tier

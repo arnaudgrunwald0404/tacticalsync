@@ -35,6 +35,7 @@ import { getFullNameForAvatar } from '@/lib/nameUtils';
 import { parseLocalDate } from '@/lib/dateUtils';
 import { isCheckinStale } from '@/lib/rcdoStaleness';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { useActiveCycle } from '@/hooks/useRCDO';
 import { DetailPageHeader, type DetailPageHeaderProps } from '@/components/rcdo/DetailPageHeader';
 import { LinkedMeetingItems } from '@/components/rcdo/LinkedMeetingItems';
@@ -54,6 +55,7 @@ export default function SIDetail() {
   const [editingTaskId, setEditingTaskId] = useState<string | undefined>();
   const [showCheckInDialog, setShowCheckInDialog] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const { setNavState } = useRCDODetail();
@@ -216,14 +218,10 @@ export default function SIDetail() {
   }, [siId]);
 
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    };
-    getCurrentUser();
-  }, []);
+    if (user) {
+      setCurrentUserId(user.id);
+    }
+  }, [user]);
 
   // Real-time updates
   useRCDORealtime({
@@ -355,7 +353,7 @@ export default function SIDetail() {
     siDetails.defining_objective?.owner_user_id,
     siDetails.created_by
   );
-  
+
   const canEditTaskForItem = (task: TaskWithRelations) => {
     return canEditTask(task.owner_user_id, siDetails?.owner_user_id as string | undefined);
   };
@@ -415,7 +413,7 @@ export default function SIDetail() {
     }
 
     try {
-      await lockInitiative(siDetails.id as string);
+      await lockInitiative(siDetails.id as string, currentUserId ?? undefined);
       await refetchSI();
     } catch (e) {
       console.warn('Failed to lock SI', e);
@@ -592,6 +590,11 @@ export default function SIDetail() {
           try { await updateInitiative(siDetails.id as string, { description: val || null }); await refetchSI(); }
           catch (e) { toast({ title: 'Update failed', description: 'Could not save description', variant: 'destructive' }); }
         }}
+        primarySuccessMetric={siDetails.primary_success_metric as string | null ?? ''}
+        onPrimarySuccessMetricChange={async (val) => {
+          try { await updateInitiative(siDetails.id as string, { primary_success_metric: val || null }); await refetchSI(); }
+          catch (e) { toast({ title: 'Update failed', description: 'Could not save primary success metric', variant: 'destructive' }); }
+        }}
         onOwnerChange={async (val) => {
           try { await updateInitiative(siDetails.id as string, { owner_user_id: val }); await refetchSI(); }
           catch (e) { toast({ title: 'Update failed', description: 'Could not save owner', variant: 'destructive' }); }
@@ -603,6 +606,15 @@ export default function SIDetail() {
         onEndDateChange={async (val) => handleDateChange('end_date', val)}
         dateError={dateError}
         onBreakIntoSubSIs={!isSubSI && (!acceptsSubSis || subSIs.length === 0) ? () => handleToggleSubSiMode(!acceptsSubSis) : undefined}
+        onStatusChange={async (value) => {
+          try {
+            await updateInitiative(siDetails.id as string, { status: value });
+            await refetchSI();
+            toast({ title: 'Status updated', description: 'Strategic initiative status has been updated' });
+          } catch (e) {
+            toast({ title: 'Update failed', description: 'Could not save status change', variant: 'destructive' });
+          }
+        }}
       />
 
           {/* Tabs */}

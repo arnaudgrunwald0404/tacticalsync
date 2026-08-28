@@ -33,7 +33,7 @@ npm run db:reset         # Reset local DB (destructive)
 - **Server state:** TanStack React Query — no Redux/Zustand
 - **Backend:** Supabase (PostgreSQL + RLS + Realtime)
 - **Forms:** React Hook Form + Zod
-- **Rich text:** TipTap; **Collaboration:** Yjs + y-websocket
+- **Rich text:** TipTap
 - **Animations:** Framer Motion
 
 ### Data Flow Pattern

@@ -13,7 +13,7 @@ import { useActiveCycle } from "@/hooks/useRCDO";
 import { useRoles } from "@/hooks/useRoles";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { supabase } from "@/integrations/supabase/client";
+import { useCurrentUser } from "@/contexts/AuthContext";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 const DashboardWithTabs = () => {
@@ -26,10 +26,11 @@ const DashboardWithTabs = () => {
   // admin-only — a manager with direct reports (tracked in cos_team_members)
   // needs it too, for the manager-signals/coaching-prep section. Admins keep
   // access to the existing priority-analysis content on the same page.
+  const { user } = useCurrentUser();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
-  }, []);
+    setCurrentUserId(user?.id ?? null);
+  }, [user]);
   const cosMembers = useTeamMembers(currentUserId);
   const hasDirectReports = cosMembers.some((m) => m.relationship_type === "direct_report");
   const showInsights = isAdmin || isSuperAdmin || hasDirectReports;

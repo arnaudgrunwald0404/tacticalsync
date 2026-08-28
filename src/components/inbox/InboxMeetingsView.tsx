@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import { TeamSection, type CosTeamMember } from '@/pages/ChiefOfStaff';
 import { MeetingDetailPanel } from '@/components/inbox/MeetingDetailPanel';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
@@ -17,6 +18,7 @@ interface InboxMeetingsViewProps {
 }
 
 export function InboxMeetingsView({ search = '', onSyncInfoChange, selectedEvent: selectedEventProp, onSelectEvent, activeTab, onTabChange }: InboxMeetingsViewProps) {
+  const { user } = useCurrentUser();
   const [members, setMembers] = useState<CosTeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventInternal, setSelectedEventInternal] = useState<UpcomingOneOnOneEvent | null>(null);
@@ -28,7 +30,6 @@ export function InboxMeetingsView({ search = '', onSyncInfoChange, selectedEvent
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data } = await supabase
         .from('cos_team_members')
@@ -39,7 +40,7 @@ export function InboxMeetingsView({ search = '', onSyncInfoChange, selectedEvent
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

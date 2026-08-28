@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/contexts/AuthContext';
 import type { StrategicInitiativeWithRelations } from '@/types/rcdo';
 
 // Fetch direct children (sub-SIs) of a parent SI, ordered by display_order.
@@ -11,6 +12,7 @@ export function useSubSIs(parentSiId: string | undefined) {
   const [subSIs, setSubSIs] = useState<StrategicInitiativeWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const fetchSubSIs = useCallback(async () => {
     if (!parentSiId) {
@@ -62,7 +64,6 @@ export function useSubSIs(parentSiId: string | undefined) {
       : 0;
 
     try {
-      const { data: auth } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('rc_strategic_initiatives')
         .insert({
@@ -71,8 +72,8 @@ export function useSubSIs(parentSiId: string | undefined) {
           title,
           status: 'not_started',
           display_order: nextDisplayOrder,
-          owner_user_id: auth?.user?.id ?? null,
-          created_by: auth?.user?.id ?? null,
+          owner_user_id: user?.id ?? null,
+          created_by: user?.id ?? null,
         } as never)
         .select(`
           *,
@@ -92,7 +93,7 @@ export function useSubSIs(parentSiId: string | undefined) {
       });
       return null;
     }
-  }, [parentSiId, subSIs, fetchSubSIs, toast]);
+  }, [parentSiId, subSIs, fetchSubSIs, toast, user]);
 
   return { subSIs, loading, refetch: fetchSubSIs, createSubSI };
 }
