@@ -127,7 +127,14 @@ async function extractFindings(
   userId: string,
   items: ScanItem[],
 ): Promise<Finding[]> {
-  const numbered = items.map(i => `${i.id}) [${i.label}] ${i.text}`).join('\n')
+  const numbered = items.map(i => {
+    // Gmail items carry the reply-relationship marker the prompt's cold-outreach
+    // rule keys off; Slack items (workspace-internal by definition) carry none.
+    const tierMarker = i.source === 'gmail' && i.senderTier
+      ? (i.senderTier === 'active' ? ' [replied-before]' : ' [never-replied]')
+      : ''
+    return `${i.id}) [${i.label}]${tierMarker} ${i.text}`
+  }).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
   const msg = await ai.messages.create({
@@ -143,6 +150,26 @@ have already been filtered out of this batch — everything below is from a
 real person.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
+
+Emails are marked [replied-before] (the reader has previously replied to that
+sender) or [never-replied] (the reader never has). Exclude unprompted
+commercial outreach from [never-replied] senders: cold pitches for products,
+services, consulting, demos, surveys, investment offers, research interviews,
+or event marketing. Cold outreach often masquerades as ongoing work —
+first-name familiarity, "circling back", invented deadlines, or an "ask"
+framed as a decision the reader owes someone. If a [never-replied] sender's
+request only advances that sender's own sales or marketing process, return
+nothing for it. [replied-before] senders are established correspondents;
+judge their messages normally — except that promotional content is excluded
+regardless of relationship: product promotions, webinar/conference/vendor
+event invitations (including panel or speaker invitations), sponsorship
+pitches, and newsletters never qualify, even from a sender the reader knows.
+A concrete work thread with a vendor the reader is actively engaged with
+(contract terms, support, scheduled joint work) still qualifies.
+
+Also exclude tactical/administrative chores that take two clicks to resolve
+in the source tool and don't belong on an attention list: folder-share
+approvals, document access/permission requests, and similar.
 
 These summaries are shown directly to the reader, so always refer to them as
 "you"/"your" — never by their own name, even if it appears in the text.
