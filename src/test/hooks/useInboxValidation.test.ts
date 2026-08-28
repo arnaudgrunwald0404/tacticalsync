@@ -32,7 +32,7 @@ const mockedFrom = (supabase as unknown as { from: ReturnType<typeof vi.fn> }).f
 function buildBuilder() {
   insertSpy = vi.fn(() => builder);
   builder = {};
-  const passthrough = ['select', 'eq', 'in', 'order', 'update', 'delete', 'not', 'limit', 'contains'];
+  const passthrough = ['select', 'eq', 'neq', 'in', 'order', 'update', 'delete', 'not', 'limit', 'contains'];
   for (const m of passthrough) builder[m] = vi.fn(() => builder);
   builder.insert = insertSpy;
   builder.single = vi.fn(() => Promise.resolve({ data: { id: 'new-id' }, error: null }));

@@ -27,7 +27,7 @@ function buildBuilder() {
   orSpy = vi.fn(() => builder);
   inSpy = vi.fn(() => builder);
   builder = {};
-  const passthrough = ['select', 'eq', 'order', 'not', 'limit', 'contains'];
+  const passthrough = ['select', 'eq', 'neq', 'order', 'not', 'limit', 'contains'];
   for (const m of passthrough) builder[m] = vi.fn(() => builder);
   builder.or = orSpy;
   builder.in = inSpy;

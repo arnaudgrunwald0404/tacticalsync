@@ -106,6 +106,11 @@ export function useInboxItems(
       .select('*')
       .eq('user_id', userId)
       .eq('status', targetStatus)
+      // meeting_insight rows (Zoom-extracted quotes) are triage fodder for a
+      // future stakeholder/person page, not tasks — they don't belong in the
+      // inbox list, sidebar counts, or search. Extraction still writes them
+      // to inbox_items (untouched), they're just never fetched here.
+      .neq('type', 'meeting_insight')
       .order('created_at', { ascending: false });
 
     if (filter.types?.length) {

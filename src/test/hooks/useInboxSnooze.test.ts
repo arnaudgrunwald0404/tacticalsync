@@ -33,7 +33,7 @@ const mockedFrom = (supabase as unknown as { from: ReturnType<typeof vi.fn> }).f
 function makeInboxItemsBuilder() {
   inboxItemsUpdateSpy = vi.fn(() => builder);
   const builder: Record<string, unknown> = {};
-  const passthrough = ['select', 'eq', 'in', 'order', 'not', 'limit', 'contains'];
+  const passthrough = ['select', 'eq', 'neq', 'in', 'order', 'not', 'limit', 'contains'];
   for (const m of passthrough) builder[m] = vi.fn(() => builder);
   builder.update = inboxItemsUpdateSpy;
   builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
