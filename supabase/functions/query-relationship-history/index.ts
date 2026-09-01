@@ -1,12 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
-import { logAiUsage } from "../_shared/aiUsage.ts"
+import { geminiChat, GEMINI_PRO_MODEL } from "../_shared/gemini.ts"
 
 // ── Group meeting query handler ────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs, anthropicApiKey }: {
-  supabase: any; userId: string; group_meeting_id: string; question: string; startMs: number; anthropicApiKey: string;
+async function handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs, googleApiKey }: {
+  supabase: any; userId: string; group_meeting_id: string; question: string; startMs: number; googleApiKey: string;
 }): Promise<Response> {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -105,27 +104,23 @@ RULES:
 
 ${contextParts.join('\n')}`
 
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
-    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: question.trim() }],
+  const response = await geminiChat(googleApiKey, {
+    model: GEMINI_PRO_MODEL,
+    system: systemPrompt,
+    contents: [{ role: 'user', parts: [{ text: question.trim() }] }],
+    label: 'group relationship query',
+    log: { functionName: 'query-relationship-history', userId },
   })
-  await logAiUsage('query-relationship-history', response, { userId })
 
-  const answer = response.content
-    .filter((b: { type: string }) => b.type === 'text')
-    .map((b: { type: string; text: string }) => b.text)
-    .join('\n')
+  const answer = response.text
 
   await supabase.from('prep_generation_log').insert({
     user_id: userId,
     group_meeting_id,
     prep_id: null,
-    input_tokens: response.usage?.input_tokens ?? 0,
-    output_tokens: response.usage?.output_tokens ?? 0,
-    model: 'claude-sonnet-4-6',
+    input_tokens: response.usage.inputTokens,
+    output_tokens: response.usage.outputTokens,
+    model: GEMINI_PRO_MODEL,
     duration_ms: Date.now() - startMs,
     data_sources_used: ['group_relationship_query'],
   })
@@ -134,7 +129,7 @@ ${contextParts.join('\n')}`
     answer,
     member_name: meeting.title,
     context_size: { preps: preps.length, topics: topics.length, actions: actions.length },
-    token_usage: { input_tokens: response.usage?.input_tokens ?? 0, output_tokens: response.usage?.output_tokens ?? 0 },
+    token_usage: { input_tokens: response.usage.inputTokens, output_tokens: response.usage.outputTokens },
   }, 200)
 }
 
@@ -174,10 +169,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) {
-      return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) {
+      return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
 
     // Auth
@@ -207,7 +202,7 @@ serve(async (req) => {
 
     // Route to group meeting path if group_meeting_id provided
     if (group_meeting_id) {
-      return handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs: Date.now(), anthropicApiKey })
+      return handleGroupQuery({ supabase, userId, group_meeting_id, question, startMs: Date.now(), googleApiKey })
     }
 
     // Rate limit: 10 queries per user per day
@@ -388,23 +383,18 @@ ${contextParts.join('\n')}`
 
     // ── Call Claude ───────────────────────────────────────────────────────
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: question.trim() }],
+    const response = await geminiChat(googleApiKey, {
+      model: GEMINI_PRO_MODEL,
+      system: systemPrompt,
+      contents: [{ role: 'user', parts: [{ text: question.trim() }] }],
+      label: 'relationship query',
+      log: { functionName: 'query-relationship-history', userId },
     })
-    await logAiUsage('query-relationship-history', response, { userId })
 
-    const answer = response.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
-      .join('\n')
+    const answer = response.text
 
-    const inputTokens = response.usage?.input_tokens ?? 0
-    const outputTokens = response.usage?.output_tokens ?? 0
+    const inputTokens = response.usage.inputTokens
+    const outputTokens = response.usage.outputTokens
 
     // Log for cost tracking + rate limiting
     await supabase.from('prep_generation_log').insert({
@@ -413,7 +403,7 @@ ${contextParts.join('\n')}`
       prep_id: null,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      model: 'claude-sonnet-4-6',
+      model: GEMINI_PRO_MODEL,
       duration_ms: Date.now() - startMs,
       data_sources_used: ['relationship_query'],
     })

@@ -42,29 +42,38 @@ export interface NudgeHistoryEntry {
   item_id: string
   event_type: 'inbox_due_nudge_sent' | 'inbox_due_nudge_capped' | 'inbox_nudge_sent' | 'inbox_nudge_capped'
   created_at: string // ISO timestamp
+  /** For 'inbox_due_nudge_sent': the item's priority_due_at at send time
+   *  (agent-tick has always recorded it in the log payload). Distinguishes
+   *  "already nudged for this exact deadline" from "the deadline was moved
+   *  after the nudge". */
+  due_at?: string | null
 }
 
 export interface DueNudgeDecision {
   toNudge: string[]
-  newlyCapped: string[]
 }
 
 // ── Due-date nudge filtering (plan Section 3) ───────────────────────────────────
 
 /**
  * Selects open, fixed-due-date items whose due date falls within the nudge
- * window, excluding anything already nudged today or already capped, and
- * separately reports items that just crossed the nudge_max_count ceiling
- * (analogous to nudgeActionItems()'s "newlyCapped" step in agent-tick).
+ * window. An item is nudged at most ONCE per deadline: the nudge rows render
+ * identically, so a repeat is pure inbox noise. Any prior
+ * 'inbox_due_nudge_sent' for the same due_at — or one with no recorded
+ * due_at, treated conservatively as covering the current one — permanently
+ * excludes the item. The only path to a second nudge is the due date being
+ * moved after the first (e.g. the Slack "Snooze 2 days" action pushing
+ * priority_due_at out), which makes it a genuinely new deadline. Legacy
+ * 'inbox_due_nudge_capped' markers from the retired N-nudges-then-cap scheme
+ * also silence an item for good.
  */
 export function selectDueItemsToNudge(
   items: DueInboxItem[],
   history: NudgeHistoryEntry[],
-  config: Pick<InboxNudgeAgentConfig, 'nudge_timing_hours' | 'nudge_max_count'>,
+  config: Pick<InboxNudgeAgentConfig, 'nudge_timing_hours'>,
   now: Date = new Date(),
 ): DueNudgeDecision {
   const windowEndMs = now.getTime() + config.nudge_timing_hours * 3600 * 1000
-  const todayKey = now.toISOString().slice(0, 10)
 
   const eligible = items.filter((item) => {
     if (item.status !== 'open') return false
@@ -75,40 +84,32 @@ export function selectDueItemsToNudge(
     return dueMs <= windowEndMs
   })
 
-  const dueHistory = history.filter(
-    (h) => h.event_type === 'inbox_due_nudge_sent' || h.event_type === 'inbox_due_nudge_capped',
-  )
+  const silencedItems = new Set<string>()
+  const sentDueAtsByItem = new Map<string, Set<string>>()
 
-  const countByItem = new Map<string, number>()
-  const cappedItems = new Set<string>()
-  const nudgedToday = new Set<string>()
-
-  for (const h of dueHistory) {
+  for (const h of history) {
     if (h.event_type === 'inbox_due_nudge_capped') {
-      cappedItems.add(h.item_id)
-      continue
+      silencedItems.add(h.item_id)
+    } else if (h.event_type === 'inbox_due_nudge_sent') {
+      if (h.due_at == null) {
+        silencedItems.add(h.item_id)
+      } else {
+        const dueAts = sentDueAtsByItem.get(h.item_id) ?? new Set<string>()
+        dueAts.add(h.due_at)
+        sentDueAtsByItem.set(h.item_id, dueAts)
+      }
     }
-    countByItem.set(h.item_id, (countByItem.get(h.item_id) ?? 0) + 1)
-    if (h.created_at.slice(0, 10) === todayKey) nudgedToday.add(h.item_id)
   }
-
-  const newlyCapped = eligible
-    .filter((i) => !cappedItems.has(i.id) && (countByItem.get(i.id) ?? 0) >= config.nudge_max_count)
-    .map((i) => i.id)
-
-  const newlyCappedSet = new Set(newlyCapped)
 
   const toNudge = eligible
     .filter(
       (i) =>
-        !nudgedToday.has(i.id) &&
-        !cappedItems.has(i.id) &&
-        !newlyCappedSet.has(i.id) &&
-        (countByItem.get(i.id) ?? 0) < config.nudge_max_count,
+        !silencedItems.has(i.id) &&
+        !(sentDueAtsByItem.get(i.id)?.has(i.priority_due_at!) ?? false),
     )
     .map((i) => i.id)
 
-  return { toNudge, newlyCapped }
+  return { toNudge }
 }
 
 // ── Pre-1:1 nudge windowing (plan Section 2) ────────────────────────────────────

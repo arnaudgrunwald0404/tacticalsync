@@ -28,6 +28,12 @@ describe("getModelRate", () => {
     expect(getModelRate("claude-haiku-4-5-20251001")).toEqual(MODEL_RATES["claude-haiku-4-5"]);
   });
 
+  it("prices the Gemini models used by _shared/gemini.ts", () => {
+    expect(getModelRate("gemini-2.5-flash")).toEqual(MODEL_RATES["gemini-2.5-flash"]);
+    // GEMINI_PRO_MODEL alias must not hit the fallback rate
+    expect(getModelRate("gemini-pro-latest")).toEqual(MODEL_RATES["gemini-2.5-pro"]);
+  });
+
   it("falls back to a non-zero rate for unknown models", () => {
     const rate = getModelRate("claude-future-9");
     expect(rate.input).toBeGreaterThan(0);

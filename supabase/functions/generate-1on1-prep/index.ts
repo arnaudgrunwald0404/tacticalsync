@@ -1,10 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiChat, GEMINI_MODEL, GEMINI_PRO_MODEL } from "../_shared/gemini.ts"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
 import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
-import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,10 +40,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) {
-      return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) {
+      return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
 
     // Auth — supports two modes:
@@ -900,25 +899,20 @@ ${prepInstructions ? `Standing instructions from the user:\n${prepInstructions}\
 
 ${contextParts.join('\n')}`
 
-    // ── Call Claude API ────────────────────────────────────────────────────
+    // ── Call Gemini API ────────────────────────────────────────────────────
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+    const message = await geminiChat(googleApiKey, {
+      model: GEMINI_PRO_MODEL,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      label: '1:1 prep brief',
+      log: { functionName: 'generate-1on1-prep', userId },
     })
-    await logAiUsage('generate-1on1-prep', message, { userId })
 
-    const generatedContent = message.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
-      .join('\n')
+    const generatedContent = message.text
 
-    const inputTokens = message.usage?.input_tokens ?? 0
-    const outputTokens = message.usage?.output_tokens ?? 0
+    const inputTokens = message.usage.inputTokens
+    const outputTokens = message.usage.outputTokens
 
     // ── Store result ───────────────────────────────────────────────────────
 
@@ -951,7 +945,7 @@ ${contextParts.join('\n')}`
       prep_id: upserted?.id ?? null,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      model: 'claude-sonnet-4-6',
+      model: GEMINI_PRO_MODEL,
       duration_ms: Date.now() - startMs,
       data_sources_used: dataSources,
     })
@@ -971,9 +965,9 @@ ${contextParts.join('\n')}`
     // This builds the per-person topic timeline over time.
     if (upserted?.id) {
       try {
-        const extractionResponse = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 600,
+        const extractionResponse = await geminiChat(googleApiKey, {
+          model: GEMINI_MODEL,
+          label: '1:1 prep topic extraction',
           system: `Extract 3-8 discussion topics from the 1:1 prep brief below.
 
 Return a JSON array where each element has:
@@ -983,14 +977,11 @@ Return a JSON array where each element has:
 - "snippet": a 1-sentence excerpt from the brief that mentions this topic
 
 Return ONLY the JSON array, no markdown fences or other text.`,
-          messages: [{ role: 'user', content: generatedContent }],
+          contents: [{ role: 'user', parts: [{ text: generatedContent }] }],
+          log: { functionName: 'generate-1on1-prep', userId },
         })
-        await logAiUsage('generate-1on1-prep', extractionResponse, { userId })
 
-        const extractionText = extractionResponse.content
-          .filter((b: { type: string }) => b.type === 'text')
-          .map((b: { type: string; text: string }) => b.text)
-          .join('')
+        const extractionText = extractionResponse.text
 
         let extractedTopics: Array<{
           topic: string; category: string; sentiment: string; snippet: string
@@ -1116,15 +1107,15 @@ Return ONLY the JSON array, no markdown fences or other text.`,
         }
 
         // Log extraction token usage
-        const extractInputTokens = extractionResponse.usage?.input_tokens ?? 0
-        const extractOutputTokens = extractionResponse.usage?.output_tokens ?? 0
+        const extractInputTokens = extractionResponse.usage.inputTokens
+        const extractOutputTokens = extractionResponse.usage.outputTokens
         await supabase.from('prep_generation_log').insert({
           user_id: userId,
           team_member_id: team_member_id,
           prep_id: upserted.id,
           input_tokens: extractInputTokens,
           output_tokens: extractOutputTokens,
-          model: 'claude-haiku-4-5-20251001',
+          model: GEMINI_MODEL,
           duration_ms: 0, // Not tracked separately
           data_sources_used: ['topic_extraction'],
         })

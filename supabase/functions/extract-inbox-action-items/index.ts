@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "npm:@anthropic-ai/sdk"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
-import { logAiUsage } from "../_shared/aiUsage.ts"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 import {
   classifySenderTier,
   shouldSuppressMessage,
@@ -124,7 +123,7 @@ interface Finding {
   due_date: string | null
 }
 
-const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
+const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
 async function extractFindings(
   supabase: ReturnType<typeof createClient>,
@@ -141,10 +140,7 @@ async function extractFindings(
   }).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
-  const msg = await ai.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 4096,
-    system: `Today's date is ${todayIso}. You review a batch of Slack messages and
+  const raw = await geminiGenerateText(googleApiKey, `Today's date is ${todayIso}. You review a batch of Slack messages and
 emails for things the reader should not miss: direct questions aimed at them,
 requests for action or decisions, introductions to new people, threads where
 a decision is stalled waiting on them, commitments that need follow-up, and
@@ -201,13 +197,12 @@ owed_by rules:
 For "due_date", resolve any explicit or clearly-implied deadline to an
 absolute YYYY-MM-DD date — e.g. "by Friday" → next Friday, "EOD tomorrow" →
 tomorrow. Use null when no deadline is stated or implied.
-Return [] if nothing qualifies.`,
-    messages: [{ role: 'user', content: numbered }],
-  })
-  await logAiUsage('extract-inbox-action-items', msg, { userId })
+Return [] if nothing qualifies.
 
-  const raw = (msg.content[0] as { text: string }).text
-  // Strip markdown code fences if Claude wraps the JSON (```json ... ``` or ``` ... ```)
+ITEMS TO REVIEW
+${numbered}`, { label: 'extract inbox findings', log: { functionName: 'extract-inbox-action-items', userId } })
+
+  // Strip markdown code fences if the model wraps the JSON (```json ... ``` or ``` ... ```)
   const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
   try {
     const parsed = JSON.parse(text)
@@ -268,13 +263,10 @@ Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
   try {
-    const message = await ai.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
+    const raw = await geminiGenerateText(googleApiKey, prompt, {
+      label: 'suggest inbox tags',
+      log: { functionName: 'extract-inbox-action-items' },
     })
-    await logAiUsage('extract-inbox-action-items', message)
-    const raw = (message.content[0] as { text: string }).text.trim()
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []

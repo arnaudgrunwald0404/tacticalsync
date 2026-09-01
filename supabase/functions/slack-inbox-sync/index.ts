@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "npm:@anthropic-ai/sdk"
-import { logAiUsage } from "../_shared/aiUsage.ts"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +39,7 @@ interface InboxTagRow { id: string; name: string; type: string; color: string }
 interface TagSuggestion { tag_id: string; tag_name: string; color: string; reason: string }
 
 async function suggestTagsForSuggestion(
-  anthropic: Anthropic,
+  googleApiKey: string,
   tags: InboxTagRow[],
   opts: { title: string; rawContext: string | null },
 ): Promise<TagSuggestion[]> {
@@ -59,13 +58,10 @@ Return at most 2 tags. Only suggest if confident. A person tag fits ONLY if that
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one sentence>" }]`
 
   try {
-    const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
+    const raw = await geminiGenerateText(googleApiKey, prompt, {
+      label: 'suggest slack tags',
+      log: { functionName: 'slack-inbox-sync' },
     })
-    await logAiUsage('slack-inbox-sync', msg)
-    const raw = (msg.content[0] as { type: string; text: string }).text.trim()
     const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []
@@ -111,10 +107,8 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
     if (!googleApiKey) return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
 
     // Auth: service-role from agent-tick or user JWT.
@@ -332,7 +326,6 @@ Respond with valid JSON only:
     }
 
     // ── 8. Deduplicate + insert ─────────────────────────────────────────────
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
     const today = new Date().toISOString().slice(0, 10)
     let suggestionsAdded = 0
     const addedBySourceId = new Map<string, number>()
@@ -340,7 +333,7 @@ Respond with valid JSON only:
     for (const item of allItems) {
       if (existingTexts.some(t => isSimilarText(item.title, t))) continue
 
-      const tagSuggestions = await suggestTagsForSuggestion(anthropic, inboxTags, {
+      const tagSuggestions = await suggestTagsForSuggestion(googleApiKey, inboxTags, {
         title: item.title,
         rawContext: item.raw_context || null,
       })

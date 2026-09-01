@@ -14,14 +14,21 @@ export interface ModelRate {
 }
 
 // Keyed by normalized model id (date suffix stripped — see normalizeModelId).
+// Gemini rates are the current provider (post-Aug-2026 port to
+// _shared/gemini.ts); Anthropic rates price rows logged before the port.
 export const MODEL_RATES: Record<string, ModelRate> = {
+  "gemini-2.5-flash": { input: 0.3, output: 2.5 },
+  "gemini-2.5-pro": { input: 1.25, output: 10 },
+  // Alias tracking Google's current stable pro model (see _shared/gemini.ts
+  // GEMINI_PRO_MODEL) — priced at 2.5-pro rates.
+  "gemini-pro-latest": { input: 1.25, output: 10 },
   "claude-sonnet-5": { input: 2, output: 10 },
   "claude-sonnet-4-6": { input: 3, output: 15 },
   "claude-haiku-4-5": { input: 1, output: 5 },
   "claude-opus-5": { input: 5, output: 25 },
 };
 
-// Unknown models fall back to the most expensive rate we use, so a new model
+// Unknown models fall back to a deliberately high rate, so a new model
 // shows up as an overestimate rather than silently costing $0.
 const FALLBACK_RATE: ModelRate = { input: 3, output: 15 };
 

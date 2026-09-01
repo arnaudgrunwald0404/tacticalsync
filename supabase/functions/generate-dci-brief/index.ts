@@ -1,9 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiChat, GEMINI_PRO_MODEL } from "../_shared/gemini.ts"
 import { getClearGoConfig, fetchClearGoDciContext } from "../_shared/cleargo.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
-import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,12 +144,12 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
     const googleClientId = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
     const googleClientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
 
-    if (!anthropicApiKey) {
-      return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) {
+      return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
 
     const authHeader = req.headers.get('Authorization') ?? ''
@@ -715,24 +714,20 @@ Activities:
       }
     }
 
-    // ── Call Claude API ───────────────────────────────────────────────────
+    // ── Call Gemini API ───────────────────────────────────────────────────
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
+    const message = await geminiChat(googleApiKey, {
+      model: GEMINI_PRO_MODEL,
       system: finalSystemPrompt,
-      messages: [{ role: 'user', content: userPromptParts.join('\n') }],
+      contents: [{ role: 'user', parts: [{ text: userPromptParts.join('\n') }] }],
+      label: 'dci brief',
+      log: { functionName: 'generate-dci-brief', userId },
     })
-    await logAiUsage('generate-dci-brief', message, { userId })
 
-    const rawText = message.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
-      .join('\n')
+    const rawText = message.text
 
-    const inputTokens = message.usage?.input_tokens ?? 0
-    const outputTokens = message.usage?.output_tokens ?? 0
+    const inputTokens = message.usage.inputTokens
+    const outputTokens = message.usage.outputTokens
 
     // ── Parse response ────────────────────────────────────────────────────
 
@@ -922,7 +917,7 @@ Activities:
         prep_id: null,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
-        model: 'claude-sonnet-4-6',
+        model: GEMINI_PRO_MODEL,
         duration_ms: Date.now() - startMs,
         data_sources_used: ['dci_brief', ...dataSources],
       })

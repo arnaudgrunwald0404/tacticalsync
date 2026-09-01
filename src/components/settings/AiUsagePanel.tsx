@@ -324,8 +324,8 @@ const AiUsagePanel: React.FC = () => {
             </Table>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Costs are estimates computed from logged token counts at current Anthropic
-            list prices; cache reads are billed at 10% of the input rate. High &ldquo;Avg / call&rdquo;
+            Costs are estimates computed from logged token counts at each model&rsquo;s
+            list price (see src/lib/aiPricing.ts). High &ldquo;Avg / call&rdquo;
             values are the best optimization targets.
           </p>
         </CardContent>

@@ -10,8 +10,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import Anthropic from 'npm:@anthropic-ai/sdk'
-import { logAiUsage } from '../_shared/aiUsage.ts'
+import { geminiGenerateText } from '../_shared/gemini.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,9 +31,9 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')!
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) return json({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) return json({ error: 'google_ai_api_key_not_configured' }, 500)
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -198,15 +197,10 @@ Update the relationship brief for "${subjectName}". Keep it concise (max 800 wor
 ## Relationship Notes
 ## Recent Themes`
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1200,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    await logAiUsage('consolidate-relationship-doc', message, { userId: user_id })
-
-    const updatedContent = (message.content[0] as { type: string; text: string }).text.trim()
+    const updatedContent = (await geminiGenerateText(googleApiKey, prompt, {
+      label: 'consolidate relationship doc',
+      log: { functionName: 'consolidate-relationship-doc', userId: user_id },
+    })).trim()
     const newVersionCount = (existingDoc?.version_count ?? 0) + 1
 
     // ── Upsert back ───────────────────────────────────────────────────────

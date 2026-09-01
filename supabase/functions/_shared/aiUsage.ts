@@ -1,9 +1,11 @@
 /**
- * Central token-usage logging for every Anthropic call made by edge functions.
+ * Central token-usage logging for every AI call made by edge functions.
  *
- * Call after each `anthropic.messages.create(...)` resolves:
- *
- *   await logAiUsage('my-function', message, { userId, durationMs })
+ * Call sites don't use this directly — _shared/gemini.ts calls it when a
+ * `log: { functionName, userId }` option is passed to geminiGenerateText /
+ * geminiChat, so coverage lives in one place. (Rows written before the
+ * Gemini provider port carry Anthropic model ids; src/lib/aiPricing.ts
+ * prices both.)
  *
  * Writes one row to ai_usage_log via a service-role client so it works
  * regardless of which client (or none) the calling function holds. Never
@@ -12,20 +14,17 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 
-interface AnthropicUsageShape {
-  model?: string
-  usage?: {
-    input_tokens?: number
-    output_tokens?: number
-    cache_creation_input_tokens?: number | null
-    cache_read_input_tokens?: number | null
-  }
+export interface AiUsageLogEntry {
+  model: string
+  inputTokens: number
+  outputTokens: number
+  userId?: string | null
+  durationMs?: number
 }
 
 export async function logAiUsage(
   functionName: string,
-  message: AnthropicUsageShape,
-  opts: { userId?: string | null; durationMs?: number } = {},
+  entry: AiUsageLogEntry,
 ): Promise<void> {
   try {
     const url = Deno.env.get('SUPABASE_URL')
@@ -35,13 +34,11 @@ export async function logAiUsage(
     const supabase = createClient(url, serviceKey)
     const { error } = await supabase.from('ai_usage_log').insert({
       function_name: functionName,
-      model: message.model ?? 'unknown',
-      input_tokens: message.usage?.input_tokens ?? 0,
-      output_tokens: message.usage?.output_tokens ?? 0,
-      cache_creation_input_tokens: message.usage?.cache_creation_input_tokens ?? 0,
-      cache_read_input_tokens: message.usage?.cache_read_input_tokens ?? 0,
-      user_id: opts.userId ?? null,
-      duration_ms: opts.durationMs ?? null,
+      model: entry.model,
+      input_tokens: entry.inputTokens,
+      output_tokens: entry.outputTokens,
+      user_id: entry.userId ?? null,
+      duration_ms: entry.durationMs ?? null,
     })
     if (error) console.error(`[aiUsage] failed to log ${functionName}:`, error.message)
   } catch (e) {
