@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -213,6 +214,7 @@ Draft a short, direct Slack message sent by the TacticalSync bot on behalf of ${
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
+    await logAiUsage('agent-command', aiResponse, { userId })
 
     const rawText = aiResponse.content[0].type === 'text' ? aiResponse.content[0].text.trim() : ''
 

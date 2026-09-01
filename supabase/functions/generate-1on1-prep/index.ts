@@ -4,6 +4,7 @@ import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig, fetchStackOneEnrichment } from "../_shared/stackone.ts"
 import { getClearGoConfig, fetchClearGo1on1Context } from "../_shared/cleargo.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -909,6 +910,7 @@ ${contextParts.join('\n')}`
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
+    await logAiUsage('generate-1on1-prep', message, { userId })
 
     const generatedContent = message.content
       .filter((b: { type: string }) => b.type === 'text')
@@ -983,6 +985,7 @@ Return a JSON array where each element has:
 Return ONLY the JSON array, no markdown fences or other text.`,
           messages: [{ role: 'user', content: generatedContent }],
         })
+        await logAiUsage('generate-1on1-prep', extractionResponse, { userId })
 
         const extractionText = extractionResponse.content
           .filter((b: { type: string }) => b.type === 'text')

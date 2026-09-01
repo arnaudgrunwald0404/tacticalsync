@@ -11,6 +11,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import Anthropic from 'npm:@anthropic-ai/sdk'
+import { logAiUsage } from '../_shared/aiUsage.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -203,6 +204,7 @@ Update the relationship brief for "${subjectName}". Keep it concise (max 800 wor
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }],
     })
+    await logAiUsage('consolidate-relationship-doc', message, { userId: user_id })
 
     const updatedContent = (message.content[0] as { type: string; text: string }).text.trim()
     const newVersionCount = (existingDoc?.version_count ?? 0) + 1

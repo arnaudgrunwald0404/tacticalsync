@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getClearGoConfig, fetchClearGoDciContext } from "../_shared/cleargo.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -723,6 +724,7 @@ Activities:
       system: finalSystemPrompt,
       messages: [{ role: 'user', content: userPromptParts.join('\n') }],
     })
+    await logAiUsage('generate-dci-brief', message, { userId })
 
     const rawText = message.content
       .filter((b: { type: string }) => b.type === 'text')

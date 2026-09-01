@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 // ── Group meeting query handler ────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,6 +112,7 @@ ${contextParts.join('\n')}`
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: question.trim() }],
   })
+  await logAiUsage('query-relationship-history', response, { userId })
 
   const answer = response.content
     .filter((b: { type: string }) => b.type === 'text')
@@ -394,6 +396,7 @@ ${contextParts.join('\n')}`
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: question.trim() }],
     })
+    await logAiUsage('query-relationship-history', response, { userId })
 
     const answer = response.content
       .filter((b: { type: string }) => b.type === 'text')

@@ -23,6 +23,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import Anthropic from 'npm:@anthropic-ai/sdk'
+import { logAiUsage } from '../_shared/aiUsage.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -219,6 +220,7 @@ ${contextLines.join('\n') || '(No prior history — this may be an early 1:1.)'}
           max_tokens: 500,
           messages: [{ role: 'user', content: prompt }],
         })
+        await logAiUsage('generate-person-brief', message, { userId: user_id })
 
         const raw = (message.content[0] as { type: string; text: string }).text.trim()
         const jsonMatch = raw.match(/\[[\s\S]*\]/)

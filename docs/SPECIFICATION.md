@@ -366,6 +366,10 @@ A legacy Socket Mode bot (`slack-bot/index.js`) previously shared an action-ID n
 
 Every OAuth integration (Zoom, Slack, Google) used to run silently: missing/expired credentials made `agent-tick` and sync functions return early (`skipped: no_credentials` or similar) with nothing surfaced to the user. This was caught in production — `user_calendar_credentials` was empty across all 321 users, with `gmail-inbox-sync` firing every tick, completing in ~300ms, and silently no-opping. Fixed by a new shared hook, `src/hooks/useIntegrationHealth.ts`, which fetches all three `_public` credential views in parallel and returns a typed `IntegrationHealth` object with nuanced per-integration states (`gmailScopeGranted`, `zoomReauthRequired`, etc.) — no component should fetch credential status independently anymore. Warnings surface in two places: an amber card per broken integration in **Settings → Agent** (`AgentSettingsPanel.tsx`)'s Activation group, and a single amber hint in the **Inbox Suggestions panel** (`InboxSuggestionsPanel.tsx`) when the agent is enabled but every suggestion source is missing credentials (previously rendered `null` with no explanation). StackOne/ClearGo are deliberately excluded — they're opt-in enrichment, not agent-pipeline dependencies, so their absence isn't a mistake to warn about. Full pattern and extension checklist documented in `INTEGRATIONS.md`'s "Best Practices: Surfacing Credential Problems to Users" section.
 
+### 8.9 AI Usage Monitoring (admin)
+
+Every Anthropic call made by an edge function (19 call sites across 16 functions as of Sep 2026) logs one row to `ai_usage_log` (function name, model, input/output/cache token counts, optional user, duration) via the shared helper `supabase/functions/_shared/aiUsage.ts` — a fire-and-forget service-role insert that never throws, called immediately after each `anthropic.messages.create(...)`. A daily rollup view `ai_usage_daily` (`security_invoker = true`, so the base table's admin-only RLS applies) feeds the **Settings → AI Usage** panel (`src/components/settings/AiUsagePanel.tsx`, gated `is_admin`/`is_super_admin`): a stacked daily cost chart by function, summary tiles, and a per-function table with avg-cost-per-call as the optimization signal. Dollar cost is computed at display time from `src/lib/aiPricing.ts` (per-MTok rates keyed by normalized model id, cache reads at 10% / writes at 125% of input rate) so price updates never require rewriting logged history. The older `prep_generation_log` (migration `20260607100000`) predates this and still drives prep rate-limiting; the four prep functions log to both. Migration: `20260901090000_ai_usage_log.sql`.
+
 ---
 
 ## 9. Superseded Documents
@@ -510,5 +514,6 @@ When you ship a new subsystem or materially change an existing one:
 | Org Talking Points | `cos_org_talking_points`, `cos_org_talking_point_dismissals` (idea #11, §7.11) |
 | Manager Signals | `cos_manager_signal_close_rate` (view), `cos_manager_signal_aging_items` (view) |
 | Commitments | `quarterly_priorities`, `monthly_commitments`, `commitment_quarters` |
+| AI Usage | `ai_usage_log`, `ai_usage_daily` (view), `prep_generation_log` (§8.9) |
 
 For column-level detail on any table, see the corresponding module section above or the migration named alongside it — this appendix is an index, not a schema dump.

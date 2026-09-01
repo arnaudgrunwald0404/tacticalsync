@@ -22,6 +22,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import Anthropic from 'npm:@anthropic-ai/sdk'
+import { logAiUsage } from '../_shared/aiUsage.ts'
 import { TOOL_REGISTRY, TOOL_NAMES, getTool } from './tools/index.ts'
 import { resolveNextInstance } from './tools/createMeetingTopic.ts'
 import { buildPlanSteps, buildMarkdownFromSteps, computeAggregateStatus, type PlanStep, type ToolName } from './planSteps.ts'
@@ -176,6 +177,7 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   })
+  await logAiUsage('delegate-inbox-task', msg)
   // claude-sonnet-5 returns an extended-thinking block before the text block,
   // so content[0] is not reliably the text — find it by type instead (same
   // guard agent-command/index.ts already uses for this).

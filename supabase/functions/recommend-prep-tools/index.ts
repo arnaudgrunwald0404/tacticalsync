@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { getStackOneConfig } from "../_shared/stackone.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -144,6 +145,7 @@ member: ${member.name} (${member.role}, ${member.relationship_type})`
           system: sys,
           messages: [{ role: 'user', content: usr }],
         })
+        await logAiUsage('recommend-prep-tools', msg, { userId })
         const text = msg.content
           .filter((b: { type: string }) => b.type === 'text')
           .map((b: { type: string; text: string }) => b.text).join('\n')

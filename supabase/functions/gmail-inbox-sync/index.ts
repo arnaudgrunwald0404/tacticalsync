@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -128,6 +129,7 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     })
+    await logAiUsage('gmail-inbox-sync', message)
     const raw = (message.content[0] as { type: string; text: string }).text.trim()
     const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     const parsed = JSON.parse(jsonStr)

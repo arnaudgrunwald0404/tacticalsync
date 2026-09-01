@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "npm:@anthropic-ai/sdk"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 import {
   classifySenderTier,
   shouldSuppressMessage,
@@ -203,6 +204,7 @@ tomorrow. Use null when no deadline is stated or implied.
 Return [] if nothing qualifies.`,
     messages: [{ role: 'user', content: numbered }],
   })
+  await logAiUsage('extract-inbox-action-items', msg, { userId })
 
   const raw = (msg.content[0] as { text: string }).text
   // Strip markdown code fences if Claude wraps the JSON (```json ... ``` or ``` ... ```)
@@ -271,6 +273,7 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     })
+    await logAiUsage('extract-inbox-action-items', message)
     const raw = (message.content[0] as { text: string }).text.trim()
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
     const parsed = JSON.parse(jsonStr)

@@ -10,6 +10,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -427,6 +428,7 @@ serve(async (req) => {
         tools,
         messages: anthropicMessages,
       })
+      await logAiUsage('inbox-assistant-chat', response, { userId })
 
       const textBlocks = response.content.filter((b: { type: string }) => b.type === 'text') as { type: string; text: string }[]
       finalText = textBlocks.map(b => b.text).join('\n')

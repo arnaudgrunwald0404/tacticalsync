@@ -35,6 +35,7 @@ import McpIntegrationPanel from "@/components/cos/McpIntegrationPanel";
 import StackOnePanel from "@/components/cos/StackOnePanel";
 import OrgTalkingPointsPanel from "@/components/settings/OrgTalkingPointsPanel";
 import RecentlyDeletedPanel from "@/components/settings/RecentlyDeletedPanel";
+import AiUsagePanel from "@/components/settings/AiUsagePanel";
 import IntegrationExplainer from "@/components/cos/IntegrationExplainer";
 import { INTEGRATION_COPY } from "@/lib/integrationCopy";
 import { getPreset } from "@/types/mcp-integration";
@@ -2108,6 +2109,7 @@ const Settings = () => {
           canManagePermissions={canManagePermissions}
           showOrgTalkingPoints={isAdmin || isSuperAdmin}
           showRecentlyDeleted={isAdmin || isSuperAdmin}
+          showAiUsage={isAdmin || isSuperAdmin}
         />
 
         <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-7xl">
@@ -2520,6 +2522,16 @@ const Settings = () => {
               </p>
             </div>
             <OrgTalkingPointsPanel />
+          </div>
+        ) : activeSection === "ai-usage" && (isAdmin || isSuperAdmin) ? (
+          <div className="mb-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-1">AI Usage</h2>
+              <p className="text-muted-foreground text-sm">
+                Token consumption and estimated cost of every AI-powered edge function, per day.
+              </p>
+            </div>
+            <AiUsagePanel />
           </div>
         ) : activeSection === "recently-deleted" && (isAdmin || isSuperAdmin) ? (
           <div className="mb-8">

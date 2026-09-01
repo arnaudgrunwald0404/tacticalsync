@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
 import { parseVttCues, type VttCue } from "../_shared/parseVtt.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 import { buildCueAnnotatedTranscript, resolveQuoteTimestamp } from "../_shared/quoteAlignment.ts"
 import { computeTalkTime } from "../_shared/talkTime.ts"
 
@@ -238,6 +239,7 @@ async function classifyMeetingSentiment(
       system: SENTIMENT_PROMPT,
       messages: [{ role: 'user', content: transcriptText }],
     })
+    await logAiUsage('extract-zoom-quotes', response)
 
     const text = response.content
       .filter((b: { type: string }) => b.type === 'text')
