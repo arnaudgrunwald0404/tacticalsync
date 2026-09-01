@@ -241,7 +241,7 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 - `supabase/functions/disconnect-slack/index.ts`
 - `supabase/functions/slack-messages-sync/index.ts`
 - `supabase/functions/slack-sync-cron/index.ts` — hourly cron matching each user's configured auto-sync hour, mirrors `calendar-sync-cron`'s pattern
-- `supabase/functions/slack-inbox-sync/index.ts` — separate Gemini 2.5 Flash-based pipeline mining `cos_slack_messages` into `dci_suggested_tasks`, distinct from `extract-inbox-action-items`'s Claude Haiku pipeline (see `docs/SPECIFICATION.md` §7.7 for the two-pipeline architecture)
+- `supabase/functions/slack-inbox-sync/index.ts` — separate Gemini 2.5 Flash-based pipeline mining `cos_slack_messages` into `dci_suggested_tasks`, distinct from `extract-inbox-action-items`'s pipeline (also Gemini 2.5 Flash since the 2026-08-28 provider port) (see `docs/SPECIFICATION.md` §7.7 for the two-pipeline architecture)
 - `supabase/functions/slack-add-suggestion/index.ts`
 - `supabase/functions/agent-slack-action/index.ts`
 - `supabase/functions/agent-command/index.ts`, `agent-tick/index.ts`

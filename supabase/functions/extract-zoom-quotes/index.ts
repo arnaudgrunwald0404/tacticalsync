@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 import { parseVttCues, type VttCue } from "../_shared/parseVtt.ts"
 import { buildCueAnnotatedTranscript, resolveQuoteTimestamp } from "../_shared/quoteAlignment.ts"
 import { computeTalkTime } from "../_shared/talkTime.ts"
@@ -228,21 +228,15 @@ interface MeetingSentimentResult {
 const VALID_SENTIMENTS = new Set(['positive', 'negative', 'neutral', 'mixed'])
 
 async function classifyMeetingSentiment(
-  anthropic: Anthropic,
+  googleApiKey: string,
   transcriptText: string,
 ): Promise<MeetingSentimentResult | null> {
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      system: SENTIMENT_PROMPT,
-      messages: [{ role: 'user', content: transcriptText }],
-    })
-
-    const text = response.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
-      .join('')
+    const text = await geminiGenerateText(
+      googleApiKey,
+      `${SENTIMENT_PROMPT}${transcriptText}`,
+      { label: 'classify meeting sentiment' },
+    )
 
     const cleaned = text.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
     const parsed = JSON.parse(cleaned)
@@ -269,18 +263,10 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
     if (!googleApiKey) {
       return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
-
-    // Sentiment analysis (Phase A) is additive, not required — if no
-    // Anthropic key is configured, talk-time still gets computed (pure
-    // arithmetic, no LLM) and stored with overall_sentiment left null, rather
-    // than failing the whole quote-extraction pass over a missing key for a
-    // feature that's independent of it.
-    const anthropic = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -644,10 +630,7 @@ serve(async (req) => {
           // Sentiment reuses the same stripped/truncated transcript text
           // already computed above for the Gemini quote-extraction call —
           // no need to re-strip or re-truncate.
-          const sentiment = anthropic ? await classifyMeetingSentiment(anthropic, truncated) : null
-          if (!anthropic) {
-            console.log(`ANTHROPIC_API_KEY not configured — storing talk-time only for transcript ${transcript.id}`)
-          }
+          const sentiment = await classifyMeetingSentiment(googleApiKey, truncated)
 
           const { error: analysisErr } = await supabase
             .from('cos_meeting_analysis')
