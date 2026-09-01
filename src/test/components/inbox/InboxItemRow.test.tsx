@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InboxItemRow } from '@/components/inbox/InboxItemRow';
 import type { InboxItem, InboxTag } from '@/types/inbox';
@@ -165,5 +165,44 @@ describe('InboxItemRow — agent_question opt-in CTA (plan Section 5.1)', () => 
     renderRow(item);
 
     expect(screen.queryByRole('button', { name: /turn on/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('InboxItemRow — pin toggle (replaces the dead rename pencil)', () => {
+  it('never renders a Rename control', async () => {
+    const user = userEvent.setup();
+    const { container } = renderRow(baseItem(), { onUpdateItem: vi.fn() });
+
+    await user.hover(container.firstElementChild!);
+
+    expect(screen.queryByTitle('Rename')).not.toBeInTheDocument();
+  });
+
+  it('reveals a Pin button on hover and pins the item on click', async () => {
+    const user = userEvent.setup();
+    const onUpdateItem = vi.fn().mockResolvedValue(undefined);
+    const { container } = renderRow(baseItem(), { onUpdateItem });
+
+    expect(screen.queryByTitle('Pin')).not.toBeInTheDocument();
+    await user.hover(container.firstElementChild!);
+
+    // fireEvent, not user.click: userEvent's full pointer simulation re-fires
+    // hover transitions that unmount this hover-revealed button mid-click.
+    fireEvent.click(screen.getByTitle('Pin'));
+
+    expect(onUpdateItem).toHaveBeenCalledWith('item-1', { pinned: true });
+  });
+
+  it('shows a yellow Unpin button without hover on a pinned item, and unpins on click', async () => {
+    const user = userEvent.setup();
+    const onUpdateItem = vi.fn().mockResolvedValue(undefined);
+    renderRow(baseItem({ pinned: true }), { onUpdateItem });
+
+    const unpin = screen.getByTitle('Unpin');
+    expect(unpin.className).toContain('text-amber-400');
+
+    await user.click(unpin);
+
+    expect(onUpdateItem).toHaveBeenCalledWith('item-1', { pinned: false });
   });
 });
