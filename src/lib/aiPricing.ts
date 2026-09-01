@@ -18,6 +18,9 @@ export interface ModelRate {
 // _shared/gemini.ts); Anthropic rates price rows logged before the port.
 export const MODEL_RATES: Record<string, ModelRate> = {
   "gemini-2.5-flash": { input: 0.3, output: 2.5 },
+  // Image generation model (weekend banners) — output tokens are image
+  // tokens, billed at a much higher rate (~$0.04 per 1290-token image).
+  "gemini-2.5-flash-image": { input: 0.3, output: 30 },
   "gemini-2.5-pro": { input: 1.25, output: 10 },
   // Alias tracking Google's current stable pro model (see _shared/gemini.ts
   // GEMINI_PRO_MODEL) — priced at 2.5-pro rates.

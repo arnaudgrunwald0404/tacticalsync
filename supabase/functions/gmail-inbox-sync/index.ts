@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -483,6 +484,12 @@ Respond with valid JSON only — an array of objects. Schema:
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const geminiData = await geminiRes.json() as any
+        await logAiUsage('gmail-inbox-sync', {
+          model: 'gemini-2.5-flash',
+          inputTokens: geminiData?.usageMetadata?.promptTokenCount ?? 0,
+          outputTokens: geminiData?.usageMetadata?.candidatesTokenCount ?? 0,
+          userId,
+        })
         const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
         const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 

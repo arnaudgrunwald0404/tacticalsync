@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -460,6 +461,12 @@ serve(async (req) => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const geminiData = await geminiRes.json() as any
+      await logAiUsage('generate-meeting-suggestions', {
+        model: 'gemini-2.5-flash',
+        inputTokens: geminiData?.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: geminiData?.usageMetadata?.candidatesTokenCount ?? 0,
+        userId,
+      })
       const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
       const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 
@@ -575,6 +582,12 @@ serve(async (req) => {
         if (colleagueRes.ok) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const cData = await colleagueRes.json() as any
+          await logAiUsage('generate-meeting-suggestions', {
+            model: 'gemini-2.5-flash',
+            inputTokens: cData?.usageMetadata?.promptTokenCount ?? 0,
+            outputTokens: cData?.usageMetadata?.candidatesTokenCount ?? 0,
+            userId,
+          })
           const cRaw = cData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
           const cJson = cRaw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
 
