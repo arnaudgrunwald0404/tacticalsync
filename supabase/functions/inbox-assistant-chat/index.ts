@@ -9,7 +9,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiChat, toGeminiFunctionDeclarations, GEMINI_PRO_MODEL, type GeminiContent } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,7 +29,13 @@ const MAX_TOOL_ROUNDS = 3
 
 // ── Tool schemas ──────────────────────────────────────────────────────────────
 
-const TOOLS: Anthropic.Tool[] = [
+interface ToolDef {
+  name: string
+  description: string
+  input_schema: { type: string; properties?: Record<string, unknown>; required?: string[] }
+}
+
+const TOOLS: ToolDef[] = [
   {
     name: 'get_inbox_items',
     description: "Fetch the user's current open inbox items (tasks/notes/nudges), including their tags, workflow status, bucket, and priority due date. Use this to answer questions about what's outstanding, overdue, or waiting on someone. Pass project_tag_id or person_tag_id to scope to a specific project or person when one was mentioned.",
@@ -85,20 +91,10 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
-// Anthropic-executed web search — the API runs the search itself and returns
-// results inline (server_tool_use / web_search_tool_result blocks), so unlike
-// the tools above it needs no case in the tool-call switch below. Capped at 3
-// uses/turn to bound latency and cost for a chat assistant, not a research agent.
-// TODO: Anthropic's web search is billed at $10/1,000 searches on top of token
-// costs. Replace with a custom tool backed by a cheaper third-party search API
-// (e.g. Tavily, Brave Search) once usage volume makes that worth the added
-// integration/maintenance cost.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const WEB_SEARCH_TOOL: any = {
-  type: 'web_search_20250305',
-  name: 'web_search',
-  max_uses: 3,
-}
+// Google-executed web search (Gemini search grounding) — the API runs the
+// search itself and folds results into the answer, so unlike the tools above
+// it needs no case in the tool-call switch below.
+const WEB_SEARCH_TOOL = { google_search: {} }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
 
@@ -360,7 +356,7 @@ RULES:
 \`\`\`
 Only include this block when you actually have concrete items to propose — omit it for plain answers.
 - Be warm and concise. This is a conversation, not a report.
-- Use web_search only for questions your other tools can't answer — general knowledge, current events, or anything about the outside world. Never use it to look up the user's own inbox, team, or account data. Don't narrate that you're searching; just answer once you have results, and name the source (site or publication) in prose since link-level citations aren't shown separately in this chat.`
+- Use web search only for questions your other tools can't answer — general knowledge, current events, or anything about the outside world. Never use it to look up the user's own inbox, team, or account data. Don't narrate that you're searching; just answer once you have results, and name the source (site or publication) in prose since link-level citations aren't shown separately in this chat.`
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
@@ -371,8 +367,8 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
-    if (!anthropicApiKey) return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
+    if (!googleApiKey) return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -396,17 +392,21 @@ serve(async (req) => {
       return jsonResponse({ error: 'conversation_too_long', message: 'Let\'s start a fresh conversation.' }, 400)
     }
 
-    // Build the Anthropic-shaped message list, appending a mention hint to the
+    // Build the Gemini-shaped content list, appending a mention hint to the
     // newest turn only — the client's own stored history stays hint-free, so
     // this doesn't accumulate across turns.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anthropicMessages: any[] = messages.map(m => ({ role: m.role, content: m.content }))
+    const contents: GeminiContent[] = messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' as const : 'user' as const,
+      parts: [{ text: m.content }],
+    }))
     if (body.mentions?.length) {
       const hints = body.mentions.map(m => m.type === 'person'
         ? `[Mentioned: @${m.name} (person, tag_id=${m.id}, team_member_id=${m.memberId ?? 'unknown'})]`
         : `[Mentioned: #${m.name} (project, id=${m.id})]`)
-      const last = anthropicMessages[anthropicMessages.length - 1]
-      if (last?.role === 'user') last.content = `${last.content}\n\n${hints.join(' ')}`
+      const last = contents[contents.length - 1]
+      if (last?.role === 'user' && last.parts[0]?.text !== undefined) {
+        last.parts[0].text = `${last.parts[0].text}\n\n${hints.join(' ')}`
+      }
     }
 
     let mutated = false
@@ -416,27 +416,28 @@ serve(async (req) => {
     // Web search is billed per-search on top of tokens, so it's opt-in per
     // request rather than always offered — the client must set webSearch:
     // true on this call for the model to have it available at all.
-    const tools = body.webSearch ? [...TOOLS, WEB_SEARCH_TOOL] : TOOLS
+    const tools: unknown[] = [toGeminiFunctionDeclarations(TOOLS)]
+    if (body.webSearch) tools.push(WEB_SEARCH_TOOL)
 
     for (let round = 0; round < MAX_TOOL_ROUNDS + 1; round++) {
-      const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      const response = await geminiChat(googleApiKey, {
+        model: GEMINI_PRO_MODEL,
+        system: SYSTEM_PROMPT,
         tools,
-        messages: anthropicMessages,
+        contents,
+        label: 'inbox assistant chat',
       })
 
-      const textBlocks = response.content.filter((b: { type: string }) => b.type === 'text') as { type: string; text: string }[]
-      finalText = textBlocks.map(b => b.text).join('\n')
+      finalText = response.text
 
-      if (response.stop_reason !== 'tool_use' || round === MAX_TOOL_ROUNDS) break
+      if (response.functionCalls.length === 0 || round === MAX_TOOL_ROUNDS) break
 
-      const toolUseBlocks = response.content.filter((b: { type: string }) => b.type === 'tool_use') as
-        { type: string; id: string; name: string; input: Record<string, unknown> }[]
+      const toolUseBlocks = response.functionCalls.map(fc => ({
+        name: fc.name,
+        input: fc.args ?? {},
+      }))
 
-      anthropicMessages.push({ role: 'assistant', content: response.content })
+      contents.push(response.content)
 
       const toolResults = await Promise.all(toolUseBlocks.map(async block => {
         let result: unknown
@@ -476,10 +477,10 @@ serve(async (req) => {
         } catch (err) {
           result = { error: (err as Error).message }
         }
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
+        return { functionResponse: { name: block.name, response: { result } } }
       }))
 
-      anthropicMessages.push({ role: 'user', content: toolResults })
+      contents.push({ role: 'user', parts: toolResults })
     }
 
     const { reply, proposedItems } = extractProposedItems(finalText)

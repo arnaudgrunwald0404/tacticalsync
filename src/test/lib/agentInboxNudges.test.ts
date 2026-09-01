@@ -41,18 +41,17 @@ describe('selectDueItemsToNudge', () => {
     const result = selectDueItemsToNudge(
       [item()],
       [],
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual(['item-1']);
-    expect(result.newlyCapped).toEqual([]);
   });
 
   it('never nudges when priority_fixed is false — a decaying tier-pill date is not a real deadline', () => {
     const result = selectDueItemsToNudge(
       [item({ priority_fixed: false })],
       [],
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
@@ -62,7 +61,7 @@ describe('selectDueItemsToNudge', () => {
     const result = selectDueItemsToNudge(
       [item({ priority_due_at: null })],
       [],
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
@@ -73,7 +72,7 @@ describe('selectDueItemsToNudge', () => {
       const result = selectDueItemsToNudge(
         [item({ status })],
         [],
-        { nudge_timing_hours: 24, nudge_max_count: 5 },
+        { nudge_timing_hours: 24 },
         NOW,
       );
       expect(result.toNudge).toEqual([]);
@@ -84,7 +83,7 @@ describe('selectDueItemsToNudge', () => {
     const result = selectDueItemsToNudge(
       [item({ priority_due_at: '2026-07-20T12:00:00.000Z' })], // 13 days out
       [],
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
@@ -94,66 +93,64 @@ describe('selectDueItemsToNudge', () => {
     const result = selectDueItemsToNudge(
       [item({ priority_due_at: '2026-07-01T12:00:00.000Z' })],
       [],
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual(['item-1']);
   });
 
-  it('does not re-nudge an item already nudged today', () => {
+  it('never re-nudges an item already nudged for this deadline — not even days later', () => {
     const history: NudgeHistoryEntry[] = [
-      { item_id: 'item-1', event_type: 'inbox_due_nudge_sent', created_at: '2026-07-07T09:00:00.000Z' },
+      { item_id: 'item-1', event_type: 'inbox_due_nudge_sent', created_at: '2026-07-02T09:00:00.000Z', due_at: '2026-07-08T12:00:00.000Z' },
     ];
     const result = selectDueItemsToNudge(
       [item()],
       history,
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
   });
 
-  it('does re-nudge an item nudged on a previous day (still under the cap)', () => {
+  it('re-nudges once when the due date was moved after the last nudge (e.g. the Slack snooze action)', () => {
+    const history: NudgeHistoryEntry[] = [
+      // Nudged for the original July 6 deadline; the item was then snoozed
+      // out to July 8 — a genuinely new deadline, so one new nudge is due.
+      { item_id: 'item-1', event_type: 'inbox_due_nudge_sent', created_at: '2026-07-05T09:00:00.000Z', due_at: '2026-07-06T12:00:00.000Z' },
+    ];
+    const result = selectDueItemsToNudge(
+      [item()],
+      history,
+      { nudge_timing_hours: 24 },
+      NOW,
+    );
+    expect(result.toNudge).toEqual(['item-1']);
+  });
+
+  it('treats a sent event with no recorded due_at as covering the current deadline (never risk a duplicate)', () => {
     const history: NudgeHistoryEntry[] = [
       { item_id: 'item-1', event_type: 'inbox_due_nudge_sent', created_at: '2026-07-05T09:00:00.000Z' },
     ];
     const result = selectDueItemsToNudge(
       [item()],
       history,
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
-      NOW,
-    );
-    expect(result.toNudge).toEqual(['item-1']);
-  });
-
-  it('caps an item once it hits nudge_max_count and reports it as newlyCapped, not toNudge', () => {
-    const history: NudgeHistoryEntry[] = Array.from({ length: 5 }, (_, i) => ({
-      item_id: 'item-1',
-      event_type: 'inbox_due_nudge_sent' as const,
-      created_at: `2026-07-0${i + 1}T09:00:00.000Z`,
-    }));
-    const result = selectDueItemsToNudge(
-      [item()],
-      history,
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
-    expect(result.newlyCapped).toEqual(['item-1']);
   });
 
-  it('does not re-cap an item that was already capped previously', () => {
+  it('a legacy capped marker (retired N-nudges-then-cap scheme) silences an item for good', () => {
     const history: NudgeHistoryEntry[] = [
       { item_id: 'item-1', event_type: 'inbox_due_nudge_capped', created_at: '2026-07-05T09:00:00.000Z' },
     ];
     const result = selectDueItemsToNudge(
       [item()],
       history,
-      { nudge_timing_hours: 24, nudge_max_count: 5 },
+      { nudge_timing_hours: 24 },
       NOW,
     );
     expect(result.toNudge).toEqual([]);
-    expect(result.newlyCapped).toEqual([]); // already capped, not "newly"
   });
 
   it('handles multiple items independently', () => {
@@ -161,8 +158,12 @@ describe('selectDueItemsToNudge', () => {
       item({ id: 'a', priority_due_at: '2026-07-07T13:00:00.000Z' }), // in window
       item({ id: 'b', priority_due_at: '2026-08-01T00:00:00.000Z' }), // out of window
       item({ id: 'c', priority_fixed: false }), // never eligible
+      item({ id: 'd', priority_due_at: '2026-07-07T13:00:00.000Z' }), // in window, already nudged for it
     ];
-    const result = selectDueItemsToNudge(items, [], { nudge_timing_hours: 24, nudge_max_count: 5 }, NOW);
+    const history: NudgeHistoryEntry[] = [
+      { item_id: 'd', event_type: 'inbox_due_nudge_sent', created_at: '2026-07-06T09:00:00.000Z', due_at: '2026-07-07T13:00:00.000Z' },
+    ];
+    const result = selectDueItemsToNudge(items, history, { nudge_timing_hours: 24 }, NOW);
     expect(result.toNudge).toEqual(['a']);
   });
 });

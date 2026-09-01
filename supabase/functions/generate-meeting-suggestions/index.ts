@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "npm:@anthropic-ai/sdk"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -231,7 +231,7 @@ interface InboxTagRow {
 interface TagSuggestion { tag_id: string; tag_name: string; color: string; reason: string }
 
 async function suggestTagsForSuggestion(
-  anthropic: Anthropic,
+  googleApiKey: string,
   tags: InboxTagRow[],
   opts: { title: string; rawContext: string | null },
 ): Promise<TagSuggestion[]> {
@@ -261,12 +261,7 @@ Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    const raw = (message.content[0] as { type: string; text: string }).text.trim()
+    const raw = await geminiGenerateText(googleApiKey, prompt, { label: 'suggest meeting tags' })
     const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []
@@ -294,9 +289,6 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
     if (!googleApiKey) return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
-    const anthropic = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null
-    if (!anthropic) console.error('generate-meeting-suggestions: ANTHROPIC_API_KEY not configured, skipping tag recommendations')
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -519,8 +511,8 @@ serve(async (req) => {
 
         // Recommend an inbox tag destination from the task's content — never
         // from meeting attendance alone (see suggestTagsForSuggestion).
-        const tagSuggestions = anthropic
-          ? await suggestTagsForSuggestion(anthropic, inboxTags, { title, rawContext: item.raw_context ?? null })
+        const tagSuggestions = googleApiKey
+          ? await suggestTagsForSuggestion(googleApiKey, inboxTags, { title, rawContext: item.raw_context ?? null })
           : []
 
         // Build a deep link into the Zoom recording at the moment of the quote.
