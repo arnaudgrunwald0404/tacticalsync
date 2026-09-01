@@ -1221,8 +1221,9 @@ async function maybeSendFirstDmExplainer(
 }
 
 /** Fetches open, fixed-due-date inbox items and the nudge history needed to
- *  dedupe/cap them, then defers the actual decision to the pure, tested
- *  selectDueItemsToNudge() in _shared/agentInboxNudges.ts. */
+ *  dedupe them (once per item per deadline — see selectDueItemsToNudge),
+ *  then defers the actual decision to that pure, tested function in
+ *  _shared/agentInboxNudges.ts. */
 interface DueNudgeItemWithText extends DueInboxItem {
   text: string
 }
@@ -1231,7 +1232,7 @@ async function fetchDueNudgeCandidates(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   config: AgentConfig,
-): Promise<{ toNudge: DueNudgeItemWithText[]; newlyCappedIds: string[] }> {
+): Promise<{ toNudge: DueNudgeItemWithText[] }> {
   const windowEnd = new Date(Date.now() + config.nudge_timing_hours * 3600 * 1000).toISOString()
 
   const { data: items } = await supabase
@@ -1244,27 +1245,29 @@ async function fetchDueNudgeCandidates(
     .lte('priority_due_at', windowEnd)
 
   const dueItems = (items ?? []) as DueNudgeItemWithText[]
-  if (dueItems.length === 0) return { toNudge: [], newlyCappedIds: [] }
+  if (dueItems.length === 0) return { toNudge: [] }
 
   const itemIds = dueItems.map((i) => i.id)
   const { data: history } = await supabase
     .from('cos_agent_log')
-    .select('item_id, event_type, created_at')
+    .select('item_id, event_type, created_at, payload')
     .eq('user_id', userId)
     .in('event_type', ['inbox_due_nudge_sent', 'inbox_due_nudge_capped'])
     .in('item_id', itemIds)
 
-  const decision = selectDueItemsToNudge(
-    dueItems,
-    (history ?? []) as NudgeHistoryEntry[],
-    { nudge_timing_hours: config.nudge_timing_hours, nudge_max_count: config.nudge_max_count },
-  )
+  const historyEntries: NudgeHistoryEntry[] = (
+    (history ?? []) as Array<{ item_id: string; event_type: NudgeHistoryEntry['event_type']; created_at: string; payload: { due_at?: string | null } | null }>
+  ).map((h) => ({
+    item_id: h.item_id,
+    event_type: h.event_type,
+    created_at: h.created_at,
+    due_at: h.payload?.due_at ?? null,
+  }))
+
+  const decision = selectDueItemsToNudge(dueItems, historyEntries, { nudge_timing_hours: config.nudge_timing_hours })
 
   const byId = new Map(dueItems.map((i) => [i.id, i]))
-  return {
-    toNudge: decision.toNudge.map((id) => byId.get(id)!).filter(Boolean),
-    newlyCappedIds: decision.newlyCapped,
-  }
+  return { toNudge: decision.toNudge.map((id) => byId.get(id)!).filter(Boolean) }
 }
 
 /** Fetches confirmed 1:1s in the next 12h, joins to inbox_tags(type=person)
@@ -1375,17 +1378,6 @@ async function maybeNudgeInboxItems(
   ])
 
   const hasAnythingToNudge = dueResult.toNudge.length > 0 || meetingResults.length > 0
-
-  // Always record newly-capped items, opted in or not — capping is bookkeeping,
-  // not a notification, so it doesn't need to wait on consent.
-  for (const itemId of dueResult.newlyCappedIds) {
-    await supabase.from('cos_agent_log').insert({
-      user_id: userId,
-      event_type: 'inbox_due_nudge_capped',
-      item_id: itemId,
-      payload: { reason: 'max_nudges_reached', nudge_count: config.nudge_max_count },
-    })
-  }
 
   if (!hasAnythingToNudge) return 0
 
