@@ -8,13 +8,19 @@ fi
 
 # Validate migrations
 echo "📋 Validating migrations..."
-node scripts/validate-migrations.js
+if ! node scripts/validate-migrations.js; then
+  echo "❌ Migration validation failed — commit aborted."
+  exit 1
+fi
 
 # Check database health (only if Supabase is running)
 echo "🏥 Checking database health..."
 if command -v supabase >/dev/null 2>&1; then
   if supabase status >/dev/null 2>&1; then
-    node scripts/check-db-health.js
+    if ! node scripts/check-db-health.js; then
+      echo "❌ Database health check failed — commit aborted."
+      exit 1
+    fi
   else
     echo "⚠️  Supabase not running - skipping database health check"
   fi
