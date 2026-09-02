@@ -1512,7 +1512,12 @@ export default function InboxPage() {
               onDismissGmailItem={handleDismissGmailItem}
               onTagGmailItem={handleTagGmailItem}
               onApproveGmailItem={handleApproveSuggestion}
-              onReloadAgentItems={reloadAllItems}
+              onRefreshAgentItems={async () => {
+                // The re-scan can archive agent items server-side (answered at
+                // the source, or newly suppressed) — refetch both item lists so
+                // they leave the panel and the counts stay accurate.
+                await Promise.all([reloadItems(), reloadAllItems()]);
+              }}
             />
           )}
           {syncing ? (

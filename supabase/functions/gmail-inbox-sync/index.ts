@@ -2,6 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
 import { logAiUsage } from "../_shared/aiUsage.ts"
+import {
+  readScanCursor,
+  isInCooldown,
+  scanWindowStartMs,
+  advanceScanCursor,
+} from "../_shared/scanCursor.ts"
+import type { GmailThreadMessageMeta } from "../_shared/inboxTriageUtils.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,6 +152,64 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
   }
 }
 
+// ── Validation pass ──────────────────────────────────────────────────────────
+
+// Auto-resolves pending email suggestions whose thread the user has since
+// replied in: a SENT message newer than the suggestion means it's handled, so
+// it leaves the panel without entering the accepted/dismissed learning history
+// (status 'resolved' skips the outcome_at trigger). Costs one Gmail metadata
+// call per pending email suggestion (capped) — no LLM — and runs on every
+// invocation, cooldown or not.
+// Same untyped-client alias scanCursor.ts uses: these helpers only touch
+// tables absent from the generated types, so the inferred client type
+// (SupabaseClient<unknown, never, ...>) rejects them under deno check.
+// deno-lint-ignore no-explicit-any
+type AnySupabaseClient = any
+
+async function resolveAnsweredEmailSuggestions(
+  supabase: AnySupabaseClient,
+  userId: string,
+  accessToken: string,
+): Promise<number> {
+  const { data: pending } = await supabase
+    .from('dci_suggested_tasks')
+    .select('id, source_thread_id, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .eq('source_type', 'email')
+    .not('source_thread_id', 'is', null)
+    .limit(20)
+
+  let resolved = 0
+  for (const row of (pending ?? []) as Array<{ id: string; source_thread_id: string; created_at: string }>) {
+    try {
+      const threadRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${row.source_thread_id}?format=minimal`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+      if (!threadRes.ok) continue
+      const thread = await threadRes.json() as { messages?: GmailThreadMessageMeta[] }
+      const createdMs = new Date(row.created_at).getTime()
+      const replied = (thread.messages ?? []).some(m =>
+        (m.labelIds ?? []).includes('SENT') &&
+        (m.internalDate ? parseInt(m.internalDate, 10) : Number.NaN) > createdMs
+      )
+      if (replied) {
+        const { error } = await supabase
+          .from('dci_suggested_tasks')
+          .update({ status: 'resolved' })
+          .eq('id', row.id)
+          .eq('status', 'pending')
+        if (!error) resolved++
+      }
+    } catch (err) {
+      // One bad thread (deleted, transient API error) shouldn't stop the sweep.
+      console.warn(`gmail-inbox-sync: resolve check failed for suggestion ${row.id}:`, (err as Error).message)
+    }
+  }
+  return resolved
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -219,10 +284,26 @@ serve(async (req) => {
       }).eq('user_id', userId)
     }
 
+    // Validation pass (free, every invocation): close out suggestions whose
+    // thread the user already replied to in Gmail.
+    const resolvedCount = await resolveAnsweredEmailSuggestions(supabase, userId, accessToken)
+
+    // Cost guardrail: a completed scan in the last 10 minutes means there is
+    // nothing meaningfully new — skip the fetch + LLM extraction entirely so
+    // repeated refresh-button clicks don't burn model calls.
+    const cursorMs = await readScanCursor(supabase, userId, 'gmail_suggestions')
+    if (isInCooldown(cursorMs)) {
+      return jsonResponse({ skipped: 'cooldown', suggestions_added: 0, suggestions_resolved: resolvedCount }, 200)
+    }
+
     // ── 2. Fetch recent Primary inbox threads ───────────────────────────────
     // category:primary excludes Promotions, Social, Updates, Forums tabs —
     // this covers newsletters, automated notifications, and calendar emails.
-    const query = `in:inbox category:primary newer_than:${days}d`
+    // Incremental: only since the last completed scan (24h overlap for retry
+    // safety — suggestion_source_processed dedups anything re-fetched), capped
+    // at the requested days window.
+    const afterEpochSec = Math.floor(scanWindowStartMs(cursorMs, days) / 1000)
+    const query = `in:inbox category:primary after:${afterEpochSec}`
     const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads')
     listUrl.searchParams.set('q', query)
     listUrl.searchParams.set('maxResults', '50')
@@ -239,7 +320,8 @@ serve(async (req) => {
     const threadIds = (listData.threads ?? []).map(t => t.id)
 
     if (threadIds.length === 0) {
-      return jsonResponse({ processed: 0, suggestions_added: 0, message: 'no_threads' }, 200)
+      await advanceScanCursor(supabase, userId, 'gmail_suggestions')
+      return jsonResponse({ processed: 0, suggestions_added: 0, suggestions_resolved: resolvedCount, message: 'no_threads' }, 200)
     }
 
     // ── 3. Skip already-processed threads ──────────────────────────────────
@@ -254,7 +336,8 @@ serve(async (req) => {
     const unprocessedIds = threadIds.filter(id => !processedIds.has(id))
 
     if (unprocessedIds.length === 0) {
-      return jsonResponse({ processed: 0, suggestions_added: 0, message: 'all_already_processed' }, 200)
+      await advanceScanCursor(supabase, userId, 'gmail_suggestions')
+      return jsonResponse({ processed: 0, suggestions_added: 0, suggestions_resolved: resolvedCount, message: 'all_already_processed' }, 200)
     }
 
     // ── 4. Fetch thread details (cap at 30 to stay within time budget) ──────
@@ -367,7 +450,8 @@ serve(async (req) => {
           stillToMark.map(id => ({ user_id: userId, source_type: 'gmail_thread', source_id: id, suggestions_added: 0 }))
         )
       }
-      return jsonResponse({ processed: toProcess.length, suggestions_added: 0, failed_threads: failedThreadIds.size }, 200)
+      await advanceScanCursor(supabase, userId, 'gmail_suggestions')
+      return jsonResponse({ processed: toProcess.length, suggestions_added: 0, suggestions_resolved: resolvedCount, failed_threads: failedThreadIds.size }, 200)
     }
 
     // ── 5. Load context for prompt ─────────────────────────────────────────
@@ -580,9 +664,15 @@ Respond with valid JSON only — an array of objects. Schema:
       await supabase.from('suggestion_source_processed').insert(processedInserts)
     }
 
+    // Failed threads stay retryable through the 24h fetch-window overlap even
+    // though the cursor advances — they were excluded from
+    // suggestion_source_processed above, so the next run re-analyzes them.
+    await advanceScanCursor(supabase, userId, 'gmail_suggestions')
+
     return jsonResponse({
       processed: threads.length,
       suggestions_added: suggestionsAdded,
+      suggestions_resolved: resolvedCount,
       failed_threads: failedThreadIds.size,
     })
 
