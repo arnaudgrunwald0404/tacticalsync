@@ -117,6 +117,21 @@ export function isAutoPinnedItem(item: Pick<InboxItem, 'type'>): boolean {
   return item.type === 'brief_item';
 }
 
+/**
+ * Fixed ordering for the auto-pinned brief rows: the daily brief always sits
+ * first, weekly priorities second, everything else after. Older brief rows
+ * pre-date `agent_payload.brief_kind`, so fall back to the source_ref type
+ * (only weekly briefs use 'dci_weekly_brief').
+ */
+export function briefItemRank(
+  item: Pick<InboxItem, 'type' | 'agent_payload' | 'source_ref'>,
+): number {
+  if (!isAutoPinnedItem(item)) return 2;
+  const kind = item.agent_payload?.brief_kind
+    ?? (item.source_ref?.type === 'dci_weekly_brief' ? 'weekly' : 'daily');
+  return kind === 'daily' ? 0 : 1;
+}
+
 // ── Type guards ──────────────────────────────────────────────────────────────
 
 export const isItemType = (v: unknown): v is InboxItemType =>

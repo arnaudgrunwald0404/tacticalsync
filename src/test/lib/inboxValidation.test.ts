@@ -33,6 +33,7 @@ import {
   computePriorityDueAt,
   currentPriorityTier,
   isAutoPinnedItem,
+  briefItemRank,
   sanitizeSearchTerm,
   computeSnoozeDate,
   formatSnoozeLabel,
@@ -752,6 +753,30 @@ describe('isAutoPinnedItem', () => {
 
   it.each(ITEM_TYPES.filter(t => t !== 'brief_item'))('is false for %s', (type) => {
     expect(isAutoPinnedItem({ type })).toBe(false);
+  });
+});
+
+describe('briefItemRank', () => {
+  it('ranks the daily brief before weekly priorities, before everything else', () => {
+    const daily = { type: 'brief_item' as const, agent_payload: { brief_kind: 'daily' as const }, source_ref: null };
+    const weekly = { type: 'brief_item' as const, agent_payload: { brief_kind: 'weekly' as const }, source_ref: null };
+    const task = { type: 'task' as const, agent_payload: null, source_ref: null };
+    expect(briefItemRank(daily)).toBeLessThan(briefItemRank(weekly));
+    expect(briefItemRank(weekly)).toBeLessThan(briefItemRank(task));
+  });
+
+  it('falls back to source_ref type when brief_kind is missing (pre-brief_kind rows)', () => {
+    const legacyWeekly = {
+      type: 'brief_item' as const,
+      agent_payload: null,
+      source_ref: { type: 'dci_weekly_brief' as const, id: '2026-08-31' },
+    };
+    const legacyDaily = {
+      type: 'brief_item' as const,
+      agent_payload: null,
+      source_ref: { type: 'dci_brief' as const, id: '2026-09-01' },
+    };
+    expect(briefItemRank(legacyDaily)).toBeLessThan(briefItemRank(legacyWeekly));
   });
 });
 

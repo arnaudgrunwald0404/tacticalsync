@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
-import { Hash, Pin } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Hash, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxItemRow } from './InboxItemRow';
-import { isAutoPinnedItem, priorityRank } from '@/lib/inboxValidation';
+import { isAutoPinnedItem, briefItemRank, priorityRank } from '@/lib/inboxValidation';
 import type { InboxItem, InboxTag, TagSuggestion } from '@/types/inbox';
 import type { TeamMember } from '@/hooks/useTeamMembers';
 
@@ -41,13 +41,15 @@ export function InboxByProjectView({
   prioritizeMode, newItemId,
   onSnooze, onSnoozeUntilNext1on1, onUnsnooze, focusedItemId,
 }: InboxByProjectViewProps) {
-  const { pinnedItems, projectGroups } = useMemo(() => {
+  const { briefItems, pinnedItems, projectGroups } = useMemo(() => {
     const projectTags = allTags.filter(t => t.type === 'project');
 
-    // Weekly priorities/daily check-ins (never belong to a project) and
-    // manually pinned items both get pulled out up front so they float in
-    // their own section above every project group, regardless of which
-    // project(s) a manually pinned item is tagged with.
+    // The daily brief and weekly priorities (never belong to a project) always
+    // sit at the very top, in that order, above the Pinned section. Manually
+    // pinned items get pulled out into their own Pinned section below them,
+    // above every project group, regardless of which project(s) a manually
+    // pinned item is tagged with.
+    const briefItems: InboxItem[] = [];
     const pinnedItems: InboxItem[] = [];
 
     // Map each item to the project tags it carries
@@ -55,7 +57,11 @@ export function InboxByProjectView({
     const noProject: InboxItem[] = [];
 
     for (const item of items) {
-      if (isAutoPinnedItem(item) || item.pinned) {
+      if (isAutoPinnedItem(item)) {
+        briefItems.push(item);
+        continue;
+      }
+      if (item.pinned) {
         pinnedItems.push(item);
         continue;
       }
@@ -99,8 +105,24 @@ export function InboxByProjectView({
       for (const group of groups) group.items.sort(byUrgency);
     }
 
-    return { pinnedItems, projectGroups: groups };
+    // Daily brief first, weekly priorities second — fixed, even in
+    // prioritize mode.
+    briefItems.sort((a, b) => briefItemRank(a) - briefItemRank(b));
+
+    return { briefItems, pinnedItems, projectGroups: groups };
   }, [items, allTags, prioritizeMode]);
+
+  // Section headers (Pinned + each project group) collapse their items when
+  // clicked. Keyed by tag id, with sentinels for the Pinned and No-project
+  // sections; session-local, resets on remount.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapsed = (key: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const sharedRowProps = {
     allTags, onArchive, onDelete, onRemoveTag, onAddTag,
@@ -111,20 +133,9 @@ export function InboxByProjectView({
 
   return (
     <div className="flex flex-col overflow-y-auto">
-      {pinnedItems.length > 0 && (
+      {briefItems.length > 0 && (
         <div className="border-b border-gray-100">
-          <div
-            className="flex items-center gap-2 px-4 py-2.5 border-b"
-            style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a', borderLeftWidth: 3, borderLeftColor: '#fbbf24' }}
-          >
-            <Pin className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
-            <span className="font-semibold text-sm text-amber-700">Pinned</span>
-            <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full text-amber-700 bg-amber-200/50">
-              {pinnedItems.length}
-            </span>
-          </div>
-
-          {pinnedItems.map(item => (
+          {briefItems.map(item => (
             <div key={item.id} data-inbox-item-id={item.id}>
               <InboxItemRow
                 item={item}
@@ -139,41 +150,26 @@ export function InboxByProjectView({
         </div>
       )}
 
-      {projectGroups.map(({ tag, items: groupItems }) => (
-        <div key={tag?.id ?? '__none__'} className="border-b border-gray-100">
-          <div
-            className="flex items-center gap-2 px-4 py-2.5 border-b"
-            style={tag ? {
-              backgroundColor: tag.color + '14',
-              borderColor: tag.color + '30',
-              borderLeftWidth: 3,
-              borderLeftColor: tag.color,
-            } : {
-              backgroundColor: '#f3f4f6',
-              borderColor: '#e5e7eb',
-            }}
+      {pinnedItems.length > 0 && (
+        <div className="border-b border-gray-100">
+          <button
+            type="button"
+            onClick={() => toggleCollapsed('__pinned__')}
+            aria-expanded={!collapsed.has('__pinned__')}
+            className="w-full flex items-center gap-2 px-4 py-2.5 border-b text-left cursor-pointer"
+            style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a', borderLeftWidth: 3, borderLeftColor: '#fbbf24' }}
           >
-            {tag ? (
-              <>
-                <Hash className="h-3.5 w-3.5 flex-shrink-0" style={{ color: tag.color }} />
-                <span className="font-semibold text-sm" style={{ color: tag.color }}>{tag.name}</span>
-                {tag.settings?.pinned && <Pin className="h-3 w-3 text-amber-400 flex-shrink-0" />}
-              </>
-            ) : (
-              <>
-                <span className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="font-semibold text-sm text-gray-400">No project</span>
-              </>
-            )}
-            <span
-              className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full"
-              style={tag ? { color: tag.color, backgroundColor: tag.color + '20' } : { color: '#9ca3af' }}
-            >
-              {groupItems.length}
+            {collapsed.has('__pinned__')
+              ? <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+              : <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />}
+            <Pin className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+            <span className="font-semibold text-sm text-amber-700">Pinned</span>
+            <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full text-amber-700 bg-amber-200/50">
+              {pinnedItems.length}
             </span>
-          </div>
+          </button>
 
-          {groupItems.map(item => (
+          {!collapsed.has('__pinned__') && pinnedItems.map(item => (
             <div key={item.id} data-inbox-item-id={item.id}>
               <InboxItemRow
                 item={item}
@@ -186,7 +182,63 @@ export function InboxByProjectView({
             </div>
           ))}
         </div>
-      ))}
+      )}
+
+      {projectGroups.map(({ tag, items: groupItems }) => {
+        const groupKey = tag?.id ?? '__none__';
+        const isCollapsed = collapsed.has(groupKey);
+        return (
+        <div key={groupKey} className="border-b border-gray-100">
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(groupKey)}
+            aria-expanded={!isCollapsed}
+            className="w-full flex items-center gap-2 px-4 py-2.5 border-b text-left cursor-pointer"
+            style={tag ? {
+              backgroundColor: tag.color + '14',
+              borderColor: tag.color + '30',
+              borderLeftWidth: 3,
+              borderLeftColor: tag.color,
+            } : {
+              backgroundColor: '#f3f4f6',
+              borderColor: '#e5e7eb',
+            }}
+          >
+            {isCollapsed
+              ? <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" style={tag ? { color: tag.color } : { color: '#9ca3af' }} />
+              : <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" style={tag ? { color: tag.color } : { color: '#9ca3af' }} />}
+            {tag ? (
+              <>
+                <Hash className="h-3.5 w-3.5 flex-shrink-0" style={{ color: tag.color }} />
+                <span className="font-semibold text-sm" style={{ color: tag.color }}>{tag.name}</span>
+                {tag.settings?.pinned && <Pin className="h-3 w-3 text-amber-400 flex-shrink-0" />}
+              </>
+            ) : (
+              <span className="font-semibold text-sm text-gray-400">No project</span>
+            )}
+            <span
+              className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full"
+              style={tag ? { color: tag.color, backgroundColor: tag.color + '20' } : { color: '#9ca3af' }}
+            >
+              {groupItems.length}
+            </span>
+          </button>
+
+          {!isCollapsed && groupItems.map(item => (
+            <div key={item.id} data-inbox-item-id={item.id}>
+              <InboxItemRow
+                item={item}
+                {...sharedRowProps}
+                isSelected={selectedIds?.has(item.id)}
+                onSelect={onSelect}
+                isNew={item.id === newItemId}
+                isFocused={item.id === focusedItemId}
+              />
+            </div>
+          ))}
+        </div>
+        );
+      })}
 
       {projectGroups.length === 0 && pinnedItems.length === 0 && (
         <div className={cn('flex items-center justify-center h-24')}>
