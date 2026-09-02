@@ -45,7 +45,7 @@ import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMem
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag, InboxView, InboxViewSort } from '@/types/inbox';
 import type { ComposerItemOptions } from '@/lib/composerCommands';
-import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId, priorityRank } from '@/lib/inboxValidation';
+import { planTagGroupReindex, isAutoPinnedItem, briefItemRank, getAdjacentItemId, priorityRank } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
 
@@ -800,14 +800,16 @@ export default function InboxPage() {
     new Set(tags.filter(t => t.type === 'project' && t.settings?.pinned).map(t => t.id)),
   [tags]);
 
-  // For date/grouped views: weekly priorities and daily check-ins float first,
-  // then manually-pinned items, then items with pending suggestions, then
-  // pinned-project items
+  // For date/grouped views: the daily brief floats first, then weekly
+  // priorities, then manually-pinned items, then items with pending
+  // suggestions, then pinned-project items
   const sortedItems = useMemo(() => {
     const base = sortMode === 'byProject' ? items : [...items].sort((a, b) => {
       const aAutoPinned = isAutoPinnedItem(a) ? 2 : (a.pinned ? 1 : 0);
       const bAutoPinned = isAutoPinnedItem(b) ? 2 : (b.pinned ? 1 : 0);
       if (bAutoPinned !== aAutoPinned) return bAutoPinned - aAutoPinned;
+      const briefOrder = briefItemRank(a) - briefItemRank(b);
+      if (briefOrder !== 0) return briefOrder;
       const aSug = (a.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       const bSug = (b.tag_suggestions?.length ?? 0) > 0 ? 2 : 0;
       if (bSug !== aSug) return bSug - aSug;
@@ -817,14 +819,17 @@ export default function InboxPage() {
     });
     // Prioritize mode ranks by urgency (Do Now status first, then the informal
     // due-date tiers soonest-first — see priorityRank), regardless of the sort
-    // mode underneath. Weekly priorities, daily check-ins, and manually-pinned
-    // items stay pinned to the top even here. Shared with InboxByProjectView's
-    // own prioritizeMode-gated sort so both sort modes rank items identically.
+    // mode underneath. The daily brief, weekly priorities, and manually-pinned
+    // items stay pinned to the top even here (briefs above manual pins, daily
+    // before weekly). Shared with InboxByProjectView's own prioritizeMode-gated
+    // sort so both sort modes rank items identically.
     if (!prioritizeMode) return base;
     return [...base].sort((a, b) => {
-      const aPinned = isAutoPinnedItem(a) || a.pinned ? 1 : 0;
-      const bPinned = isAutoPinnedItem(b) || b.pinned ? 1 : 0;
+      const aPinned = isAutoPinnedItem(a) ? 2 : (a.pinned ? 1 : 0);
+      const bPinned = isAutoPinnedItem(b) ? 2 : (b.pinned ? 1 : 0);
       if (bPinned !== aPinned) return bPinned - aPinned;
+      const briefOrder = briefItemRank(a) - briefItemRank(b);
+      if (briefOrder !== 0) return briefOrder;
       return priorityRank(a) - priorityRank(b);
     });
   }, [items, pinnedProjectIds, sortMode, prioritizeMode]);
