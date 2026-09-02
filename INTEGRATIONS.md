@@ -420,7 +420,7 @@ None. Message-detail fetches capped at 10 per prep run (`.slice(0, 10)`). No 429
 | computed | `is_from_member` |
 | `Date` header | `message_date` |
 
-Full message bodies are never fetched — only Gmail's own truncated `snippet` plus three metadata headers.
+Full message bodies are never fetched by this prep-enrichment path — only Gmail's own truncated `snippet` plus three metadata headers. (The inbox action-item scanner is the exception: `extract-inbox-action-items` fetches `format=full` so it can extract candidate action links from the email body — see `docs/SPECIFICATION.md` §7.7.)
 
 ### Transformation Logic
 

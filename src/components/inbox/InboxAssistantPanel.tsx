@@ -13,6 +13,7 @@ import { DelegationChatView } from './DelegationChatView';
 import { useInboxDelegation, type Delegation } from '@/hooks/useInboxDelegation';
 import { BriefItemDetail } from './BriefItemDetail';
 import { PersonBriefDetail } from './PersonBriefDetail';
+import { SourceLinksSection } from './SourceLinks';
 import { AgentBar } from './AgentBar';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { PersonContextWidget } from './PersonContextWidget';
@@ -501,6 +502,10 @@ function ItemDetail({
           <p className="text-xs text-gray-500 italic leading-relaxed">{item.agent_payload.rationale}</p>
         </div>
       )}
+
+      {/* Source links — back to the original email/Slack message, plus the
+          action's direct target when one was extracted from the email body. */}
+      <SourceLinksSection item={item} />
 
       {/* History */}
       <div className="space-y-1.5">

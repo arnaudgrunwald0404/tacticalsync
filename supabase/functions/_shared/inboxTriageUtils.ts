@@ -255,3 +255,76 @@ export function hasUserReplyAfter(
     (m.internalDate ? parseInt(m.internalDate, 10) : Number.NaN) > sourceDate
   )
 }
+
+/**
+ * Recursive subset of the Gmail `users.messages.get?format=full` payload tree:
+ * multipart messages nest their text/html parts under `parts`, and each leaf
+ * carries its content base64url-encoded in `body.data`.
+ */
+export interface GmailPayloadPart {
+  mimeType?: string
+  body?: { data?: string }
+  parts?: GmailPayloadPart[]
+}
+
+/** Decode Gmail's base64url body data to a UTF-8 string ('' on bad input). */
+export function decodeGmailBody(data: string | undefined): string {
+  if (!data) return ''
+  try {
+    const b64 = data.replace(/-/g, '+').replace(/_/g, '/')
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  } catch {
+    return ''
+  }
+}
+
+// Links that are never "the thing this email asks you to open": list plumbing,
+// legal footers, and social follow buttons. Matching is on the full URL so
+// both path segments ("/unsubscribe") and query params
+// ("?action=unsubscribe") are caught.
+const JUNK_URL_RE = /unsubscribe|list-manage|email-preferences|manage.?preferences|privacy-?policy|terms-of/i
+const SOCIAL_HOST_RE = /^(?:www\.)?(?:facebook|twitter|x|instagram|linkedin|youtube)\.com$/i
+// Asset extensions — image trackers and inlined logos, not destinations.
+const ASSET_URL_RE = /\.(?:png|gif|jpe?g|svg|webp|ico|css|woff2?)(?:\?|$)/i
+
+/**
+ * Collect candidate action URLs from a Gmail message body (format=full
+ * payload): hrefs out of text/html parts plus bare URLs in text/plain parts,
+ * deduped in document order, junk (unsubscribe/footer/social/asset/tracking-
+ * pixel) links dropped. Capped at `max` so a marketing-heavy email can't
+ * flood the extraction prompt.
+ */
+export function extractEmailBodyUrls(payload: GmailPayloadPart | undefined, max = 12): string[] {
+  if (!payload) return []
+  let plain = ''
+  let html = ''
+  const walk = (part: GmailPayloadPart) => {
+    if (part.mimeType === 'text/plain') plain += decodeGmailBody(part.body?.data) + '\n'
+    else if (part.mimeType === 'text/html') html += decodeGmailBody(part.body?.data) + '\n'
+    part.parts?.forEach(walk)
+  }
+  walk(payload)
+
+  const seen = new Set<string>()
+  const urls: string[] = []
+  const push = (raw: string) => {
+    // Entity-decode hrefs (&amp; is ubiquitous in HTML query strings).
+    const url = raw.replace(/&amp;/gi, '&').replace(/&#39;/g, "'").trim()
+    if (!/^https?:\/\//i.test(url)) return
+    if (url.length > 1000) return // runaway tracking blobs
+    if (JUNK_URL_RE.test(url) || ASSET_URL_RE.test(url)) return
+    try {
+      if (SOCIAL_HOST_RE.test(new URL(url).hostname)) return
+    } catch {
+      return
+    }
+    if (seen.has(url)) return
+    seen.add(url)
+    urls.push(url)
+  }
+
+  for (const m of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) push(m[1])
+  for (const m of plain.matchAll(/https?:\/\/[^\s<>"')\]]+/g)) push(m[0])
+  return urls.slice(0, max)
+}

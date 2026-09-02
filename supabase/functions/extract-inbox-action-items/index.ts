@@ -15,6 +15,8 @@ import {
   isCalendarInvite,
   parseGmailThreadIdFromUrl,
   hasUserReplyAfter,
+  extractEmailBodyUrls,
+  type GmailPayloadPart,
   type GmailThreadMessageMeta,
   type SenderTier,
   type IntentType,
@@ -101,6 +103,7 @@ interface ScanItem {
   senderEmail?: string          // gmail only
   senderTier?: SenderTier       // gmail only
   gmailUrl?: string             // gmail only — direct link to thread
+  candidateUrls?: string[]      // gmail only — links found in the email body, for action_link extraction
   slackUrl?: string             // slack only — direct link to the message
   senderId?: string             // slack only — sender_slack_id, for dismissal-based suppression
   channelId?: string            // slack only — channel_id, for dismissal-based suppression
@@ -122,6 +125,10 @@ interface Finding {
   rationale: string
   owed_by: 'me' | 'them' | null
   due_date: string | null
+  /** The one email-body link that is the action's direct target (the training
+   *  to take, the doc to review), or null. url is validated verbatim against
+   *  the item's candidateUrls so the model can't invent destinations. */
+  action_link: { url: string; label: string } | null
 }
 
 const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
@@ -138,7 +145,10 @@ async function extractFindings(
     const tierMarker = i.source === 'gmail' && i.senderTier
       ? (i.senderTier === 'active' ? ' [replied-before]' : ' [never-replied]')
       : ''
-    return `${i.id}) [${i.label}]${tierMarker} ${i.text}`
+    const linksBlock = i.candidateUrls && i.candidateUrls.length > 0
+      ? `\n   LINKS: ${i.candidateUrls.join(' ')}`
+      : ''
+    return `${i.id}) [${i.label}]${tierMarker} ${i.text}${linksBlock}`
   }).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
@@ -195,7 +205,9 @@ Respond ONLY with valid JSON: an array of
  "summary": "<one-line paraphrase, imperative or question form, under 140 chars, addressed to the reader as \"you\">",
  "rationale": "<one short clause on why this needs attention>",
  "owed_by": "me"|"them"|null,
- "due_date": "<YYYY-MM-DD>"|null}.
+ "due_date": "<YYYY-MM-DD>"|null,
+ "action_link": {"url": "<a URL copied VERBATIM from that item's LINKS list>",
+                 "label": "<short verb phrase for it, under 40 chars, e.g. \"Open the training\">"}|null}.
 
 intent_type rules:
 - "question": sender is asking the reader something that needs an answer.
@@ -212,6 +224,14 @@ owed_by rules:
 For "due_date", resolve any explicit or clearly-implied deadline to an
 absolute YYYY-MM-DD date — e.g. "by Friday" → next Friday, "EOD tomorrow" →
 tomorrow. Use null when no deadline is stated or implied.
+
+Some items carry a LINKS line of URLs found in the email body. For
+"action_link", pick the ONE link that is the direct way to do the flagged
+action — the training to complete, the document to review, the form to fill
+in, the thing to approve. Copy its URL verbatim from the LINKS list. Use null
+when the item has no LINKS line or none of the links is clearly the action's
+target — never pick logos, footers, marketing, or "view in browser" links.
+
 Return [] if nothing qualifies.
 
 ITEMS TO REVIEW
@@ -224,11 +244,24 @@ ${numbered}`, { label: 'extract inbox findings', log: { functionName: 'extract-i
     if (!Array.isArray(parsed)) return []
     const isoDateRe = /^\d{4}-\d{2}-\d{2}$/
     const validIntents: IntentType[] = ['question', 'request', 'introduction', 'decision_needed', 'fyi']
+    const candidatesById = new Map(items.map(i => [i.id, i.candidateUrls ?? []]))
     return (parsed as Finding[]).map(f => ({
       ...f,
       intent_type: validIntents.includes(f.intent_type) ? f.intent_type : 'fyi',
       owed_by: f.owed_by === 'me' || f.owed_by === 'them' ? f.owed_by : null,
       due_date: typeof f.due_date === 'string' && isoDateRe.test(f.due_date) ? f.due_date : null,
+      // Only accept a URL that verbatim-matches one actually found in that
+      // item's email body — a paraphrased or invented URL is worse than none.
+      action_link:
+        f.action_link && typeof f.action_link.url === 'string' &&
+        (candidatesById.get(f.item_id) ?? []).includes(f.action_link.url)
+          ? {
+              url: f.action_link.url,
+              label: typeof f.action_link.label === 'string' && f.action_link.label.trim()
+                ? f.action_link.label.trim().slice(0, 60)
+                : 'Open link',
+            }
+          : null,
     }))
   } catch (err) {
     // Not just a console.warn: an entire batch's worth of Slack/Gmail
@@ -809,9 +842,12 @@ serve(async (req) => {
               }
 
               for (const { id } of listData.messages ?? []) {
+                // format=full (not metadata): the body is needed to pull out
+                // candidate action links (the training to take, the doc to
+                // review) for the sidebar's "open the linked resource" CTA.
                 const msgRes = await retryWithBackoff(
                   () => fetch(
-                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
                     { headers: { Authorization: `Bearer ${accessToken}` } },
                   ),
                   { integration: 'gmail', label: 'get message' },
@@ -821,7 +857,7 @@ serve(async (req) => {
                   snippet?: string
                   threadId?: string
                   internalDate?: string
-                  payload?: { headers?: Array<{ name: string; value: string }> }
+                  payload?: GmailPayloadPart & { headers?: Array<{ name: string; value: string }> }
                 }
                 const headers = detail.payload?.headers ?? []
                 const from = headers.find(h => h.name.toLowerCase() === 'from')?.value ?? 'unknown sender'
@@ -848,6 +884,8 @@ serve(async (req) => {
                   ? `https://mail.google.com/mail/u/0/#inbox/${detail.threadId}`
                   : 'https://mail.google.com'
 
+                const candidateUrls = extractEmailBodyUrls(detail.payload)
+
                 items.push({
                   id: `g${items.length}`,
                   source: 'gmail',
@@ -857,6 +895,7 @@ serve(async (req) => {
                   senderEmail: senderEmail ?? undefined,
                   senderTier,
                   gmailUrl,
+                  ...(candidateUrls.length > 0 ? { candidateUrls } : {}),
                 })
               }
             }
@@ -923,6 +962,9 @@ serve(async (req) => {
                 ...(source.senderEmail ? { sender_email: source.senderEmail } : {}),
                 ...(source.senderTier ? { sender_tier: source.senderTier } : {}),
                 ...(source.gmailUrl ? { gmail_url: source.gmailUrl } : {}),
+                ...(finding.action_link
+                  ? { action_url: finding.action_link.url, action_label: finding.action_link.label }
+                  : {}),
                 ...(source.slackUrl ? { slack_url: source.slackUrl } : {}),
                 ...(source.senderId ? { slack_sender_id: source.senderId } : {}),
                 ...(source.channelId ? { slack_channel_id: source.channelId } : {}),
