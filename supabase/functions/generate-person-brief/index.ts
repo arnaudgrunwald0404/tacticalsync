@@ -213,7 +213,10 @@ Deno.serve(async (req) => {
 
 ${contextLines.join('\n') || '(No prior history — this may be an early 1:1.)'}`
 
-        const raw = await geminiGenerateText(googleApiKey, prompt, { label: 'person brief talking points' })
+        const raw = await geminiGenerateText(googleApiKey, prompt, {
+          label: 'person brief talking points',
+          log: { functionName: 'generate-person-brief', userId: user_id },
+        })
         const jsonMatch = raw.match(/\[[\s\S]*\]/)
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]) as Array<{ text: string; from?: string }>

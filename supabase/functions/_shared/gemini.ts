@@ -11,6 +11,18 @@
  */
 
 import { retryWithBackoff } from './retryWithBackoff.ts'
+import { logAiUsage } from './aiUsage.ts'
+
+/**
+ * Pass `log` to geminiGenerateText / geminiChat to record the call's token
+ * usage in ai_usage_log (admin AI Usage panel in Settings). Logging happens
+ * here, in the shared wrapper, so every call site — current and future —
+ * gets cost tracking by adding one option rather than its own insert.
+ */
+export interface GeminiLogContext {
+  functionName: string
+  userId?: string | null
+}
 
 export const GEMINI_MODEL = 'gemini-2.5-flash'
 // For call sites that ran Claude Sonnet before the provider port — the
@@ -30,9 +42,10 @@ export const GEMINI_PRO_MODEL = 'gemini-pro-latest'
 export async function geminiGenerateText(
   apiKey: string,
   prompt: string,
-  opts: { model?: string; label?: string } = {},
+  opts: { model?: string; label?: string; log?: GeminiLogContext } = {},
 ): Promise<string> {
   const model = opts.model ?? GEMINI_MODEL
+  const startMs = Date.now()
   const res = await retryWithBackoff(
     () => fetch(
       `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
@@ -49,6 +62,16 @@ export async function geminiGenerateText(
   }
   const data = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  }
+  if (opts.log) {
+    await logAiUsage(opts.log.functionName, {
+      model,
+      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+      userId: opts.log.userId,
+      durationMs: Date.now() - startMs,
+    })
   }
   return (data.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? '').join('').trim()
 }
@@ -89,9 +112,11 @@ export async function geminiChat(
     tools?: unknown[]
     model?: string
     label?: string
+    log?: GeminiLogContext
   },
 ): Promise<GeminiChatResult> {
   const model = opts.model ?? GEMINI_MODEL
+  const startMs = Date.now()
   const tools = opts.tools ?? []
   // Mixing a built-in tool (e.g. { google_search: {} }) with function
   // declarations is rejected unless this flag is set — verified against the
@@ -123,14 +148,24 @@ export async function geminiChat(
     usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
   }
   const parts = data.candidates?.[0]?.content?.parts ?? []
+  const usage = {
+    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+  }
+  if (opts.log) {
+    await logAiUsage(opts.log.functionName, {
+      model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: opts.log.userId,
+      durationMs: Date.now() - startMs,
+    })
+  }
   return {
     content: { role: 'model', parts },
     text: parts.map(p => p.text ?? '').join('').trim(),
     functionCalls: parts.filter(p => p.functionCall).map(p => p.functionCall!),
-    usage: {
-      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-    },
+    usage,
   }
 }
 

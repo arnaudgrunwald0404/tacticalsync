@@ -197,7 +197,10 @@ Update the relationship brief for "${subjectName}". Keep it concise (max 800 wor
 ## Relationship Notes
 ## Recent Themes`
 
-    const updatedContent = (await geminiGenerateText(googleApiKey, prompt, { label: 'consolidate relationship doc' })).trim()
+    const updatedContent = (await geminiGenerateText(googleApiKey, prompt, {
+      label: 'consolidate relationship doc',
+      log: { functionName: 'consolidate-relationship-doc', userId: user_id },
+    })).trim()
     const newVersionCount = (existingDoc?.version_count ?? 0) + 1
 
     // ── Upsert back ───────────────────────────────────────────────────────

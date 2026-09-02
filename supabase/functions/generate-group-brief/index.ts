@@ -386,6 +386,7 @@ ${contextParts.join('\n')}`
       system: systemPrompt,
       contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
       label: 'group meeting brief',
+      log: { functionName: 'generate-group-brief', userId },
     })
 
     const generatedContent = message.text

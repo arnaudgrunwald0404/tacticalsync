@@ -200,7 +200,7 @@ tomorrow. Use null when no deadline is stated or implied.
 Return [] if nothing qualifies.
 
 ITEMS TO REVIEW
-${numbered}`, { label: 'extract inbox findings' })
+${numbered}`, { label: 'extract inbox findings', log: { functionName: 'extract-inbox-action-items', userId } })
 
   // Strip markdown code fences if the model wraps the JSON (```json ... ``` or ``` ... ```)
   const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
@@ -263,7 +263,10 @@ Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
   try {
-    const raw = await geminiGenerateText(googleApiKey, prompt, { label: 'suggest inbox tags' })
+    const raw = await geminiGenerateText(googleApiKey, prompt, {
+      label: 'suggest inbox tags',
+      log: { functionName: 'extract-inbox-action-items' },
+    })
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []

@@ -721,6 +721,7 @@ Activities:
       system: finalSystemPrompt,
       contents: [{ role: 'user', parts: [{ text: userPromptParts.join('\n') }] }],
       label: 'dci brief',
+      log: { functionName: 'generate-dci-brief', userId },
     })
 
     const rawText = message.text
