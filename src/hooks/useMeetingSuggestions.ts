@@ -45,12 +45,20 @@ interface UseMeetingSuggestionsArgs<Destination> {
   /** Creates the actual list item. Owned by the parent so its optimistic
    *  priorities state stays in sync. */
   onAddToList: (destination: Destination, title: string) => Promise<void> | void;
+  /** Called after a manual re-scan completes. The re-scan can also archive or
+   *  resolve items owned by other hooks (agent_question inbox items closed by
+   *  the reconcile/suppression sweeps) — the parent reloads those here so
+   *  handled items actually leave the screen. */
+  onAfterRefresh?: () => Promise<void> | void;
 }
 
 interface UseMeetingSuggestionsReturn<Destination> {
   suggestions: MeetingSuggestion[];
   loading: boolean;
   refreshing: boolean;
+  /** Most recent completed scan across all sources (cos_action_item_scan_state),
+   *  for "last scanned N min ago" affordances. Null until a first scan exists. */
+  lastScannedAt: Date | null;
   targetOptions: TargetOption[];
   resolve: (category: string | null | undefined) => TargetOption | undefined;
   addToList: (id: string, destination: Destination) => Promise<void>;
@@ -61,11 +69,12 @@ interface UseMeetingSuggestionsReturn<Destination> {
 const STALE_DAYS = 14;
 
 export function useMeetingSuggestions<Destination>({
-  userId, layoutConfig, members, onAddToList,
+  userId, layoutConfig, members, onAddToList, onAfterRefresh,
 }: UseMeetingSuggestionsArgs<Destination>): UseMeetingSuggestionsReturn<Destination> {
   const [suggestions, setSuggestions] = useState<MeetingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
   // Guards against a suggestion being actioned twice (e.g. a fast double-click)
   // before the optimistic state update has re-rendered and removed its row.
   const pendingRef = useRef<Set<string>>(new Set());
@@ -94,6 +103,18 @@ export function useMeetingSuggestions<Destination>({
     }));
     setSuggestions(rows);
     setLoading(false);
+
+    // Newest completed scan across sources — users can SELECT their own
+    // cos_action_item_scan_state rows (read-only RLS policy).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: scanRow } = await (supabase as any)
+      .from('cos_action_item_scan_state')
+      .select('last_scanned_at')
+      .eq('user_id', userId)
+      .order('last_scanned_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setLastScannedAt(scanRow?.last_scanned_at ? new Date(scanRow.last_scanned_at) : null);
   }, [userId, members]);
 
   useEffect(() => { load(); }, [load]);
@@ -139,19 +160,31 @@ export function useMeetingSuggestions<Destination>({
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      // Each function is incremental server-side: per-user scan cursors limit
+      // the fetch to content newer than the last completed scan, and a
+      // 10-minute cooldown skips the LLM extraction entirely on rapid
+      // re-clicks. The validation passes (resolve suggestions whose email/
+      // Slack thread was answered) and the dismissal-rule sweep are DB-only
+      // and run on every click regardless of cooldown. `days` is just the
+      // outer cap on the window, not the amount re-scanned.
       await Promise.allSettled([
         supabase.functions.invoke('generate-meeting-suggestions', { body: {} }),
         supabase.functions.invoke('slack-inbox-sync', { body: { days: 7 } }),
         supabase.functions.invoke('gmail-inbox-sync', { body: { days: 7 } }),
+        // Owns the agent_question pipeline: scans new Slack/Gmail content,
+        // archives items already answered at the source, and applies the
+        // latest learned suppression rules to open items.
+        supabase.functions.invoke('extract-inbox-action-items', { body: {} }),
       ]);
     } finally {
       await load();
+      await onAfterRefresh?.();
       setRefreshing(false);
     }
-  }, [load]);
+  }, [load, onAfterRefresh]);
 
   return {
-    suggestions, loading, refreshing, targetOptions,
+    suggestions, loading, refreshing, lastScannedAt, targetOptions,
     resolve: (category) => resolveTarget(category, targetOptions),
     addToList, dismiss, refresh,
   };

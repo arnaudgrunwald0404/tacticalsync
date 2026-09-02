@@ -2,6 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
 import { logAiUsage } from "../_shared/aiUsage.ts"
+import {
+  readScanCursor,
+  isInCooldown,
+  scanWindowStartMs,
+  advanceScanCursor,
+} from "../_shared/scanCursor.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -101,6 +107,51 @@ interface SlackThread {
   sourceId: string          // "{channelId}:{rootTs}"
 }
 
+// Auto-resolves pending Slack suggestions the user has since answered directly
+// in Slack: a message of their own in the same channel/DM after the flagged
+// thread root means the suggestion is handled, so it leaves the panel without
+// polluting the accepted/dismissed learning history (status 'resolved' skips
+// the outcome_at trigger). Pure DB work — runs on every invocation, cooldown
+// or not.
+async function resolveAnsweredSlackSuggestions(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  mySlackId: string,
+): Promise<number> {
+  if (!mySlackId) return 0
+  const { data: pending } = await supabase
+    .from('dci_suggested_tasks')
+    .select('id, source_thread_id')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .in('source_type', ['slack_dm', 'slack_channel'])
+    .not('source_thread_id', 'is', null)
+    .limit(50)
+
+  let resolved = 0
+  for (const row of (pending ?? []) as Array<{ id: string; source_thread_id: string }>) {
+    const [channelId, rootTs] = row.source_thread_id.split(':')
+    if (!channelId || !rootTs) continue
+    const { data: laterOwn } = await supabase
+      .from('cos_slack_messages')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('channel_id', channelId)
+      .eq('sender_slack_id', mySlackId)
+      .gt('message_ts', rootTs)
+      .limit(1)
+    if (laterOwn && laterOwn.length > 0) {
+      const { error } = await supabase
+        .from('dci_suggested_tasks')
+        .update({ status: 'resolved' })
+        .eq('id', row.id)
+        .eq('status', 'pending')
+      if (!error) resolved++
+    }
+  }
+  return resolved
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'method_not_allowed' }, 405)
@@ -146,8 +197,23 @@ serve(async (req) => {
 
     const mySlackId: string = creds.slack_user_id ?? ''
 
+    // Validation pass (free, every invocation): close out suggestions the user
+    // already answered in Slack itself.
+    const resolvedCount = await resolveAnsweredSlackSuggestions(supabase, userId, mySlackId)
+
+    // Cost guardrail: a completed scan in the last 10 minutes means there is
+    // nothing meaningfully new — skip the fetch + LLM extraction entirely so
+    // repeated refresh-button clicks don't burn model calls.
+    const cursorMs = await readScanCursor(supabase, userId, 'slack_suggestions')
+    if (isInCooldown(cursorMs)) {
+      return jsonResponse({ skipped: 'cooldown', suggestions_added: 0, suggestions_resolved: resolvedCount }, 200)
+    }
+
     // ── 2. Load recent messages from cos_slack_messages ─────────────────────
-    const since = new Date(Date.now() - days * 86_400_000).toISOString()
+    // Incremental: only since the last completed scan (24h overlap for retry
+    // safety — suggestion_source_processed dedups anything re-fetched), capped
+    // at the requested days window.
+    const since = new Date(scanWindowStartMs(cursorMs, days)).toISOString()
     const { data: msgRows, error: msgErr } = await supabase
       .from('cos_slack_messages')
       .select('channel_id, channel_name, message_ts, thread_ts, sender_slack_id, sender_name, content, is_dm, message_date')
@@ -157,7 +223,10 @@ serve(async (req) => {
 
     if (msgErr) return jsonResponse({ error: msgErr.message }, 500)
     const messages = (msgRows ?? []) as SlackMessageRow[]
-    if (messages.length === 0) return jsonResponse({ processed: 0, suggestions_added: 0, message: 'no_messages' }, 200)
+    if (messages.length === 0) {
+      await advanceScanCursor(supabase, userId, 'slack_suggestions')
+      return jsonResponse({ processed: 0, suggestions_added: 0, suggestions_resolved: resolvedCount, message: 'no_messages' }, 200)
+    }
 
     // ── 3. Group into threads ───────────────────────────────────────────────
     // Thread key: "{channel_id}:{root_ts}" where root_ts = thread_ts ?? message_ts
@@ -192,7 +261,10 @@ serve(async (req) => {
     const processedIds = new Set((processedRows ?? []).map((r: { source_id: string }) => r.source_id))
     const unprocessed = allThreads.filter(t => !processedIds.has(t.sourceId))
 
-    if (unprocessed.length === 0) return jsonResponse({ processed: 0, suggestions_added: 0, message: 'all_already_processed' }, 200)
+    if (unprocessed.length === 0) {
+      await advanceScanCursor(supabase, userId, 'slack_suggestions')
+      return jsonResponse({ processed: 0, suggestions_added: 0, suggestions_resolved: resolvedCount, message: 'all_already_processed' }, 200)
+    }
 
     // Cap at 40 threads per run to stay within time budget.
     const toProcess = unprocessed.slice(0, 40)
@@ -398,9 +470,15 @@ Respond with valid JSON only:
       )
     }
 
+    // Failed threads stay retryable through the 24h fetch-window overlap even
+    // though the cursor advances — they were excluded from
+    // suggestion_source_processed above, so the next run re-analyzes them.
+    await advanceScanCursor(supabase, userId, 'slack_suggestions')
+
     return jsonResponse({
       processed: actionable.length,
       suggestions_added: suggestionsAdded,
+      suggestions_resolved: resolvedCount,
       failed_threads: failedSourceIds.size,
     })
 

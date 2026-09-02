@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { Sparkles, Plus, X, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,7 +52,7 @@ function provenance(s: MeetingSuggestion): string {
 
 export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAddToList }: Props) {
   const {
-    suggestions, loading, refreshing, targetOptions, resolve, addToList, dismiss, refresh,
+    suggestions, loading, refreshing, lastScannedAt, targetOptions, resolve, addToList, dismiss, refresh,
   } = useMeetingSuggestions({ userId, layoutConfig, members, onAddToList });
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -116,7 +117,9 @@ export function SuggestedFromMeetingsPanel({ userId, layoutConfig, members, onAd
             onClick={refresh}
             disabled={refreshing}
             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-50"
-            title="Re-scan recent meetings"
+            title={lastScannedAt
+              ? `Re-scan recent meetings — last scanned ${formatDistanceToNow(lastScannedAt, { addSuffix: true })}`
+              : 'Re-scan recent meetings'}
           >
             <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
           </button>
