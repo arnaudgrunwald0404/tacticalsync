@@ -56,6 +56,9 @@ interface UseMeetingSuggestionsReturn<Destination> {
   suggestions: MeetingSuggestion[];
   loading: boolean;
   refreshing: boolean;
+  /** Most recent completed scan across all sources (cos_action_item_scan_state),
+   *  for "last scanned N min ago" affordances. Null until a first scan exists. */
+  lastScannedAt: Date | null;
   targetOptions: TargetOption[];
   resolve: (category: string | null | undefined) => TargetOption | undefined;
   addToList: (id: string, destination: Destination) => Promise<void>;
@@ -71,6 +74,7 @@ export function useMeetingSuggestions<Destination>({
   const [suggestions, setSuggestions] = useState<MeetingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
   // Guards against a suggestion being actioned twice (e.g. a fast double-click)
   // before the optimistic state update has re-rendered and removed its row.
   const pendingRef = useRef<Set<string>>(new Set());
@@ -99,6 +103,18 @@ export function useMeetingSuggestions<Destination>({
     }));
     setSuggestions(rows);
     setLoading(false);
+
+    // Newest completed scan across sources — users can SELECT their own
+    // cos_action_item_scan_state rows (read-only RLS policy).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: scanRow } = await (supabase as any)
+      .from('cos_action_item_scan_state')
+      .select('last_scanned_at')
+      .eq('user_id', userId)
+      .order('last_scanned_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setLastScannedAt(scanRow?.last_scanned_at ? new Date(scanRow.last_scanned_at) : null);
   }, [userId, members]);
 
   useEffect(() => { load(); }, [load]);
@@ -168,7 +184,7 @@ export function useMeetingSuggestions<Destination>({
   }, [load, onAfterRefresh]);
 
   return {
-    suggestions, loading, refreshing, targetOptions,
+    suggestions, loading, refreshing, lastScannedAt, targetOptions,
     resolve: (category) => resolveTarget(category, targetOptions),
     addToList, dismiss, refresh,
   };

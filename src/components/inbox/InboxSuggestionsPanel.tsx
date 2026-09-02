@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight, Slack } from 'lucide-react';
 import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
@@ -69,7 +70,7 @@ export function InboxSuggestionsPanel({
 
   // Pass null layoutConfig — we don't need CoS target lists here, just the suggestions
   const {
-    suggestions, loading, refreshing, dismiss, refresh,
+    suggestions, loading, refreshing, lastScannedAt, dismiss, refresh,
     addToList,
   } = useMeetingSuggestions({
     userId,
@@ -269,7 +270,9 @@ export function InboxSuggestionsPanel({
             onClick={refresh}
             disabled={refreshing}
             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-50"
-            title="Re-scan recent meetings"
+            title={lastScannedAt
+              ? `Re-scan recent meetings — last scanned ${formatDistanceToNow(lastScannedAt, { addSuffix: true })}`
+              : 'Re-scan recent meetings'}
           >
             <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
           </button>
