@@ -160,8 +160,14 @@ Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "
 // (status 'resolved' skips the outcome_at trigger). Costs one Gmail metadata
 // call per pending email suggestion (capped) — no LLM — and runs on every
 // invocation, cooldown or not.
+// Same untyped-client alias scanCursor.ts uses: these helpers only touch
+// tables absent from the generated types, so the inferred client type
+// (SupabaseClient<unknown, never, ...>) rejects them under deno check.
+// deno-lint-ignore no-explicit-any
+type AnySupabaseClient = any
+
 async function resolveAnsweredEmailSuggestions(
-  supabase: ReturnType<typeof createClient>,
+  supabase: AnySupabaseClient,
   userId: string,
   accessToken: string,
 ): Promise<number> {

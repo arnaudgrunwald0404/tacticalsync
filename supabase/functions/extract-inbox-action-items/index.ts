@@ -420,8 +420,14 @@ async function reconcileAnsweredGmailItems(
 // isAutomatedSender was tightened) lingered until manually dismissed. Runs
 // after suppression inference so rules learned from this run's dismissals are
 // applied immediately. Pure DB work — no LLM, no external API.
+// Same untyped-client alias scanCursor.ts uses: these helpers only touch
+// tables absent from the generated types, so the inferred client type
+// (SupabaseClient<unknown, never, ...>) rejects them under deno check.
+// deno-lint-ignore no-explicit-any
+type AnySupabaseClient = any
+
 async function applySuppressionToOpenItems(
-  supabase: ReturnType<typeof createClient>,
+  supabase: AnySupabaseClient,
   userId: string,
 ): Promise<number> {
   const { data: pref } = await supabase
@@ -725,7 +731,7 @@ serve(async (req) => {
         }
 
         // Same 10-minute cooldown as the Slack scan above — protects both the
-        // Claude extraction and the ~100-request sent-mail lookup from rapid
+        // Gemini extraction and the ~100-request sent-mail lookup from rapid
         // refresh-button clicks.
         const { data: gmailCursorRow } = await supabase
           .from('cos_action_item_scan_state')

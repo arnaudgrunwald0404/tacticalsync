@@ -1,6 +1,6 @@
 // Per-user scan cursors for the suggestion pipelines, stored in
 // cos_action_item_scan_state (source values 'slack_suggestions' /
-// 'gmail_suggestions' — see 20260828100000_rescan_incremental_guardrails.sql).
+// 'gmail_suggestions' — see 20260901120000_rescan_incremental_guardrails.sql).
 //
 // Two jobs:
 // 1. Incremental windows — each sync fetches only content newer than its
