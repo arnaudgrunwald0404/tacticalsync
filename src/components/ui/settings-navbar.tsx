@@ -17,6 +17,9 @@ interface SettingsNavbarProps {
   // showOrgTalkingPoints (is_admin or is_super_admin), separate prop so each
   // panel's visibility can be tuned independently later.
   showRecentlyDeleted?: boolean;
+  // Admin-only AI token usage / cost monitoring panel. Same gate as
+  // showOrgTalkingPoints (is_admin or is_super_admin).
+  showAiUsage?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -24,6 +27,7 @@ const NAV_ITEMS = [
   { id: "user-management-domains",     label: "Domains",           group: "User Management" },
   { id: "user-management-permissions", label: "Permissions",       group: "User Management" },
   { id: "org-talking-points",          label: "Talking Points",    group: "User Management" },
+  { id: "ai-usage",                    label: "AI Usage",          group: "User Management" },
   { id: "strategy-cycles",             label: "Strategy Cycles",   group: "RCDO" },
   { id: "recently-deleted",            label: "Recently Deleted",  group: "RCDO" },
   { id: "configure-my-lists",          label: "My Inbox",          group: "Check-Ins" },
@@ -41,7 +45,7 @@ const NAV_ITEMS = [
   { id: "testing-mode",                label: "Role Preview",      group: null },
 ];
 
-const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions, showOrgTalkingPoints, showRecentlyDeleted }) => {
+const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectionChange, userEmail, showAdminManagement, canManagePermissions, showOrgTalkingPoints, showRecentlyDeleted, showAiUsage }) => {
   const isTestUser = userEmail === "agrunwald@clearcompany.com";
 
   const visibleItems = NAV_ITEMS.filter(item => {
@@ -49,6 +53,7 @@ const SettingsNavbar: React.FC<SettingsNavbarProps> = ({ activeSection, onSectio
     // discoverability but has its own, less restrictive gate — see the
     // showOrgTalkingPoints prop doc above.
     if (item.id === "org-talking-points") return !!showOrgTalkingPoints;
+    if (item.id === "ai-usage") return !!showAiUsage;
     if (item.id === "recently-deleted") return !!showRecentlyDeleted;
     if (item.group === "User Management" && !showAdminManagement) return false;
     if (item.id === "user-management-permissions" && !canManagePermissions) return false;

@@ -5,7 +5,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { format } from 'date-fns';
 import {
   FileText, Zap, HelpCircle, Video, Calendar,
-  Check, Pin, X, Clock, RotateCcw, Users, Pencil, ExternalLink, Mail, Slack,
+  Check, Pin, X, Clock, RotateCcw, Users, ExternalLink, Mail, Slack,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InboxTagPill } from './InboxTagPill';
@@ -338,26 +338,27 @@ export function InboxItemRow({
             )}
           </button>
 
-          {/* Pin indicator — right after text. Weekly priorities and daily
-              check-ins are always pinned; other items can be pinned manually. */}
-          {(item.pinned || isAutoPinnedItem(item)) && (
+          {/* Pin indicator — auto-pinned items only (weekly priorities and
+              daily check-ins); manual pins read from the toggle button below,
+              which stays lit yellow while pinned. */}
+          {isAutoPinnedItem(item) && !item.pinned && (
             <Pin className="h-3 w-3 flex-shrink-0 text-amber-400 rotate-45" />
           )}
 
-          {/* Rename — hover-revealed on pointer devices, always visible on
-              touch (mirrors InboxSidebar's TagItem rename affordance), since
-              onDoubleClick above has no reliable touch equivalent and is
-              preempted by the row's own tap-to-open onClick. */}
-          {onUpdateItem && revealControls && (
+          {/* Pin toggle — hover-revealed when unpinned (grey outline), always
+              visible and yellow while pinned so it doubles as the pinned
+              indicator. Renaming happens in the sidebar/drawer, not here. */}
+          {onUpdateItem && (revealControls || item.pinned) && (
             <button
-              onClick={e => { e.stopPropagation(); startEditText(); }}
-              title="Rename"
+              onClick={e => { e.stopPropagation(); void onUpdateItem(item.id, { pinned: !item.pinned }); }}
+              title={item.pinned ? 'Unpin' : 'Pin'}
               className={cn(
-                'flex-shrink-0 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center',
+                'flex-shrink-0 rounded hover:bg-gray-200 transition-colors flex items-center justify-center',
+                item.pinned ? 'text-amber-400 hover:text-amber-500' : 'text-gray-400 hover:text-gray-600',
                 isTouch ? 'h-8 w-8' : 'p-0.5',
               )}
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pin className={cn('h-3.5 w-3.5 rotate-45', item.pinned && 'fill-current')} />
             </button>
           )}
 

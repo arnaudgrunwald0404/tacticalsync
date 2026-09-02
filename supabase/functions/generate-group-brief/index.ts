@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiChat, GEMINI_PRO_MODEL } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,10 +35,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) {
-      return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) {
+      return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
 
     // Auth — same two modes as generate-1on1-prep:
@@ -379,23 +379,20 @@ Output structure:
 
 ${contextParts.join('\n')}`
 
-    // ── Call Claude ──────────────────────────────────────────────────────────
+    // ── Call Gemini ──────────────────────────────────────────────────────────
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+    const message = await geminiChat(googleApiKey, {
+      model: GEMINI_PRO_MODEL,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      label: 'group meeting brief',
+      log: { functionName: 'generate-group-brief', userId },
     })
 
-    const generatedContent = message.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
-      .join('\n')
+    const generatedContent = message.text
 
-    const inputTokens = message.usage?.input_tokens ?? 0
-    const outputTokens = message.usage?.output_tokens ?? 0
+    const inputTokens = message.usage.inputTokens
+    const outputTokens = message.usage.outputTokens
 
     // ── Store result ──────────────────────────────────────────────────────────
 
@@ -426,7 +423,7 @@ ${contextParts.join('\n')}`
       prep_id: upserted?.id ?? null,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      model: 'claude-sonnet-4-6',
+      model: GEMINI_PRO_MODEL,
       duration_ms: Date.now() - startMs,
       data_sources_used: dataSources,
     })
