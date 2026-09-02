@@ -20,6 +20,7 @@ import {
   type IntentType,
   type SuppressionRules,
 } from "../_shared/inboxTriageUtils.ts"
+import { isInCooldown } from "../_shared/scanCursor.ts"
 
 // ── Inbox action-item scanner ─────────────────────────────────────────────────
 //
@@ -413,6 +414,68 @@ async function reconcileAnsweredGmailItems(
   }
 }
 
+// Applies the CURRENT suppression rules to already-open agent_question items —
+// suppression is otherwise only checked at creation time, so items created
+// before a sender/domain/intent rule was learned (or before a filter like
+// isAutomatedSender was tightened) lingered until manually dismissed. Runs
+// after suppression inference so rules learned from this run's dismissals are
+// applied immediately. Pure DB work — no LLM, no external API.
+// Same untyped-client alias scanCursor.ts uses: these helpers only touch
+// tables absent from the generated types, so the inferred client type
+// (SupabaseClient<unknown, never, ...>) rejects them under deno check.
+// deno-lint-ignore no-explicit-any
+type AnySupabaseClient = any
+
+async function applySuppressionToOpenItems(
+  supabase: AnySupabaseClient,
+  userId: string,
+): Promise<number> {
+  const { data: pref } = await supabase
+    .from('sources_triage_preferences')
+    .select('suppressed_senders, suppressed_domains, suppressed_intents')
+    .eq('user_id', userId)
+    .maybeSingle()
+  const rules: SuppressionRules = {
+    suppressedSenders: new Set<string>((pref?.suppressed_senders ?? []) as string[]),
+    suppressedDomains: new Set<string>((pref?.suppressed_domains ?? []) as string[]),
+    suppressedIntents: new Set<string>((pref?.suppressed_intents ?? []) as string[]),
+    maxThreadAgeHours: null,
+  }
+
+  const { data: openItems } = await supabase
+    .from('inbox_items')
+    .select('id, agent_payload')
+    .eq('user_id', userId)
+    .eq('type', 'agent_question')
+    .eq('status', 'open')
+
+  let archived = 0
+  for (const item of (openItems ?? []) as unknown as Array<{
+    id: string
+    agent_payload: {
+      source?: string; sender_email?: string; intent_type?: string
+      slack_sender_id?: string; slack_channel_id?: string
+    } | null
+  }>) {
+    const p = item.agent_payload
+    if (!p) continue
+    const senderEmail = p.sender_email ?? null
+    const suppressed =
+      shouldSuppressIntent(p.intent_type as IntentType, rules.suppressedIntents) ||
+      isAutomatedSender(senderEmail) ||
+      shouldSuppressMessage(senderEmail, null, rules) ||
+      shouldSuppressSlackMessage(p.slack_sender_id ?? null, p.slack_channel_id ?? null, rules)
+    if (!suppressed) continue
+
+    const { error } = await supabase.from('inbox_items').update({
+      status: 'archived',
+      archived_at: new Date().toISOString(),
+    }).eq('id', item.id).eq('status', 'open')
+    if (!error) archived++
+  }
+  return archived
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -466,7 +529,7 @@ serve(async (req) => {
       ]))
     }
 
-    const results: Array<{ user_id: string; items_created: number; error?: string }> = []
+    const results: Array<{ user_id: string; items_created: number; items_archived?: number; error?: string }> = []
 
     for (const userId of targetUserIds) {
       try {
@@ -551,7 +614,21 @@ serve(async (req) => {
         // param), so gating this whole block on syncChannels.length > 0 was
         // silently skipping DMs (and re-syncing) for anyone who hadn't opted
         // any channels in.
-        if (slackCreds?.access_token && slackTriageEnabled) {
+        // Cost guardrail: a completed scan in the last 10 minutes means there
+        // is nothing meaningfully new — skip the sync + LLM extraction (the
+        // free reconcile above and suppression sweep below still run). The
+        // cursor only advances on a real scan, so this never starves the
+        // 6-hourly cron.
+        const { data: cursorRow } = await supabase
+          .from('cos_action_item_scan_state')
+          .select('last_scanned_at')
+          .eq('user_id', userId)
+          .eq('source', 'slack')
+          .maybeSingle()
+        const slackCursorIso: string | null = cursorRow?.last_scanned_at ?? null
+        const slackCoolingDown = isInCooldown(slackCursorIso ? new Date(slackCursorIso).getTime() : null)
+
+        if (slackCreds?.access_token && slackTriageEnabled && !slackCoolingDown) {
           scannedSlack = true
           try {
             await fetch(`${supabaseUrl}/functions/v1/slack-messages-sync`, {
@@ -567,13 +644,7 @@ serve(async (req) => {
             console.warn(`extract-inbox-action-items: slack-messages-sync failed for ${userId}:`, (err as Error).message)
           }
 
-          const { data: cursorRow } = await supabase
-            .from('cos_action_item_scan_state')
-            .select('last_scanned_at')
-            .eq('user_id', userId)
-            .eq('source', 'slack')
-            .maybeSingle()
-          const since = cursorRow?.last_scanned_at ?? new Date(Date.now() - 24 * 3600_000).toISOString()
+          const since = slackCursorIso ?? new Date(Date.now() - 24 * 3600_000).toISOString()
 
           const normalizedChannels = syncChannels.map(normalizeChannelName)
           const { data: slackMsgs } = await supabase
@@ -659,19 +730,25 @@ serve(async (req) => {
           await reconcileAnsweredGmailItems(supabase, userId, gmailAccessToken)
         }
 
+        // Same 10-minute cooldown as the Slack scan above — protects both the
+        // Gemini extraction and the ~100-request sent-mail lookup from rapid
+        // refresh-button clicks.
+        const { data: gmailCursorRow } = await supabase
+          .from('cos_action_item_scan_state')
+          .select('last_scanned_at')
+          .eq('user_id', userId)
+          .eq('source', 'gmail')
+          .maybeSingle()
+        const gmailCursorIso: string | null = gmailCursorRow?.last_scanned_at ?? null
+        const gmailCoolingDown = isInCooldown(gmailCursorIso ? new Date(gmailCursorIso).getTime() : null)
+
         // Inbox triage is opt-in — skip Gmail scan if user hasn't enabled it.
-        if (gmailAccessToken && inboxTriageEnabled) {
+        if (gmailAccessToken && inboxTriageEnabled && !gmailCoolingDown) {
           scannedGmail = true
           const accessToken = gmailAccessToken
 
-          const { data: gmailCursorRow } = await supabase
-            .from('cos_action_item_scan_state')
-            .select('last_scanned_at')
-            .eq('user_id', userId)
-            .eq('source', 'gmail')
-            .maybeSingle()
           const sinceEpochSec = Math.floor(
-            new Date(gmailCursorRow?.last_scanned_at ?? Date.now() - 24 * 3600_000).getTime() / 1000,
+            new Date(gmailCursorIso ?? Date.now() - 24 * 3600_000).getTime() / 1000,
           )
 
           try {
@@ -940,10 +1017,17 @@ serve(async (req) => {
           }
         }
 
-        if (inboxTriageEnabled && scannedGmail) await inferAndMergeSuppressions('gmail')
-        if (slackTriageEnabled && scannedSlack) await inferAndMergeSuppressions('slack')
+        // Run inference whenever the source is connected+enabled — not only
+        // when a scan happened — so a cooldown-limited manual re-scan still
+        // learns rules from recent dismissals and applies them below.
+        if (inboxTriageEnabled && !!gmailAccessToken) await inferAndMergeSuppressions('gmail')
+        if (slackTriageEnabled && !!slackCreds?.access_token) await inferAndMergeSuppressions('slack')
 
-        results.push({ user_id: userId, items_created: itemsCreated })
+        // Retroactively apply the (possibly just-updated) suppression rules to
+        // items that are already open. DB-only, so it runs on every invocation.
+        const itemsArchived = await applySuppressionToOpenItems(supabase, userId)
+
+        results.push({ user_id: userId, items_created: itemsCreated, items_archived: itemsArchived })
       } catch (err) {
         results.push({ user_id: userId, items_created: 0, error: (err as Error).message })
       }
