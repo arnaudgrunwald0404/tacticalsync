@@ -164,7 +164,7 @@ export function InboxByProjectView({
               : <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />}
             <Pin className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
             <span className="font-semibold text-sm text-amber-700">Pinned</span>
-            <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full text-amber-700 bg-amber-200/50">
+            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full text-amber-700 bg-amber-200/50">
               {pinnedItems.length}
             </span>
           </button>
@@ -217,7 +217,7 @@ export function InboxByProjectView({
               <span className="font-semibold text-sm text-gray-400">No project</span>
             )}
             <span
-              className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full"
+              className="text-[11px] font-medium px-1.5 py-0.5 rounded-full"
               style={tag ? { color: tag.color, backgroundColor: tag.color + '20' } : { color: '#9ca3af' }}
             >
               {groupItems.length}
