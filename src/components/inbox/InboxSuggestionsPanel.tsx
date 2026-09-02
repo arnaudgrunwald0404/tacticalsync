@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight, Slack } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
@@ -48,10 +47,11 @@ interface Props {
   onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
   /** Promotes a Gmail item straight to the inbox with no tag — used when there's no AI-recommended tag to apply. */
   onApproveGmailItem?: (item: InboxItem) => Promise<void>;
-  /** Reloads the inbox_items query behind gmailAgentItems after a re-scan, so
-   *  agent items the scan archived (answered at the source, or newly
-   *  suppressed) leave the panel instead of lingering until the next load. */
-  onRefreshAgentItems?: () => Promise<void> | void;
+  /** Reloads the inbox_items query behind gmailAgentItems — called after a refresh
+   *  so items the rescan just auto-archived (already answered in Gmail/Slack,
+   *  or newly suppressed) actually leave the panel instead of lingering until
+   *  the next page load. */
+  onReloadAgentItems?: () => Promise<void> | void;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -62,7 +62,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
   showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
-  onApproveGmailItem, onRefreshAgentItems,
+  onApproveGmailItem, onReloadAgentItems,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -81,7 +81,12 @@ export function InboxSuggestionsPanel({
     onAddToList: async (tagIds: string[], title: string) => {
       await onAddItem(title, 'task', tagIds);
     },
-    onAfterRefresh: onRefreshAgentItems,
+    // The email/Slack rows in this panel are agent_question inbox_items
+    // produced by extract-inbox-action-items — the hook's refresh() invokes it
+    // (alongside the meeting + Slack/Gmail suggestion syncs) so its
+    // reconcile/suppression passes can archive already-handled items, then
+    // this reload makes them actually leave the panel.
+    onAfterRefresh: onReloadAgentItems,
   });
 
   const health = useIntegrationHealth();
@@ -272,9 +277,8 @@ export function InboxSuggestionsPanel({
             onClick={refresh}
             disabled={refreshing}
             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-50"
-            title={lastScannedAt
-              ? `Re-scan recent meetings, email, and Slack — last scanned ${formatDistanceToNow(lastScannedAt, { addSuffix: true })}`
-              : "Re-scan recent meetings, email, and Slack (clears suggestions you've already answered)"}
+            title={`Re-scan recent meetings, email, and Slack (clears suggestions you've already answered)${
+              lastScannedAt ? ` — last scanned ${formatDistanceToNow(lastScannedAt, { addSuffix: true })}` : ''}`}
           >
             <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
           </button>
