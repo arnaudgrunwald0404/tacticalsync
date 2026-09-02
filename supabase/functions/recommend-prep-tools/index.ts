@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 import { getStackOneConfig } from "../_shared/stackone.ts"
 
 const corsHeaders = {
@@ -40,7 +40,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -122,9 +122,8 @@ serve(async (req) => {
     let recommendations: Recommendation[] = []
     const has = (t: ToolId) => currentTools.includes(t)
 
-    if (recommendEnabled && anthropicApiKey) {
+    if (recommendEnabled && googleApiKey) {
       try {
-        const anthropic = new Anthropic({ apiKey: anthropicApiKey })
         const sys = `You advise which data-source tools to attach to a 1:1 meeting prep so the brief is well-informed but not noisy. Tools: zoom (call recordings/transcripts), slack (DMs & channel messages), stackone (CRM, HR & ticketing data).
 
 Rules:
@@ -138,15 +137,10 @@ connected: ${JSON.stringify(connected)}
 signals: ${JSON.stringify(signals)}
 member: ${member.name} (${member.role}, ${member.relationship_type})`
 
-        const msg = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 400,
-          system: sys,
-          messages: [{ role: 'user', content: usr }],
-        })
-        const text = msg.content
-          .filter((b: { type: string }) => b.type === 'text')
-          .map((b: { type: string; text: string }) => b.text).join('\n')
+        const text = (await geminiGenerateText(googleApiKey, `${sys}\n\n${usr}`, {
+          label: 'recommend prep tools',
+          log: { functionName: 'recommend-prep-tools', userId },
+        }))
           .replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
         const parsed = JSON.parse(text) as { recommendations?: Recommendation[] }
         recommendations = (parsed.recommendations ?? []).filter(r =>

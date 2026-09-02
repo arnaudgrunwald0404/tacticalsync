@@ -12,7 +12,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import Anthropic from 'npm:@anthropic-ai/sdk'
+import { geminiGenerateText } from '../_shared/gemini.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -121,19 +121,14 @@ INSTRUCTIONS
 Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
-    const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
-
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
+    const raw = await geminiGenerateText(Deno.env.get('GOOGLE_AI_API_KEY') ?? '', prompt, {
+      label: 'suggest inbox tags',
+      log: { functionName: 'suggest-inbox-tags', userId: user_id },
     })
-
-    const raw = (message.content[0] as { type: string; text: string }).text.trim()
 
     let suggestions: { tag_id: string; tag_name: string; color: string; reason: string }[] = []
     try {
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim())
       if (Array.isArray(parsed)) {
         // Validate each entry against the actual tag list
         const tagMap = new Map(tags.map(t => [t.id, t]))

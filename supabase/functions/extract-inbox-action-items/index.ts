@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "npm:@anthropic-ai/sdk"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 import {
   classifySenderTier,
   shouldSuppressMessage,
@@ -124,12 +124,13 @@ interface Finding {
   due_date: string | null
 }
 
-const ai = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') })
+const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
 async function extractFindings(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   items: ScanItem[],
+  reader: { name: string; email: string } | null,
 ): Promise<Finding[]> {
   const numbered = items.map(i => {
     // Gmail items carry the reply-relationship marker the prompt's cold-outreach
@@ -141,10 +142,7 @@ async function extractFindings(
   }).join('\n')
   const todayIso = new Date().toISOString().slice(0, 10)
 
-  const msg = await ai.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 4096,
-    system: `Today's date is ${todayIso}. You review a batch of Slack messages and
+  const raw = await geminiGenerateText(googleApiKey, `Today's date is ${todayIso}. You review a batch of Slack messages and
 emails for things the reader should not miss: direct questions aimed at them,
 requests for action or decisions, introductions to new people, threads where
 a decision is stalled waiting on them, commitments that need follow-up, and
@@ -154,6 +152,19 @@ have already been filtered out of this batch — everything below is from a
 real person.
 Ignore small talk, FYI-only updates, acknowledgments ("thanks!", "sounds good"),
 and anything already fully resolved within the same text.
+
+${reader ? `The reader is ${reader.name} <${reader.email}>. ` : ''}Only flag items that are actually the
+reader's to act on. Presence is not relevance: being cc'd on an email, being a
+member of a channel, or being on a thread does not make its action items the
+reader's. If a message opens with a greeting to a different named person
+("Hi Andre, ...") or directs its question/request/availability ask at someone
+other than the reader, return nothing for it — even if the reader started the
+thread. The classic case is an introduction the reader made: once the two
+introduced parties are addressing each other directly (proposing times,
+exchanging availability, answering each other), that thread needs nothing
+from the reader. Conversely, do not require the reader's name to appear: a
+message that answers or follows up on something the reader personally asked,
+raised, or is waiting on is still theirs to see.
 
 Emails are marked [replied-before] (the reader has previously replied to that
 sender) or [never-replied] (the reader never has). Exclude unprompted
@@ -201,12 +212,12 @@ owed_by rules:
 For "due_date", resolve any explicit or clearly-implied deadline to an
 absolute YYYY-MM-DD date — e.g. "by Friday" → next Friday, "EOD tomorrow" →
 tomorrow. Use null when no deadline is stated or implied.
-Return [] if nothing qualifies.`,
-    messages: [{ role: 'user', content: numbered }],
-  })
+Return [] if nothing qualifies.
 
-  const raw = (msg.content[0] as { text: string }).text
-  // Strip markdown code fences if Claude wraps the JSON (```json ... ``` or ``` ... ```)
+ITEMS TO REVIEW
+${numbered}`, { label: 'extract inbox findings', log: { functionName: 'extract-inbox-action-items', userId } })
+
+  // Strip markdown code fences if the model wraps the JSON (```json ... ``` or ``` ... ```)
   const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
   try {
     const parsed = JSON.parse(text)
@@ -267,12 +278,10 @@ Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
   try {
-    const message = await ai.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
+    const raw = await geminiGenerateText(googleApiKey, prompt, {
+      label: 'suggest inbox tags',
+      log: { functionName: 'extract-inbox-action-items' },
     })
-    const raw = (message.content[0] as { text: string }).text.trim()
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []
@@ -538,6 +547,19 @@ serve(async (req) => {
         const suppressedDomains = new Set<string>((triagePref?.suppressed_domains ?? []) as string[])
         const suppressedIntents = new Set<string>((triagePref?.suppressed_intents ?? []) as string[])
         const maxThreadAgeHours: number | null = (triagePref?.max_thread_age_hours as number | null) ?? null
+
+        // Reader identity for the extraction prompt's addressee-relevance rule —
+        // without it the model can't tell "Hi Andre, ..." (someone else's action
+        // item on a thread the reader is merely cc'd on) from a message actually
+        // aimed at the reader.
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', userId)
+          .maybeSingle()
+        const reader = profileRow
+          ? { name: (profileRow.full_name as string) ?? '', email: (profileRow.email as string) ?? '' }
+          : null
 
         // Inbox tag library for content-aware suggestion tagging (see suggestTagsForItem).
         const { data: inboxTagRows } = await supabase
@@ -850,7 +872,7 @@ serve(async (req) => {
 
         let itemsCreated = 0
         if (items.length > 0) {
-          const findings = await extractFindings(supabase, userId, items)
+          const findings = await extractFindings(supabase, userId, items, reader)
           const byId = new Map(items.map(i => [i.id, i]))
 
           for (const finding of findings) {

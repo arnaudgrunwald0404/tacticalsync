@@ -241,7 +241,11 @@ Unique on `(user_id, channel_id, message_ts)` — upsert key.
 - `supabase/functions/disconnect-slack/index.ts`
 - `supabase/functions/slack-messages-sync/index.ts`
 - `supabase/functions/slack-sync-cron/index.ts` — hourly cron matching each user's configured auto-sync hour, mirrors `calendar-sync-cron`'s pattern
+<<<<<<< HEAD
 - `supabase/functions/slack-inbox-sync/index.ts` — separate Gemini 2.5 Flash-based pipeline mining `cos_slack_messages` into `dci_suggested_tasks`, distinct from `extract-inbox-action-items`'s Claude Haiku pipeline (see `docs/SPECIFICATION.md` §7.7 for the two-pipeline architecture). Incremental since the re-scan-button rework: `_shared/scanCursor.ts` gives it (and `gmail-inbox-sync`) a per-user scan cursor in `cos_action_item_scan_state` plus a 10-minute cooldown that skips the LLM extraction on rapid manual re-scans, and each run first auto-`resolve`s pending suggestions the user has since answered in the source channel/thread
+=======
+- `supabase/functions/slack-inbox-sync/index.ts` — separate Gemini 2.5 Flash-based pipeline mining `cos_slack_messages` into `dci_suggested_tasks`, distinct from `extract-inbox-action-items`'s pipeline (also Gemini 2.5 Flash since the 2026-08-28 provider port) (see `docs/SPECIFICATION.md` §7.7 for the two-pipeline architecture)
+>>>>>>> origin/main
 - `supabase/functions/slack-add-suggestion/index.ts`
 - `supabase/functions/agent-slack-action/index.ts`
 - `supabase/functions/agent-command/index.ts`, `agent-tick/index.ts`

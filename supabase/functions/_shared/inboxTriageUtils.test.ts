@@ -542,6 +542,21 @@ Deno.test("isCalendarInvite: flags 'Canceled event:' subjects", () => {
   assert(isCalendarInvite("Canceled event: Board review", "colleague@example.com"))
 })
 
+Deno.test("isCalendarInvite: flags 'Proposed new time:' subjects (Google Calendar propose-new-time)", () => {
+  assert(isCalendarInvite(
+    "Proposed new time: Kristin / Arnaud @ Tue Sep 8, 2026 1:30pm - 2pm (PDT) (Arnaud Grunwald)",
+    "colleague@example.com",
+  ))
+})
+
+Deno.test("isCalendarInvite: flags 'New Time Proposed:' subjects (Outlook propose-new-time)", () => {
+  assert(isCalendarInvite("New Time Proposed: Board review", "colleague@example.com"))
+})
+
+Deno.test("isCalendarInvite: flags 'Tentatively Accepted:' subjects", () => {
+  assert(isCalendarInvite("Tentatively Accepted: Board review", "colleague@example.com"))
+})
+
 Deno.test("isCalendarInvite: flags calendar-notification@google.com regardless of subject", () => {
   assert(isCalendarInvite("Some unrelated subject", "calendar-notification@google.com"))
 })

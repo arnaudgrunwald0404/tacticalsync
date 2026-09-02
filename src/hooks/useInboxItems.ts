@@ -163,7 +163,7 @@ export function useInboxItems(
     text: string,
     type: InboxItemType = 'task',
     tagIds: string[] = [],
-    extra?: Partial<Pick<InboxItem, 'body' | 'agent_payload' | 'source_ref'>>,
+    extra?: Partial<Pick<InboxItem, 'body' | 'agent_payload' | 'source_ref' | 'pinned'>>,
   ): Promise<InboxItem | null> => {
     if (!userId) return null;
 
@@ -184,6 +184,7 @@ export function useInboxItems(
         body: bodyResult.value,
         agent_payload: (extra?.agent_payload ?? null) as Json,
         source_ref: (extra?.source_ref ?? null) as Json,
+        ...(extra?.pinned !== undefined ? { pinned: extra.pinned } : {}),
       })
       .select()
       .single();

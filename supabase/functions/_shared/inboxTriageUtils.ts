@@ -144,8 +144,12 @@ export function isAutomatedSender(senderEmail: string | null): boolean {
 }
 
 // Calendar invite/RSVP notifications use a small, stable set of subject
-// prefixes across Google Calendar, Outlook, etc.
-const CALENDAR_SUBJECT_PREFIX = /^(invitation|accepted|declined|tentative|updated invitation|canceled event|cancelled event|new event|updated event)[:\s]/i
+// prefixes across Google Calendar, Outlook, etc. This must cover the whole
+// event lifecycle — invitations, RSVPs, updates, cancels, AND propose-new-time
+// notifications ("Proposed new time:" from Google Calendar, "New Time
+// Proposed:" from Outlook), which are sent from the proposer's own address
+// and so can't be caught by sender-based filtering.
+const CALENDAR_SUBJECT_PREFIX = /^(invitation|accepted|declined|tentative|tentatively accepted|updated invitation|canceled event|cancelled event|new event|updated event|proposed new time|new time proposed|meeting forward notification)[:\s]/i
 
 /**
  * Returns true when a Gmail message looks like a calendar invite/RSVP

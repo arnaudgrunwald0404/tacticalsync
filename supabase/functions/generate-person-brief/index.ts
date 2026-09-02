@@ -22,7 +22,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import Anthropic from 'npm:@anthropic-ai/sdk'
+import { geminiGenerateText } from '../_shared/gemini.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
 
     // ── Ask Claude for 3 talking points grounded in the above ───────────────
     let talkingPoints: PersonBriefTalkingPoint[] = []
-    if (anthropicApiKey) {
+    if (googleApiKey) {
       try {
         const contextLines: string[] = []
         if (openItemsMine.length > 0) {
@@ -213,14 +213,10 @@ Deno.serve(async (req) => {
 
 ${contextLines.join('\n') || '(No prior history — this may be an early 1:1.)'}`
 
-        const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-        const message = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 500,
-          messages: [{ role: 'user', content: prompt }],
+        const raw = await geminiGenerateText(googleApiKey, prompt, {
+          label: 'person brief talking points',
+          log: { functionName: 'generate-person-brief', userId: user_id },
         })
-
-        const raw = (message.content[0] as { type: string; text: string }).text.trim()
         const jsonMatch = raw.match(/\[[\s\S]*\]/)
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]) as Array<{ text: string; from?: string }>

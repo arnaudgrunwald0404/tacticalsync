@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -142,6 +143,14 @@ serve(async (req) => {
       console.error('Failed to parse Gemini JSON:', geminiText.slice(0, 500))
       return jsonResponse({ error: 'invalid_gemini_response' }, 502)
     }
+
+    const usageMeta = geminiData.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number } | undefined
+    await logAiUsage('generate-weekend-banner', {
+      model: 'gemini-2.5-flash-image',
+      inputTokens: usageMeta?.promptTokenCount ?? 0,
+      outputTokens: usageMeta?.candidatesTokenCount ?? 0,
+      userId,
+    })
 
     // deno-lint-ignore no-explicit-any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

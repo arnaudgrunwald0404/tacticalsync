@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.39.0"
+import { geminiGenerateText } from "../_shared/gemini.ts"
 import { retryWithBackoff } from "../_shared/retryWithBackoff.ts"
 
 const corsHeaders = {
@@ -42,10 +42,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? ''
 
-    if (!anthropicApiKey) {
-      return jsonResponse({ error: 'anthropic_api_key_not_configured' }, 500)
+    if (!googleApiKey) {
+      return jsonResponse({ error: 'google_ai_api_key_not_configured' }, 500)
     }
 
     const authHeader = req.headers.get('Authorization') ?? ''
@@ -206,15 +206,10 @@ Draft a short, direct Slack message sent by the TacticalSync bot on behalf of ${
 - No hedging, no offering of times, no "let me know what works" — just tell them what to do
 - 2–3 sentences max`
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-    const aiResponse = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+    const rawText = await geminiGenerateText(googleApiKey, `${systemPrompt}\n\n${userPrompt}`, {
+      label: 'agent command',
+      log: { functionName: 'agent-command', userId },
     })
-
-    const rawText = aiResponse.content[0].type === 'text' ? aiResponse.content[0].text.trim() : ''
 
     let parsed: ParsedAction
     try {

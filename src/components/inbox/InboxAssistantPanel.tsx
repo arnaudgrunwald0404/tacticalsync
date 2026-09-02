@@ -19,6 +19,7 @@ import { PersonContextWidget } from './PersonContextWidget';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS, WORKFLOW_CYCLE, tagStyle } from '@/lib/inboxValidation';
+import type { ComposerItemOptions } from '@/lib/composerCommands';
 import type { InboxItem, InboxTag, BriefPriority, InboxItemType, ProjectSettings } from '@/types/inbox';
 import type { UpcomingOneOnOneEvent } from '@/components/cos/OneOnOnesView';
 
@@ -175,7 +176,7 @@ interface InboxAssistantPanelProps {
    *  this detail view (the row-level checkbox was removed in favor of the
    *  bulk-select "Mark Done" action; this covers the single-item case). */
   onItemDone?: (id: string, done: boolean) => void;
-  onAddItem: (text: string, type: InboxItemType, tagIds: string[]) => Promise<void>;
+  onAddItem: (text: string, type: InboxItemType, tagIds: string[], options?: ComposerItemOptions) => Promise<void>;
   onCreateTag: (name: string, type: 'project' | 'person', color: string) => Promise<InboxTag | null>;
   projectTag?: InboxTag | null;
   onCloseProject?: () => void;
@@ -617,7 +618,7 @@ export function InboxAssistantPanel({
   // item to the Assistant using the typed text as the instructions, rendered
   // via the DelegationChatView thread already mounted in ItemDetail below.
   const { delegation, startDelegation, submitAnswer, approveStep, rejectStep, retryStep } = useInboxDelegation(item?.id ?? null);
-  const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[], webSearch?: boolean) => {
+  const composerSubmit = async (text: string, type: InboxItemType, tagIds: string[], webSearch?: boolean, options?: ComposerItemOptions) => {
     if (type === 'agent_nudge' && item && !meetingEvent && !projectTag) {
       if (userId) await startDelegation(userId, text);
       return;
@@ -626,7 +627,7 @@ export function InboxAssistantPanel({
       await sendChatMessage(text, tagIds, webSearch);
       return;
     }
-    await onAddItem(text, type, tagIds);
+    await onAddItem(text, type, tagIds, options);
   };
 
   // Close on Escape when item is open
@@ -654,7 +655,7 @@ export function InboxAssistantPanel({
             >
               <AgentBar
                 tags={allTags}
-                onSubmit={async (...args) => { await onAddItem(...args); setMobileBarOpen(false); }}
+                onSubmit={async (text, type, tagIds, _webSearch, options) => { await onAddItem(text, type, tagIds, options); setMobileBarOpen(false); }}
                 onCreateTag={onCreateTag}
               />
             </div>
