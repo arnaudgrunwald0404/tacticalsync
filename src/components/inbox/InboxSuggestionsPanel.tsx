@@ -46,6 +46,9 @@ interface Props {
   onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
   /** Promotes a Gmail item straight to the inbox with no tag — used when there's no AI-recommended tag to apply. */
   onApproveGmailItem?: (item: InboxItem) => Promise<void>;
+  /** Reloads the inbox items after a re-scan, so agent items the scan archived
+   *  (answered at the source, or newly suppressed) leave the panel. */
+  onRefreshAgentItems?: () => Promise<void> | void;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -56,7 +59,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
   showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
-  onApproveGmailItem,
+  onApproveGmailItem, onRefreshAgentItems,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -75,6 +78,7 @@ export function InboxSuggestionsPanel({
     onAddToList: async (tagIds: string[], title: string) => {
       await onAddItem(title, 'task', tagIds);
     },
+    onAfterRefresh: onRefreshAgentItems,
   });
 
   const health = useIntegrationHealth();
