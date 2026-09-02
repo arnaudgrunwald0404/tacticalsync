@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 import { parseVttCues, type VttCue } from "../_shared/parseVtt.ts"
 import { buildCueAnnotatedTranscript, resolveQuoteTimestamp } from "../_shared/quoteAlignment.ts"
 import { computeTalkTime } from "../_shared/talkTime.ts"
@@ -235,7 +236,7 @@ async function classifyMeetingSentiment(
     const text = await geminiGenerateText(
       googleApiKey,
       `${SENTIMENT_PROMPT}${transcriptText}`,
-      { label: 'classify meeting sentiment' },
+      { label: 'classify meeting sentiment', log: { functionName: 'extract-zoom-quotes' } },
     )
 
     const cleaned = text.replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
@@ -389,6 +390,12 @@ serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const geminiData = await geminiRes.json() as any
+      await logAiUsage('extract-zoom-quotes', {
+        model: 'gemini-2.5-flash',
+        inputTokens: geminiData?.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: geminiData?.usageMetadata?.candidatesTokenCount ?? 0,
+        userId,
+      })
       const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
       // Parse JSON from response (strip markdown fences if present). Expected

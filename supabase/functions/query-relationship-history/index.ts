@@ -109,6 +109,7 @@ ${contextParts.join('\n')}`
     system: systemPrompt,
     contents: [{ role: 'user', parts: [{ text: question.trim() }] }],
     label: 'group relationship query',
+    log: { functionName: 'query-relationship-history', userId },
   })
 
   const answer = response.text
@@ -387,6 +388,7 @@ ${contextParts.join('\n')}`
       system: systemPrompt,
       contents: [{ role: 'user', parts: [{ text: question.trim() }] }],
       label: 'relationship query',
+      log: { functionName: 'query-relationship-history', userId },
     })
 
     const answer = response.text

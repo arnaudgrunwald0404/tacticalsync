@@ -906,6 +906,7 @@ ${contextParts.join('\n')}`
       system: systemPrompt,
       contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
       label: '1:1 prep brief',
+      log: { functionName: 'generate-1on1-prep', userId },
     })
 
     const generatedContent = message.text
@@ -977,6 +978,7 @@ Return a JSON array where each element has:
 
 Return ONLY the JSON array, no markdown fences or other text.`,
           contents: [{ role: 'user', parts: [{ text: generatedContent }] }],
+          log: { functionName: 'generate-1on1-prep', userId },
         })
 
         const extractionText = extractionResponse.text

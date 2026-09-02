@@ -44,6 +44,7 @@ import { PersonMemoryConsentModal } from '@/components/inbox/PersonMemoryConsent
 import { WhatsNewPersonMemoryBanner } from '@/components/inbox/WhatsNewPersonMemoryBanner';
 import type { Json } from '@/integrations/supabase/types';
 import type { InboxFilterState, InboxItem, InboxItemType, InboxBucket, BriefPriority, InboxTag, InboxView, InboxViewSort } from '@/types/inbox';
+import type { ComposerItemOptions } from '@/lib/composerCommands';
 import { planTagGroupReindex, isAutoPinnedItem, getAdjacentItemId, priorityRank } from '@/lib/inboxValidation';
 import { TAG_COLORS } from '@/types/inbox';
 import { kickOffCalendarSync, kickOffZoomSync } from '@/lib/calendarZoomConnect';
@@ -576,8 +577,8 @@ export default function InboxPage() {
     return c;
   }, [allItems, doneCount, archiveCount, snoozedItems.length]);
 
-  const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[]) => {
-    const item = await addItem(text, type, tagIds);
+  const handleSubmit = useCallback(async (text: string, type: InboxItemType, tagIds: string[], options?: ComposerItemOptions) => {
+    const item = await addItem(text, type, tagIds, options?.pinned ? { pinned: true } : undefined);
     if (!item?.id) {
       toast({ title: "Couldn't add that item", description: 'Please try again.', variant: 'destructive' });
       return;

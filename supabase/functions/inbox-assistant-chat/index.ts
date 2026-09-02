@@ -426,6 +426,7 @@ serve(async (req) => {
         tools,
         contents,
         label: 'inbox assistant chat',
+        log: { functionName: 'inbox-assistant-chat', userId },
       })
 
       finalText = response.text

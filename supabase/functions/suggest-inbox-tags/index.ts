@@ -121,7 +121,10 @@ INSTRUCTIONS
 Respond with valid JSON only — no prose, no markdown fences.
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one short sentence>" }]`
 
-    const raw = await geminiGenerateText(Deno.env.get('GOOGLE_AI_API_KEY') ?? '', prompt, { label: 'suggest inbox tags' })
+    const raw = await geminiGenerateText(Deno.env.get('GOOGLE_AI_API_KEY') ?? '', prompt, {
+      label: 'suggest inbox tags',
+      log: { functionName: 'suggest-inbox-tags', userId: user_id },
+    })
 
     let suggestions: { tag_id: string; tag_name: string; color: string; reason: string }[] = []
     try {

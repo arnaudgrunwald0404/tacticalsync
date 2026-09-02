@@ -206,7 +206,10 @@ Draft a short, direct Slack message sent by the TacticalSync bot on behalf of ${
 - No hedging, no offering of times, no "let me know what works" — just tell them what to do
 - 2–3 sentences max`
 
-    const rawText = await geminiGenerateText(googleApiKey, `${systemPrompt}\n\n${userPrompt}`, { label: 'agent command' })
+    const rawText = await geminiGenerateText(googleApiKey, `${systemPrompt}\n\n${userPrompt}`, {
+      label: 'agent command',
+      log: { functionName: 'agent-command', userId },
+    })
 
     let parsed: ParsedAction
     try {

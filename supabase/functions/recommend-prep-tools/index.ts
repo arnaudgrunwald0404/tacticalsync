@@ -137,7 +137,10 @@ connected: ${JSON.stringify(connected)}
 signals: ${JSON.stringify(signals)}
 member: ${member.name} (${member.role}, ${member.relationship_type})`
 
-        const text = (await geminiGenerateText(googleApiKey, `${sys}\n\n${usr}`, { label: 'recommend prep tools' }))
+        const text = (await geminiGenerateText(googleApiKey, `${sys}\n\n${usr}`, {
+          label: 'recommend prep tools',
+          log: { functionName: 'recommend-prep-tools', userId },
+        }))
           .replace(/```json?\n?/g, '').replace(/```\n?$/g, '').trim()
         const parsed = JSON.parse(text) as { recommendations?: Recommendation[] }
         recommendations = (parsed.recommendations ?? []).filter(r =>

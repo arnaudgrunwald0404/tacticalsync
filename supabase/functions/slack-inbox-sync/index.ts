@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 import { geminiGenerateText } from "../_shared/gemini.ts"
+import { logAiUsage } from "../_shared/aiUsage.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,7 +59,10 @@ Return at most 2 tags. Only suggest if confident. A person tag fits ONLY if that
 Schema: [{ "tag_id": "<id>", "tag_name": "<name>", "color": "<hex>", "reason": "<one sentence>" }]`
 
   try {
-    const raw = await geminiGenerateText(googleApiKey, prompt, { label: 'suggest slack tags' })
+    const raw = await geminiGenerateText(googleApiKey, prompt, {
+      label: 'suggest slack tags',
+      log: { functionName: 'slack-inbox-sync' },
+    })
     const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed)) return []
@@ -298,6 +302,12 @@ Respond with valid JSON only:
         if (!geminiRes.ok) { await markBatchFailed(`gemini_http_${geminiRes.status}: ${await geminiRes.text()}`); continue }
         // deno-lint-ignore no-explicit-any
         const geminiData = await geminiRes.json() as any
+        await logAiUsage('slack-inbox-sync', {
+          model: 'gemini-2.5-flash',
+          inputTokens: geminiData?.usageMetadata?.promptTokenCount ?? 0,
+          outputTokens: geminiData?.usageMetadata?.candidatesTokenCount ?? 0,
+          userId,
+        })
         const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
         const jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
         let parsed: Array<{ source_id?: string; title?: string; urgency?: string; rationale?: string; raw_context?: string; source?: string }> = []

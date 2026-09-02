@@ -173,6 +173,7 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
   const text = await geminiGenerateText(googleApiKey, `${systemPrompt}\n\n${userMessage}`, {
     model: GEMINI_PRO_MODEL,
     label: 'delegate inbox task',
+    log: { functionName: 'delegate-inbox-task' },
   })
   // Both call sites JSON.parse the result, so strip any markdown fences here.
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
