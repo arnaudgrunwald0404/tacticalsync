@@ -12,6 +12,9 @@ import {
   isCalendarInvite,
   parseGmailThreadIdFromUrl,
   hasUserReplyAfter,
+  decodeGmailBody,
+  extractEmailBodyUrls,
+  type GmailPayloadPart,
   type GmailThreadMessageMeta,
   SUPPRESSED_BY_DEFAULT,
   type SuppressionRules,
@@ -636,4 +639,78 @@ Deno.test("hasUserReplyAfter: SENT message without internalDate does not count",
     [threadMsg("src", 1000), { id: "reply", labelIds: ["SENT"] }],
     "src",
   ))
+})
+
+// ─── extractEmailBodyUrls ─────────────────────────────────────────────────────
+
+// btoa in base64url form, mirroring how Gmail encodes body.data.
+function gmailB64(text: string): string {
+  return btoa(unescape(encodeURIComponent(text))).replace(/\+/g, "-").replace(/\//g, "_")
+}
+
+function htmlPart(html: string): GmailPayloadPart {
+  return { mimeType: "text/html", body: { data: gmailB64(html) } }
+}
+
+function plainPart(text: string): GmailPayloadPart {
+  return { mimeType: "text/plain", body: { data: gmailB64(text) } }
+}
+
+Deno.test("decodeGmailBody: round-trips UTF-8 through base64url", () => {
+  assertEquals(decodeGmailBody(gmailB64("héllo — wörld")), "héllo — wörld")
+})
+
+Deno.test("decodeGmailBody: empty/invalid input yields ''", () => {
+  assertEquals(decodeGmailBody(undefined), "")
+  assertEquals(decodeGmailBody("!!not-base64!!"), "")
+})
+
+Deno.test("extractEmailBodyUrls: pulls hrefs from html and bare URLs from plain text", () => {
+  const urls = extractEmailBodyUrls({
+    mimeType: "multipart/alternative",
+    parts: [
+      plainPart("Start here: https://lms.example.com/course/42 today"),
+      htmlPart('<a href="https://lms.example.com/course/42">Start</a> <a href="https://docs.example.com/guide">Guide</a>'),
+    ],
+  })
+  assertEquals(urls, ["https://lms.example.com/course/42", "https://docs.example.com/guide"])
+})
+
+Deno.test("extractEmailBodyUrls: drops unsubscribe/social/asset/mailto/oversize links", () => {
+  const urls = extractEmailBodyUrls(htmlPart([
+    '<a href="https://x.example.com/unsubscribe?u=1">Unsubscribe</a>',
+    '<a href="https://example.com/email-preferences">Prefs</a>',
+    '<a href="https://www.linkedin.com/company/acme">LI</a>',
+    '<img src="x"><a href="https://cdn.example.com/logo.png">logo</a>',
+    '<a href="mailto:bob@example.com">mail</a>',
+    `<a href="https://t.example.com/${"x".repeat(1001)}">huge</a>`,
+    '<a href="https://keep.example.com/real-thing">Real</a>',
+  ].join("")))
+  assertEquals(urls, ["https://keep.example.com/real-thing"])
+})
+
+Deno.test("extractEmailBodyUrls: decodes &amp; in hrefs and dedupes across parts", () => {
+  const urls = extractEmailBodyUrls({
+    mimeType: "multipart/alternative",
+    parts: [
+      plainPart("https://a.example.com/x?b=1&c=2"),
+      htmlPart('<a href="https://a.example.com/x?b=1&amp;c=2">link</a>'),
+    ],
+  })
+  assertEquals(urls, ["https://a.example.com/x?b=1&c=2"])
+})
+
+Deno.test("extractEmailBodyUrls: caps the list and handles nested multiparts", () => {
+  const links = Array.from({ length: 20 }, (_, i) => `<a href="https://example.com/p/${i}">l</a>`).join("")
+  const urls = extractEmailBodyUrls({
+    mimeType: "multipart/mixed",
+    parts: [{ mimeType: "multipart/alternative", parts: [htmlPart(links)] }],
+  })
+  assertEquals(urls.length, 12)
+  assertEquals(urls[0], "https://example.com/p/0")
+})
+
+Deno.test("extractEmailBodyUrls: empty payload yields []", () => {
+  assertEquals(extractEmailBodyUrls(undefined), [])
+  assertEquals(extractEmailBodyUrls({ mimeType: "text/plain" }), [])
 })

@@ -81,6 +81,14 @@ export interface AgentPayload {
   action_required?: boolean;
   cta_label?: string;
   cta_action?: string;
+  // agent_question fields written by extract-inbox-action-items for
+  // email/Slack-sourced items — deep links back to the source, plus the one
+  // link inside the email body that is the action's direct target (e.g. the
+  // training to complete), when the extractor found one.
+  gmail_url?: string;
+  slack_url?: string;
+  action_url?: string;
+  action_label?: string;
   // brief_item fields (daily/weekly DCI brief)
   brief_date?: string;
   brief_priorities?: BriefPriority[];  // ordered; top 3 are "selected"
