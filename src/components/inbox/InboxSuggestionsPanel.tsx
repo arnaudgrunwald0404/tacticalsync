@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Sparkles, Plus, X, RefreshCw, ChevronDown, ChevronUp, ExternalLink, WifiOff, Mail, ChevronRight, Slack } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import type { InboxItem } from '@/types/inbox';
 import { AutoSyncIntroCallout } from '@/components/inbox/AutoSyncIntroCallout';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,10 @@ interface Props {
   onTagGmailItem?: (itemId: string, tagId: string) => Promise<void>;
   /** Promotes a Gmail item straight to the inbox with no tag — used when there's no AI-recommended tag to apply. */
   onApproveGmailItem?: (item: InboxItem) => Promise<void>;
+  /** Reloads the inbox_items query behind gmailAgentItems — called after a refresh
+   *  so items the rescan just auto-archived (already answered in Gmail/Slack)
+   *  actually leave the panel instead of lingering until the next page load. */
+  onReloadAgentItems?: () => Promise<void> | void;
 }
 
 const COLLAPSED_COUNT = 3;
@@ -56,7 +61,7 @@ const DESTINATION_TYPES = new Set(['project', 'folder', 'person']);
 export function InboxSuggestionsPanel({
   userId, members, tags, onAddItem, scopeTagIds, teamMembers = [], onCreateTag, onCreatePersonTag,
   showIntroCallout, onDismissIntroCallout, gmailAgentItems = [], onDismissGmailItem, onTagGmailItem,
-  onApproveGmailItem,
+  onApproveGmailItem, onReloadAgentItems,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -78,6 +83,28 @@ export function InboxSuggestionsPanel({
   });
 
   const health = useIntegrationHealth();
+
+  // The hook's refresh() re-scans meetings + raw Slack/Gmail syncs, but the
+  // email/Slack rows in this panel are agent_question inbox_items produced by
+  // extract-inbox-action-items — which is also the function whose
+  // reconcileAnswered* passes auto-archive suggestions the user has since
+  // answered directly in Gmail/Slack. Without invoking it here, an
+  // already-replied-to suggestion survives refresh until the next 6-hourly
+  // cron run.
+  const [rescanning, setRescanning] = useState(false);
+  const handleRefresh = async () => {
+    if (refreshing || rescanning) return;
+    setRescanning(true);
+    try {
+      await Promise.allSettled([
+        refresh(),
+        supabase.functions.invoke('extract-inbox-action-items', { body: {} }),
+      ]);
+      await onReloadAgentItems?.();
+    } finally {
+      setRescanning(false);
+    }
+  };
 
   const withBusyGuard = (id: string, run: () => Promise<void>) => {
     if (busyIds.has(id)) return;
@@ -262,12 +289,12 @@ export function InboxSuggestionsPanel({
         </span>
         <div className="ml-auto flex items-center gap-3">
           <button
-            onClick={refresh}
-            disabled={refreshing}
+            onClick={handleRefresh}
+            disabled={refreshing || rescanning}
             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-50"
-            title="Re-scan recent meetings"
+            title="Re-scan recent meetings, email, and Slack (clears suggestions you've already answered)"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            <RefreshCw className={cn('h-3.5 w-3.5', (refreshing || rescanning) && 'animate-spin')} />
           </button>
           <span className="hidden text-xs text-white/50 sm:inline">Add to inbox or dismiss</span>
         </div>

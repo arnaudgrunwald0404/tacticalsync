@@ -445,7 +445,7 @@ export default function InboxPage() {
   // `items` replays the same patch here, keeping counts in sync with no extra
   // network round trip.
   const allFilter = useMemo<InboxFilterState>(() => ({ builtIn: 'all' }), []);
-  const { items: allItems, loading: allItemsLoading, applyExternalPatch: mirrorToAllItems } = useInboxItems(userId, allFilter);
+  const { items: allItems, loading: allItemsLoading, applyExternalPatch: mirrorToAllItems, reload: reloadAllItems } = useInboxItems(userId, allFilter);
   // Drives the assistant panel's default greeting: a returning-user "what's up
   // next" framing doesn't fit someone who has never had an inbox item.
   const isNewUser = !allItemsLoading && allItems.length === 0;
@@ -1511,6 +1511,7 @@ export default function InboxPage() {
               onDismissGmailItem={handleDismissGmailItem}
               onTagGmailItem={handleTagGmailItem}
               onApproveGmailItem={handleApproveSuggestion}
+              onReloadAgentItems={reloadAllItems}
             />
           )}
           {syncing ? (
